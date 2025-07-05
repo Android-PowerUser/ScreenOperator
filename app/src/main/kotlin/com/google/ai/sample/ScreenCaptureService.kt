@@ -32,7 +32,7 @@ import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI
 import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
 import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
 import com.google.ai.client.generativeai.type.TextPart // For logging AI response
-import com.google.ai.client.generativeai.type.TextPart // For logging AI response
+// Removed duplicate TextPart import
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
 import kotlinx.coroutines.CoroutineScope
@@ -254,29 +254,18 @@ class ScreenCaptureService : Service() {
                         Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
                         val aiResponse = tempChat.sendMessage(inputContent) // Use the mapped SDK inputContent
 
-                        // Corrected logging for aiResponse structure
-                        if (aiResponse != null && aiResponse.parts.isNotEmpty()) {
-                            Log.d(TAG, "Service received AI Response. Number of parts: ${aiResponse.parts.size}")
-                            Log.d(TAG, "Parts summary: ${aiResponse.parts.joinToString { part -> part.javaClass.simpleName }}")
-
-                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionCallPart>().forEach { fcp ->
-                                Log.d(TAG, "  AI sent FunctionCallPart: name='${fcp.name}', args='${fcp.args}'")
+                        if (aiResponse != null) {
+                            Log.d(TAG, "Service received AI Response. Success: true, Number of parts: ${aiResponse.parts.size}")
+                            // Attempt a simple joinToString; if this also fails, it will need to be removed too.
+                            try {
+                                Log.d(TAG, "Parts summary: ${aiResponse.parts.joinToString { it.javaClass.simpleName }}")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error creating parts summary log: ${e.message}")
                             }
-                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionResponsePart>().forEach { frp ->
-                                Log.d(TAG, "  AI sent FunctionResponsePart: name='${frp.name}', response='${frp.response.toString().take(100)}...'")
-                            }
-                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.BlobPart>().forEach { bp ->
-                                Log.d(TAG, "  AI sent BlobPart: mimeType='${bp.mimeType}', dataSize=${bp.blob.size}")
-                            }
-                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.TextPart>().forEach { tp ->
-                                Log.d(TAG, "  AI sent TextPart: text='${tp.text.take(100)}...'")
-                            }
-                        } else if (aiResponse != null) {
-                            Log.d(TAG, "Service received AI Response with zero parts.")
                         } else {
-                            Log.d(TAG, "Service received null AI Response object.") // Should be caught by exception ideally
+                            Log.d(TAG, "Service received null AI Response object.")
                         }
-                        responseText = aiResponse?.text // Existing line
+                        responseText = aiResponse?.text // This line should remain
                         Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
 
                     } catch (e: Exception) {
