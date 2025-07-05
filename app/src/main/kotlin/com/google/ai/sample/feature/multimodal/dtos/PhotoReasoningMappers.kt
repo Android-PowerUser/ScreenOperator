@@ -56,14 +56,13 @@ fun PartDto.toSdk(): Part { // No context needed here as path is absolute
         }
         is BlobPartDto -> BlobPart(mimeType = this.mimeType, blob = this.data)
         is FunctionCallPartDto -> {
-            val sdkArgs: Map<String, String?>? = this.args?.let { dtoArgs ->
-                // Explicitly create a new map to ensure the compiler understands the type correctly.
-                val newMap = mutableMapOf<String, String?>()
-                dtoArgs.entries.forEach { entry -> // Iterate through entries
+            val sdkArgs: HashMap<String, String?>? = this.args?.let { dtoArgs ->
+                // Explicitly create a HashMap.
+                val newMap = hashMapOf<String, String?>()
+                dtoArgs.entries.forEach { entry ->
                     newMap[entry.key] = entry.value
                 }
-                newMap.toMap() // Convert to immutable Map if constructor expects Map, or just newMap if MutableMap is fine.
-                               // Assuming FunctionCallPart constructor takes Map<String, String?>?
+                newMap
             }
             FunctionCallPart(name = this.name, args = sdkArgs)
         }
