@@ -55,7 +55,7 @@ fun PartDto.toSdk(): Part { // No context needed here as path is absolute
                 ?: throw IllegalArgumentException("Failed to load Bitmap from file path: ${this.imageFilePath}, or file was invalid.")
         }
         is BlobPartDto -> BlobPart(mimeType = this.mimeType, blob = this.data)
-        is FunctionCallPartDto -> FunctionCallPart(name = this.name, args = this.args)
+        is FunctionCallPartDto -> FunctionCallPart(name = this.name, args = this.args as Map<String, String?>?)
         is FunctionResponsePartDto -> {
             // Convert responseJson String back to org.json.JSONObject
             val jsonObject = try {
