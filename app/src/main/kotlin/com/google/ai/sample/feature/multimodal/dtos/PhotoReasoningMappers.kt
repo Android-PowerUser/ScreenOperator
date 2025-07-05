@@ -55,7 +55,18 @@ fun PartDto.toSdk(): Part { // No context needed here as path is absolute
                 ?: throw IllegalArgumentException("Failed to load Bitmap from file path: ${this.imageFilePath}, or file was invalid.")
         }
         is BlobPartDto -> BlobPart(mimeType = this.mimeType, blob = this.data)
-        is FunctionCallPartDto -> FunctionCallPart(name = this.name, args = this.args as Map<String, String?>?)
+        is FunctionCallPartDto -> {
+            val sdkArgs: Map<String, String?>? = this.args?.let { dtoArgs ->
+                // Explicitly create a new map to ensure the compiler understands the type correctly.
+                val newMap = mutableMapOf<String, String?>()
+                dtoArgs.entries.forEach { entry -> // Iterate through entries
+                    newMap[entry.key] = entry.value
+                }
+                newMap.toMap() // Convert to immutable Map if constructor expects Map, or just newMap if MutableMap is fine.
+                               // Assuming FunctionCallPart constructor takes Map<String, String?>?
+            }
+            FunctionCallPart(name = this.name, args = sdkArgs)
+        }
         is FunctionResponsePartDto -> {
             // Convert responseJson String back to org.json.JSONObject
             val jsonObject = try {
