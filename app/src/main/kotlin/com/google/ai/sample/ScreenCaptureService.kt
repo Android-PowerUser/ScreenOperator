@@ -29,6 +29,8 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.ImagePart // For instance check
 import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI response
+import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
+import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
 import kotlinx.coroutines.CoroutineScope
@@ -249,10 +251,15 @@ class ScreenCaptureService : Service() {
                         val tempChat = generativeModel.startChat(history = chatHistory) // Use the mapped SDK history
                         Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
                         val aiResponse = tempChat.sendMessage(inputContent) // Use the mapped SDK inputContent
-                        Log.d(TAG, "Service received AI Response. Parts: ${aiResponse.parts.joinToString { it.javaClass.simpleName }}")
-                        // If a part is FunctionCallPart, log its name and args
-                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionCallPart>().forEach { fcp ->
+                        Log.d(TAG, "Service received AI Response. Parts: ${aiResponse.parts.joinToString { part -> part.javaClass.simpleName }}")
+                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionCallPart>().forEach { fcp: com.google.ai.client.generativeai.type.FunctionCallPart ->
                             Log.d(TAG, "  AI sent FunctionCallPart: name='${fcp.name}', args='${fcp.args}'")
+                        }
+                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionResponsePart>().forEach { frp: com.google.ai.client.generativeai.type.FunctionResponsePart ->
+                            Log.d(TAG, "  AI sent FunctionResponsePart: name='${frp.name}', response='${frp.response.toString().take(100)}...'")
+                        }
+                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.BlobPart>().forEach { bp: com.google.ai.client.generativeai.type.BlobPart ->
+                            Log.d(TAG, "  AI sent BlobPart: mimeType='${bp.mimeType}', dataSize=${bp.blob.size}")
                         }
                         responseText = aiResponse.text
                         Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
