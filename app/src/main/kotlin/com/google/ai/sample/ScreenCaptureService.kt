@@ -32,6 +32,7 @@ import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI
 import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
 import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
 import com.google.ai.client.generativeai.type.TextPart // For logging AI response
+import com.google.ai.client.generativeai.type.TextPart // For logging AI response
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
 import kotlinx.coroutines.CoroutineScope
