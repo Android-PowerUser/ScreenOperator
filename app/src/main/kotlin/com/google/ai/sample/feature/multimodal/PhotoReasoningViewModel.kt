@@ -236,7 +236,9 @@ class PhotoReasoningViewModel(
             imageUris = imageUrisForChat ?: emptyList(), // Use the new parameter here
             isPending = false
         )
+        Log.d(TAG, "performReasoning: Adding user message to _chatState. Text: \"${userMessage.text.take(100)}...\", Images: ${userMessage.imageUris.size}")
         _chatState.addMessage(userMessage)
+        Log.d(TAG, "performReasoning: _chatState now has ${_chatState.messages.size} messages.")
         _chatMessagesFlow.value = chatMessages
 
         // Add AI message with pending status
@@ -379,6 +381,20 @@ class PhotoReasoningViewModel(
             // Add @file:UseSerializers(ContentSerializer::class, PartSerializer::class etc.) if needed at top of file
             // Or create DTOs. For this subtask, we'll assume direct serialization is possible.
 
+            Log.d(TAG, "sendMessageWithRetry: Preparing to serialize chat.history. Current chat.history size: ${chat.history.size}")
+            chat.history.forEachIndexed { index, content ->
+                Log.d(TAG, "  ViewModel chat.history Content[$index]: role=${content.role}, parts=${content.parts.joinToString { it.javaClass.simpleName } { part ->
+                    when(part) {
+                        is com.google.ai.client.generativeai.type.TextPart -> "Text(\"${part.text.take(50)}...\")"
+                        is com.google.ai.client.generativeai.type.ImagePart -> "Image"
+                        is com.google.ai.client.generativeai.type.BlobPart -> "Blob(${part.mimeType})"
+                        is com.google.ai.client.generativeai.type.FunctionCallPart -> "FunctionCall(${part.name}, args=${part.args})"
+                        is com.google.ai.client.generativeai.type.FunctionResponsePart -> "FunctionResponse(${part.name})"
+                        else -> "UnknownPart"
+                    }
+                }}")
+            }
+
             Log.d(TAG, "sendMessageWithRetry: Logging original Bitmap properties before DTO conversion and saving:")
 
             // Log properties for inputContent's images
@@ -455,6 +471,7 @@ class PhotoReasoningViewModel(
      * Update the AI message in chat history
      */
     private fun updateAiMessage(text: String, isPending: Boolean = false) {
+        Log.d(TAG, "updateAiMessage: Adding to _chatState. Text: \"${text.take(100)}...\", Participant: MODEL, IsPending: $isPending")
         // Find the last AI message and update it or add a new one if no suitable message exists
         val messages = _chatState.messages.toMutableList()
         val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
@@ -481,6 +498,7 @@ class PhotoReasoningViewModel(
 
         // Update the flow
         _chatMessagesFlow.value = chatMessages
+        Log.d(TAG, "updateAiMessage: _chatState now has ${_chatState.messages.size} messages.")
 
         // Save chat history after updating message
         // Only save if the operation wasn't stopped, or if it's a deliberate update after stopping
@@ -634,6 +652,7 @@ class PhotoReasoningViewModel(
      * Rebuild the chat history for the AI based on the current messages
      */
     private fun rebuildChatHistory(context: Context) { // Added context parameter
+        Log.d(TAG, "rebuildChatHistory: Starting. Input _chatState.messages size: ${_chatState.messages.size}")
         // Convert the current chat messages to Content objects for the chat history
         val history = mutableListOf<Content>()
 
@@ -687,6 +706,7 @@ class PhotoReasoningViewModel(
                     continue
                 }
             }
+            Log.d(TAG, "  Processed PhotoReasoningMessage: role=${message.participant}, text collected for current SDK Content part: \"${ (if (message.participant == PhotoParticipant.USER) currentUserContent else currentModelContent).take(100) }...\"")
         }
         
         // Add any remaining content
@@ -697,6 +717,20 @@ class PhotoReasoningViewModel(
             history.add(content(role = "model") { text(currentModelContent) })
         }
         
+        Log.d(TAG, "rebuildChatHistory: Finished processing. Generated SDK history size: ${history.size}")
+        history.forEachIndexed { index, content ->
+            Log.d(TAG, "  Generated SDK.Content[$index]: role=${content.role}, parts=${content.parts.joinToString { it.javaClass.simpleName } { part ->
+                when(part) {
+                    is com.google.ai.client.generativeai.type.TextPart -> "Text(\"${part.text.take(50)}...\")"
+                    is com.google.ai.client.generativeai.type.ImagePart -> "Image" // Bitmaps are not easily loggable
+                    is com.google.ai.client.generativeai.type.BlobPart -> "Blob(${part.mimeType})"
+                    is com.google.ai.client.generativeai.type.FunctionCallPart -> "FunctionCall(${part.name}, args=${part.args})"
+                    is com.google.ai.client.generativeai.type.FunctionResponsePart -> "FunctionResponse(${part.name})"
+                    else -> "UnknownPart"
+                }
+            }}")
+        }
+
         // Create a new chat with the rebuilt history
         if (history.isNotEmpty()) {
             chat = generativeModel.startChat(
