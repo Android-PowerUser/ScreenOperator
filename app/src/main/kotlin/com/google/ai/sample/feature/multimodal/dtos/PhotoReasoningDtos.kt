@@ -51,7 +51,7 @@ data class BlobPartDto(
 @SerialName("functionCall")
 data class FunctionCallPartDto(
     val name: String,
-    val args: Map<String, String>? // Map<String, String> is serializable by default
+    val args: Map<String, String?>? // Changed to allow nullable String values in the map
 ) : PartDto
 
 @Serializable
