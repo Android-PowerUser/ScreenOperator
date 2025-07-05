@@ -31,6 +31,7 @@ import com.google.ai.client.generativeai.type.ImagePart // For instance check
 import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI response
 import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
 import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
+import com.google.ai.client.generativeai.type.TextPart // For logging AI response
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
 import kotlinx.coroutines.CoroutineScope
@@ -251,17 +252,30 @@ class ScreenCaptureService : Service() {
                         val tempChat = generativeModel.startChat(history = chatHistory) // Use the mapped SDK history
                         Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
                         val aiResponse = tempChat.sendMessage(inputContent) // Use the mapped SDK inputContent
-                        Log.d(TAG, "Service received AI Response. Parts: ${aiResponse.parts.joinToString { part -> part.javaClass.simpleName }}")
-                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionCallPart>().forEach { fcp: com.google.ai.client.generativeai.type.FunctionCallPart ->
-                            Log.d(TAG, "  AI sent FunctionCallPart: name='${fcp.name}', args='${fcp.args}'")
+
+                        // Corrected logging for aiResponse structure
+                        if (aiResponse != null && aiResponse.parts.isNotEmpty()) {
+                            Log.d(TAG, "Service received AI Response. Number of parts: ${aiResponse.parts.size}")
+                            Log.d(TAG, "Parts summary: ${aiResponse.parts.joinToString { part -> part.javaClass.simpleName }}")
+
+                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionCallPart>().forEach { fcp ->
+                                Log.d(TAG, "  AI sent FunctionCallPart: name='${fcp.name}', args='${fcp.args}'")
+                            }
+                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionResponsePart>().forEach { frp ->
+                                Log.d(TAG, "  AI sent FunctionResponsePart: name='${frp.name}', response='${frp.response.toString().take(100)}...'")
+                            }
+                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.BlobPart>().forEach { bp ->
+                                Log.d(TAG, "  AI sent BlobPart: mimeType='${bp.mimeType}', dataSize=${bp.blob.size}")
+                            }
+                            aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.TextPart>().forEach { tp ->
+                                Log.d(TAG, "  AI sent TextPart: text='${tp.text.take(100)}...'")
+                            }
+                        } else if (aiResponse != null) {
+                            Log.d(TAG, "Service received AI Response with zero parts.")
+                        } else {
+                            Log.d(TAG, "Service received null AI Response object.") // Should be caught by exception ideally
                         }
-                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.FunctionResponsePart>().forEach { frp: com.google.ai.client.generativeai.type.FunctionResponsePart ->
-                            Log.d(TAG, "  AI sent FunctionResponsePart: name='${frp.name}', response='${frp.response.toString().take(100)}...'")
-                        }
-                        aiResponse.parts.filterIsInstance<com.google.ai.client.generativeai.type.BlobPart>().forEach { bp: com.google.ai.client.generativeai.type.BlobPart ->
-                            Log.d(TAG, "  AI sent BlobPart: mimeType='${bp.mimeType}', dataSize=${bp.blob.size}")
-                        }
-                        responseText = aiResponse.text
+                        responseText = aiResponse?.text // Existing line
                         Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
 
                     } catch (e: Exception) {
