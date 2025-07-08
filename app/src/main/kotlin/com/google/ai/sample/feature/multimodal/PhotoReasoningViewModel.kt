@@ -202,9 +202,17 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
+    // Get context for rebuildChatHistory
+    val context = MainActivity.getInstance()?.applicationContext
+
+    // Rebuild chat history from _chatState to ensure all messages are included
+    if (context != null) {
+        rebuildChatHistory(context)
+    }
+
         if (chat.history.isEmpty() && _systemMessage.value.isNotBlank()) {
             Log.w(TAG, "performReasoning - Chat history is empty but system message exists. Recreating chat instance.")
-            chat = createChatWithSystemMessage()
+            chat = createChatWithSystemMessage(context)
         }
         Log.d(TAG, "performReasoning() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
