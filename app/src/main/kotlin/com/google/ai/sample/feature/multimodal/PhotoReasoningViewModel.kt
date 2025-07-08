@@ -383,7 +383,7 @@ class PhotoReasoningViewModel(
 
             Log.d(TAG, "sendMessageWithRetry: Preparing to serialize chat.history. Current chat.history size: ${chat.history.size}")
             chat.history.forEachIndexed { index, content ->
-                Log.d(TAG, "  ViewModel chat.history Content[$index]: role=${content.role}, parts=${content.parts.joinToString { it.javaClass.simpleName } { part ->
+                Log.d(TAG, "  ViewModel chat.history Content[$index]: role=${content.role}, parts=${content.parts.joinToString { part ->
                     when(part) {
                         is com.google.ai.client.generativeai.type.TextPart -> "Text(\"${part.text.take(50)}...\")"
                         is com.google.ai.client.generativeai.type.ImagePart -> "Image"
@@ -719,10 +719,10 @@ class PhotoReasoningViewModel(
         
         Log.d(TAG, "rebuildChatHistory: Finished processing. Generated SDK history size: ${history.size}")
         history.forEachIndexed { index, content ->
-            Log.d(TAG, "  Generated SDK.Content[$index]: role=${content.role}, parts=${content.parts.joinToString { it.javaClass.simpleName } { part ->
+            Log.d(TAG, "  Generated SDK.Content[$index]: role=${content.role}, parts=${content.parts.joinToString { part ->
                 when(part) {
                     is com.google.ai.client.generativeai.type.TextPart -> "Text(\"${part.text.take(50)}...\")"
-                    is com.google.ai.client.generativeai.type.ImagePart -> "Image" // Bitmaps are not easily loggable
+                    is com.google.ai.client.generativeai.type.ImagePart -> "Image"
                     is com.google.ai.client.generativeai.type.BlobPart -> "Blob(${part.mimeType})"
                     is com.google.ai.client.generativeai.type.FunctionCallPart -> "FunctionCall(${part.name}, args=${part.args})"
                     is com.google.ai.client.generativeai.type.FunctionResponsePart -> "FunctionResponse(${part.name})"

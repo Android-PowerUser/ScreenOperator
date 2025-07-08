@@ -254,17 +254,15 @@ class ScreenCaptureService : Service() {
                         Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
                         val aiResponse = tempChat.sendMessage(inputContent) // Use the mapped SDK inputContent
 
-                        if (aiResponse != null) {
-                            Log.d(TAG, "Service received AI Response. Success: true, Number of parts: ${aiResponse.parts.size}")
-                            // Attempt a simple joinToString; if this also fails, it will need to be removed too.
-                            try {
-                                Log.d(TAG, "Parts summary: ${aiResponse.parts.joinToString { it.javaClass.simpleName }}")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error creating parts summary log: ${e.message}")
-                            }
-                        } else {
-                            Log.d(TAG, "Service received null AI Response object.")
-                        }
+if (aiResponse != null) {
+    Log.d(TAG, "Service received AI Response. Success: true")
+    // The response doesn't have a 'parts' property directly
+    // If you need to log the response content, use the text property
+    val responseLength = aiResponse.text?.length ?: 0
+    Log.d(TAG, "Response text length: $responseLength")
+} else {
+    Log.d(TAG, "Service received null AI Response object.")
+}
                         responseText = aiResponse?.text // This line should remain
                         Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
 
