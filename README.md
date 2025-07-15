@@ -29,6 +29,6 @@ Preview models will eventually be removed by Google and unfortunately won't be r
 
 Current development step:
 
-Fix a problem that the app is slower in the background than in the foreground (branch Faster_background_speed).
+Fix a problem that the app is slower in the background than in the foreground (branch add-new-models).
 
-Fix a bug that prevents some apps from being launched by Screen Operator (branch System_message_handover). The current workaround is to go from the home screen.
+Fix a bug that prevents some apps from being launched by Screen Operator (branch add-new-models). The current workaround is to go from the home screen.
