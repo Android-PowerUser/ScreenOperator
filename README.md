@@ -23,6 +23,8 @@ This Android app operates the screen with commands from vision LLMs
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
+Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please report it or, better yet, you can change here by yourself.
+
 ##### Help with development
 
 Current development step:
