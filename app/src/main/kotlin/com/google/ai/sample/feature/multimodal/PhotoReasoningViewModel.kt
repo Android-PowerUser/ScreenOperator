@@ -290,9 +290,9 @@ val receiverContext = context
             isPending = false
         )
         Log.d(TAG, "performReasoning: Adding user message to _chatState. Text: \"${userMessage.text.take(100)}...\", Images: ${userMessage.imageUris.size}")
-        _chatState.addMessage(userMessage)
-        Log.d(TAG, "performReasoning: _chatState now has ${_chatState.messages.size} messages.")
-        _chatMessagesFlow.value = chatMessages
+        val messages = _chatState.getAllMessages().toMutableList()
+        messages.add(userMessage)
+        Log.d(TAG, "performReasoning: _chatState now has ${messages.size} messages.")
 
         // Add AI message with pending status
         val pendingAiMessage = PhotoReasoningMessage(
@@ -300,8 +300,9 @@ val receiverContext = context
             participant = PhotoParticipant.MODEL,
             isPending = true
         )
-        _chatState.addMessage(pendingAiMessage)
-        _chatMessagesFlow.value = chatMessages
+        messages.add(pendingAiMessage)
+        _chatState.setAllMessages(messages)
+        _chatMessagesFlow.value = _chatState.getAllMessages()
 
         currentReasoningJob?.cancel() // Cancel any previous reasoning job
         currentReasoningJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
@@ -371,12 +372,13 @@ val receiverContext = context
         currentReasoningJob?.cancel()
         commandProcessingJob?.cancel()
 
-        val lastMessage = chatMessages.lastOrNull()
+        val messages = _chatState.getAllMessages().toMutableList()
+        val lastMessage = messages.lastOrNull()
         val statusMessage = "Operation stopped by user."
 
         if (lastMessage != null && lastMessage.participant == PhotoParticipant.MODEL && lastMessage.isPending) {
-            _chatState.replaceLastPendingMessage() // Remove pending message
-            _chatState.addMessage(
+            messages.removeLast()
+            messages.add(
                 PhotoReasoningMessage(
                     text = statusMessage,
                     participant = PhotoParticipant.MODEL,
@@ -385,10 +387,10 @@ val receiverContext = context
             )
         } else if (lastMessage != null && lastMessage.participant == PhotoParticipant.MODEL && !lastMessage.isPending) {
              // If the last message was a successful model response, update it.
-            _chatState.updateLastMessageText(lastMessage.text + "\n\n[Stopped by user]")
+            messages[messages.size - 1] = lastMessage.copy(text = lastMessage.text + "\n\n[Stopped by user]")
         } else {
             // If no relevant model message, or last message was user/error, add a new model message
-             _chatState.addMessage(
+             messages.add(
                 PhotoReasoningMessage(
                     text = statusMessage,
                     participant = PhotoParticipant.MODEL,
@@ -396,7 +398,8 @@ val receiverContext = context
                 )
             )
         }
-        _chatMessagesFlow.value = chatMessages
+        _chatState.setAllMessages(messages)
+        _chatMessagesFlow.value = _chatState.getAllMessages()
 
 
         // _uiState.value = PhotoReasoningUiState.Stopped; // No longer setting this as the final state.
@@ -526,38 +529,32 @@ val receiverContext = context
      */
     private fun updateAiMessage(text: String, isPending: Boolean = false) {
         Log.d(TAG, "updateAiMessage: Adding to _chatState. Text: \"${text.take(100)}...\", Participant: MODEL, IsPending: $isPending")
-        // Find the last AI message and update it or add a new one if no suitable message exists
-        val messages = _chatState.messages.toMutableList()
+
+        // Get a copy of current messages
+        val messages = _chatState.getAllMessages().toMutableList()
         val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
 
         if (lastAiMessageIndex >= 0 && messages[lastAiMessageIndex].isPending) {
             // If last AI message is pending, update it
-            val updatedMessage = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
-            messages[lastAiMessageIndex] = updatedMessage
-        } else if (lastAiMessageIndex >=0 && !messages[lastAiMessageIndex].isPending && text.startsWith(messages[lastAiMessageIndex].text)) {
-            // If last AI message is not pending, but the new text is an extension, update it (e.g. for stop message)
-            val updatedMessage = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
-            messages[lastAiMessageIndex] = updatedMessage
-        }
-        else {
+            messages[lastAiMessageIndex] = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
+        } else if (lastAiMessageIndex >= 0 && !messages[lastAiMessageIndex].isPending && text.startsWith(messages[lastAiMessageIndex].text)) {
+            // If last AI message is not pending, but the new text is an extension, update it
+            messages[lastAiMessageIndex] = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
+        } else {
             // Otherwise, add a new AI message
             messages.add(PhotoReasoningMessage(text = text, participant = PhotoParticipant.MODEL, isPending = isPending))
         }
 
-        // Clear and re-add all messages to maintain order
-        _chatState.clearMessages()
-        for (message in messages) {
-            _chatState.addMessage(message)
-        }
+        // Set all messages atomically
+        _chatState.setAllMessages(messages)
 
         // Update the flow
-        _chatMessagesFlow.value = chatMessages
+        _chatMessagesFlow.value = _chatState.getAllMessages()
         Log.d(TAG, "updateAiMessage: _chatState now has ${_chatState.messages.size} messages.")
 
         // Save chat history after updating message
-        // Only save if the operation wasn't stopped, or if it's a deliberate update after stopping
         if (!stopExecutionFlag.get() || text.contains("stopped by user", ignoreCase = true)) {
-             saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            saveChatHistory(MainActivity.getInstance()?.applicationContext)
         }
     }
 
@@ -692,11 +689,8 @@ val receiverContext = context
     fun loadChatHistory(context: Context) {
         val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
         if (savedMessages.isNotEmpty()) {
-            _chatState.clearMessages()
-            for (message in savedMessages) {
-                _chatState.addMessage(message)
-            }
-            _chatMessagesFlow.value = chatMessages
+            _chatState.setAllMessages(savedMessages)
+            _chatMessagesFlow.value = _chatState.getAllMessages()
             
             // Rebuild the chat history for the AI
             rebuildChatHistory(context) // Pass context here
@@ -797,44 +791,72 @@ val receiverContext = context
         }
     }
     
-            /**
+    /**
      * Clear the chat history
      */
     fun clearChatHistory(context: Context? = null) {
-        _chatState.clearMessages()
+        // Create the new messages list first
+        val newMessages = mutableListOf<PhotoReasoningMessage>()
         
-        val initialHistory = mutableListOf<Content>()
+        // Prepare initial messages if needed
         if (_systemMessage.value.isNotBlank()) {
-            initialHistory.add(content(role = "user") { text(_systemMessage.value) })
-            _chatState.addMessage(
+            newMessages.add(
                 PhotoReasoningMessage(
                     text = _systemMessage.value,
-                    participant = PhotoParticipant.USER, // Treat as user message in UI (system prompt)
+                    participant = PhotoParticipant.USER,
                     isPending = false
                 )
             )
         }
+
         context?.let { ctx ->
             val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
             if (formattedDbEntries.isNotBlank()) {
-                initialHistory.add(content(role = "user") { text(formattedDbEntries) })
-                _chatState.addMessage(
+                newMessages.add(
                     PhotoReasoningMessage(
                         text = formattedDbEntries,
-                        participant = PhotoParticipant.USER, // Treat as user message in UI (system prompt)
+                        participant = PhotoParticipant.USER,
                         isPending = false
                     )
                 )
             }
         }
+
+        // Now update everything atomically
+        _chatState.setAllMessages(newMessages)
+
+        // Create new chat with appropriate history
+        val initialHistory = mutableListOf<Content>()
+        if (_systemMessage.value.isNotBlank()) {
+            initialHistory.add(content(role = "user") { text(_systemMessage.value) })
+        }
+        context?.let { ctx ->
+            val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
+            if (formattedDbEntries.isNotBlank()) {
+                initialHistory.add(content(role = "user") { text(formattedDbEntries) })
+            }
+        }
         chat = generativeModel.startChat(history = initialHistory.toList())
         
-        _chatMessagesFlow.value = chatMessages
+        // Update the flow with a copy of the messages
+        _chatMessagesFlow.value = _chatState.getAllMessages()
         
-        // Also clear from SharedPreferences if context is provided
+        // Clear from SharedPreferences if context is provided
         context?.let {
             ChatHistoryPreferences.clearChatMessages(it)
         }
+
+        // Reset retry attempt counter
+        currentRetryAttempt = 0
+
+        // Clear any pending jobs
+        currentReasoningJob?.cancel()
+        commandProcessingJob?.cancel()
+
+        // Reset UI state
+        _uiState.value = PhotoReasoningUiState.Initial
+        _commandExecutionStatus.value = ""
+        _detectedCommands.value = emptyList()
     }
     
     /**
@@ -986,28 +1008,41 @@ val receiverContext = context
      * Chat state management class
      */
     private class ChatState {
-        val messages = mutableListOf<PhotoReasoningMessage>() // Changed to mutableListOf for direct access in receiver
+        private val _messages = mutableListOf<PhotoReasoningMessage>()
+        val messages: List<PhotoReasoningMessage>
+            get() = _messages.toList() // Return a copy to prevent concurrent modification
 
         fun addMessage(message: PhotoReasoningMessage) {
-            messages.add(message)
+            _messages.add(message)
         }
 
         fun clearMessages() {
-            messages.clear()
+            _messages.clear()
         }
 
         fun replaceLastPendingMessage() {
-            val lastPendingIndex = messages.indexOfLast { it.isPending }
+            val lastPendingIndex = _messages.indexOfLast { it.isPending }
             if (lastPendingIndex >= 0) {
-                messages.removeAt(lastPendingIndex)
+                _messages.removeAt(lastPendingIndex)
             }
         }
 
         fun updateLastMessageText(newText: String) {
-            if (messages.isNotEmpty()) {
-                val lastMessage = messages.last()
-                messages[messages.size -1] = lastMessage.copy(text = newText, isPending = false)
+            if (_messages.isNotEmpty()) {
+                val lastMessage = _messages.last()
+                _messages[_messages.size - 1] = lastMessage.copy(text = newText, isPending = false)
             }
+        }
+
+        // Add this method to get all messages atomically
+        fun getAllMessages(): List<PhotoReasoningMessage> {
+            return _messages.toList()
+        }
+
+        // Add this method to set all messages atomically
+        fun setAllMessages(messages: List<PhotoReasoningMessage>) {
+            _messages.clear()
+            _messages.addAll(messages)
         }
     }
 }
