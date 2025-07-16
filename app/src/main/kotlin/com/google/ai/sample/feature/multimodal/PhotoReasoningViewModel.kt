@@ -797,24 +797,39 @@ val receiverContext = context
         }
     }
     
-    /**
+        /**
      * Clear the chat history
      */
     fun clearChatHistory(context: Context? = null) {
         _chatState.clearMessages()
-        _chatMessagesFlow.value = emptyList()
         
         val initialHistory = mutableListOf<Content>()
         if (_systemMessage.value.isNotBlank()) {
             initialHistory.add(content(role = "user") { text(_systemMessage.value) })
+            _chatState.addMessage(
+                PhotoReasoningMessage(
+                    text = _systemMessage.value,
+                    participant = PhotoParticipant.SYSTEM, // Treat as system message in UI
+                    isPending = false
+                )
+            )
         }
         context?.let { ctx ->
             val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
             if (formattedDbEntries.isNotBlank()) {
                 initialHistory.add(content(role = "user") { text(formattedDbEntries) })
+                _chatState.addMessage(
+                    PhotoReasoningMessage(
+                        text = formattedDbEntries,
+                        participant = PhotoParticipant.SYSTEM,
+                        isPending = false
+                    )
+                )
             }
         }
         chat = generativeModel.startChat(history = initialHistory.toList())
+        
+        _chatMessagesFlow.value = chatMessages
         
         // Also clear from SharedPreferences if context is provided
         context?.let {
