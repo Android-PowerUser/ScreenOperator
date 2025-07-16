@@ -16,7 +16,7 @@ enum class ModelOption(val displayName: String, val modelName: String) {
     GEMINI_FLASH_LITE_PREVIEW("Gemini 2.5 Flash Lite Preview", "gemini-2.5-flash-lite-preview-06-17"),
     GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
     GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro"),
-    GEMMA_3N_E4B_IT("Gemma 3n E4B it", "gemma-3n-e4b-it")
+    GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it")
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
