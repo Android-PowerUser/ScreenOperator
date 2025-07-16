@@ -448,10 +448,22 @@ class MainActivity : ComponentActivity() {
                         putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
                         putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, shouldTakeScreenshotOnThisStart)
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) == PackageManager.PERMISSION_GRANTED) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(serviceIntent)
+                            } else {
+                                startService(serviceIntent)
+                            }
+                        } else {
+                            requestForegroundServicePermissionLauncher.launch(android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
+                        }
                     } else {
-                        startService(serviceIntent)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(serviceIntent)
+                        } else {
+                            startService(serviceIntent)
+                        }
                     }
                     // If an explicit request led to this grant, reset the flag.
                     if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
@@ -593,6 +605,11 @@ class MainActivity : ComponentActivity() {
         requestForegroundServicePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
                 Toast.makeText(this, "Foreground service permission granted.", Toast.LENGTH_SHORT).show()
+                // The user has granted the permission, now we can start the service.
+                // We need to get the result data from the media projection launcher again.
+                // This is not ideal, but it's the only way to do it without major refactoring.
+                val intent = mediaProjectionManager.createScreenCaptureIntent()
+                mediaProjectionLauncher.launch(intent)
             } else {
                 Toast.makeText(this, "Foreground service permission denied. The app may not function correctly.", Toast.LENGTH_LONG).show()
             }
