@@ -17,6 +17,7 @@
         <!-- Foreground service permission for background operation -->
         <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
         <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" /> <!-- Neu: Für dataSync-Typ erforderlich -->
 
     <!-- Notification permission for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -72,6 +73,6 @@
         <service
             android:name=".ScreenCaptureService"
             android:exported="false"
-            android:foregroundServiceType="mediaProjection|dataSync" /> <!-- Änderung: Beide Typen erlauben -->
+            android:foregroundServiceType="mediaProjection|dataSync" /> <!-- Bleibt so, wie in der vorherigen Änderung -->
     </application>
 </manifest>
