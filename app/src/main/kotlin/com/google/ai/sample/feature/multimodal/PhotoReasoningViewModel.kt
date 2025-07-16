@@ -139,10 +139,11 @@ class PhotoReasoningViewModel(
                     saveChatHistory(MainActivity.getInstance()?.applicationContext)
                 } else if (errorMessage != null) {
                     Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
-                    val receiverContext = context ?: {
-                        Log.e(TAG, "Context null in receiver, cannot handle error")
-                        return
-                    }()
+if (context == null) {
+    Log.e(TAG, "Context null in receiver, cannot handle error")
+    return
+}
+val receiverContext = context
                     _uiState.value = PhotoReasoningUiState.Error(errorMessage)
                     _commandExecutionStatus.value = "Error during AI generation: $errorMessage"
                     _chatState.replaceLastPendingMessage()
