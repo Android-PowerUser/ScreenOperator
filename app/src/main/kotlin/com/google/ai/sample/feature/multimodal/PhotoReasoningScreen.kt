@@ -157,6 +157,7 @@ internal fun PhotoReasoningRoute(
     val mainActivity = context as? MainActivity
 
     val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
+    val isMediaProjectionPermissionGranted by mainActivity?.isMediaProjectionPermissionGrantedFlow?.collectAsState() ?: mutableStateOf(false)
     val isKeyboardOpen by mainActivity?.isKeyboardOpen?.collectAsState() ?: mutableStateOf(false)
 
     val accessibilitySettingsLauncher = rememberLauncherForActivityResult(
@@ -199,6 +200,7 @@ internal fun PhotoReasoningRoute(
             }
         },
         isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
+        isMediaProjectionPermissionGranted = isMediaProjectionPermissionGranted,
         onEnableAccessibilityService = {
     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
     try {
@@ -228,6 +230,7 @@ fun PhotoReasoningScreen(
     onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
     isAccessibilityServiceEnabled: Boolean = false,
+    isMediaProjectionPermissionGranted: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {},
     isKeyboardOpen: Boolean,
@@ -433,25 +436,37 @@ fun PhotoReasoningScreen(
                     )
                         IconButton(
                             onClick = {
-                                if (isAccessibilityServiceEnabled) {
-                                    if (userQuestion.isNotBlank()) {
-                                        onReasonClicked(userQuestion, imageUris.toList())
-                                        userQuestion = ""
-                                    }
-                                    // If accessibility is ON but userQuestion is BLANK, no action is needed here as the button's enabled state and tint convey this.
-                                } else {
-                                    // Accessibility is OFF
+                                val mainActivity = context as? MainActivity
+                                if (!isAccessibilityServiceEnabled) {
                                     onEnableAccessibilityService()
                                     Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
-                                } // Closes the else block
+                                    return@IconButton
+                                }
+
+                                if (!isMediaProjectionPermissionGranted) {
+                                    mainActivity?.requestMediaProjectionPermission {
+                                        // This block will be executed after permission is granted
+                                        if (userQuestion.isNotBlank()) {
+                                            onReasonClicked(userQuestion, imageUris.toList())
+                                            userQuestion = ""
+                                        }
+                                    }
+                                    Toast.makeText(context, "Requesting screen capture permission...", Toast.LENGTH_SHORT).show()
+                                    return@IconButton
+                                }
+
+                                if (userQuestion.isNotBlank()) {
+                                    onReasonClicked(userQuestion, imageUris.toList())
+                                    userQuestion = ""
+                                }
                             },
-                            enabled = isInitialized && ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled),
+                            enabled = isInitialized && userQuestion.isNotBlank(),
                             modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
                         ) {
                             Icon(
                                 Icons.Default.Send,
                                 stringResource(R.string.action_go),
-                                tint = if ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled) MaterialTheme.colorScheme.primary else Color.Gray,
+                                tint = if (isInitialized && userQuestion.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Gray,
                             )
                         }
                     } // Closes Row
