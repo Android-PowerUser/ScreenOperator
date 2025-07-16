@@ -797,7 +797,7 @@ val receiverContext = context
         }
     }
     
-        /**
+            /**
      * Clear the chat history
      */
     fun clearChatHistory(context: Context? = null) {
@@ -809,7 +809,7 @@ val receiverContext = context
             _chatState.addMessage(
                 PhotoReasoningMessage(
                     text = _systemMessage.value,
-                    participant = PhotoParticipant.SYSTEM, // Treat as system message in UI
+                    participant = PhotoParticipant.USER, // Treat as user message in UI (system prompt)
                     isPending = false
                 )
             )
@@ -821,7 +821,7 @@ val receiverContext = context
                 _chatState.addMessage(
                     PhotoReasoningMessage(
                         text = formattedDbEntries,
-                        participant = PhotoParticipant.SYSTEM,
+                        participant = PhotoParticipant.USER, // Treat as user message in UI (system prompt)
                         isPending = false
                     )
                 )
