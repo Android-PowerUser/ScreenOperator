@@ -21,38 +21,6 @@ enum class ModelOption(val displayName: String, val modelName: String) {
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
-    // Current selected model name
-    private var currentModelName = ModelOption.GEMINI_FLASH_PREVIEW.modelName
-    
-    /**
-     * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
-     */
-    fun highReasoningModel() {
-        currentModelName = ModelOption.GEMINI_PRO.modelName
-    }
-    
-    /**
-     * Set the model to low reasoning capability (gemini-2.0-flash-lite)
-     */
-    fun lowReasoningModel() {
-        currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
-    }
-    
-    /**
-     * Set the model to a specific model option
-     */
-    fun setModel(modelOption: ModelOption) {
-        currentModelName = modelOption.modelName
-    }
-    
-    /**
-     * Get the current model option
-     */
-    fun getCurrentModel(): ModelOption {
-        return ModelOption.values().find { it.modelName == currentModelName } 
-            ?: ModelOption.GEMINI_FLASH_LITE
-    }
-    
     override fun <T : ViewModel> create(
         viewModelClass: Class<T>,
         extras: CreationExtras
@@ -63,31 +31,30 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 
         // Get the application context from extras
         val application = checkNotNull(extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
-        
+
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
         val apiKey = mainActivity?.getCurrentApiKey() ?: ""
-        
+
         if (apiKey.isEmpty()) {
             throw IllegalStateException("API key is not available. Please set an API key.")
         }
 
         return with(viewModelClass) {
             when {
-
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
+                    val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
                     // Initialize a GenerativeModel with the currently selected model
                     // for multimodal text generation
                     val generativeModel = GenerativeModel(
-                        modelName = currentModelName,
+                        modelName = currentModel.modelName,
                         apiKey = apiKey,
                         generationConfig = config
                     )
                     // Pass the ApiKeyManager to the ViewModel for key rotation
                     val apiKeyManager = ApiKeyManager.getInstance(application)
-                    PhotoReasoningViewModel(generativeModel, apiKeyManager)
+                    PhotoReasoningViewModel(generativeModel, currentModel.modelName)
                 }
-
 
                 else ->
                     throw IllegalArgumentException("Unknown ViewModel class: ${viewModelClass.name}")
@@ -96,73 +63,14 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
     }
 }
 
-// Add companion object with static methods for easier access
 object GenerativeAiViewModelFactory {
-    // Current selected model name - duplicated from GenerativeViewModelFactory
-    private var currentModelName = ModelOption.GEMINI_FLASH_PREVIEW.modelName
-    
-    /**
-     * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
-     */
-    fun highReasoningModel() {
-        currentModelName = ModelOption.GEMINI_PRO.modelName
-        // Also update the original factory to keep them in sync
-        (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
-            if (this is ViewModelProvider.Factory) {
-                try {
-                    val field = this.javaClass.getDeclaredField("currentModelName")
-                    field.isAccessible = true
-                    field.set(this, currentModelName)
-                } catch (e: Exception) {
-                    // Fallback if reflection fails
-                }
-            }
-        }
-    }
-    
-    /**
-     * Set the model to low reasoning capability (gemini-2.0-flash-lite)
-     */
-    fun lowReasoningModel() {
-        currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
-        // Also update the original factory to keep them in sync
-        (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
-            if (this is ViewModelProvider.Factory) {
-                try {
-                    val field = this.javaClass.getDeclaredField("currentModelName")
-                    field.isAccessible = true
-                    field.set(this, currentModelName)
-                } catch (e: Exception) {
-                    // Fallback if reflection fails
-                }
-            }
-        }
-    }
-    
-    /**
-     * Set the model to a specific model option
-     */
+    private var currentModel: ModelOption = ModelOption.GEMINI_FLASH_PREVIEW
+
     fun setModel(modelOption: ModelOption) {
-        currentModelName = modelOption.modelName
-        // Also update the original factory to keep them in sync
-        (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
-            if (this is ViewModelProvider.Factory) {
-                try {
-                    val field = this.javaClass.getDeclaredField("currentModelName")
-                    field.isAccessible = true
-                    field.set(this, currentModelName)
-                } catch (e: Exception) {
-                    // Fallback if reflection fails
-                }
-            }
-        }
+        currentModel = modelOption
     }
-    
-    /**
-     * Get the current model option
-     */
+
     fun getCurrentModel(): ModelOption {
-        return ModelOption.values().find { it.modelName == currentModelName } 
-            ?: ModelOption.GEMINI_FLASH_LITE
+        return currentModel
     }
 }

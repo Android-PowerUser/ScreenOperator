@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import android.Manifest
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -122,6 +123,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var navController: NavHostController
     private var isProcessingExplicitScreenshotRequest: Boolean = false
+    private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
 
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -166,10 +168,19 @@ class MainActivity : ComponentActivity() {
 
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
+    private lateinit var requestForegroundServicePermissionLauncher: ActivityResultLauncher<String>
     // private val requestPermissionLauncher = registerForActivityResult(...) // Deleted
 
-    private fun requestMediaProjectionPermission() {
+    fun requestMediaProjectionPermission(onGranted: (() -> Unit)? = null) {
         Log.d(TAG, "Requesting MediaProjection permission")
+        onMediaProjectionPermissionGranted = onGranted
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) != PackageManager.PERMISSION_GRANTED) {
+                requestForegroundServicePermissionLauncher.launch(Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
+            }
+        }
+
         // Ensure mediaProjectionManager is initialized before using it.
         // This should be guaranteed by its placement in onCreate.
         if (!::mediaProjectionManager.isInitialized) {
@@ -221,6 +232,11 @@ class MainActivity : ComponentActivity() {
     private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
     val isAccessibilityServiceEnabledFlow: StateFlow<Boolean> = _isAccessibilityServiceEnabled.asStateFlow()
     // END: Added for Accessibility Service Status
+
+    // START: Added for MediaProjection Permission Status
+    private val _isMediaProjectionPermissionGranted = MutableStateFlow(false)
+    val isMediaProjectionPermissionGrantedFlow: StateFlow<Boolean> = _isMediaProjectionPermissionGranted.asStateFlow()
+    // END: Added for MediaProjection Permission Status
 
     // SharedPreferences for first launch info
     private lateinit var prefs: SharedPreferences
@@ -444,6 +460,9 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after successful explicit grant.")
                         this@MainActivity.isProcessingExplicitScreenshotRequest = false
                     }
+                    _isMediaProjectionPermissionGranted.value = true
+                    onMediaProjectionPermissionGranted?.invoke()
+                    onMediaProjectionPermissionGranted = null
                 } else {
                     Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
                     Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
@@ -452,6 +471,7 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after explicit denial.")
                         this@MainActivity.isProcessingExplicitScreenshotRequest = false
                     }
+                    _isMediaProjectionPermissionGranted.value = false
                 }
             }
 
@@ -572,6 +592,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        requestForegroundServicePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                Toast.makeText(this, "Foreground service permission granted.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Foreground service permission denied. The app may not function correctly.", Toast.LENGTH_LONG).show()
+            }
+        }
+
         if (photoReasoningViewModel != null) {
             lifecycleScope.launch {
                 photoReasoningViewModel!!.showStopNotificationFlow.collect { show ->
@@ -589,11 +617,6 @@ class MainActivity : ComponentActivity() {
             Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
         }
 
-            Log.d(TAG, "onCreate: Scheduling MediaProjection permission request")
-            Handler(Looper.getMainLooper()).postDelayed({
-                Log.d(TAG, "onCreate: Calling requestMediaProjectionPermission")
-                requestMediaProjectionPermission()
-            }, 1000) // 1 second delay to ensure everything is initialized
     }
 
     fun showStopOperationNotification() {
