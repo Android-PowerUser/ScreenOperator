@@ -153,24 +153,25 @@ class ScreenCaptureService : Service() {
             ACTION_EXECUTE_AI_CALL -> {
                 Log.d(TAG, "ACTION_EXECUTE_AI_CALL: Ensuring foreground state for AI processing.")
                 val aiNotification = createAiOperationNotification()
-                // Comment: Attempt to start foreground for the AI call.
-                // If the service is already in foreground (e.g., for screen capture), this updates the notification
-                // or is a no-op depending on exact state. The goal is to elevate priority for the network call.
-                // We will not explicitly call stopForeground() after the AI call in this handler to keep service
-                // lifecycle management simple and rely on existing cleanup/stop mechanisms.
-                // This might mean the "AI processing" notification persists if no other action stops/changes foreground state.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // Using a generic type like DATA_SYNC or SPECIAL_USE if not mediaProjection related.
-                    // However, to avoid permission issues if service was started for mediaProjection,
-                    // sticking to mediaProjection type might be safer if it's already in that mode.
-                    // For simplicity and if this call path doesn't define its own service type, we rely on the OS.
-                    // Let's use a generic type if possible, but be mindful of existing foreground state.
-                    // Re-evaluating: The service is already declared with mediaProjection.
-                    // It's safer to re-assert this type or one compatible.
-                    // Given this service *can* do media projection, reusing that type is safest.
-                    startForeground(NOTIFICATION_ID_AI, aiNotification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+
+                var startedForegroundForAi = false // Flag to track if we started foreground specifically for this call
+
+                // Only start foreground if not already ready (i.e., not already in foreground with mediaProjection)
+                if (!isReady) {
+                    val foregroundType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC // Safer type for AI/network, no special permissions needed
+                    } else {
+                        0 // Use none for older versions
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(NOTIFICATION_ID_AI, aiNotification, foregroundType)
+                    } else {
+                        startForeground(NOTIFICATION_ID_AI, aiNotification)
+                    }
+                    Log.d(TAG, "Started foreground with type ${foregroundType} for AI processing (since not ready).")
+                    startedForegroundForAi = true
                 } else {
-                    startForeground(NOTIFICATION_ID_AI, aiNotification)
+                    Log.d(TAG, "Already in foreground with mediaProjection, skipping startForeground for AI.")
                 }
 
                 Log.d(TAG, "Received ACTION_EXECUTE_AI_CALL")
@@ -187,6 +188,10 @@ class ScreenCaptureService : Service() {
                     Log.e(TAG, "Missing necessary data for AI call. inputContentJson: ${inputContentJson != null}, chatHistoryJson: ${chatHistoryJson != null}, modelName: ${modelName != null}, apiKey: ${apiKey != null}")
                     // Optionally broadcast an error back immediately
                     broadcastAiCallError("Missing parameters for AI call in service.")
+                    // If we started foreground for this, stop it now (but keep service running)
+                    if (startedForegroundForAi) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    }
                     return START_STICKY // Or START_NOT_STICKY if this is a fatal error for this call
                 }
 
@@ -254,15 +259,15 @@ class ScreenCaptureService : Service() {
                         Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
                         val aiResponse = tempChat.sendMessage(inputContent) // Use the mapped SDK inputContent
 
-if (aiResponse != null) {
-    Log.d(TAG, "Service received AI Response. Success: true")
-    // The response doesn't have a 'parts' property directly
-    // If you need to log the response content, use the text property
-    val responseLength = aiResponse.text?.length ?: 0
-    Log.d(TAG, "Response text length: $responseLength")
-} else {
-    Log.d(TAG, "Service received null AI Response object.")
-}
+                        if (aiResponse != null) {
+                            Log.d(TAG, "Service received AI Response. Success: true")
+                            // The response doesn't have a 'parts' property directly
+                            // If you need to log the response content, use the text property
+                            val responseLength = aiResponse.text?.length ?: 0
+                            Log.d(TAG, "Response text length: $responseLength")
+                        } else {
+                            Log.d(TAG, "Service received null AI Response object.")
+                        }
                         responseText = aiResponse?.text // This line should remain
                         Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
 
@@ -300,11 +305,16 @@ if (aiResponse != null) {
                         } else {
                             Log.d(TAG, "No temporary image files to clean up.")
                         }
+
+                        // If we started foreground specifically for this AI call (i.e., !isReady), stop foreground now
+                        // but KEEP THE SERVICE RUNNING (no stopSelf())
+                        if (startedForegroundForAi) {
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            Log.d(TAG, "Stopped foreground after AI call (since not ready), but service remains running.")
+                        }
                     }
                 }
-                // START_STICKY is appropriate if the service is also managing MediaProjection independently.
-                // If it becomes purely command-driven, START_NOT_STICKY might be considered after all commands processed.
-                // For now, keep START_STICKY consistent with existing behavior.
+                // START_STICKY to keep the service sticky/persistent
                 return START_STICKY
             }
             else -> {
@@ -403,136 +413,136 @@ if (aiResponse != null) {
         }
     }
 
-private fun takeScreenshot() {
-    if (!isReady || mediaProjection == null) {
-        Log.e(TAG, "Cannot take screenshot - service not ready or mediaProjection is null. isReady=$isReady, mediaProjectionIsNull=${mediaProjection == null}")
-        return
-    }
-    isScreenshotRequestedRef.set(true)
-    Log.d(TAG, "takeScreenshot: Preparing to capture. isScreenshotRequestedRef set to true.")
-
-    try {
-        // Check if we need to initialize VirtualDisplay and ImageReader
-        if (virtualDisplay == null || imageReader == null) {
-            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val displayMetrics = DisplayMetrics()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val defaultDisplay = windowManager.defaultDisplay
-                if (defaultDisplay != null) {
-                    defaultDisplay.getRealMetrics(displayMetrics)
-                } else {
-                    val bounds = windowManager.currentWindowMetrics.bounds
-                    displayMetrics.widthPixels = bounds.width()
-                    displayMetrics.heightPixels = bounds.height()
-                    displayMetrics.densityDpi = resources.displayMetrics.densityDpi
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay.getMetrics(displayMetrics)
-            }
-
-            val width = displayMetrics.widthPixels
-            val height = displayMetrics.heightPixels
-            val density = displayMetrics.densityDpi
-
-            if (width <= 0 || height <= 0) {
-                Log.e(TAG, "Invalid display dimensions: ${width}x${height}. Cannot create ImageReader.")
-                return
-            }
-            Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
-
-            imageReader?.close() // Close previous reader if any
-            virtualDisplay?.release() // Release previous display if any
-
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
-            val localImageReader = imageReader ?: run {
-                Log.e(TAG, "ImageReader is null after creation attempt.")
-                return
-            }
-
-            localImageReader.setOnImageAvailableListener({ reader ->
-                if (isScreenshotRequestedRef.compareAndSet(true, false)) {
-                    Log.d(TAG, "Screenshot request flag consumed, processing image.")
-                    var image: android.media.Image? = null
-                    try {
-                        image = reader.acquireLatestImage()
-                        if (image != null) {
-                            val planes = image.planes
-                            val buffer = planes[0].buffer
-                            val pixelStride = planes[0].pixelStride
-                            val rowStride = planes[0].rowStride
-                            val rowPadding = rowStride - pixelStride * width
-
-                            val bitmap = Bitmap.createBitmap(
-                                width + rowPadding / pixelStride,
-                                height,
-                                Bitmap.Config.ARGB_8888
-                            )
-                            bitmap.copyPixelsFromBuffer(buffer)
-                            Log.d(TAG, "Bitmap created, proceeding to save.")
-                            saveScreenshot(bitmap)
-                        } else {
-                            Log.w(TAG, "acquireLatestImage returned null despite requested flag.")
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error processing image in listener", e)
-                    } finally {
-                        image?.close()
-                        // Do NOT release VirtualDisplay or ImageReader here
-                        // They will be reused for the next screenshot
-                        Log.d(TAG, "Screenshot processed (or attempted), keeping resources for reuse.")
-                    }
-                } else {
-                    // Logic to discard the frame if no screenshot was formally requested
-                    Log.w(TAG, "OnImageAvailableListener invoked but no screenshot was requested or flag already consumed. Discarding frame.")
-                    var imageToDiscard: android.media.Image? = null
-                    try {
-                        imageToDiscard = reader.acquireLatestImage()
-                    } catch (e: Exception) {
-                        // This catch is important because acquireLatestImage can fail if buffers are truly messed up
-                        Log.e(TAG, "Error acquiring image to discard in OnImageAvailableListener else block", e)
-                    } finally {
-                        imageToDiscard?.close()
-                    }
-                }
-            }, Handler(Looper.getMainLooper()))
-
-            virtualDisplay = mediaProjection?.createVirtualDisplay(
-                "ScreenCapture",
-                width, height, density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                localImageReader.surface,
-                object : VirtualDisplay.Callback() {
-                    override fun onPaused() { Log.d(TAG, "VirtualDisplay paused") }
-                    override fun onResumed() { Log.d(TAG, "VirtualDisplay resumed") }
-                    override fun onStopped() { Log.d(TAG, "VirtualDisplay stopped") }
-                },
-                Handler(Looper.getMainLooper())
-            )
-
-            if (virtualDisplay == null) {
-                Log.e(TAG, "Failed to create VirtualDisplay.")
-                localImageReader.close() // Clean up the reader we just created
-                this.imageReader = null
-                return
-            }
-            Log.d(TAG, "VirtualDisplay and ImageReader initialized for reuse.")
-        } else {
-            // Resources already exist, just trigger a new capture
-            Log.d(TAG, "Using existing VirtualDisplay and ImageReader.")
-            // Force the ImageReader to capture a new frame
-            // The listener is already set up and will handle the new image
+    private fun takeScreenshot() {
+        if (!isReady || mediaProjection == null) {
+            Log.e(TAG, "Cannot take screenshot - service not ready or mediaProjection is null. isReady=$isReady, mediaProjectionIsNull=${mediaProjection == null}")
+            return
         }
+        isScreenshotRequestedRef.set(true)
+        Log.d(TAG, "takeScreenshot: Preparing to capture. isScreenshotRequestedRef set to true.")
 
-    } catch (e: Exception) {
-        Log.e(TAG, "Error in takeScreenshot setup", e)
-        virtualDisplay?.release()
-        virtualDisplay = null
-        imageReader?.close()
-        imageReader = null
+        try {
+            // Check if we need to initialize VirtualDisplay and ImageReader
+            if (virtualDisplay == null || imageReader == null) {
+                val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val displayMetrics = DisplayMetrics()
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val defaultDisplay = windowManager.defaultDisplay
+                    if (defaultDisplay != null) {
+                        defaultDisplay.getRealMetrics(displayMetrics)
+                    } else {
+                        val bounds = windowManager.currentWindowMetrics.bounds
+                        displayMetrics.widthPixels = bounds.width()
+                        displayMetrics.heightPixels = bounds.height()
+                        displayMetrics.densityDpi = resources.displayMetrics.densityDpi
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay.getMetrics(displayMetrics)
+                }
+
+                val width = displayMetrics.widthPixels
+                val height = displayMetrics.heightPixels
+                val density = displayMetrics.densityDpi
+
+                if (width <= 0 || height <= 0) {
+                    Log.e(TAG, "Invalid display dimensions: ${width}x${height}. Cannot create ImageReader.")
+                    return
+                }
+                Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
+
+                imageReader?.close() // Close previous reader if any
+                virtualDisplay?.release() // Release previous display if any
+
+                imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
+                val localImageReader = imageReader ?: run {
+                    Log.e(TAG, "ImageReader is null after creation attempt.")
+                    return
+                }
+
+                localImageReader.setOnImageAvailableListener({ reader ->
+                    if (isScreenshotRequestedRef.compareAndSet(true, false)) {
+                        Log.d(TAG, "Screenshot request flag consumed, processing image.")
+                        var image: android.media.Image? = null
+                        try {
+                            image = reader.acquireLatestImage()
+                            if (image != null) {
+                                val planes = image.planes
+                                val buffer = planes[0].buffer
+                                val pixelStride = planes[0].pixelStride
+                                val rowStride = planes[0].rowStride
+                                val rowPadding = rowStride - pixelStride * width
+
+                                val bitmap = Bitmap.createBitmap(
+                                    width + rowPadding / pixelStride,
+                                    height,
+                                    Bitmap.Config.ARGB_8888
+                                )
+                                bitmap.copyPixelsFromBuffer(buffer)
+                                Log.d(TAG, "Bitmap created, proceeding to save.")
+                                saveScreenshot(bitmap)
+                            } else {
+                                Log.w(TAG, "acquireLatestImage returned null despite requested flag.")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing image in listener", e)
+                        } finally {
+                            image?.close()
+                            // Do NOT release VirtualDisplay or ImageReader here
+                            // They will be reused for the next screenshot
+                            Log.d(TAG, "Screenshot processed (or attempted), keeping resources for reuse.")
+                        }
+                    } else {
+                        // Logic to discard the frame if no screenshot was formally requested
+                        Log.w(TAG, "OnImageAvailableListener invoked but no screenshot was requested or flag already consumed. Discarding frame.")
+                        var imageToDiscard: android.media.Image? = null
+                        try {
+                            imageToDiscard = reader.acquireLatestImage()
+                        } catch (e: Exception) {
+                            // This catch is important because acquireLatestImage can fail if buffers are truly messed up
+                            Log.e(TAG, "Error acquiring image to discard in OnImageAvailableListener else block", e)
+                        } finally {
+                            imageToDiscard?.close()
+                        }
+                    }
+                }, Handler(Looper.getMainLooper()))
+
+                virtualDisplay = mediaProjection?.createVirtualDisplay(
+                    "ScreenCapture",
+                    width, height, density,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    localImageReader.surface,
+                    object : VirtualDisplay.Callback() {
+                        override fun onPaused() { Log.d(TAG, "VirtualDisplay paused") }
+                        override fun onResumed() { Log.d(TAG, "VirtualDisplay resumed") }
+                        override fun onStopped() { Log.d(TAG, "VirtualDisplay stopped") }
+                    },
+                    Handler(Looper.getMainLooper())
+                )
+
+                if (virtualDisplay == null) {
+                    Log.e(TAG, "Failed to create VirtualDisplay.")
+                    localImageReader.close() // Clean up the reader we just created
+                    this.imageReader = null
+                    return
+                }
+                Log.d(TAG, "VirtualDisplay and ImageReader initialized for reuse.")
+            } else {
+                // Resources already exist, just trigger a new capture
+                Log.d(TAG, "Using existing VirtualDisplay and ImageReader.")
+                // Force the ImageReader to capture a new frame
+                // The listener is already set up and will handle the new image
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in takeScreenshot setup", e)
+            virtualDisplay?.release()
+            virtualDisplay = null
+            imageReader?.close()
+            imageReader = null
+        }
     }
-}
 
     private fun saveScreenshot(bitmap: Bitmap) {
         try {
