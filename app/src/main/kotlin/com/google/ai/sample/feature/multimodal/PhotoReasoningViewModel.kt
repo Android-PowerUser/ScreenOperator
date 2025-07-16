@@ -1046,29 +1046,4 @@ performReasoning(
             _messages.addAll(messages)
         }
     }
-
-    
-    // Add this method to get all messages atomically
-    fun getAllMessages(): List<PhotoReasoningMessage> {
-        return _messages.toList()
-    }
-    
-    // Add this method to set all messages atomically
-    fun setAllMessages(messages: List<PhotoReasoningMessage>) {
-        _messages.clear()
-        _messages.addAll(messages)
-    }
-}
-
-        // Add this method to get all messages atomically
-        fun getAllMessages(): List<PhotoReasoningMessage> {
-            return _messages.toList()
-        }
-
-        // Add this method to set all messages atomically
-        fun setAllMessages(messages: List<PhotoReasoningMessage>) {
-            _messages.clear()
-            _messages.addAll(messages)
-        }
-    }
 }
