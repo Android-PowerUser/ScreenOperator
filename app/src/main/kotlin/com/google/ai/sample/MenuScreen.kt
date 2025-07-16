@@ -147,7 +147,8 @@ fun MenuScreen(
                                 ModelOption.GEMINI_FLASH_LITE_PREVIEW,
                                 ModelOption.GEMINI_FLASH_PREVIEW,
                                 ModelOption.GEMINI_PRO,
-                                ModelOption.GEMMA_3N_E4B_IT
+                                ModelOption.GEMMA_3N_E4B_IT,
+                                ModelOption.GEMMA_3_27B_IT
                             )
 
                             orderedModels.forEach { modelOption ->
