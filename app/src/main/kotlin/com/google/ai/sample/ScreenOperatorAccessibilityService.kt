@@ -339,13 +339,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             is Command.UseHighReasoningModel -> {
                 Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
                 this.showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
-                GenerativeAiViewModelFactory.highReasoningModel()
+                GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_PRO)
                 false // Synchronous
             }
             is Command.UseLowReasoningModel -> {
                 Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
                 this.showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
-                GenerativeAiViewModelFactory.lowReasoningModel()
+                GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_FLASH_LITE)
                 false // Synchronous
             }
             is Command.PressEnterKey -> {

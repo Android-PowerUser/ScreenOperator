@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class PhotoReasoningViewModel(
     private var generativeModel: GenerativeModel,
-    private val apiKeyManager: ApiKeyManager? = null
+    private val modelName: String
 ) : ViewModel() {
     private val TAG = "PhotoReasoningViewModel"
 
@@ -92,7 +92,7 @@ class PhotoReasoningViewModel(
     private val _systemMessage = MutableStateFlow<String>("")
     val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
 
-    private val _modelNameState = MutableStateFlow(modelName)
+    private val _modelNameState = MutableStateFlow(this.modelName)
     val modelNameState: StateFlow<String> = _modelNameState.asStateFlow()
     
     // Chat history state
@@ -449,9 +449,9 @@ class PhotoReasoningViewModel(
                 putExtra(ScreenCaptureService.EXTRA_AI_INPUT_CONTENT_JSON, inputContentJson)
                 putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
                 putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
-                apiKeyManager?.getCurrentApiKey()?.let { apiKey -> // Pass current API key
-                    putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
-                }
+                val mainActivity = MainActivity.getInstance()
+                val apiKey = mainActivity?.getCurrentApiKey() ?: ""
+                putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 // Add the new extra for file paths
                 putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
             }

@@ -53,7 +53,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     )
                     // Pass the ApiKeyManager to the ViewModel for key rotation
                     val apiKeyManager = ApiKeyManager.getInstance(application)
-                    PhotoReasoningViewModel(generativeModel, currentModel.modelName, apiKeyManager)
+                    PhotoReasoningViewModel(generativeModel, currentModel.modelName)
                 }
 
                 else ->
