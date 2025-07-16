@@ -159,12 +159,12 @@ val receiverContext = context
                             if (newKey != null) {
                                 // Increment retry attempt
                                 currentRetryAttempt++
-                                // Remove the last user message (pending already removed)
-val messages = _chatState.getAllMessages().toMutableList()
-if (messages.isNotEmpty() && messages.last().participant == PhotoParticipant.USER) {
-    messages.removeLast()
-    _chatState.setAllMessages(messages)
-}
+                         // Remove the last user message (pending already removed)
+                                val messages = _chatState.getAllMessages().toMutableList()
+                                if (messages.isNotEmpty() && messages.last().participant == PhotoParticipant.USER) {
+                                    messages.removeLast()
+                                    _chatState.setAllMessages(messages)
+                                }
 // Retry by calling performReasoning with stored parameters
 performReasoning(
     currentUserInput,
@@ -1005,35 +1005,48 @@ performReasoning(
         }
     }
     
-    /**
- * Chat state management class
- */
-private class ChatState {
-    private val _messages = mutableListOf<PhotoReasoningMessage>()
-    val messages: List<PhotoReasoningMessage>
-        get() = _messages.toList() // Return a copy to prevent concurrent modification
+        /**
+     * Chat state management class
+     */
+    private class ChatState {
+        private val _messages = mutableListOf<PhotoReasoningMessage>()
+        val messages: List<PhotoReasoningMessage>
+            get() = _messages.toList() // Return a copy to prevent concurrent modification
 
-    fun addMessage(message: PhotoReasoningMessage) {
-        _messages.add(message)
-    }
+        fun addMessage(message: PhotoReasoningMessage) {
+            _messages.add(message)
+        }
 
-    fun clearMessages() {
-        _messages.clear()
-    }
+        fun clearMessages() {
+            _messages.clear()
+        }
 
-    fun replaceLastPendingMessage() {
-        val lastPendingIndex = _messages.indexOfLast { it.isPending }
-        if (lastPendingIndex >= 0) {
-            _messages.removeAt(lastPendingIndex)
+        fun replaceLastPendingMessage() {
+            val lastPendingIndex = _messages.indexOfLast { it.isPending }
+            if (lastPendingIndex >= 0) {
+                _messages.removeAt(lastPendingIndex)
+            }
+        }
+
+        fun updateLastMessageText(newText: String) {
+            if (_messages.isNotEmpty()) {
+                val lastMessage = _messages.last()
+                _messages[_messages.size - 1] = lastMessage.copy(text = newText, isPending = false)
+            }
+        }
+        
+        // Add this method to get all messages atomically
+        fun getAllMessages(): List<PhotoReasoningMessage> {
+            return _messages.toList()
+        }
+        
+        // Add this method to set all messages atomically
+        fun setAllMessages(messages: List<PhotoReasoningMessage>) {
+            _messages.clear()
+            _messages.addAll(messages)
         }
     }
 
-    fun updateLastMessageText(newText: String) {
-        if (_messages.isNotEmpty()) {
-            val lastMessage = _messages.last()
-            _messages[_messages.size - 1] = lastMessage.copy(text = newText, isPending = false)
-        }
-    }
     
     // Add this method to get all messages atomically
     fun getAllMessages(): List<PhotoReasoningMessage> {
