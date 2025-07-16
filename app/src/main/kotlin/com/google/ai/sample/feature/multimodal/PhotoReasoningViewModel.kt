@@ -792,41 +792,14 @@ performReasoning(
         }
     }
     
-    /**
+        /**
      * Clear the chat history
      */
     fun clearChatHistory(context: Context? = null) {
-        // Create the new messages list first
-        val newMessages = mutableListOf<PhotoReasoningMessage>()
-        
-        // Prepare initial messages if needed
-        if (_systemMessage.value.isNotBlank()) {
-            newMessages.add(
-                PhotoReasoningMessage(
-                    text = _systemMessage.value,
-                    participant = PhotoParticipant.USER,
-                    isPending = false
-                )
-            )
-        }
+        // Clear visible messages completely for UI
+        _chatState.setAllMessages(emptyList())
 
-        context?.let { ctx ->
-            val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
-            if (formattedDbEntries.isNotBlank()) {
-                newMessages.add(
-                    PhotoReasoningMessage(
-                        text = formattedDbEntries,
-                        participant = PhotoParticipant.USER,
-                        isPending = false
-                    )
-                )
-            }
-        }
-
-        // Now update everything atomically
-        _chatState.setAllMessages(newMessages)
-
-        // Create new chat with appropriate history
+        // Create new chat with system message and DB entries in history (for AI context only, not visible in UI)
         val initialHistory = mutableListOf<Content>()
         if (_systemMessage.value.isNotBlank()) {
             initialHistory.add(content(role = "user") { text(_systemMessage.value) })
@@ -839,8 +812,8 @@ performReasoning(
         }
         chat = generativeModel.startChat(history = initialHistory.toList())
         
-        // Update the flow with a copy of the messages
-        _chatMessagesFlow.value = _chatState.getAllMessages()
+        // Update the flow with empty messages
+        _chatMessagesFlow.value = emptyList()
         
         // Clear from SharedPreferences if context is provided
         context?.let {
