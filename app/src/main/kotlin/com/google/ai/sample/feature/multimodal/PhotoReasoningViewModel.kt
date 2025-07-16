@@ -91,6 +91,9 @@ class PhotoReasoningViewModel(
     // System message state
     private val _systemMessage = MutableStateFlow<String>("")
     val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
+
+    private val _modelNameState = MutableStateFlow(modelName)
+    val modelNameState: StateFlow<String> = _modelNameState.asStateFlow()
     
     // Chat history state
     private val _chatState = ChatState()
@@ -783,10 +786,34 @@ class PhotoReasoningViewModel(
      * @param screenInfo Optional information about screen elements (null if not available)
      */
     fun addScreenshotToConversation(
-        screenshotUri: Uri, 
+        screenshotUri: Uri,
         context: Context,
         screenInfo: String? = null
     ) {
+        if (modelName == "gemma-3n-e4b-it") {
+            // If the model is gemma-3n-e4b-it, we don't want to send the screenshot.
+            // Instead, we'll just send the screen info.
+            val genericAnalysisPrompt = "Analyze the provided screen context."
+            reason(
+                userInput = genericAnalysisPrompt,
+                selectedImages = emptyList(),
+                screenInfoForPrompt = screenInfo,
+                imageUrisForChat = emptyList()
+            )
+            return
+        }
+        if (screenshotUri == Uri.EMPTY) {
+            // This case is for gemma-3n-e4b-it, where we don't have a screenshot.
+            // We just want to send the screen info.
+            val genericAnalysisPrompt = "Analyze the provided screen context."
+            reason(
+                userInput = genericAnalysisPrompt,
+                selectedImages = emptyList(),
+                screenInfoForPrompt = screenInfo,
+                imageUrisForChat = emptyList()
+            )
+            return
+        }
         val currentTime = System.currentTimeMillis()
         if (screenshotUri == lastProcessedScreenshotUri && (currentTime - lastProcessedScreenshotTime) < 2000) { // 2-second debounce window
             Log.w(TAG, "addScreenshotToConversation: Debouncing duplicate/rapid call for URI $screenshotUri")
