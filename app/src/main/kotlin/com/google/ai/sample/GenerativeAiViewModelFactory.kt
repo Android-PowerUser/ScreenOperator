@@ -1,7 +1,7 @@
 package com.google.ai.sample
 
 import android.content.Context
-import com.google.ai.sample.MainActivity // Added import
+import com.google.ai.sample.MainActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
