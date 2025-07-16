@@ -144,9 +144,9 @@ fun MenuScreen(
                             val orderedModels = listOf(
                                 ModelOption.GEMINI_FLASH_LITE,
                                 ModelOption.GEMINI_FLASH,
+                                ModelOption.GEMINI_FLASH_LITE_PREVIEW,
                                 ModelOption.GEMINI_FLASH_PREVIEW,
                                 ModelOption.GEMINI_PRO,
-                                ModelOption.GEMINI_FLASH_LITE_PREVIEW,
                                 ModelOption.GEMMA_3N_E4B_IT
                             )
 
