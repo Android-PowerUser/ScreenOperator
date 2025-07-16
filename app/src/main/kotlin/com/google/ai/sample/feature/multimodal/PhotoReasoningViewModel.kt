@@ -119,6 +119,11 @@ class PhotoReasoningViewModel(
     private var commandProcessingJob: Job? = null
     private val stopExecutionFlag = AtomicBoolean(false)
 
+    // Added for retry on quota exceeded
+    private var currentRetryAttempt = 0
+    private var currentScreenInfoForPrompt: String? = null
+    private var currentImageUrisForChat: List<String>? = null
+
     private val aiResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ScreenCaptureService.ACTION_AI_CALL_RESULT) {
@@ -134,9 +139,43 @@ class PhotoReasoningViewModel(
                     saveChatHistory(MainActivity.getInstance()?.applicationContext)
                 } else if (errorMessage != null) {
                     Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
+                    val receiverContext = context ?: {
+                        Log.e(TAG, "Context null in receiver, cannot handle error")
+                        return
+                    }()
                     _uiState.value = PhotoReasoningUiState.Error(errorMessage)
                     _commandExecutionStatus.value = "Error during AI generation: $errorMessage"
                     _chatState.replaceLastPendingMessage()
+
+                    val apiKeyManager = ApiKeyManager.getInstance(receiverContext)
+                    val isQuotaError = isQuotaExceededError(errorMessage)
+
+                    if (isQuotaError && currentRetryAttempt < MAX_RETRY_ATTEMPTS) {
+                        val currentKey = apiKeyManager.getCurrentApiKey()
+                        if (currentKey != null) {
+                            apiKeyManager.markKeyAsFailed(currentKey)
+                            val newKey = apiKeyManager.switchToNextAvailableKey()
+                            if (newKey != null) {
+                                // Increment retry attempt
+                                currentRetryAttempt++
+                                // Remove the last user message (pending already removed)
+                                val messages = _chatState.messages
+                                if (messages.isNotEmpty() && messages.last().participant == PhotoParticipant.USER) {
+                                    _chatState.messages.removeLast()
+                                }
+                                // Retry by calling performReasoning with stored parameters
+                                performReasoning(
+                                    currentUserInput,
+                                    currentSelectedImages,
+                                    currentScreenInfoForPrompt,
+                                    currentImageUrisForChat
+                                )
+                                return // Exit without adding error message
+                            }
+                        }
+                    }
+
+                    // Normal error handling if not quota or max retries reached
                     _chatState.addMessage(
                         PhotoReasoningMessage(
                             text = errorMessage,
@@ -235,6 +274,8 @@ class PhotoReasoningViewModel(
         // Store the current user input and selected images
         currentUserInput = userInput // This should ideally store aiPromptText or handle context separately if needed for retry. For now, task is specific to prompt to AI and chat.
         currentSelectedImages = selectedImages
+        currentScreenInfoForPrompt = screenInfoForPrompt
+        currentImageUrisForChat = imageUrisForChat
 
         // Clear previous commands
         _detectedCommands.value = emptyList()
@@ -319,6 +360,7 @@ class PhotoReasoningViewModel(
             return
         }
         ensureInitialized(context)
+        currentRetryAttempt = 0 // Reset retry attempt on new reason call
         performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
     }
 
@@ -546,8 +588,9 @@ class PhotoReasoningViewModel(
         _isInitialized.value = true // Add this line
     }
 
-    // Removed isQuotaExceededError, is503Error, handleQuotaExceededError, and handle503Error methods
-    // as this logic is now delegated to the ScreenCaptureService.
+    private fun isQuotaExceededError(message: String): Boolean {
+        return message.contains("exceeded your current quota")
+    }
 
     /**
      * Helper function to format database entries as text.
@@ -927,30 +970,27 @@ class PhotoReasoningViewModel(
      * Chat state management class
      */
     private class ChatState {
-        private val _messages = mutableListOf<PhotoReasoningMessage>()
-
-        val messages: List<PhotoReasoningMessage>
-            get() = _messages.toList()
+        val messages = mutableListOf<PhotoReasoningMessage>() // Changed to mutableListOf for direct access in receiver
 
         fun addMessage(message: PhotoReasoningMessage) {
-            _messages.add(message)
+            messages.add(message)
         }
 
         fun clearMessages() {
-            _messages.clear()
+            messages.clear()
         }
 
         fun replaceLastPendingMessage() {
-            val lastPendingIndex = _messages.indexOfLast { it.isPending }
+            val lastPendingIndex = messages.indexOfLast { it.isPending }
             if (lastPendingIndex >= 0) {
-                _messages.removeAt(lastPendingIndex)
+                messages.removeAt(lastPendingIndex)
             }
         }
 
         fun updateLastMessageText(newText: String) {
-            if (_messages.isNotEmpty()) {
-                val lastMessage = _messages.last()
-                _messages[_messages.size -1] = lastMessage.copy(text = newText, isPending = false)
+            if (messages.isNotEmpty()) {
+                val lastMessage = messages.last()
+                messages[messages.size -1] = lastMessage.copy(text = newText, isPending = false)
             }
         }
     }
