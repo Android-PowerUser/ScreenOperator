@@ -336,6 +336,7 @@ performReasoning(
                 if (shouldContinueProcessing) { // Check flag before proceeding
                     text(prompt)
                 }
+
             }
 
             if (!shouldContinueProcessing) {
@@ -481,6 +482,7 @@ performReasoning(
                 if (partDto is ImagePartDto) {
                     tempFilePaths.add(partDto.imageFilePath)
                 }
+
             }
             chatHistoryDtos.forEach { contentDto ->
                 contentDto.parts.forEach { partDto ->

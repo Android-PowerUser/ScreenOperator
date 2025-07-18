@@ -21,6 +21,7 @@ enum class ModelOption(val displayName: String, val modelName: String) {
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
+
     override fun <T : ViewModel> create(
         viewModelClass: Class<T>,
         extras: CreationExtras

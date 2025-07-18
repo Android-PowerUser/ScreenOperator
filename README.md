@@ -1,25 +1,34 @@
-## Screen Operator (In development stage)
+## Screen Operator
+### Operates the screen with AI
+This Android app operates the screen with commands from vision LLMs
 
-This app is intended to operate the screen with AI.
 
-### Help with development
+
+#### • Like Computer use and Operator but rather Smartphone use for Android
+
+#### • Can also control the Browser like Project Mariner and Browser use
+
+<img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250526-192615_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250521-095334_Screen%20Operator.png" alt="" width="141"/>
+
+### Download and install
+[Screen Operator v1.1.apk](https://github.com/Android-PowerUser/Screen_Operator/releases/download/v2025.7.18/Screen.Operator.v1.1.apk) also in the Play Store.
+
+
+### Video
+[First attempt ever is recorded](https://m.youtube.com/watch?v=o095RSFXJuc)
+
+<br/>
+
+#### Note
+
+If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
+
+Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please report it or, better yet, you can change here by yourself.
+
+##### Help with development
 
 Current development step:
 
-Fix a bug that caused that if you switch the LLM you must go back and in again (branch auto-change-LLM-attempt_2).
+Fix a problem that the app is slower in the background than in the foreground (branch change_API_key3).
 
-Fix a bug that prevents some apps from being launched by Screen Operator (branch open_apps_attempt_2).
-
-Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
-
-
-### Waiting list
-Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit
-
-#### Free API
-
-Follow the instructions on Google AI Studio [setup page](https://makersuite.google.com/app/apikey) to obtain an API key.
-
-```txt
-apiKey=YOUR_API_KEY
-```
+Fix a bug that prevents some apps from being launched by Screen Operator (branch change_API_key3). The current workaround is to go from the home screen.
