@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items 
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,12 +51,24 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+// Removed duplicate block:
+// import androidx.compose.material3.AlertDialog
+// import androidx.compose.material3.Button
+// import androidx.compose.material3.ButtonDefaults
+// import androidx.compose.material3.Card
+// import androidx.compose.material3.CardDefaults
+// import androidx.compose.material3.CircularProgressIndicator
+// import androidx.compose.material3.Divider
+// import androidx.compose.material3.Checkbox
+// import androidx.compose.material3.CheckboxDefaults
+// import androidx.compose.material3.DropdownMenu
+// import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextButton // Existing, ensure it's not duplicated
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -130,6 +143,13 @@ internal fun PhotoReasoningRoute(
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
+    val isInitialized by viewModel.isInitialized.collectAsState()
+    val modelName by viewModel.modelNameState.collectAsState()
+
+    // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
+    // This state will now be managed in PhotoReasoningRoute and passed down.
+    // var showNotificationRationaleDialogStateInRoute by rememberSaveable { mutableStateOf(false) } // Removed
+
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -138,6 +158,7 @@ internal fun PhotoReasoningRoute(
     val mainActivity = context as? MainActivity
 
     val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
+    val isMediaProjectionPermissionGranted by mainActivity?.isMediaProjectionPermissionGrantedFlow?.collectAsState() ?: mutableStateOf(false)
     val isKeyboardOpen by mainActivity?.isKeyboardOpen?.collectAsState() ?: mutableStateOf(false)
 
     val accessibilitySettingsLauncher = rememberLauncherForActivityResult(
@@ -171,25 +192,33 @@ internal fun PhotoReasoningRoute(
                         if (result is SuccessResult) (result.drawable as BitmapDrawable).bitmap else null
                     } catch (e: Exception) { null }
                 }
-                viewModel.reason(inputText, bitmaps)
+                viewModel.reason(
+                    userInput = inputText,
+                    selectedImages = bitmaps,
+                    screenInfoForPrompt = null, // User-initiated messages don't have prior screen context here
+                    imageUrisForChat = selectedItems.map { it.toString() }
+                )
             }
         },
         isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
+        isMediaProjectionPermissionGranted = isMediaProjectionPermissionGranted,
         onEnableAccessibilityService = {
-            mainActivity?.let {
-                val intent = it.getAccessibilitySettingsIntent()
-                try {
-                    accessibilitySettingsLauncher.launch(intent)
-                } catch (e: Exception) {
-                    it.updateStatusMessage("Error opening Accessibility Settings.", true)
-                }
-            }
-        },
+    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+    try {
+        accessibilitySettingsLauncher.launch(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error opening Accessibility Settings.", Toast.LENGTH_LONG).show()
+    }
+},
         onClearChatHistory = {
             mainActivity?.getPhotoReasoningViewModel()?.clearChatHistory(context)
         },
         isKeyboardOpen = isKeyboardOpen,
-        onStopClicked = { viewModel.onStopClicked() }
+        onStopClicked = { viewModel.onStopClicked() },
+        // showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute, // Removed
+        // onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }, // Removed
+        isInitialized = isInitialized, // Pass the collected state
+        modelName = modelName
     )
 }
 
@@ -203,10 +232,15 @@ fun PhotoReasoningScreen(
     onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
     isAccessibilityServiceEnabled: Boolean = false,
+    isMediaProjectionPermissionGranted: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {},
     isKeyboardOpen: Boolean,
-    onStopClicked: () -> Unit = {}
+    onStopClicked: () -> Unit = {},
+    // showNotificationRationaleDialog: Boolean, // Removed
+    // onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // Removed
+    isInitialized: Boolean = true, // Added parameter with default for preview
+    modelName: String = ""
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
@@ -239,13 +273,39 @@ fun PhotoReasoningScreen(
         uri?.let { imageUris.add(it) }
     }
 
-    LaunchedEffect(chatMessages.size) {
+    LaunchedEffect(chatMessages.size, commandExecutionStatus, detectedCommands.size) {
+        val chatMessageCount = chatMessages.size
+        var targetIndex = -1 // Default to no scroll if no items
+
         if (chatMessages.isNotEmpty()) {
-            listState.animateScrollToItem(chatMessages.size - 1)
+            targetIndex = chatMessageCount - 1 // Last chat message
+        }
+
+        val commandStatusPresent = commandExecutionStatus.isNotEmpty()
+        val detectedCommandsPresent = detectedCommands.isNotEmpty()
+
+        if (commandStatusPresent) {
+            targetIndex = chatMessageCount // Index of command status card (0-based from chat messages)
+        }
+        if (detectedCommandsPresent) {
+            targetIndex = chatMessageCount + (if (commandStatusPresent) 1 else 0) // Index of detected commands card
+        }
+
+        val totalItems = chatMessageCount +
+                         (if (commandStatusPresent) 1 else 0) +
+                         (if (detectedCommandsPresent) 1 else 0)
+
+        if (targetIndex >= 0 && targetIndex < totalItems) {
+            listState.animateScrollToItem(targetIndex)
+        } else if (totalItems > 0) { // Fallback for safety, if targetIndex is somehow out of initial bounds but items exist
+            listState.animateScrollToItem(totalItems - 1)
         }
     }
 
-    Column(modifier = Modifier.padding(all = 16.dp)) {
+    Column(
+        modifier = Modifier.padding(all = 16.dp).fillMaxHeight(),
+        verticalArrangement = Arrangement.Top
+    ) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -314,9 +374,48 @@ fun PhotoReasoningScreen(
                     PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
                 }
             }
+
+            if (commandExecutionStatus.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Command Status:", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(4.dp))
+                            Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        }
+                    }
+                }
+            }
+
+            if (detectedCommands.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(4.dp))
+                            detectedCommands.forEachIndexed { index, command ->
+                                val commandText = when (command) {
+                                    is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
+                                    is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
+                                    is Command.TakeScreenshot -> "Take screenshot"
+                                    else -> command::class.simpleName ?: "Unknown Command"
+                                }
+                                Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        val showStopButton = uiState is PhotoReasoningUiState.Loading || commandExecutionStatus.isNotEmpty()
+        val showStopButton = uiState is PhotoReasoningUiState.Loading // commandExecutionStatus check is implicitly handled by cards in LazyColumn
 
         if (showStopButton) {
             StopButton(onClick = onStopClicked)
@@ -338,54 +437,50 @@ fun PhotoReasoningScreen(
                         onValueChange = { userQuestion = it },
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
-                    IconButton(onClick = {
-                        if (isAccessibilityServiceEnabled) {
-                            if (userQuestion.isNotBlank()) {
-                                onReasonClicked(userQuestion, imageUris.toList())
-                                userQuestion = ""
-                            }
-                        } else {
-                            onEnableAccessibilityService()
-                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator" as CharSequence, Toast.LENGTH_LONG).show()
+                        IconButton(
+                            onClick = {
+                                val mainActivity = context as? MainActivity
+                                if (!isAccessibilityServiceEnabled) {
+                                    onEnableAccessibilityService()
+                                    Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                                    return@IconButton
+                                }
+
+                                if (!isMediaProjectionPermissionGranted && modelName != "gemma-3n-e4b-it") {
+                                    mainActivity?.requestMediaProjectionPermission {
+                                        // This block will be executed after permission is granted
+                                        if (userQuestion.isNotBlank()) {
+                                            onReasonClicked(userQuestion, imageUris.toList())
+                                            userQuestion = ""
+                                        }
+                                    }
+                                    Toast.makeText(context, "Requesting screen capture permission...", Toast.LENGTH_SHORT).show()
+                                    return@IconButton
+                                }
+
+                                if (userQuestion.isNotBlank()) {
+                                    onReasonClicked(userQuestion, imageUris.toList())
+                                    userQuestion = ""
+                                }
+                            },
+                            enabled = isInitialized && userQuestion.isNotBlank(),
+                            modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
+                        ) {
+                            Icon(
+                                Icons.Default.Send,
+                                stringResource(R.string.action_go),
+                                tint = if (isInitialized && userQuestion.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Gray,
+                            )
                         }
-                    }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
-                        Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
+                    } // Closes Row
+                    LazyRow(modifier = Modifier.padding(all = 8.dp)) {
+                        items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
                     }
-                }
-                LazyRow(modifier = Modifier.padding(all = 8.dp)) {
-                    items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
-                }
+                } // Closes Card
             }
         }
 
-        if (commandExecutionStatus.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Command Status:", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                }
-            }
-        }
-        if (detectedCommands.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    detectedCommands.forEachIndexed { index, command ->
-                        val commandText = when (command) {
-                            is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
-                            is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
-                            is Command.TakeScreenshot -> "Take screenshot"
-                            else -> command::class.simpleName ?: "Unknown Command"
-                        }
-                        Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
-                    }
-                }
-            }
-        }
-
+        // Popups remain outside the main content flow, attached to the screen Column
         if (showDatabaseListPopup) {
             DatabaseListPopup(
                 onDismissRequest = { showDatabaseListPopup = false },
@@ -442,7 +537,7 @@ fun PhotoReasoningScreen(
             )
         }
     }
-}
+
 
 @Composable
 fun DatabaseListPopup(
@@ -983,7 +1078,8 @@ fun PhotoReasoningScreenPreviewWithContent() {
                 PhotoReasoningMessage(text = "I am here to help you. What do you want to know?", participant = PhotoParticipant.MODEL)
             ),
             isKeyboardOpen = false,
-            onStopClicked = {}
+            onStopClicked = {},
+            isInitialized = true
         )
     }
 }
@@ -1081,7 +1177,13 @@ val SystemMessageEntrySaver = Saver<SystemMessageEntry?, List<String?>>(
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    MaterialTheme { PhotoReasoningScreen(isKeyboardOpen = false, onStopClicked = {}) }
+    MaterialTheme {
+        PhotoReasoningScreen(
+            isKeyboardOpen = false,
+            onStopClicked = {},
+            isInitialized = true
+        )
+    }
 }
 
 @Preview(showBackground = true)
