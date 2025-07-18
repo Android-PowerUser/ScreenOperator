@@ -31,4 +31,4 @@ Current development step:
 
 Fix a problem that the app is slower in the background than in the foreground (branch change_API_key3).
 
-Fix a bug that prevents some apps from being launched by Screen Operator (branch add-new-models). The current workaround is to go from the home screen.
+Fix a bug that prevents some apps from being launched by Screen Operator (branch change_API_key3). The current workaround is to go from the home screen.
