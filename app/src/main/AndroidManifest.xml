@@ -10,8 +10,10 @@
         <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
         
         <!-- Accessibility service permission -->
-        <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
-        <uses-permission android:name="android.permission.INJECT_EVENTS" />
+        <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            tools:ignore="ProtectedPermissions" />
+        <uses-permission android:name="android.permission.INJECT_EVENTS"
+            tools:ignore="ProtectedPermissions"/>
      
         <!-- Foreground service permission for background operation -->
         <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

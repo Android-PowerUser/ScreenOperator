@@ -157,9 +157,9 @@ internal fun PhotoReasoningRoute(
     val context = LocalContext.current
     val mainActivity = context as? MainActivity
 
-    val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
-    val isMediaProjectionPermissionGranted by mainActivity?.isMediaProjectionPermissionGrantedFlow?.collectAsState() ?: mutableStateOf(false)
-    val isKeyboardOpen by mainActivity?.isKeyboardOpen?.collectAsState() ?: mutableStateOf(false)
+    val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: remember { mutableStateOf(false) }
+    val isMediaProjectionPermissionGranted by mainActivity?.isMediaProjectionPermissionGrantedFlow?.collectAsState() ?: remember { mutableStateOf(false) }
+    val isKeyboardOpen by mainActivity?.isKeyboardOpen?.collectAsState() ?: remember { mutableStateOf(false) }
 
     val accessibilitySettingsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()

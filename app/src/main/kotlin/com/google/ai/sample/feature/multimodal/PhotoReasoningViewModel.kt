@@ -162,7 +162,7 @@ val receiverContext = context
                          // Remove the last user message (pending already removed)
                                 val messages = _chatState.getAllMessages().toMutableList()
                                 if (messages.isNotEmpty() && messages.last().participant == PhotoParticipant.USER) {
-                                    messages.removeLast()
+                                    messages.removeAt(messages.size - 1)
                                     _chatState.setAllMessages(messages)
                                 }
 // Retry by calling performReasoning with stored parameters
@@ -378,7 +378,7 @@ performReasoning(
         val statusMessage = "Operation stopped by user."
 
         if (lastMessage != null && lastMessage.participant == PhotoParticipant.MODEL && lastMessage.isPending) {
-            messages.removeLast()
+            messages.removeAt(messages.size - 1)
             messages.add(
                 PhotoReasoningMessage(
                     text = statusMessage,
