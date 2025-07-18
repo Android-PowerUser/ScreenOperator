@@ -15,5 +15,8 @@
 -->
 <resources>
 
-    <style name="Theme.Emptything" parent="Theme.Material3.DayNight.NoActionBar" />
+    <style name="Theme.Emptything" parent="android:Theme.Material.Light">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+    </style>
 </resources>
