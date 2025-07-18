@@ -12,8 +12,11 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -89,6 +92,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -136,6 +140,7 @@ fun StopButton(onClick: () -> Unit) {
 
 @Composable
 internal fun PhotoReasoningRoute(
+    innerPadding: PaddingValues,  // Füge Parameter hinzu
     viewModel: PhotoReasoningViewModel = viewModel(factory = GenerativeViewModelFactory)
 ) {
     val photoReasoningUiState by viewModel.uiState.collectAsState()
@@ -175,6 +180,7 @@ internal fun PhotoReasoningRoute(
     }
 
     PhotoReasoningScreen(
+        innerPadding = innerPadding,  // Übergebe an PhotoReasoningScreen
         uiState = photoReasoningUiState,
         commandExecutionStatus = commandExecutionStatus,
         detectedCommands = detectedCommands,
@@ -224,6 +230,7 @@ internal fun PhotoReasoningRoute(
 
 @Composable
 fun PhotoReasoningScreen(
+    innerPadding: PaddingValues,  // Füge Parameter hinzu
     uiState: PhotoReasoningUiState = PhotoReasoningUiState.Initial,
     commandExecutionStatus: String = "",
     detectedCommands: List<Command> = emptyList(),
@@ -303,7 +310,14 @@ fun PhotoReasoningScreen(
     }
 
     Column(
-        modifier = Modifier.padding(all = 16.dp).fillMaxHeight(),
+        modifier = Modifier
+            .fillMaxHeight()
+            .padding(
+                start = innerPadding.calculateStartPadding(LocalLayoutDirection.current) + 16.dp,
+                end = innerPadding.calculateEndPadding(LocalLayoutDirection.current) + 16.dp,
+                top = 8.dp,  // Kleines bisschen nach unten gerückt (verhindert Kollision mit Status-Bar-Schrift)
+                bottom = innerPadding.calculateBottomPadding() + 16.dp
+            ),
     ) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -1065,6 +1079,7 @@ fun ErrorChatBubble(
 fun PhotoReasoningScreenPreviewWithContent() {
     MaterialTheme {
         PhotoReasoningScreen(
+            innerPadding = PaddingValues(),
             uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
             commandExecutionStatus = "Command executed: Take screenshot",
             detectedCommands = listOf(
@@ -1178,6 +1193,7 @@ val SystemMessageEntrySaver = Saver<SystemMessageEntry?, List<String?>>(
 fun PhotoReasoningScreenPreviewEmpty() {
     MaterialTheme {
         PhotoReasoningScreen(
+            innerPadding = PaddingValues(),
             isKeyboardOpen = false,
             onStopClicked = {},
             isInitialized = true

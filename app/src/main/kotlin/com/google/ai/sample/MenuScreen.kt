@@ -1,8 +1,10 @@
 package com.google.ai.sample
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,6 +50,7 @@ data class MenuItem(
 
 @Composable
 fun MenuScreen(
+    innerPadding: PaddingValues,
     onItemClicked: (String) -> Unit = { },
     onApiKeyButtonClicked: () -> Unit = { },
     onDonationButtonClicked: () -> Unit = { },
@@ -65,244 +68,249 @@ fun MenuScreen(
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        Modifier
-            .padding(top = 16.dp, bottom = 16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
     ) {
-        // API Key Management Button
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Row(
+        LazyColumn(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // API Key Management Button
+            item {
+                Card(
                     modifier = Modifier
-                        .padding(all = 16.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "API Key Management",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Button(
-                        onClick = { onApiKeyButtonClicked() },
-                        enabled = true, // Always enabled
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Text(text = "Change API Key")
-                    }
-                }
-            }
-        }
-
-        // Model Selection
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(all = 16.dp)
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Text(
-                        text = "Model Selection",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Current model: ${selectedModel.displayName}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        Button(
-                            onClick = { expanded = true },
-                            enabled = true // Always enabled
-                        ) {
-                            Text("Change Model")
-                        }
-
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
-                        ) {
-                            val orderedModels = listOf(
-                                ModelOption.GEMINI_FLASH_LITE,
-                                ModelOption.GEMINI_FLASH,
-                                ModelOption.GEMINI_FLASH_LITE_PREVIEW,
-                                ModelOption.GEMINI_FLASH_PREVIEW,
-                                ModelOption.GEMINI_PRO,
-                                ModelOption.GEMMA_3N_E4B_IT,
-                                ModelOption.GEMMA_3_27B_IT
-                            )
-
-                            orderedModels.forEach { modelOption ->
-                                DropdownMenuItem(
-                                    text = { Text(modelOption.displayName) },
-                                    onClick = {
-                                        selectedModel = modelOption
-                                        GenerativeAiViewModelFactory.setModel(modelOption)
-                                        expanded = false
-                                    },
-                                    enabled = true // Always enabled
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Menu Items
-        items(menuItems) { menuItem ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(all = 16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Text(
-                        text = stringResource(menuItem.titleResId),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = stringResource(menuItem.descriptionResId),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                    TextButton(
-                        onClick = {
-                            if (isTrialExpired) {
-                                Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
-                            } else {
-                                if (menuItem.routeId == "photo_reasoning") {
-                                    val mainActivity = context as? MainActivity
-                                    if (mainActivity != null) { // Ensure mainActivity is not null
-                                        if (!mainActivity.isNotificationPermissionGranted()) {
-                                            Log.d("MenuScreen", "Notification permission NOT granted.")
-                                            if (mainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) && !mainActivity.hasShownNotificationRationale()) {
-                                                Log.d("MenuScreen", "Showing notification rationale dialog.")
-                                                showRationaleDialogForPhotoReasoning = true
-                                                // onItemClicked will be called from dialog
-                                            } else {
-                                                Log.d("MenuScreen", "Rationale not needed or already handled. Requesting permission directly.")
-                                                // mainActivity.requestNotificationPermission()
-                                                onItemClicked(menuItem.routeId) // Proceed to navigate
-                                            }
-                                        } else {
-                                            Log.d("MenuScreen", "Notification permission ALREADY granted.")
-                                            onItemClicked(menuItem.routeId) // Proceed to navigate
-                                        }
-                                    } else {
-                                        Log.e("MenuScreen", "MainActivity instance is null. Cannot check/request permission.")
-                                        onItemClicked(menuItem.routeId) // Proceed to navigate anyway
-                                    }
-                                } else {
-                                    // For other menu items, navigate directly
-                                    onItemClicked(menuItem.routeId)
-                                }
-                            }
-                        },
-                        enabled = !isTrialExpired, // Disable button if trial is expired
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text(text = stringResource(R.string.action_try))
-                    }
-                }
-            }
-        }
-
-        // Donation Button Card (Should always be enabled)
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .padding(all = 16.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isPurchased) {
                         Text(
-                            text = "Thank you for supporting the development! 🎉💛",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = "Support more Features",
+                            text = "API Key Management",
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f)
                         )
                         Button(
-                            onClick = onDonationButtonClicked,
+                            onClick = { onApiKeyButtonClicked() },
+                            enabled = true, // Always enabled
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
-                            Text(text = "Pro (2,90 €/Month)")
+                            Text(text = "Change API Key")
                         }
                     }
                 }
             }
-        }
 
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                val annotatedText = buildAnnotatedString {
-                    append("Preview models could be deactivated by Google without being handed over to the final release. Gemma 3n E4B it cannot handle screenshots in the API. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 10 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
-
-                    pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
-                    withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
-                        append("https://ai.google.dev/gemini-api/docs/rate-limits")
-                    }
-                    pop()
-                }
-
-                val uriHandler = LocalUriHandler.current
-
-                ClickableText(
-                    text = annotatedText,
+            // Model Selection
+            item {
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(all = 16.dp),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    onClick = { offset ->
-                        // Allow clicking links even if trial is expired
-                        annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                            .firstOrNull()?.let { annotation ->
-                                uriHandler.openUri(annotation.item)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Model Selection",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Current model: ${selectedModel.displayName}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            Button(
+                                onClick = { expanded = true },
+                                enabled = true // Always enabled
+                            ) {
+                                Text("Change Model")
                             }
+
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                val orderedModels = listOf(
+                                    ModelOption.GEMINI_FLASH_LITE,
+                                    ModelOption.GEMINI_FLASH,
+                                    ModelOption.GEMINI_FLASH_LITE_PREVIEW,
+                                    ModelOption.GEMINI_FLASH_PREVIEW,
+                                    ModelOption.GEMINI_PRO,
+                                    ModelOption.GEMMA_3N_E4B_IT,
+                                    ModelOption.GEMMA_3_27B_IT
+                                )
+
+                                orderedModels.forEach { modelOption ->
+                                    DropdownMenuItem(
+                                        text = { Text(modelOption.displayName) },
+                                        onClick = {
+                                            selectedModel = modelOption
+                                            GenerativeAiViewModelFactory.setModel(modelOption)
+                                            expanded = false
+                                        },
+                                        enabled = true // Always enabled
+                                    )
+                                }
+                            }
+                        }
                     }
-                )
+                }
+            }
+
+            // Menu Items
+            items(menuItems) { menuItem ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = stringResource(menuItem.titleResId),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = stringResource(menuItem.descriptionResId),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        TextButton(
+                            onClick = {
+                                if (isTrialExpired) {
+                                    Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    if (menuItem.routeId == "photo_reasoning") {
+                                        val mainActivity = context as? MainActivity
+                                        if (mainActivity != null) { // Ensure mainActivity is not null
+                                            if (!mainActivity.isNotificationPermissionGranted()) {
+                                                Log.d("MenuScreen", "Notification permission NOT granted.")
+                                                if (mainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) && !mainActivity.hasShownNotificationRationale()) {
+                                                    Log.d("MenuScreen", "Showing notification rationale dialog.")
+                                                    showRationaleDialogForPhotoReasoning = true
+                                                    // onItemClicked will be called from dialog
+                                                } else {
+                                                    Log.d("MenuScreen", "Rationale not needed or already handled. Requesting permission directly.")
+                                                    // mainActivity.requestNotificationPermission()
+                                                    onItemClicked(menuItem.routeId) // Proceed to navigate
+                                                }
+                                            } else {
+                                                Log.d("MenuScreen", "Notification permission ALREADY granted.")
+                                                onItemClicked(menuItem.routeId) // Proceed to navigate
+                                            }
+                                        } else {
+                                            Log.e("MenuScreen", "MainActivity instance is null. Cannot check/request permission.")
+                                            onItemClicked(menuItem.routeId) // Proceed to navigate anyway
+                                        }
+                                    } else {
+                                        // For other menu items, navigate directly
+                                        onItemClicked(menuItem.routeId)
+                                    }
+                                }
+                            },
+                            enabled = !isTrialExpired, // Disable button if trial is expired
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(text = stringResource(R.string.action_try))
+                        }
+                    }
+                }
+            }
+
+            // Donation Button Card (Should always be enabled)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isPurchased) {
+                            Text(
+                                text = "Thank you for supporting the development! 🎉💛",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = "Support more Features",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = onDonationButtonClicked,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Text(text = "Pro (2,90 €/Month)")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    val annotatedText = buildAnnotatedString {
+                        append("Preview models could be deactivated by Google without being handed over to the final release. Gemma 3n E4B it cannot handle screenshots in the API. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 10 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
+
+                        pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
+                        withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+                            append("https://ai.google.dev/gemini-api/docs/rate-limits")
+                        }
+                        pop()
+                    }
+
+                    val uriHandler = LocalUriHandler.current
+
+                    ClickableText(
+                        text = annotatedText,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(all = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        onClick = { offset ->
+                            // Allow clicking links even if trial is expired
+                            annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                .firstOrNull()?.let { annotation ->
+                                    uriHandler.openUri(annotation.item)
+                                }
+                        }
+                    )
+                }
             }
         }
     }
@@ -350,19 +358,19 @@ fun MenuScreen(
 @Composable
 fun MenuScreenPreview() {
     // Preview with trial not expired
-    MenuScreen(isTrialExpired = false, isPurchased = false)
+    MenuScreen(innerPadding = PaddingValues(), isTrialExpired = false, isPurchased = false)
 }
 
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenPurchasedPreview() {
-    MenuScreen(isTrialExpired = false, isPurchased = true)
+    MenuScreen(innerPadding = PaddingValues(), isTrialExpired = false, isPurchased = true)
 }
 
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenTrialExpiredPreview() {
     // Preview with trial expired
-    MenuScreen(isTrialExpired = true, isPurchased = false)
+    MenuScreen(innerPadding = PaddingValues(), isTrialExpired = true, isPurchased = false)
 }
 

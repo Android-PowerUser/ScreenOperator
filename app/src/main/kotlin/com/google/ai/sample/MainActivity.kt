@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -372,6 +373,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
         super.onCreate(savedInstanceState)
+        // Erweitere den oberen Bereich (Inhalt unter transparenter Status Bar, keine Lücke)
+        window.setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         instance = this
         Log.d(TAG, "onCreate: MainActivity instance set.")
 
@@ -516,13 +519,11 @@ class MainActivity : ComponentActivity() {
                     topBar = { }
                 ) { innerPadding ->
                     Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding),
+                        modifier = Modifier.fillMaxSize(),  // Entferne globalen .padding(innerPadding) – handle es pro Screen
                         color = MaterialTheme.colorScheme.background
                     ) {
                         Log.d(TAG, "setContent: Rendering AppNavigation.")
-                        AppNavigation(navController)
+                        AppNavigation(navController, innerPadding)  // Übergebe innerPadding als Parameter
 
                         // if (showPermissionRationaleDialog) { ... } // Deleted block
                         if (showFirstLaunchInfoDialog) {
@@ -709,7 +710,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun AppNavigation(navController: NavHostController) {
+    fun AppNavigation(navController: NavHostController, innerPadding: PaddingValues) {  // Füge Parameter innerPadding hinzu
         val isAppEffectivelyUsable = currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
         Log.d(TAG, "AppNavigation: isAppEffectivelyUsable = $isAppEffectivelyUsable (currentTrialState: $currentTrialState)")
 
@@ -719,6 +720,7 @@ class MainActivity : ComponentActivity() {
             composable("menu") {
                 Log.d(TAG, "AppNavigation: Composing 'menu' screen.")
                 MenuScreen(
+                    innerPadding = innerPadding,  // Übergebe innerPadding an MenuScreen
                     onItemClicked = { routeId ->
                         Log.d(TAG, "MenuScreen onItemClicked: routeId='$routeId', isAppEffectivelyUsable=$isAppEffectivelyUsable")
                         if (alwaysAvailableRoutes.contains(routeId) || isAppEffectivelyUsable) {
@@ -748,7 +750,7 @@ class MainActivity : ComponentActivity() {
             composable("photo_reasoning") {
                 Log.d(TAG, "AppNavigation: Composing 'photo_reasoning' screen. isAppEffectivelyUsable=$isAppEffectivelyUsable")
                 if (isAppEffectivelyUsable) {
-                    PhotoReasoningRoute()
+                    PhotoReasoningRoute(innerPadding = innerPadding)  // Übergebe innerPadding an PhotoReasoningRoute
                 } else {
                     Log.w(TAG, "AppNavigation: 'photo_reasoning' blocked. Popping back stack.")
                     LaunchedEffect(Unit) {
