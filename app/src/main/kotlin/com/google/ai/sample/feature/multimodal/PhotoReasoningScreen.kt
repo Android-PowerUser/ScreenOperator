@@ -315,7 +315,7 @@ fun PhotoReasoningScreen(
             .padding(
                 start = innerPadding.calculateStartPadding(LocalLayoutDirection.current) + 16.dp,
                 end = innerPadding.calculateEndPadding(LocalLayoutDirection.current) + 16.dp,
-                top = 8.dp,  // Kleines bisschen nach unten gerückt (verhindert Kollision mit Status-Bar-Schrift)
+                top = 10.dp,  // Kleines bisschen nach unten gerückt (verhindert Kollision mit Status-Bar-Schrift)
                 bottom = innerPadding.calculateBottomPadding() + 16.dp
             ),
     ) {
