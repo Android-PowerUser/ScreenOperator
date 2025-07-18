@@ -50,6 +50,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -511,61 +512,93 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "setContent: Composable content rendering. Current trial state: $currentTrialState")
             navController = rememberNavController()
             GenerativeAISample {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    Log.d(TAG, "setContent: Rendering AppNavigation.")
-                    AppNavigation(navController)
+                Scaffold(
+                    topBar = { }
+                ) { innerPadding ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        Log.d(TAG, "setContent: Rendering AppNavigation.")
+                        AppNavigation(navController)
 
-                    // if (showPermissionRationaleDialog) { ... } // Deleted block
-                    if (showFirstLaunchInfoDialog) {
-                        Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
-                        FirstLaunchInfoDialog(
-                            onDismiss = {
-                                showFirstLaunchInfoDialog = false
-                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                                Log.d(TAG, "FirstLaunchInfoDialog dismissed and preference set.")
-                            }
-                        )
-                    } else if (showApiKeyDialog && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
-                        Log.d(TAG, "setContent: Rendering ApiKeyDialog. showApiKeyDialog=$showApiKeyDialog, currentTrialState=$currentTrialState")
-                        ApiKeyDialog(
-                            apiKeyManager = apiKeyManager,
-                            isFirstLaunch = apiKeyManager.getApiKeys().isEmpty(),
-                            onDismiss = {
-                                Log.d(TAG, "ApiKeyDialog onDismiss called.")
-                                showApiKeyDialog = false
-                            }
-                        )
-                    } else {
-                        Log.d(TAG, "setContent: Handling Trial State Dialogs. Current state: $currentTrialState, showTrialInfoDialog: $showTrialInfoDialog")
-                        when (currentTrialState) {
-                            TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                                Log.d(TAG, "setContent: Rendering TrialExpiredDialog.")
-                                TrialExpiredDialog(
-                                    onPurchaseClick = {
-                                        Log.d(TAG, "TrialExpiredDialog onPurchaseClick called.")
-                                        initiateDonationPurchase()
-                                    },
-                                    onDismiss = { Log.d(TAG, "TrialExpiredDialog onDismiss called (should be persistent).") }
-                                )
-                            }
-                            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
-                            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-                                if (showTrialInfoDialog) {
-                                    Log.d(TAG, "setContent: Rendering InfoDialog for AWAITING/UNAVAILABLE. Message: $trialInfoMessage")
-                                    InfoDialog(message = trialInfoMessage, onDismiss = {
-                                        Log.d(TAG, "InfoDialog onDismiss called.")
-                                        showTrialInfoDialog = false
-                                    })
-                                } else {
-                                    Log.d(TAG, "setContent: Not rendering InfoDialog for AWAITING/UNAVAILABLE because showTrialInfoDialog is false.")
+                        // if (showPermissionRationaleDialog) { ... } // Deleted block
+                        if (showFirstLaunchInfoDialog) {
+                            Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
+                            FirstLaunchInfoDialog(
+                                onDismiss = {
+                                    showFirstLaunchInfoDialog = false
+                                    prefs.edit()
+                                        .putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                                    Log.d(
+                                        TAG,
+                                        "FirstLaunchInfoDialog dismissed and preference set."
+                                    )
                                 }
-                            }
-                            TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
-                            TrialManager.TrialState.PURCHASED -> {
-                                Log.d(TAG, "setContent: No specific dialog for ACTIVE/PURCHASED states.")
+                            )
+                        } else if (showApiKeyDialog && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+                            Log.d(
+                                TAG,
+                                "setContent: Rendering ApiKeyDialog. showApiKeyDialog=$showApiKeyDialog, currentTrialState=$currentTrialState"
+                            )
+                            ApiKeyDialog(
+                                apiKeyManager = apiKeyManager,
+                                isFirstLaunch = apiKeyManager.getApiKeys().isEmpty(),
+                                onDismiss = {
+                                    Log.d(TAG, "ApiKeyDialog onDismiss called.")
+                                    showApiKeyDialog = false
+                                }
+                            )
+                        } else {
+                            Log.d(
+                                TAG,
+                                "setContent: Handling Trial State Dialogs. Current state: $currentTrialState, showTrialInfoDialog: $showTrialInfoDialog"
+                            )
+                            when (currentTrialState) {
+                                TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
+                                    Log.d(TAG, "setContent: Rendering TrialExpiredDialog.")
+                                    TrialExpiredDialog(
+                                        onPurchaseClick = {
+                                            Log.d(TAG, "TrialExpiredDialog onPurchaseClick called.")
+                                            initiateDonationPurchase()
+                                        },
+                                        onDismiss = {
+                                            Log.d(
+                                                TAG,
+                                                "TrialExpiredDialog onDismiss called (should be persistent)."
+                                            )
+                                        }
+                                    )
+                                }
+
+                                TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
+                                TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
+                                    if (showTrialInfoDialog) {
+                                        Log.d(
+                                            TAG,
+                                            "setContent: Rendering InfoDialog for AWAITING/UNAVAILABLE. Message: $trialInfoMessage"
+                                        )
+                                        InfoDialog(message = trialInfoMessage, onDismiss = {
+                                            Log.d(TAG, "InfoDialog onDismiss called.")
+                                            showTrialInfoDialog = false
+                                        })
+                                    } else {
+                                        Log.d(
+                                            TAG,
+                                            "setContent: Not rendering InfoDialog for AWAITING/UNAVAILABLE because showTrialInfoDialog is false."
+                                        )
+                                    }
+                                }
+
+                                TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
+                                TrialManager.TrialState.PURCHASED -> {
+                                    Log.d(
+                                        TAG,
+                                        "setContent: No specific dialog for ACTIVE/PURCHASED states."
+                                    )
+                                }
                             }
                         }
                     }
