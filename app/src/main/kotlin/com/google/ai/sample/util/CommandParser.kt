@@ -342,12 +342,6 @@ object CommandParser {
         return textBuffer
     }
 
-    /**
-     * Set the application context for showing toasts
-     */
-    private fun setAppContext(context: Context) {
-        appContext = context.applicationContext
-    }
 }
 
 /**
