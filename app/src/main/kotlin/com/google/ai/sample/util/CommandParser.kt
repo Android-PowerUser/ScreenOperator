@@ -345,7 +345,7 @@ object CommandParser {
     /**
      * Set the application context for showing toasts
      */
-    fun setAppContext(context: Context) {
+    private fun setAppContext(context: Context) {
         appContext = context.applicationContext
     }
 }
