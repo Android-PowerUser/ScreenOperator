@@ -10,6 +10,8 @@ import android.widget.Toast
 object CommandParser {
     private const val TAG = "CommandParser"
 
+    var appContext: Context? = null
+
     // Enum to represent different command types
     private enum class CommandTypeEnum {
         CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, PRESS_HOME, PRESS_BACK,
@@ -42,7 +44,7 @@ object CommandParser {
         PatternInfo("lowReasoning1", Regex("(?i)\\blowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
         PatternInfo("lowReasoning2", Regex("(?i)\\buseLowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
         PatternInfo("lowReasoning3", Regex("(?i)\\bswitchToLowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
-        PatternInfo("lowReasoning4", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the  )?(?:low|basic|simple|standard|niedrige|einfache|standard) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
+        PatternInfo("lowReasoning4", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:low|basic|simple|standard|niedrige|einfache|standard) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
         PatternInfo("lowReasoning5", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.0(?:\\-|\\s)?flash\\b"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
 
         // Write text patterns
@@ -148,10 +150,9 @@ object CommandParser {
      *
      * @param text The text to parse for commands
      * @param clearBuffer Whether to clear the buffer before parsing (default: false)
-     * @param context The context to use for showing toast if needed
      * @return A list of commands found in the text
      */
-    fun parseCommands(text: String, clearBuffer: Boolean = false, context: Context): List<Command> {
+    fun parseCommands(text: String, clearBuffer: Boolean = false): List<Command> {
         val commands = mutableListOf<Command>()
 
         try {
@@ -212,7 +213,9 @@ object CommandParser {
 
             // Check if TakeScreenshot command is not found and show toast
             if (!commands.any { it is Command.TakeScreenshot }) {
-                Toast.makeText(context, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
+                appContext?.let { ctx ->
+                    Toast.makeText(ctx, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing commands: ${e.message}", e)
@@ -337,6 +340,13 @@ object CommandParser {
      */
     fun getBufferContent(): String {
         return textBuffer
+    }
+
+    /**
+     * Set the application context for showing toasts
+     */
+    fun setAppContext(context: Context) {
+        appContext = context.applicationContext
     }
 }
 
