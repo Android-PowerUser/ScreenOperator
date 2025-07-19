@@ -620,6 +620,17 @@ performReasoning(
                 // Parse commands from the text
                 val commands = CommandParser.parseCommands(text)
 
+                // Check if takeScreenshot() is not in the response
+                if (!commands.any { it is Command.TakeScreenshot }) {
+                    // Show a toast message
+                    val context = MainActivity.getInstance()?.applicationContext
+                    if (context != null) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
                 if (commands.isNotEmpty()) {
                     if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch
                     Log.d(TAG, "Found ${commands.size} commands in response")
