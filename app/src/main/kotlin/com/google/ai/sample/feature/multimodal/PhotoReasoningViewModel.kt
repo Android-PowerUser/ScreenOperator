@@ -134,6 +134,11 @@ class PhotoReasoningViewModel(
                 val errorMessage = intent.getStringExtra(ScreenCaptureService.EXTRA_AI_ERROR_MESSAGE)
 
                 if (responseText != null) {
+                    if (context == null) {
+                        Log.e(TAG, "Context null in receiver, cannot show toast")
+                        return
+                    }
+                    val receiverContext = context
                     Log.d(TAG, "AI Call Success via Broadcast: $responseText")
                     _uiState.value = PhotoReasoningUiState.Success(responseText)
                     updateAiMessage(responseText) // Existing method to update chat history
