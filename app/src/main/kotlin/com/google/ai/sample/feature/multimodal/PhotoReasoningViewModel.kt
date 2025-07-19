@@ -1,5 +1,7 @@
 package com.google.ai.sample.feature.multimodal
 
+import android.app.ActivityManager
+import android.app.ActivityManager.RunningAppProcessInfo // Für IMPORTANCE_FOREGROUND
 import android.content.Context
 import android.graphics.Bitmap
 import android.content.BroadcastReceiver
@@ -136,6 +138,14 @@ class PhotoReasoningViewModel(
                     _uiState.value = PhotoReasoningUiState.Success(responseText)
                     updateAiMessage(responseText) // Existing method to update chat history
                     processCommands(responseText) // Existing method
+                    if (!responseText.contains("takeScreenshot()", ignoreCase = true)) {
+                        val am = receiverContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        val runningProcesses = am.runningAppProcesses ?: emptyList()
+                        val isInForeground = runningProcesses.any { it.processName == receiverContext.packageName && it.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+                        if (!isInForeground) {
+                            Toast.makeText(receiverContext, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     saveChatHistory(MainActivity.getInstance()?.applicationContext)
                 } else if (errorMessage != null) {
                     Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
@@ -619,17 +629,6 @@ performReasoning(
             try {
                 // Parse commands from the text
                 val commands = CommandParser.parseCommands(text)
-
-                // Check if takeScreenshot() is not in the response
-                if (!commands.any { it is Command.TakeScreenshot }) {
-                    // Show a toast message
-                    val context = MainActivity.getInstance()?.applicationContext
-                    if (context != null) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
 
                 if (commands.isNotEmpty()) {
                     if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch
