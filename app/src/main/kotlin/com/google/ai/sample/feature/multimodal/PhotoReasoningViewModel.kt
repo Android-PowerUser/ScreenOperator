@@ -1,7 +1,7 @@
 package com.google.ai.sample.feature.multimodal
 
 import android.app.ActivityManager
-import android.app.ActivityManager.RunningAppProcessInfo // Für IMPORTANCE_FOREGROUND
+import android.app.ActivityManager.RunningAppProcessInfo
 import android.content.Context
 import android.graphics.Bitmap
 import android.content.BroadcastReceiver
@@ -144,8 +144,14 @@ class PhotoReasoningViewModel(
                     updateAiMessage(responseText) // Existing method to update chat history
                     processCommands(responseText) // Existing method
                     if (!responseText.contains("takeScreenshot()", ignoreCase = true)) {
-                        val mainActivity = MainActivity.getInstance()
-                        if (mainActivity != null && !mainActivity.isInForeground) {
+                        // Stabile Prüfung, ob die App im Vordergrund ist
+                        val activityManager = receiverContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        val runningProcesses = activityManager.runningAppProcesses ?: emptyList<RunningAppProcessInfo>()
+                        val isInForeground = runningProcesses.any { process ->
+                            process.processName == receiverContext.packageName && process.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+                        }
+                        Log.d(TAG, "Foreground check: isInForeground = $isInForeground") // Debugging-Log (kann später entfernt werden)
+                        if (!isInForeground) {
                             Toast.makeText(receiverContext, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
                         }
                     }

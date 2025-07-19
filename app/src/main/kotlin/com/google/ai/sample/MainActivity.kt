@@ -1044,7 +1044,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         Log.d(TAG, "onResume: Activity resuming.")
         super.onResume()
-        isInForeground = true // Setze Flag: App ist sichtbar
         instance = this
         Log.d(TAG, "onResume: MainActivity instance set.")
         Log.d(TAG, "onResume: Calling refreshAccessibilityServiceStatus.")
@@ -1067,12 +1066,6 @@ class MainActivity : ComponentActivity() {
             startTrialServiceIfNeeded()
         }
         Log.d(TAG, "onResume: Finished.")
-    }
-
-    override fun onPause() {
-        super.onPause()
-        isInForeground = false // Setze Flag: App geht in den Hintergrund
-        Log.d(TAG, "onPause: App is no longer in foreground.")
     }
 
     override fun onDestroy() {
@@ -1141,7 +1134,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_SCREEN_INFO = "com.google.ai.sample.EXTRA_SCREEN_INFO"
     }
 
-    var isInForeground: Boolean = false // Neue public Flag für Vordergrund-Status
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
