@@ -136,7 +136,7 @@ class PhotoReasoningViewModel(
                 if (responseText != null) {
                     if (context == null) {
                         Log.e(TAG, "Context null in receiver, cannot show toast")
-                        return
+                        return@onReceive
                     }
                     val receiverContext = context
                     Log.d(TAG, "AI Call Success via Broadcast: $responseText")
@@ -144,10 +144,8 @@ class PhotoReasoningViewModel(
                     updateAiMessage(responseText) // Existing method to update chat history
                     processCommands(responseText) // Existing method
                     if (!responseText.contains("takeScreenshot()", ignoreCase = true)) {
-                        val am = receiverContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                        val runningProcesses = am.runningAppProcesses ?: emptyList()
-                        val isInForeground = runningProcesses.any { it.processName == receiverContext.packageName && it.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
-                        if (!isInForeground) {
+                        val mainActivity = MainActivity.getInstance()
+                        if (mainActivity != null && !mainActivity.isInForeground) {
                             Toast.makeText(receiverContext, "The AI stopped Screen Operator", Toast.LENGTH_SHORT).show()
                         }
                     }
