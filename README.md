@@ -11,7 +11,7 @@ This Android app operates the screen with commands from vision LLMs
 <img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250526-192615_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250521-095334_Screen%20Operator.png" alt="" width="141"/>
 
 ### Download and install
-[Screen Operator v1.1.apk](https://github.com/Android-PowerUser/Screen_Operator/releases/download/v2025.7.18/Screen.Operator.v1.1.apk)
+[Screen Operator v1.1.apk](https://github.com/Android-PowerUser/Screen_Operator/releases/download/v2025.7.18/Screen.Operator.v1.1.apk) Updates in Github are much faster than on the Play Store and have no restrictions.
 
 
 ### Video
