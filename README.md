@@ -31,4 +31,4 @@ If you in your Google account identified as under 18, you need an adult account 
 
 Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please report it.
 
-And Google fucked up because every Android version, and even every brand, works differently than others. If something doesn't work, try it on a different phone. Chances are, something completely different is happening.
+And Google fucked up because every Android version, and even every brand, works differently than others. If something doesn't work, try it on a different phone. Something completely different will probably happen.
