@@ -13,7 +13,7 @@ This Android app operates the screen with commands from vision LLMs
 ### Download and install
 [Screen Operator v1.2.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2025.8.13/Screen.Operator.v1.2_don_t_work_on_Android_13-.apk)
 
-**Doesn't work on Android 14 and below. This will be fixed soon.**
+**Doesn't work on Android 14 and below. This will be fixed soon.** (Google fucked up)
 
 Updates in Github are much faster than on the Play Store and have no restrictions.
 
