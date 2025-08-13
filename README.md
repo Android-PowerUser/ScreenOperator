@@ -13,7 +13,7 @@ This Android app operates the screen with commands from vision LLMs
 ### Download and install
 [Screen Operator v1.2.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2025.8.13/Screen.Operator.v1.2_don_t_work_on_Android_13-.apk)
 
-Doesn't work on Android 13 and below. This will be fixed soon.
+**Doesn't work on Android 13 and below. This will be fixed soon.**
 
 Updates in Github are much faster than on the Play Store and have no restrictions.
 
@@ -25,8 +25,7 @@ Updates in Github are much faster than on the Play Store and have no restriction
 
 #### Note
 
-Version 1.1 doesn't work on 
-Android 13-, and some APIs were disabled in version 1.0. I'm trying to fix this.
+
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
