@@ -14,7 +14,6 @@ This Android app operates the screen with commands from vision LLMs
 [Screen Operator v1.2.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2025.8.13/Screen.Operator.v1.2_don_t_work_on_Android_13-.apk)
 
 **Doesn't work on Android 14 and below. This will be fixed soon.**
-###### Google fucked up
 
 Updates in Github are much faster than on the Play Store and have no restrictions.
 
@@ -31,3 +30,5 @@ Updates in Github are much faster than on the Play Store and have no restriction
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
 Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please report it or, better yet, you can change here by yourself.
+
+And Google fucked up because every Android version, and even every brand, works differently than others. If something doesn't work, try it on a different phone. Chances are, something completely different is happening.
