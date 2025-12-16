@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Screen Operator</string>
+    <string name="action_go">Go</string>
+    <string name="action_try">Try it</string>
+
+    <!-- Menu strings -->
+    <string name="menu_reason_title">Operate the screen with AI</string>
+    <string name="menu_reason_description">A vision LLM uses automatic screenshots and operates with predefined commands</string>
+
+    <!-- Photo Reasoning sample strings -->
+    <string name="reason_label">Task</string>
+    <string name="reason_hint">Describe step by step if complicated tasks have to be solved</string>
+    <string name="add_image">Add Image</string>
+
+    <!-- Chat sample strings -->
+    <string name="action_send">Send</string>
+
+         <!-- Screen Operator -->
+    <string name="accessibility_service_description">Screen Operator accessibility service is needed for screen operations with vision LLMs</string>
+
+</resources>
