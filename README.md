@@ -19,7 +19,7 @@ Updates in Github are much faster than on the Play Store and have no restriction
 
 ## Develop the app with AI
 
-(Here arises a guide to developing this app entirely with AI)
+(Here arises a guide to developing this app entirely with AI soon)
 
 
 This app urgently needs an update. Google's interfaces (API's) have changed, and it should also use an Omni model that can actually see the screen content, not just receive a description. However, I am no longer active as a developer.
