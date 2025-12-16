@@ -17,12 +17,14 @@ This Android app operates the screen with commands from vision LLMs
 
 Updates in Github are much faster than on the Play Store and have no restrictions.
 
-## Develop the app with AI
+## Develop with AI
 
 (Here arises a guide to developing this app entirely with AI soon)
 
 
-This app urgently needs an update. Google's interfaces (API's) have changed, and it should also use an Omni model that can actually see the screen content, not just receive a description. However, I am no longer active as a developer.
+This app urgently needs an update. Google's interfaces (API's) have changed, and it should also use an omni-model that can actually see the screen content, not just receive a description. However, I am no longer active as a developer, but that doesn't mean it's over, because this app was created entirely by AI and therefore its development can be continued by anyone.
+
+
 
 
 
