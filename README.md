@@ -43,7 +43,7 @@ com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel$aiResultReceiver
 com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel.onStopClicked
 To avoid crashes, replace all Kotlin calls to removeFirst() and removeLast() with removeAt(0) and removeAt(list.lastIndex).
 
-Free omni models accessible via an API can be found [https://github.com/cheahjs/free-llm-api-resources](here)
+Free omni models accessible via an API can be found [here](https://github.com/cheahjs/free-llm-api-resources)
 
 
 
