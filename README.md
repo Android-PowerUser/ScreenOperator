@@ -24,6 +24,8 @@ Updates in Github are much faster than on the Play Store and have no restriction
 
 This app urgently needs an update. Google's interfaces (API's) have changed, and it should also use an omni-model that can actually see the screen content, not just receive a description. However, I am no longer active as a developer, but that doesn't mean it's over, because this app was created entirely by AI and therefore its development can be continued by anyone.
 
+The code for each application is located in the /app/ folder on GitHub. To have it programmed for free, I use jules.google.com. You can connect it directly to GitHub. Gemini 2.5 Pro is free, and the limit is so high that I've never reached it. Gemini 3 Pro costs money, but you can use it for a month free and cancel before any charges apply. You should definitely go to the planning section on the rocket icon, because AI instructions surprisingly often implement something different than intended, and planning improves the performance of LLMs. Since Gemini isn't generally very good, I gave Jules the task. Jules looks at the code and tells me which files it needs to change to achieve the goal. You copy these files into lmarena.ai, select "direct," then Claude Opus 4.5 thinking, copy the task from Jules, paste the output from Claude unchanged into Jules, and Gemini 2.5 Pro also very well recognizes where it belongs and automatically replaces the corresponding parts.
+
 
 
 
