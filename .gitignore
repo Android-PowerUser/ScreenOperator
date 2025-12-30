@@ -55,4 +55,5 @@ freeline/
 # Crashlytics plugin
 com_crashlytics_export_strings.xml
 
-.idea/
+.idea/android_sdk/
+android_sdk/
