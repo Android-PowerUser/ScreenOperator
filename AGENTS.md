@@ -73,23 +73,60 @@ org.gradle.caching=true
 org.gradle.configureondemand=true
 ```
 
-## Delivering the APK
+## Delivering the Signed APK
 
-After building the application, you can deliver the APK file by committing it to a new branch. This is a workaround for when file-sharing services are unavailable.
+After building the application, you can deliver the signed APK file by committing it to a new branch.
 
+**Note:** Committing binary files to a Git repository is generally discouraged as it can significantly increase the repository size. This method should be considered a workaround. For a more standard and sustainable approach, consider using [GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) to distribute application binaries.
+
+The following steps outline how to build, sign, and deliver the APK via a Git branch.
+
+### 1. Build the Unsigned APK
+First, follow the build instructions in the "Automated Setup Script" section to generate the unsigned APK. The final artifact will be located at `app/build/outputs/apk/release/app-release-unsigned.apk`.
+
+### 2. Generate a Test Signing Key
+Create a new debug keystore and key to sign the application.
 ```bash
-# After a successful build, the APK is located at app/build/outputs/apk/release/app-release-unsigned.apk
-# Copy the APK to the root directory
-cp app/build/outputs/apk/release/app-release-unsigned.apk ./app-release.apk
+keytool -genkey -v \
+  -keystore debug.keystore \
+  -storepass android \
+  -alias androiddebugkey \
+  -keypass android \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -dname "CN=Android Debug,O=Android,C=US"
+```
+This will create a `debug.keystore` file in the root directory.
 
+### 3. Sign the APK
+Use the `apksigner` tool from the Android SDK to sign the unsigned APK with the key you just created.
+```bash
+android_sdk/build-tools/35.0.0/apksigner sign \
+  --ks debug.keystore \
+  --ks-pass pass:android \
+  --out app-release-signed.apk \
+  app/build/outputs/apk/release/app-release-unsigned.apk
+```
+This command creates a new signed APK named `app-release-signed.apk`.
+
+### 4. Verify the Signature
+Confirm that the signature is valid.
+```bash
+android_sdk/build-tools/35.0.0/apksigner verify app-release-signed.apk
+```
+If this command executes without printing any errors, the signature is valid.
+
+### 5. Commit the Signed APK to a New Branch
+Finally, commit the signed APK to a new branch for delivery.
+```bash
 # Create a new branch for the APK delivery
 git checkout -b apk-delivery
 
-# Add the APK to the new branch, forcing if it's in .gitignore
-git add -f app-release.apk
+# Add the signed APK to the new branch, forcing if it's in .gitignore
+git add -f app-release-signed.apk
 
 # Commit the APK
-git commit -m "feat: Add built APK"
-
-# The user can then fetch and checkout this branch to get the file.
+git commit -m "feat: Add signed APK for delivery"
 ```
+The user can then fetch and checkout this branch to get the file.
