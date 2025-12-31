@@ -109,14 +109,14 @@ This command creates a new signed APK named `app-release-signed.apk`.
 
 ### 4. Commit the Signed APK to a New Branch
 
-# Create a new branch for the APK delivery
+Create a new branch for the APK delivery
 git checkout -b apk-delivery
 
-# Add the APK to the new branch, forcing if it's in .gitignore
+Add the APK to the new branch, forcing if it's in .gitignore
 git add -f app-release.apk
 
-# Commit the APK
+Commit the APK
 git commit -m "feat: Add built APK"
 
-# The user can then fetch and checkout this branch to get the file.
+The user can then fetch and checkout this branch to get the file.
 ```
