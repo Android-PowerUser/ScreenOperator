@@ -37,12 +37,7 @@ mv android_sdk/cmdline-tools/* android_sdk/cmdline-tools/latest 2>/dev/null || t
 echo "Installing SDK packages..."
 yes | android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
 android_sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-# 5. Build the application
-echo "Building the application..."
-./gradlew assembleRelease
-
-echo "Setup complete. The application has been built successfully."
+echo "Setup complete."
 ```
 
 ## Manual Setup Instructions
@@ -60,7 +55,6 @@ If you prefer to set up the environment manually, follow these steps:
 5.  **Install SDK packages:**
     *   `yes | android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null`
     *   `android_sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"`
-6.  **Build the app:** `./gradlew assembleRelease`
 
 ## Gradle Performance
 
@@ -75,12 +69,45 @@ org.gradle.configureondemand=true
 
 ## Delivering the APK
 
-After building the application, you can deliver the APK file by committing it to a new branch. This is a workaround for when file-sharing services are unavailable.
+After building the application, you can deliver the signed APK file by committing it to a new branch.
 
+**Note:** Committing binary files to a Git repository is generally discouraged as it can significantly increase the repository size. This method should be considered a workaround. For a more standard and sustainable approach, consider using [GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) to distribute application binaries.
+
+The following steps outline how to build, sign, and deliver the APK via a Git branch.
+
+### 1. Build the Unsigned APK
+
+echo "Building the application..."
+./gradlew assembleRelease
+The final artifact will be located at `app/build/outputs/apk/release/app-release-unsigned.apk`.
+
+### 2. Generate a Test Signing Key
+Create a new debug keystore and key to sign the application.
 ```bash
-# After a successful build, the APK is located at app/build/outputs/apk/release/app-release-unsigned.apk
-# Copy the APK to the root directory
-cp app/build/outputs/apk/release/app-release-unsigned.apk ./app-release.apk
+keytool -genkey -v \
+  -keystore debug.keystore \
+  -storepass android \
+  -alias androiddebugkey \
+  -keypass android \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -dname "CN=Android Debug,O=Android,C=US"
+```
+This will create a `debug.keystore` file in the root directory.
+
+### 3. Sign the APK
+Use the `apksigner` tool from the Android SDK to sign the unsigned APK with the key you just created.
+```bash
+android_sdk/build-tools/35.0.0/apksigner sign \
+  --ks debug.keystore \
+  --ks-pass pass:android \
+  --out app-release-signed.apk \
+  app/build/outputs/apk/release/app-release-unsigned.apk
+```
+This command creates a new signed APK named `app-release-signed.apk`.
+
+### 4. Commit the Signed APK to a New Branch
 
 # Create a new branch for the APK delivery
 git checkout -b apk-delivery
