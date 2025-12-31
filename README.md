@@ -26,6 +26,8 @@ The code for each application is located in the /app/ folder on GitHub. To have 
 
 To build the app from the code, I've prepared GitHub action workflows. Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android build, and start your chosen branch. After about 5 minutes, your app will be ready! If compilation errors occur, copy the output to Jules. If there are no more than 5 errors, even Gemini 2.5 Pro can usually handle this very reliably. Otherwise, proceed as you would when programming: Jules, then Claude, then Jules again.
 
+After that, the app needs to be signed. I use MiXplorer and select the test signature option. The others don't always work as well or as quickly. You can install it now.
+
 You are allowed to disable the paywall for developers using a "boolean variable" (hardcoded 1 or 0) and push it to my main branch. You be allowed to edit the app as long as you are attempting to push the updated code to this repository. Since I now only have an administrative role at Screen Operator, I no longer necessarily need to monetize it. In retrospect, a half-hour trial period was too restrictive. 
 
 
