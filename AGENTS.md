@@ -72,3 +72,24 @@ org.gradle.parallel=true
 org.gradle.caching=true
 org.gradle.configureondemand=true
 ```
+
+## Delivering the APK
+
+After building the application, you can deliver the APK file by committing it to a new branch. This is a workaround for when file-sharing services are unavailable.
+
+```bash
+# After a successful build, the APK is located at app/build/outputs/apk/release/app-release-unsigned.apk
+# Copy the APK to the root directory
+cp app/build/outputs/apk/release/app-release-unsigned.apk ./app-release.apk
+
+# Create a new branch for the APK delivery
+git checkout -b apk-delivery
+
+# Add the APK to the new branch, forcing if it's in .gitignore
+git add -f app-release.apk
+
+# Commit the APK
+git commit -m "feat: Add built APK"
+
+# The user can then fetch and checkout this branch to get the file.
+```
