@@ -71,8 +71,6 @@ org.gradle.configureondemand=true
 
 After building the application, you can deliver the signed APK file by committing it to a new branch.
 
-**Note:** Committing binary files to a Git repository is generally discouraged as it can significantly increase the repository size. This method should be considered a workaround. For a more standard and sustainable approach, consider using [GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) to distribute application binaries.
-
 The following steps outline how to build, sign, and deliver the APK via a Git branch.
 
 ### 1. Build the Unsigned APK
