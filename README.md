@@ -61,4 +61,4 @@ Free omni models accessible via an API can be found [here](https://github.com/ch
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
-Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please report it.
+Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please change the API in the code.
