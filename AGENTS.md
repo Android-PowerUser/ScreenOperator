@@ -119,4 +119,3 @@ Commit the APK
 git commit -m "feat: Add built APK"
 
 The user can then fetch and checkout this branch to get the file.
-```
