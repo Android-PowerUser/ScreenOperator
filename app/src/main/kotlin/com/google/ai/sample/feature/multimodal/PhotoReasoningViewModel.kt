@@ -40,7 +40,6 @@ import kotlinx.coroutines.Dispatchers
 import java.util.ArrayList // Required for StringArrayListExtra
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,6 +58,16 @@ import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import android.util.Base64
 import com.google.ai.sample.feature.live.LiveApiManager
+import com.google.ai.sample.ApiProvider
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class PhotoReasoningViewModel(
     private var generativeModel: GenerativeModel,
@@ -180,12 +189,12 @@ class PhotoReasoningViewModel(
 
                     val apiKeyManager = ApiKeyManager.getInstance(receiverContext)
                     val isQuotaError = isQuotaExceededError(errorMessage)
-
+                    val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
                     if (isQuotaError && currentRetryAttempt < MAX_RETRY_ATTEMPTS) {
-                        val currentKey = apiKeyManager.getCurrentApiKey()
+                        val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
                         if (currentKey != null) {
-                            apiKeyManager.markKeyAsFailed(currentKey)
-                            val newKey = apiKeyManager.switchToNextAvailableKey()
+                            apiKeyManager.markKeyAsFailed(currentKey, currentModel.apiProvider)
+                            val newKey = apiKeyManager.switchToNextAvailableKey(currentModel.apiProvider)
                             if (newKey != null) {
                                 // Increment retry attempt
                                 currentRetryAttempt++
@@ -284,7 +293,8 @@ class PhotoReasoningViewModel(
     // Update the generative model with the current API key if retrying
     if (currentRetryAttempt > 0 && context != null) {
         val apiKeyManager = ApiKeyManager.getInstance(context)
-        val currentKey = apiKeyManager.getCurrentApiKey()
+        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+        val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
         if (currentKey != null) {
             generativeModel = GenerativeModel(
                 modelName = modelName,
@@ -402,6 +412,12 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
+        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+        if (currentModel.apiProvider == ApiProvider.CEREBRAS) {
+            reasonWithCerebras(userInput, selectedImages, screenInfoForPrompt)
+            return
+        }
+
         if (isLiveMode) {
             // For live mode, handle differently
             viewModelScope.launch {
@@ -472,6 +488,98 @@ class PhotoReasoningViewModel(
             ensureInitialized(context)
             currentRetryAttempt = 0
             performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+        }
+    }
+
+    private fun reasonWithCerebras(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null
+    ) {
+        _uiState.value = PhotoReasoningUiState.Loading
+        val context = MainActivity.getInstance()?.applicationContext ?: return
+
+        val apiKeyManager = ApiKeyManager.getInstance(context)
+        val apiKey = apiKeyManager.getCurrentApiKey(ApiProvider.CEREBRAS)
+
+        if (apiKey.isNullOrEmpty()) {
+            _uiState.value = PhotoReasoningUiState.Error("Cerebras API key not found.")
+            return
+        }
+
+        val combinedPromptText = (userInput + "\n\n" + (screenInfoForPrompt ?: "")).trim()
+
+        // Add user message to chat history
+        val userMessage = PhotoReasoningMessage(
+            text = combinedPromptText,
+            participant = PhotoParticipant.USER,
+            isPending = false
+        )
+        _chatState.addMessage(userMessage)
+
+        // Add pending AI message
+        val pendingAiMessage = PhotoReasoningMessage(
+            text = "",
+            participant = PhotoParticipant.MODEL,
+            isPending = true
+        )
+        _chatState.addMessage(pendingAiMessage)
+        _chatMessagesFlow.value = _chatState.getAllMessages()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient()
+                val mediaType = "application/json".toMediaType()
+
+                val requestBody = CerebrasRequest(
+                    model = modelName,
+                    messages = listOf(CerebrasMessage(role = "user", content = combinedPromptText))
+                )
+                val jsonBody = Json.encodeToString(requestBody)
+
+                val request = Request.Builder()
+                    .url("https://api.cerebras.ai/v1/chat/completions")
+                    .post(jsonBody.toRequestBody(mediaType))
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("Unexpected code ${response.code} - ${response.body?.string()}")
+                    }
+
+                    val responseBody = response.body?.string()
+                    if (responseBody != null) {
+                        val json = Json { ignoreUnknownKeys = true }
+                        val cerebrasResponse = json.decodeFromString<CerebrasResponse>(responseBody)
+                        val aiResponseText = cerebrasResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
+
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Success(aiResponseText)
+                            finalizeAiMessage(aiResponseText)
+                            processCommands(aiResponseText)
+                            saveChatHistory(context)
+                        }
+                    } else {
+                        throw IOException("Empty response body")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Cerebras API call failed", e)
+                    _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
+                    _chatState.replaceLastPendingMessage()
+                    _chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = "Error: ${e.message}",
+                            participant = PhotoParticipant.ERROR
+                        )
+                    )
+                    _chatMessagesFlow.value = _chatState.getAllMessages()
+                    saveChatHistory(context)
+                }
+            }
         }
     }
 
@@ -728,7 +836,8 @@ class PhotoReasoningViewModel(
                 putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
                 putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
                 val mainActivity = MainActivity.getInstance()
-                val apiKey = mainActivity?.getCurrentApiKey() ?: ""
+                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
                 putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 // Add the new extra for file paths
                 putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
@@ -948,6 +1057,39 @@ private fun processCommands(text: String) {
         }
     }
 }
+
+// Data classes for Cerebras API
+@Serializable
+data class CerebrasRequest(
+    val model: String,
+    val messages: List<CerebrasMessage>,
+    val max_completion_tokens: Int = 1024,
+    val temperature: Double = 0.2,
+    val top_p: Int = 1,
+    val stream: Boolean = false
+)
+
+@Serializable
+data class CerebrasMessage(
+    val role: String,
+    val content: String
+)
+
+@Serializable
+data class CerebrasResponse(
+    val choices: List<CerebrasChoice>
+)
+
+@Serializable
+data class CerebrasChoice(
+    val message: CerebrasResponseMessage
+)
+
+@Serializable
+data class CerebrasResponseMessage(
+    val role: String,
+    val content: String
+)
 
     /**
      * Save chat history to SharedPreferences

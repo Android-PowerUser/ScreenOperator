@@ -84,6 +84,7 @@ import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
+import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.ui.theme.GenerativeAISample
 import com.google.ai.sample.util.NotificationUtil
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -316,13 +317,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun getCurrentApiKey(): String? {
+    fun getCurrentApiKey(provider: ApiProvider): String? {
         val key = if (::apiKeyManager.isInitialized) {
-            apiKeyManager.getCurrentApiKey()
+            apiKeyManager.getCurrentApiKey(provider)
         } else {
             null
         }
-        Log.d(TAG, "getCurrentApiKey returning: ${if (key.isNullOrEmpty()) "null or empty" else "valid key"}")
+        Log.d(TAG, "getCurrentApiKey for provider $provider returning: ${if (key.isNullOrEmpty()) "null or empty" else "valid key"}")
         return key
     }
 
@@ -380,7 +381,7 @@ class MainActivity : ComponentActivity() {
 
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
-        if (apiKeyManager.getCurrentApiKey().isNullOrEmpty()) {
+        if (apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty()) {
              showApiKeyDialog = true
              Log.d(TAG, "onCreate: No API key found, showApiKeyDialog set to true.")
         } else {
@@ -546,7 +547,7 @@ class MainActivity : ComponentActivity() {
                             )
                             ApiKeyDialog(
                                 apiKeyManager = apiKeyManager,
-                                isFirstLaunch = apiKeyManager.getApiKeys().isEmpty(),
+                                isFirstLaunch = apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty(),
                                 onDismiss = {
                                     Log.d(TAG, "ApiKeyDialog onDismiss called.")
                                     showApiKeyDialog = false

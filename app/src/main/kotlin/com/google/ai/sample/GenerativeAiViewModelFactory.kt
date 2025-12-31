@@ -11,13 +11,20 @@ import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 
 // Model options
-enum class ModelOption(val displayName: String, val modelName: String) {
-    GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
-    GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
-    GEMINI_FLASH_LITE_PREVIEW("Gemini 2.5 Flash Lite Preview", "gemini-2.5-flash-lite-preview-06-17"),
-    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
+enum class ApiProvider {
+    GOOGLE,
+    CEREBRAS
+}
+
+enum class ModelOption(val displayName: String, val modelName: String, val apiProvider: ApiProvider = ApiProvider.GOOGLE) {
+    GPT_OSS_120B("GPT-OSS 120B (Cerebras)", "gpt-oss-120b", ApiProvider.CEREBRAS),
     GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro"),
-    GEMINI_FLASH_LIVE_PREVIEW("Gemini 2.5 Flash Live Preview", "gemini-2.5-flash-live-preview"), // KORRIGIERT!
+    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
+    GEMINI_FLASH_LIVE_PREVIEW("Gemini 2.5 Flash Live Preview", "gemini-2.5-flash-live-preview"),
+    GEMINI_FLASH_LITE_PREVIEW("Gemini 2.5 Flash Lite Preview", "gemini-2.5-flash-lite-preview-06-17"),
+    GEMINI_3_FLASH("Gemini 3 Flash", "gemini-3-flash-preview"),
+    GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
+    GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
     GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it"),
     GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it")
 }
@@ -36,10 +43,11 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
-        val apiKey = mainActivity?.getCurrentApiKey() ?: ""
+        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+        val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
 
         if (apiKey.isEmpty()) {
-            throw IllegalStateException("API key is not available. Please set an API key.")
+            throw IllegalStateException("API key for ${currentModel.apiProvider} is not available. Please set an API key.")
         }
 
         return with(viewModelClass) {
@@ -91,7 +99,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 }
 
 object GenerativeAiViewModelFactory {
-    private var currentModel: ModelOption = ModelOption.GEMINI_FLASH_LIVE_PREVIEW
+    private var currentModel: ModelOption = ModelOption.GPT_OSS_120B
 
     fun setModel(modelOption: ModelOption) {
         currentModel = modelOption

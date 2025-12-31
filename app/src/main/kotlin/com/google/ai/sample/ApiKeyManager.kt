@@ -10,271 +10,275 @@ import android.util.Log
 class ApiKeyManager(context: Context) {
     private val TAG = "ApiKeyManager"
     private val PREFS_NAME = "api_key_prefs"
-    private val API_KEYS = "api_keys"
-    private val CURRENT_KEY_INDEX = "current_key_index"
-    private val FAILED_KEYS = "failed_keys"
-    
+    private fun getKeysName(provider: ApiProvider) = "api_keys_${provider.name}"
+    private fun getCurrentKeyIndexName(provider: ApiProvider) = "current_key_index_${provider.name}"
+    private fun getFailedKeysName(provider: ApiProvider) = "failed_keys_${provider.name}"
+
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    
+
     /**
-     * Get the current API key
-     * @return The current API key or null if none exists
+     * Get the current API key for a specific provider
+     * @param provider The API provider (e.g., GOOGLE, CEREBRAS)
+     * @return The current API key or null if none exists for that provider
      */
-    fun getCurrentApiKey(): String? {
-        val keys = getApiKeys()
+    fun getCurrentApiKey(provider: ApiProvider): String? {
+        val keys = getApiKeys(provider)
         if (keys.isEmpty()) {
-            Log.d(TAG, "No API keys found")
+            Log.d(TAG, "No API keys found for provider $provider")
             return null
         }
-        
-        val currentIndex = prefs.getInt(CURRENT_KEY_INDEX, 0)
+
+        val currentIndex = prefs.getInt(getCurrentKeyIndexName(provider), 0)
         val safeIndex = if (currentIndex >= keys.size) 0 else currentIndex
-        
-        Log.d(TAG, "Getting current API key at index $safeIndex")
+
+        Log.d(TAG, "Getting current API key for $provider at index $safeIndex")
         return keys[safeIndex]
     }
-    
+
     /**
-     * Get all stored API keys
-     * @return List of API keys
+     * Get all stored API keys for a specific provider
+     * @param provider The API provider
+     * @return List of API keys for that provider
      */
-    fun getApiKeys(): List<String> {
-        val keysString = prefs.getString(API_KEYS, "") ?: ""
+    fun getApiKeys(provider: ApiProvider): List<String> {
+        val keysString = prefs.getString(getKeysName(provider), "") ?: ""
         return if (keysString.isEmpty()) {
             emptyList()
         } else {
             keysString.split(",")
         }
     }
-    
+
     /**
-     * Add a new API key
+     * Add a new API key for a specific provider
      * @param apiKey The API key to add
+     * @param provider The API provider
      * @return True if the key was added, false if it already exists
      */
-    fun addApiKey(apiKey: String): Boolean {
+    fun addApiKey(apiKey: String, provider: ApiProvider): Boolean {
         if (apiKey.isBlank()) {
-            Log.d(TAG, "Attempted to add blank API key")
+            Log.d(TAG, "Attempted to add blank API key for provider $provider")
             return false
         }
-        
-        val keys = getApiKeys().toMutableList()
-        
-        // Check if key already exists
+
+        val keys = getApiKeys(provider).toMutableList()
+
         if (keys.contains(apiKey)) {
-            Log.d(TAG, "API key already exists")
+            Log.d(TAG, "API key for $provider already exists")
             return false
         }
-        
+
         keys.add(apiKey)
-        saveApiKeys(keys)
-        
-        // If this is the first key, set it as current
+        saveApiKeys(keys, provider)
+
         if (keys.size == 1) {
-            setCurrentKeyIndex(0)
+            setCurrentKeyIndex(0, provider)
         }
-        
-        // Clear this key from failed keys if it was previously marked as failed
-        removeFailedKey(apiKey)
-        
-        Log.d(TAG, "Added new API key, total keys: ${keys.size}")
+
+        removeFailedKey(apiKey, provider)
+        Log.d(TAG, "Added new API key for $provider, total keys: ${keys.size}")
         return true
     }
-    
+
     /**
-     * Remove an API key
+     * Remove an API key for a specific provider
      * @param apiKey The API key to remove
+     * @param provider The API provider
      * @return True if the key was removed, false if it doesn't exist
      */
-    fun removeApiKey(apiKey: String): Boolean {
-        val keys = getApiKeys().toMutableList()
+    fun removeApiKey(apiKey: String, provider: ApiProvider): Boolean {
+        val keys = getApiKeys(provider).toMutableList()
         val removed = keys.remove(apiKey)
-        
+
         if (removed) {
-            saveApiKeys(keys)
-            
-            // Adjust current index if needed
-            val currentIndex = prefs.getInt(CURRENT_KEY_INDEX, 0)
+            saveApiKeys(keys, provider)
+            val currentIndex = prefs.getInt(getCurrentKeyIndexName(provider), 0)
             if (currentIndex >= keys.size && keys.isNotEmpty()) {
-                setCurrentKeyIndex(0)
+                setCurrentKeyIndex(0, provider)
             }
-            
-            // Also remove from failed keys if present
-            removeFailedKey(apiKey)
-            
-            Log.d(TAG, "Removed API key, remaining keys: ${keys.size}")
+            removeFailedKey(apiKey, provider)
+            Log.d(TAG, "Removed API key for $provider, remaining keys: ${keys.size}")
         } else {
-            Log.d(TAG, "API key not found for removal")
+            Log.d(TAG, "API key for $provider not found for removal")
         }
-        
         return removed
     }
-    
+
     /**
-     * Set the current API key index
-     * @param index The index of the API key to set as current
+     * Set the current API key index for a specific provider
+     * @param index The index to set
+     * @param provider The API provider
      * @return True if successful, false if index is invalid
      */
-    fun setCurrentKeyIndex(index: Int): Boolean {
-        val keys = getApiKeys()
+    fun setCurrentKeyIndex(index: Int, provider: ApiProvider): Boolean {
+        val keys = getApiKeys(provider)
         if (index < 0 || index >= keys.size) {
-            Log.d(TAG, "Invalid API key index: $index, max: ${keys.size - 1}")
+            Log.d(TAG, "Invalid API key index for $provider: $index, max: ${keys.size - 1}")
             return false
         }
-        
-        prefs.edit().putInt(CURRENT_KEY_INDEX, index).apply()
-        Log.d(TAG, "Set current API key index to $index")
+
+        prefs.edit().putInt(getCurrentKeyIndexName(provider), index).apply()
+        Log.d(TAG, "Set current API key index for $provider to $index")
         return true
     }
-    
+
     /**
-     * Get the current API key index
-     * @return The current API key index
+     * Get the current API key index for a specific provider
+     * @param provider The API provider
+     * @return The current index
      */
-    fun getCurrentKeyIndex(): Int {
-        return prefs.getInt(CURRENT_KEY_INDEX, 0)
+    fun getCurrentKeyIndex(provider: ApiProvider): Int {
+        return prefs.getInt(getCurrentKeyIndexName(provider), 0)
     }
-    
+
     /**
-     * Mark an API key as failed (e.g., due to 503 error)
-     * @param apiKey The API key to mark as failed
+     * Mark an API key as failed for a specific provider
+     * @param apiKey The API key to mark
+     * @param provider The API provider
      */
-    fun markKeyAsFailed(apiKey: String) {
-        val failedKeys = getFailedKeys().toMutableList()
+    fun markKeyAsFailed(apiKey: String, provider: ApiProvider) {
+        val failedKeys = getFailedKeys(provider).toMutableList()
         if (!failedKeys.contains(apiKey)) {
             failedKeys.add(apiKey)
-            saveFailedKeys(failedKeys)
-            Log.d(TAG, "Marked API key as failed: ${apiKey.take(5)}...")
+            saveFailedKeys(failedKeys, provider)
+            Log.d(TAG, "Marked API key for $provider as failed: ${apiKey.take(5)}...")
         }
     }
-    
+
     /**
-     * Remove an API key from the failed keys list
-     * @param apiKey The API key to remove from failed keys
+     * Remove an API key from the failed list for a specific provider
+     * @param apiKey The API key to remove
+     * @param provider The API provider
      */
-    fun removeFailedKey(apiKey: String) {
-        val failedKeys = getFailedKeys().toMutableList()
+    fun removeFailedKey(apiKey: String, provider: ApiProvider) {
+        val failedKeys = getFailedKeys(provider).toMutableList()
         if (failedKeys.remove(apiKey)) {
-            saveFailedKeys(failedKeys)
-            Log.d(TAG, "Removed API key from failed keys: ${apiKey.take(5)}...")
+            saveFailedKeys(failedKeys, provider)
+            Log.d(TAG, "Removed API key for $provider from failed keys: ${apiKey.take(5)}...")
         }
     }
-    
+
     /**
-     * Get all failed API keys
-     * @return List of failed API keys
+     * Get all failed API keys for a specific provider
+     * @param provider The API provider
+     * @return List of failed keys
      */
-    fun getFailedKeys(): List<String> {
-        val keysString = prefs.getString(FAILED_KEYS, "") ?: ""
-        return if (keysString.isEmpty()) {
-            emptyList()
-        } else {
-            keysString.split(",")
-        }
+    fun getFailedKeys(provider: ApiProvider): List<String> {
+        val keysString = prefs.getString(getFailedKeysName(provider), "") ?: ""
+        return if (keysString.isEmpty()) emptyList() else keysString.split(",")
     }
-    
+
     /**
-     * Check if an API key is marked as failed
+     * Check if an API key is marked as failed for a specific provider
      * @param apiKey The API key to check
-     * @return True if the key is marked as failed, false otherwise
+     * @param provider The API provider
+     * @return True if failed, false otherwise
      */
-    fun isKeyFailed(apiKey: String): Boolean {
-        return getFailedKeys().contains(apiKey)
+    fun isKeyFailed(apiKey: String, provider: ApiProvider): Boolean {
+        return getFailedKeys(provider).contains(apiKey)
     }
-    
+
     /**
-     * Reset all failed keys
+     * Reset all failed keys for a specific provider
+     * @param provider The API provider
      */
-    fun resetFailedKeys() {
-        prefs.edit().remove(FAILED_KEYS).apply()
-        Log.d(TAG, "Reset all failed keys")
+    fun resetFailedKeys(provider: ApiProvider) {
+        prefs.edit().remove(getFailedKeysName(provider)).apply()
+        Log.d(TAG, "Reset all failed keys for $provider")
     }
-    
+
     /**
-     * Check if all API keys are marked as failed
+     * Check if all keys for a specific provider are marked as failed
+     * @param provider The API provider
      * @return True if all keys are failed, false otherwise
      */
-    fun areAllKeysFailed(): Boolean {
-        val keys = getApiKeys()
-        val failedKeys = getFailedKeys()
+    fun areAllKeysFailed(provider: ApiProvider): Boolean {
+        val keys = getApiKeys(provider)
+        val failedKeys = getFailedKeys(provider)
         return keys.isNotEmpty() && failedKeys.size >= keys.size
     }
-    
+
     /**
-     * Get the count of available API keys
-     * @return The number of API keys
+     * Get the count of available keys for a specific provider
+     * @param provider The API provider
+     * @return The number of keys
      */
-    fun getKeyCount(): Int {
-        return getApiKeys().size
+    fun getKeyCount(provider: ApiProvider): Int {
+        return getApiKeys(provider).size
     }
-    
+
     /**
-     * Switch to the next available API key that is not marked as failed
+     * Switch to the next available API key for a specific provider
+     * @param provider The API provider
      * @return The new API key or null if no valid keys are available
      */
-    fun switchToNextAvailableKey(): String? {
-        val keys = getApiKeys()
+    fun switchToNextAvailableKey(provider: ApiProvider): String? {
+        val keys = getApiKeys(provider)
         if (keys.isEmpty()) {
-            Log.d(TAG, "No API keys available to switch to")
+            Log.d(TAG, "No API keys available for $provider to switch to")
             return null
         }
-        
-        val failedKeys = getFailedKeys()
-        val currentIndex = getCurrentKeyIndex()
-        
-        // If all keys are failed, reset failed keys and start from the beginning
+
+        val failedKeys = getFailedKeys(provider)
+        val currentIndex = getCurrentKeyIndex(provider)
+
         if (failedKeys.size >= keys.size) {
-            Log.d(TAG, "All keys are marked as failed, resetting failed keys")
-            resetFailedKeys()
-            setCurrentKeyIndex(0)
+            Log.d(TAG, "All keys for $provider are marked as failed, resetting")
+            resetFailedKeys(provider)
+            setCurrentKeyIndex(0, provider)
             return keys[0]
         }
-        
-        // Find the next key that is not failed
+
         var nextIndex = (currentIndex + 1) % keys.size
         var attempts = 0
-        
+
         while (attempts < keys.size) {
             if (!failedKeys.contains(keys[nextIndex])) {
-                setCurrentKeyIndex(nextIndex)
-                Log.d(TAG, "Switched to next available key at index $nextIndex")
+                setCurrentKeyIndex(nextIndex, provider)
+                Log.d(TAG, "Switched to next available key for $provider at index $nextIndex")
                 return keys[nextIndex]
             }
             nextIndex = (nextIndex + 1) % keys.size
             attempts++
         }
-        
-        // If we get here, all keys are failed (shouldn't happen due to earlier check)
-        Log.d(TAG, "Could not find a non-failed key, resetting failed keys")
-        resetFailedKeys()
-        setCurrentKeyIndex(0)
+
+        Log.d(TAG, "Could not find a non-failed key for $provider, resetting")
+        resetFailedKeys(provider)
+        setCurrentKeyIndex(0, provider)
         return keys[0]
     }
-    
+
     /**
-     * Save the list of API keys to SharedPreferences
-     * @param keys The list of API keys to save
+     * Save the list of API keys for a specific provider
+     * @param keys The list to save
+     * @param provider The API provider
      */
-    private fun saveApiKeys(keys: List<String>) {
+    private fun saveApiKeys(keys: List<String>, provider: ApiProvider) {
         val keysString = keys.joinToString(",")
-        prefs.edit().putString(API_KEYS, keysString).apply()
+        prefs.edit().putString(getKeysName(provider), keysString).apply()
     }
-    
+
     /**
-     * Save the list of failed API keys to SharedPreferences
-     * @param keys The list of failed API keys to save
+     * Save the list of failed API keys for a specific provider
+     * @param keys The list to save
+     * @param provider The API provider
      */
-    private fun saveFailedKeys(keys: List<String>) {
+    private fun saveFailedKeys(keys: List<String>, provider: ApiProvider) {
         val keysString = keys.joinToString(",")
-        prefs.edit().putString(FAILED_KEYS, keysString).apply()
+        prefs.edit().putString(getFailedKeysName(provider), keysString).apply()
     }
-    
+
     /**
-     * Clear all stored API keys
+     * Clear all stored API keys for a specific provider
+     * @param provider The API provider
      */
-    fun clearAllKeys() {
-        prefs.edit().remove(API_KEYS).remove(CURRENT_KEY_INDEX).remove(FAILED_KEYS).apply()
-        Log.d(TAG, "Cleared all API keys")
+    fun clearAllKeys(provider: ApiProvider) {
+        prefs.edit()
+            .remove(getKeysName(provider))
+            .remove(getCurrentKeyIndexName(provider))
+            .remove(getFailedKeysName(provider))
+            .apply()
+        Log.d(TAG, "Cleared all API keys for $provider")
     }
     
     companion object {
