@@ -531,6 +531,15 @@ class PhotoReasoningViewModel(
                 // Build the full message history for the API call
                 val apiMessages = mutableListOf<CerebrasMessage>()
 
+                // Add System Message and DB Entries
+                if (_systemMessage.value.isNotBlank()) {
+                    apiMessages.add(CerebrasMessage(role = "user", content = _systemMessage.value))
+                }
+                val formattedDbEntries = formatDatabaseEntriesAsText(context)
+                if (formattedDbEntries.isNotBlank()) {
+                    apiMessages.add(CerebrasMessage(role = "user", content = formattedDbEntries))
+                }
+
                 // Add Chat History
                 _chatState.getAllMessages().filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.forEach { message ->
                     val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
