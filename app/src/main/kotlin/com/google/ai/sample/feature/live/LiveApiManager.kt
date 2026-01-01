@@ -145,13 +145,18 @@ class LiveApiManager(
         // Setup-Nachricht gemäß Dokumentation
         val setupMessage = JSONObject().apply {
             put("setup", JSONObject().apply {
-                put("model", "models/$apiModelName") // z.B. "models/gemini-live-2.5-flash-preview"
+                put("model", "models/$apiModelName") // z.B. "models/gemini-live-2.5-flash-native-audio"
                 put("generationConfig", JSONObject().apply {
                     put("temperature", 0.0)
                     put("maxOutputTokens", 8192)
-                    put("responseModalities", JSONArray().apply {
-                        put("TEXT")
-                    })
+                    if (apiModelName == "gemini-live-2.5-flash-native-audio") {
+                        put("responseModalities", JSONArray()) // Empty array for text-only
+                        put("turnComplete", true)
+                    } else {
+                        put("responseModalities", JSONArray().apply {
+                            put("TEXT")
+                        })
+                    }
                 })
 
                 // Add system instruction if available

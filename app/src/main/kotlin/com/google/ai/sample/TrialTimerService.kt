@@ -36,7 +36,7 @@ class TrialTimerService : Service() {
         const val ACTION_INTERNET_TIME_AVAILABLE = "com.google.ai.sample.ACTION_INTERNET_TIME_AVAILABLE"
         const val EXTRA_CURRENT_UTC_TIME_MS = "extra_current_utc_time_ms"
         private const val TAG = "TrialTimerService"
-        private const val CHECK_INTERVAL_MS = 60 * 1000L // 1 minute
+        private const val CHECK_INTERVAL_MS = 10 * 60 * 1000L // 10 minutes
         // Changed API URL to timeapi.io for UTC time
         private const val TIME_API_URL = "https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC"
         private const val CONNECTION_TIMEOUT_MS = 30000 // 30 seconds

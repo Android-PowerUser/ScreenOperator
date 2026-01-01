@@ -17,6 +17,7 @@ import androidx.compose.ui.window.Dialog
 /**
  * Dialog for API key input and management
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ApiKeyDialog(
     apiKeyManager: ApiKeyManager,
@@ -25,19 +26,24 @@ fun ApiKeyDialog(
 ) {
     var apiKeyInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    val apiKeys = remember { mutableStateListOf<String>() }
-    var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex()) }
+    var selectedProvider by remember { mutableStateOf(ApiProvider.CEREBRAS) }
+    val apiKeys = remember { mutableStateMapOf<ApiProvider, List<String>>() }
+    var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex(selectedProvider)) }
     val context = LocalContext.current
-    
-    // Load existing keys
-    LaunchedEffect(Unit) {
-        apiKeys.clear()
-        apiKeys.addAll(apiKeyManager.getApiKeys())
+
+    fun loadKeysForProvider(provider: ApiProvider) {
+        apiKeys[provider] = apiKeyManager.getApiKeys(provider)
+        selectedKeyIndex = apiKeyManager.getCurrentKeyIndex(provider)
     }
-    
+
+    // Load initial keys
+    LaunchedEffect(Unit) {
+        loadKeysForProvider(ApiProvider.GOOGLE)
+        loadKeysForProvider(ApiProvider.CEREBRAS)
+    }
+
     Dialog(onDismissRequest = {
-        // Only allow dismissal if not first launch or if keys exist
-        if (!isFirstLaunch || apiKeys.isNotEmpty()) {
+        if (!isFirstLaunch || (apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
             onDismiss()
         }
     }) {
@@ -58,91 +64,96 @@ fun ApiKeyDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                
-                if (isFirstLaunch && apiKeys.isEmpty()) {
-                    Text(
-                        text = "Please enter a Gemini API key to use this application.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
+
+                // Provider selection
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    listOf(ApiProvider.CEREBRAS, ApiProvider.GOOGLE).forEach { provider ->
+                        FilterChip(
+                            selected = selectedProvider == provider,
+                            onClick = {
+                                selectedProvider = provider
+                                loadKeysForProvider(provider)
+                            },
+                            label = { Text(provider.name.replaceFirstChar { it.uppercase() }) },
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
                 }
-                
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Get API Key button
                 Button(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://makersuite.google.com/app/apikey"))
+                        val url = if (selectedProvider == ApiProvider.GOOGLE) {
+                            "https://makersuite.google.com/app/apikey"
+                        } else {
+                            "https://cloud.cerebras.ai/"
+                        }
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         context.startActivity(intent)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp)
                 ) {
-                    Text("Get API Key")
+                    Text("Get API Key for ${selectedProvider.name.replaceFirstChar { it.uppercase() }}")
                 }
-                
-                // Input field for new API key
-                OutlinedTextField(
-                    value = apiKeyInput,
-                    onValueChange = { 
-                        apiKeyInput = it
-                        errorMessage = ""
-                    },
-                    label = { Text("Enter API Key") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    singleLine = true
-                )
-                
-                // Error message
+
+                // Input and Add section
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = apiKeyInput,
+                        onValueChange = {
+                            apiKeyInput = it
+                            errorMessage = ""
+                        },
+                        label = { Text("Enter ${selectedProvider.name.replaceFirstChar { it.uppercase() }} API Key") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (apiKeyInput.isBlank()) {
+                                errorMessage = "API key cannot be empty"
+                                return@Button
+                            }
+                            val added = apiKeyManager.addApiKey(apiKeyInput, selectedProvider)
+                            if (added) {
+                                loadKeysForProvider(selectedProvider)
+                                apiKeyInput = ""
+                            } else {
+                                errorMessage = "API key already exists for ${selectedProvider.name}"
+                            }
+                        }
+                    ) {
+                        Text("Add")
+                    }
+                }
+
                 if (errorMessage.isNotEmpty()) {
                     Text(
                         text = errorMessage,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                     )
                 }
-                
-                // Add button
-                Button(
-                    onClick = {
-                        if (apiKeyInput.isBlank()) {
-                            errorMessage = "API key cannot be empty"
-                            return@Button
-                        }
-                        
-                        val added = apiKeyManager.addApiKey(apiKeyInput)
-                        if (added) {
-                            apiKeys.clear()
-                            apiKeys.addAll(apiKeyManager.getApiKeys())
-                            apiKeyInput = ""
-                            selectedKeyIndex = apiKeyManager.getCurrentKeyIndex()
-                        } else {
-                            errorMessage = "API key already exists"
-                        }
-                    },
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(bottom = 16.dp)
-                ) {
-                    Text("Add Key")
-                }
-                
-                // List of existing keys
-                if (apiKeys.isNotEmpty()) {
+
+                // List of keys for the selected provider
+                val currentKeys = apiKeys[selectedProvider] ?: emptyList()
+                if (currentKeys.isNotEmpty()) {
                     Text(
-                        text = "Saved API Keys",
+                        text = "Saved ${selectedProvider.name.replaceFirstChar { it.uppercase() }} Keys",
                         style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                     )
-                    
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 200.dp)
+                            .heightIn(max = 150.dp)
                     ) {
-                        itemsIndexed(apiKeys) { index, key ->
+                        itemsIndexed(currentKeys) { index, key ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -152,24 +163,20 @@ fun ApiKeyDialog(
                                 RadioButton(
                                     selected = index == selectedKeyIndex,
                                     onClick = {
-                                        apiKeyManager.setCurrentKeyIndex(index)
+                                        apiKeyManager.setCurrentKeyIndex(index, selectedProvider)
                                         selectedKeyIndex = index
                                     }
                                 )
-                                
                                 Text(
                                     text = key.take(10) + "..." + key.takeLast(5),
                                     modifier = Modifier
                                         .weight(1f)
                                         .padding(start = 8.dp)
                                 )
-                                
                                 IconButton(
                                     onClick = {
-                                        apiKeyManager.removeApiKey(key)
-                                        apiKeys.clear()
-                                        apiKeys.addAll(apiKeyManager.getApiKeys())
-                                        selectedKeyIndex = apiKeyManager.getCurrentKeyIndex()
+                                        apiKeyManager.removeApiKey(key, selectedProvider)
+                                        loadKeysForProvider(selectedProvider)
                                     }
                                 ) {
                                     Text("✕", textAlign = TextAlign.Center)
@@ -178,18 +185,16 @@ fun ApiKeyDialog(
                         }
                     }
                 }
-                
-                // Buttons
+
+                // Close button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    if (!isFirstLaunch || apiKeys.isNotEmpty()) {
-                        TextButton(
-                            onClick = onDismiss
-                        ) {
+                     if (!isFirstLaunch || (apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
+                        TextButton(onClick = onDismiss) {
                             Text("Close")
                         }
                     }
