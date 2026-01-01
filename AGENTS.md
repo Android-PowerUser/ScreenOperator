@@ -38,6 +38,8 @@ This command creates a new signed APK named `app-release-signed.apk`.
 
 After building the application, you must deliver the signed APK file by committing it to a new branch.
 
+Since there is probably already an APK in the root directory, you need to make sure that you update it with the pull request.
+
 Create a new branch for the APK delivery
 git checkout -b apk-delivery
 
