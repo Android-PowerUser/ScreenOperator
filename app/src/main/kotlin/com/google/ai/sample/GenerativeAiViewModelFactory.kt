@@ -12,11 +12,15 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 
 // Model options
 enum class ApiProvider {
+    VERCEL,
     GOOGLE,
     CEREBRAS
 }
 
 enum class ModelOption(val displayName: String, val modelName: String, val apiProvider: ApiProvider = ApiProvider.GOOGLE) {
+    GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
+    GPT_5_1_CODEX_MINI("GPT-5.1 Codex Mini (Vercel)", "openai/gpt-5.1-codex-mini", ApiProvider.VERCEL),
+    GPT_5_NANO("GPT-5 Nano (Vercel)", "openai/gpt-5-nano", ApiProvider.VERCEL),
     GPT_OSS_120B("GPT-OSS 120B (Cerebras)", "gpt-oss-120b", ApiProvider.CEREBRAS),
     GEMINI_3_FLASH("Gemini 3 Flash", "gemini-3-flash-preview"),
     GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro"),
@@ -99,7 +103,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 }
 
 object GenerativeAiViewModelFactory {
-    private var currentModel: ModelOption = ModelOption.GPT_OSS_120B
+    private var currentModel: ModelOption = ModelOption.GPT_5_1_CODEX_MAX
 
     fun setModel(modelOption: ModelOption) {
         currentModel = modelOption
