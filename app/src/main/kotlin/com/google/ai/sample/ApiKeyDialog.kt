@@ -26,7 +26,7 @@ fun ApiKeyDialog(
 ) {
     var apiKeyInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    var selectedProvider by remember { mutableStateOf(ApiProvider.CEREBRAS) }
+    var selectedProvider by remember { mutableStateOf(ApiProvider.VERCEL) }
     val apiKeys = remember { mutableStateMapOf<ApiProvider, List<String>>() }
     var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex(selectedProvider)) }
     val context = LocalContext.current
@@ -38,6 +38,7 @@ fun ApiKeyDialog(
 
     // Load initial keys
     LaunchedEffect(Unit) {
+        loadKeysForProvider(ApiProvider.VERCEL)
         loadKeysForProvider(ApiProvider.GOOGLE)
         loadKeysForProvider(ApiProvider.CEREBRAS)
     }
@@ -67,7 +68,7 @@ fun ApiKeyDialog(
 
                 // Provider selection
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    listOf(ApiProvider.CEREBRAS, ApiProvider.GOOGLE).forEach { provider ->
+                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE).forEach { provider ->
                         FilterChip(
                             selected = selectedProvider == provider,
                             onClick = {
@@ -84,10 +85,10 @@ fun ApiKeyDialog(
                 // Get API Key button
                 Button(
                     onClick = {
-                        val url = if (selectedProvider == ApiProvider.GOOGLE) {
-                            "https://makersuite.google.com/app/apikey"
-                        } else {
-                            "https://cloud.cerebras.ai/"
+                        val url = when (selectedProvider) {
+                            ApiProvider.GOOGLE -> "https://makersuite.google.com/app/apikey"
+                            ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
+                            ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
                         }
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         context.startActivity(intent)
@@ -193,7 +194,7 @@ fun ApiKeyDialog(
                         .padding(top = 16.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                     if (!isFirstLaunch || (apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
+                     if (!isFirstLaunch || (apiKeys[ApiProvider.VERCEL]?.isNotEmpty() == true || apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
                         TextButton(onClick = onDismiss) {
                             Text("Close")
                         }

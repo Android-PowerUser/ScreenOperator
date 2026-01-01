@@ -151,7 +151,6 @@ class LiveApiManager(
                     put("maxOutputTokens", 8192)
                     if (apiModelName == "gemini-live-2.5-flash-native-audio") {
                         put("responseModalities", JSONArray()) // Empty array for text-only
-                        put("turnComplete", true)
                     } else {
                         put("responseModalities", JSONArray().apply {
                             put("TEXT")
