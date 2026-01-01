@@ -34,6 +34,8 @@ You can also build it with Github action workflows. Stay in your fork, on your u
 
 Some models no longer work because Google is changing the interfaces (API). You can usually find the current API names at [aistudio.google.com](https://aistudio.google.com), but you might not find them all there.
 
+In some Android versions, the app exhibits surprising errors. If you find one, please fix it.
+
 Free omni models accessible via an API can be found [here](https://github.com/cheahjs/free-llm-api-resources)
 
 
