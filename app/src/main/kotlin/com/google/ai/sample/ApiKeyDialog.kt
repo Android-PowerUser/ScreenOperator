@@ -26,7 +26,7 @@ fun ApiKeyDialog(
 ) {
     var apiKeyInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    var selectedProvider by remember { mutableStateOf(ApiProvider.GOOGLE) }
+    var selectedProvider by remember { mutableStateOf(ApiProvider.CEREBRAS) }
     val apiKeys = remember { mutableStateMapOf<ApiProvider, List<String>>() }
     var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex(selectedProvider)) }
     val context = LocalContext.current
@@ -67,7 +67,7 @@ fun ApiKeyDialog(
 
                 // Provider selection
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    ApiProvider.values().forEach { provider ->
+                    listOf(ApiProvider.CEREBRAS, ApiProvider.GOOGLE).forEach { provider ->
                         FilterChip(
                             selected = selectedProvider == provider,
                             onClick = {

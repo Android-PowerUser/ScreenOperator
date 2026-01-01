@@ -1172,7 +1172,7 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "You can try Screen Operator for 30 minutes before you have to subscribe to support the development of more features.",
+                    text = "You can try Screen Operator for 7 days before you have to subscribe to support the development of more features.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
@@ -1222,7 +1222,7 @@ fun TrialExpiredDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Your 30-minute trial period has ended. Please subscribe to the app to continue using it.",
+                    text = "Your 7-day trial period has ended. Please subscribe to the app to continue using it.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )

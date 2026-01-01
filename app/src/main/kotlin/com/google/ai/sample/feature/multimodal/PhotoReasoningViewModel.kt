@@ -509,7 +509,7 @@ class PhotoReasoningViewModel(
 
         val combinedPromptText = (userInput + "\n\n" + (screenInfoForPrompt ?: "")).trim()
 
-        // Add user message to chat history
+        // Add user message to chat history for the UI
         val userMessage = PhotoReasoningMessage(
             text = combinedPromptText,
             participant = PhotoParticipant.USER,
@@ -517,7 +517,7 @@ class PhotoReasoningViewModel(
         )
         _chatState.addMessage(userMessage)
 
-        // Add pending AI message
+        // Add pending AI message for the UI
         val pendingAiMessage = PhotoReasoningMessage(
             text = "",
             participant = PhotoParticipant.MODEL,
@@ -528,12 +528,21 @@ class PhotoReasoningViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Build the full message history for the API call
+                val apiMessages = mutableListOf<CerebrasMessage>()
+
+                // Add Chat History
+                _chatState.getAllMessages().filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.forEach { message ->
+                    val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
+                    apiMessages.add(CerebrasMessage(role = role, content = message.text))
+                }
+
                 val client = OkHttpClient()
                 val mediaType = "application/json".toMediaType()
 
                 val requestBody = CerebrasRequest(
                     model = modelName,
-                    messages = listOf(CerebrasMessage(role = "user", content = combinedPromptText))
+                    messages = apiMessages
                 )
                 val jsonBody = Json.encodeToString(requestBody)
 
@@ -1065,7 +1074,7 @@ data class CerebrasRequest(
     val messages: List<CerebrasMessage>,
     val max_completion_tokens: Int = 1024,
     val temperature: Double = 0.2,
-    val top_p: Int = 1,
+    val top_p: Double = 1.0,
     val stream: Boolean = false
 )
 
