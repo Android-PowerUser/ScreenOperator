@@ -28,25 +28,11 @@ Jules will build the app using the instructions in the AGENTS.md file and sign i
 
 Switch the task in Jules as often as possible, because the longer the task, the exponentially slower Jules becomes.
 
-You can also build it yourself. I've prepared GitHub action workflows. Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android build, and start your chosen branch. After about 5 minutes, your app will be ready! If compilation errors occur, copy the output to Jules. If there are no more than 5 errors, even Gemini 2.5 Pro can usually handle this very reliably. Otherwise, proceed as you would when programming: Jules, then Claude, then Jules again. After that, the app needs to be signed. I use MiXplorer and select the test signature option. The others don't always work as well or as quickly. You can install it now.
-
-You are allowed to disable the paywall for developers using a "boolean variable" (hardcoded 1 or 0) and push it to my main branch. You be allowed to edit the app as long as you are attempting to push the updated code to this repository. Since I now only have an administrative role at Screen Operator, I no longer necessarily need to monetize it. In retrospect, a half-hour trial period was too restrictive. 
+You can also build it with Github action workflows. Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android build, and start your chosen branch. After about 5 minutes, your app will be ready! If compilation errors occur, copy the output to Jules. If there are no more than 5 errors, even Gemini 2.5 Pro can usually handle this very reliably. Otherwise, proceed as you would when programming: Jules, then Claude, then Jules again. After that, the app needs to be signed. I use MiXplorer and select the test signature option. The others don't always work as well or as quickly. You can install it now.
 
 ### needed updates
 
 Some models no longer work because Google is changing the interfaces (API). You can usually find the current API names at [aistudio.google.com](https://aistudio.google.com), but you might not find them all there.
-
-
-According to Google, the following issue exists with Android 14-: 
-1 issue requires your attention
-
-Kotlin incompatibilities cause crashes
-Your app uses the Kotlin extension functions removeFirst() and removeLast(), which cause conflicts with Java functions on Android 15. This leads to crashes for apps on devices running Android 14 or lower. Your app uses these functions in the following places:
-
-com.google.ai.sample.feature.multimodal.PhotoReasoningChatState.replaceLastPendingMessage
-com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel$aiResultReceiver$1.onReceive
-com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel.onStopClicked
-To avoid crashes, replace all Kotlin calls to removeFirst() and removeLast() with removeAt(0) and removeAt(list.lastIndex).
 
 Free omni models accessible via an API can be found [here](https://github.com/cheahjs/free-llm-api-resources)
 
