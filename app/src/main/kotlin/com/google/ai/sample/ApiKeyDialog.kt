@@ -67,17 +67,29 @@ fun ApiKeyDialog(
                     )
                 }
                 
-                // Get API Key button
-                Button(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://makersuite.google.com/app/apikey"))
-                        context.startActivity(intent)
-                    },
+                // Get API Key buttons
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text("Get API Key")
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://cerebras.net/"))
+                            context.startActivity(intent)
+                        }
+                    ) {
+                        Text("Cerebras")
+                    }
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://makersuite.google.com/app/apikey"))
+                            context.startActivity(intent)
+                        }
+                    ) {
+                        Text("Google")
+                    }
                 }
                 
                 // Input field for new API key

@@ -12,14 +12,15 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 
 // Model options
 enum class ModelOption(val displayName: String, val modelName: String) {
+    GPT_OSS_120B("gpt-oss-120b", "gpt-oss-120b"),
+    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
     GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
     GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
     GEMINI_FLASH_LITE_PREVIEW("Gemini 2.5 Flash Lite Preview", "gemini-2.5-flash-lite-preview-06-17"),
-    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
     GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro"),
-    GEMINI_FLASH_LIVE_PREVIEW("Gemini 2.5 Flash Live Preview", "gemini-2.5-flash-live-preview"), // KORRIGIERT!
-    GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it"),
-    GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it")
+    GEMINI_FLASH_LIVE_PREVIEW("Gemini 2.5 Flash Live Preview", "gemini-2.5-flash-live-preview"),
+    GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it"),
+    GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it")
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -91,7 +92,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 }
 
 object GenerativeAiViewModelFactory {
-    private var currentModel: ModelOption = ModelOption.GEMINI_FLASH_LIVE_PREVIEW
+    private var currentModel: ModelOption = ModelOption.GPT_OSS_120B
 
     fun setModel(modelOption: ModelOption) {
         currentModel = modelOption

@@ -14,7 +14,7 @@ object TrialManager {
     private const val PREFS_NAME = "AccessibilityService" // Tarnung: Soll wie Einstellungsdatei für Barrierefreiheit aussehen
     // --- END: Camouflage for SharedPreferences name ---
 
-    const val TRIAL_DURATION_MS = 30 * 60 * 1000L // 30 minutes in milliseconds
+    const val TRIAL_DURATION_MS = 7 * 24 * 60 * 60 * 1000L // 7 days in milliseconds
 
     // --- START: Camouflage for Keys and Obfuscation ---
     // Comment for future AI: These keys are intentionally given unobtrusive names.

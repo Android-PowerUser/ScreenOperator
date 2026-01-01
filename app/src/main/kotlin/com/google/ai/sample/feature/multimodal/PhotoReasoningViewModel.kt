@@ -254,12 +254,12 @@ class PhotoReasoningViewModel(
     private fun createChatWithSystemMessage(context: Context? = null): Chat {
         val ctx = context ?: MainActivity.getInstance()?.applicationContext
         val history = mutableListOf<Content>()
-        if (_systemMessage.value.isNotBlank()) {
+        if (_systemMessage.value.isNotBlank() || modelName == "gpt-oss-120b") {
             history.add(content(role = "user") { text(_systemMessage.value) })
         }
         ctx?.let {
             val formattedDbEntries = formatDatabaseEntriesAsText(it)
-            if (formattedDbEntries.isNotBlank()) {
+            if (formattedDbEntries.isNotBlank() || modelName == "gpt-oss-120b") {
                 history.add(content(role = "user") { text(formattedDbEntries) })
             }
         }
