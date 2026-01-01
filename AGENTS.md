@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This document provides instructions for setting up the environment and building the Android application.
+After each successfully executed instruction on the app, the app must be built and submitted in the following way.
 
 ## Automated Setup Script
 
@@ -26,7 +26,6 @@ fi
 echo "Downloading and unzipping Android SDK..."
 wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
 unzip -q commandlinetools-linux-13114758_latest.zip -d android_sdk
-rm commandlinetools-linux-13114758_latest.zip
 
 # 3. Restructure cmdline-tools for sdkmanager
 echo "Restructuring cmdline-tools..."
@@ -39,39 +38,6 @@ yes | android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
 android_sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 echo "Setup complete."
 ```
-
-## Manual Setup Instructions
-
-If you prefer to set up the environment manually, follow these steps:
-
-1.  **Create `android_sdk` directory:** `mkdir android_sdk`
-2.  **Create `local.properties`:** `echo "sdk.dir=android_sdk" > local.properties`
-3.  **Download and Unzip SDK:**
-    *   Download from `https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip`
-    *   Unzip into `android_sdk`
-4.  **Restructure `cmdline-tools`:**
-    *   `mkdir -p android_sdk/cmdline-tools/latest`
-    *   `mv android_sdk/cmdline-tools/* android_sdk/cmdline-tools/latest`
-5.  **Install SDK packages:**
-    *   `yes | android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null`
-    *   `android_sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"`
-
-## Gradle Performance
-
-The `gradle.properties` file has been optimized for performance to avoid timeouts. The following settings have been applied:
-
-```properties
-org.gradle.jvmargs=-Xmx4g
-org.gradle.parallel=true
-org.gradle.caching=true
-org.gradle.configureondemand=true
-```
-
-## Delivering the APK
-
-After building the application, you can deliver the signed APK file by committing it to a new branch.
-
-The following steps outline how to build, sign, and deliver the APK via a Git branch.
 
 ### 1. Build the Unsigned APK
 
@@ -105,7 +71,9 @@ android_sdk/build-tools/35.0.0/apksigner sign \
 ```
 This command creates a new signed APK named `app-release-signed.apk`.
 
-### 4. Commit the Signed APK to a New Branch
+### 4. Delivering the APK
+
+After building the application, you must deliver the signed APK file by committing it to a new branch.
 
 Create a new branch for the APK delivery
 git checkout -b apk-delivery
