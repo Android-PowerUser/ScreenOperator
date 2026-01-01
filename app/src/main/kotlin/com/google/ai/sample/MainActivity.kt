@@ -1171,7 +1171,7 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "You can try Screen Operator for 30 minutes before you have to subscribe to support the development of more features.",
+                    text = "You can try Screen Operator for 7 days before you have to subscribe to support the development of more features.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )

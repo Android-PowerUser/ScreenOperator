@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 
 class LiveApiManager(
     private val apiKey: String,
-    private val modelName: String = "gemini-2.5-flash-live-preview"
+    private val modelName: String = "gemini-live-2.5-flash-native-audio"
 ) {
     private val TAG = "LiveApiManager"
 
@@ -145,13 +145,12 @@ class LiveApiManager(
         // Setup-Nachricht gemäß Dokumentation
         val setupMessage = JSONObject().apply {
             put("setup", JSONObject().apply {
-                put("model", "models/$apiModelName") // z.B. "models/gemini-live-2.5-flash-preview"
+                put("model", "models/$apiModelName")
                 put("generationConfig", JSONObject().apply {
                     put("temperature", 0.0)
                     put("maxOutputTokens", 8192)
-                    put("responseModalities", JSONArray().apply {
-                        put("TEXT")
-                    })
+                    put("responseModalities", JSONArray()) // Empty array for text-only
+                    put("turnComplete", true)
                 })
 
                 // Add system instruction if available
