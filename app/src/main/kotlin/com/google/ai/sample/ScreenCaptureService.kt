@@ -40,10 +40,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.MissingFieldException
+import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import okhttp3.MediaType.Companion.toMediaType
@@ -725,12 +729,16 @@ data class VercelResponseMessage(
 )
 
 @Serializable
-sealed class VercelContent {
-    @Serializable
-    data class VercelTextContent(val type: String = "text", val text: String) : VercelContent()
-    @Serializable
-    data class VercelImageContent(val type: String = "image_url", val image_url: VercelImageUrl) : VercelContent()
-}
+@JsonClassDiscriminator("type")
+sealed class VercelContent
+
+@Serializable
+@SerialName("text")
+data class VercelTextContent(val text: String) : VercelContent()
+
+@Serializable
+@SerialName("image_url")
+data class VercelImageContent(val image_url: VercelImageUrl) : VercelContent()
 
 @Serializable
 data class VercelImageUrl(val url: String)
@@ -745,13 +753,23 @@ private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory
     var responseText: String? = null
     var errorMessage: String? = null
 
+    val json = Json {
+        serializersModule = SerializersModule {
+            polymorphic(VercelContent::class) {
+                subclass(VercelTextContent::class, VercelTextContent.serializer())
+                subclass(VercelImageContent::class, VercelImageContent.serializer())
+            }
+        }
+        ignoreUnknownKeys = true
+    }
+
     try {
         val messages = (chatHistory + inputContent).map { content ->
             val parts = content.parts.map { part ->
                 when (part) {
-                    is TextPart -> VercelContent.VercelTextContent(text = part.text)
-                    is ImagePart -> VercelContent.VercelImageContent(image_url = VercelImageUrl(url = part.image.toBase64()))
-                    else -> VercelContent.VercelTextContent(text = "") // Or handle other part types appropriately
+                    is TextPart -> VercelTextContent(text = part.text)
+                    is ImagePart -> VercelImageContent(image_url = VercelImageUrl(url = part.image.toBase64()))
+                    else -> VercelTextContent(text = "") // Or handle other part types appropriately
                 }
             }
             VercelMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
@@ -764,7 +782,7 @@ private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory
 
         val client = OkHttpClient()
         val mediaType = "application/json".toMediaType()
-        val jsonBody = Json.encodeToString(VercelRequest.serializer(), requestBody)
+        val jsonBody = json.encodeToString(VercelRequest.serializer(), requestBody)
 
         val request = Request.Builder()
             .url("https://api.vercel.ai/v1/chat/completions")
