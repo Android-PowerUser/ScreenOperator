@@ -2,6 +2,41 @@
 
 After each successfully executed programming instruction, the app must be built and submitted in the following way:
 
+If you are not Jules, or if the Android SDK is not already installed, then you will need to install it first:
+
+```
+#!/bin/bash
+
+# Exit on any error
+set -e
+
+# 1. Set up the Android SDK directory
+echo "Setting up Android SDK directory..."
+mkdir -p android_sdk
+echo "sdk.dir=android_sdk" > local.properties
+
+# Add android_sdk to .gitignore if it's not already there
+if ! grep -q "android_sdk/" .gitignore; then
+  echo "android_sdk/" >> .gitignore
+fi
+
+# 2. Download and unzip the Android SDK command-line tools
+echo "Downloading and unzipping Android SDK..."
+wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+unzip -q commandlinetools-linux-13114758_latest.zip -d android_sdk
+rm commandlinetools-linux-13114758_latest.zip
+
+# 3. Restructure cmdline-tools for sdkmanager
+echo "Restructuring cmdline-tools..."
+mkdir -p android_sdk/cmdline-tools/latest
+mv android_sdk/cmdline-tools/* android_sdk/cmdline-tools/latest 2>/dev/null || true
+
+# 4. Install required SDK packages
+echo "Installing SDK packages..."
+yes | android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+android_sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+```
+
 ### 1. Build the Unsigned APK
 
 echo "Building the application..."
