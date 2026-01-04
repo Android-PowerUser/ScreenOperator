@@ -1,8 +1,8 @@
 # Agent Instructions
 
-After each successfully executed programming instruction, the app must be built and submitted in the following way:
+Do not perform any pre-commit steps except request code review and record learning content. After successful programming, the app must be built and submitted in the following way:
 
-If you are not Jules, or if the Android SDK is not already installed, then you will need to install it first:
+If you are not Jules, then you will need to install the Android SDK first:
 
 ```
 #!/bin/bash
