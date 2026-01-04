@@ -785,7 +785,7 @@ private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory
         val jsonBody = json.encodeToString(VercelRequest.serializer(), requestBody)
 
         val request = Request.Builder()
-            .url("https://api.vercel.ai/v1/chat/completions")
+            .url("https://ai-gateway.vercel.sh/v1/chat/completions")
             .post(jsonBody.toRequestBody(mediaType))
             .addHeader("Content-Type", "application/json")
             .addHeader("Authorization", "Bearer $apiKey")

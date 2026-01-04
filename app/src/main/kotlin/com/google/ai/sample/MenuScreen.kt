@@ -274,14 +274,14 @@ fun MenuScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     val annotatedText = buildAnnotatedString {
-                        append("• Preview models could be deactivated by Google without being handed over to the final release.\n")
-                        append("• GPT-oss 120b is a pure text model.\n")
-                        append("• Gemma 3n E4B it cannot handle screenshots in the API.\n")
-                        append("• GPT models (Vercel) have a free budget of $5 per month.\n")
-                        append("GPT-5.1 Input: $1.25/M Output: $10.00/M\n")
-                        append("GPT-5.1 mini Input: $0.25/ M Output: $2.00/M\n")
-                        append("GPT-5 nano Input: $0.05/M Output: $0.40/M\n")
-                        append("• There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
+                        append("""• Preview models could be deactivated by Google without being handed over to the final release.
+• GPT-oss 120b is a pure text model.
+• Gemma 3n E4B it cannot handle screenshots in the API.
+• GPT models (Vercel) have a free budget of $5 per month.
+GPT-5.1 Input: $1.25/M Output: $10.00/M
+GPT-5.1 mini Input: $0.25/ M Output: $2.00/M
+GPT-5 nano Input: $0.05/M Output: $0.40/M
+• There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at """)
 
                         pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
                         withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
