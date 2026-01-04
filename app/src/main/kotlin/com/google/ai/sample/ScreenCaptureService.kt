@@ -734,11 +734,11 @@ sealed class VercelContent
 
 @Serializable
 @SerialName("text")
-data class VercelTextContent(val text: String) : VercelContent()
+data class VercelTextContent(@SerialName("text") val content: String) : VercelContent()
 
 @Serializable
 @SerialName("image_url")
-data class VercelImageContent(val image_url: VercelImageUrl) : VercelContent()
+data class VercelImageContent(@SerialName("image_url") val content: VercelImageUrl) : VercelContent()
 
 @Serializable
 data class VercelImageUrl(val url: String)
@@ -767,9 +767,9 @@ private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory
         val messages = (chatHistory + inputContent).map { content ->
             val parts = content.parts.map { part ->
                 when (part) {
-                    is TextPart -> VercelTextContent(text = part.text)
-                    is ImagePart -> VercelImageContent(image_url = VercelImageUrl(url = part.image.toBase64()))
-                    else -> VercelTextContent(text = "") // Or handle other part types appropriately
+                    is TextPart -> VercelTextContent(content = part.text)
+                    is ImagePart -> VercelImageContent(content = VercelImageUrl(url = part.image.toBase64()))
+                    else -> VercelTextContent(content = "") // Or handle other part types appropriately
                 }
             }
             VercelMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
