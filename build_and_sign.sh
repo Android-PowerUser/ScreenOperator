@@ -16,7 +16,7 @@ fi
 # 2. Download and unzip the Android SDK command-line tools
 echo "INFO: Downloading Android SDK..."
 wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
-unzip -q commandlinetools-linux-13114758_latest.zip -d android_sdk
+unzip -oq commandlinetools-linux-13114758_latest.zip -d android_sdk
 rm commandlinetools-linux-13114758_latest.zip
 
 # 3. Restructure cmdline-tools for sdkmanager
