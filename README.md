@@ -34,7 +34,7 @@ Some models no longer work because Google is changing the interfaces (API). You 
 
 In some Android versions, the app exhibits surprising errors. If you find one, please fix it.
 
-Free omni models accessible via an API can be found [here](https://github.com/cheahjs/free-llm-api-resources)
+Free models accessible via an API can be found [here](https://github.com/cheahjs/free-llm-api-resources)
 
 
 
