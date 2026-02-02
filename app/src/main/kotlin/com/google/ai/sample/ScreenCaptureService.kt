@@ -33,6 +33,9 @@ import com.google.ai.client.generativeai.type.FunctionResponsePart // For loggin
 import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
 import com.google.ai.client.generativeai.type.TextPart // For logging AI response
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
+import com.google.mediapipe.tasks.genai.llminference.GraphOptions
+import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.ai.sample.util.ModelDownloadManager
 // Removed duplicate TextPart import
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
@@ -104,6 +107,7 @@ class ScreenCaptureService : Service() {
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var llmInference: LlmInference? = null
+    private var llmSession: LlmInferenceSession? = null
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -682,6 +686,8 @@ class ScreenCaptureService : Service() {
             mediaProjection?.stop()
             mediaProjection = null
 
+        llmSession?.close()
+        llmSession = null
         llmInference?.close()
         llmInference = null
         } catch (e: Exception) {
@@ -713,33 +719,29 @@ class ScreenCaptureService : Service() {
         var errorMessage: String? = null
 
         try {
-            val inference = getLlmInference() ?: return Pair(null, "Offline model not found or failed to initialize. Please download it first.")
+            val session = getLlmSession() ?: return Pair(null, "Offline model not found or failed to initialize. Please download it first.")
 
             // Extract image if present
             val bitmap = inputContent.parts.filterIsInstance<ImagePart>().firstOrNull()?.image
 
             // Construct prompt from history and input
-            val promptBuilder = StringBuilder()
+            // For session-based API, we might want to add history as query chunks if session is new
+            // or just the latest input.
+            // Gemma 3 multimodal prompt usually includes <image> token.
 
-            // Add history
-            chatHistory.forEach { content ->
-                val role = if (content.role == "user") "user" else "model"
-                content.parts.filterIsInstance<TextPart>().forEach {
-                    promptBuilder.append("<start_of_turn>$role\n${it.text}<end_of_turn>\n")
-                }
-            }
+            val inputText = inputContent.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
+            val imageToken = if (bitmap != null) "<image>" else ""
+            val prompt = "<start_of_turn>user\n$imageToken$inputText<end_of_turn>\n<start_of_turn>model\n"
 
-            // Add current input
-            inputContent.parts.filterIsInstance<TextPart>().forEach {
-                val imageToken = if (bitmap != null) "<image>" else ""
-                promptBuilder.append("<start_of_turn>user\n$imageToken${it.text}<end_of_turn>\n<start_of_turn>model\n")
-            }
-
-            val prompt = promptBuilder.toString()
             Log.d(TAG, "Offline prompt: $prompt")
 
-            // Use generateResponse (multimodal not yet supported in this MediaPipe version)
-            responseText = inference.generateResponse(prompt)
+            if (bitmap != null) {
+                val mpImage = BitmapImageBuilder(bitmap).build()
+                session.addImage(mpImage)
+            }
+            session.addQueryChunk(prompt)
+
+            responseText = session.generateResponse()
 
             // Broadcast the result as a stream chunk too, so the UI updates as if it was streaming
             if (responseText != null) {
@@ -756,6 +758,27 @@ class ScreenCaptureService : Service() {
         return Pair(responseText, errorMessage)
     }
 
+    private fun getLlmSession(): LlmInferenceSession? {
+        if (llmSession != null) return llmSession
+
+        try {
+            val inference = getLlmInference() ?: return null
+
+            val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
+                .setTemperature(0.0f)
+                .setTopK(40)
+                .setGraphOptions(GraphOptions.builder()
+                    .setEnableVisionModality(true)
+                    .build())
+                .build()
+
+            llmSession = LlmInferenceSession.createFromOptions(inference, sessionOptions)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create LlmInferenceSession", e)
+        }
+        return llmSession
+    }
+
     private fun getLlmInference(): LlmInference? {
         if (llmInference != null) return llmInference
 
@@ -768,6 +791,7 @@ class ScreenCaptureService : Service() {
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
                 .setMaxTopK(40)
+                .setMaxNumImages(10)
                 .build()
 
             llmInference = LlmInference.createFromOptions(applicationContext, options)
