@@ -159,6 +159,12 @@ fun MenuScreen(
                                             selectedModel = modelOption
                                             GenerativeAiViewModelFactory.setModel(modelOption)
                                             expanded = false
+
+                                            if (modelOption.apiProvider == ApiProvider.OFFLINE_GEMMA) {
+                                                if (!ModelDownloadManager.isModelDownloaded(context)) {
+                                                    showDownloadDialog = true
+                                                }
+                                            }
                                         },
                                         enabled = true // Always enabled
                                     )

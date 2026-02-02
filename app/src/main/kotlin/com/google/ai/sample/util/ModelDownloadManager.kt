@@ -8,10 +8,10 @@ import android.os.StatFs
 import java.io.File
 
 object ModelDownloadManager {
-    // Placeholder URL - in a real app this would be a valid link to the model file
-    const val MODEL_URL = "https://storage.googleapis.com/mediapipe-models/llm/gemma-2b-it-gpu.bin"
-    const val MODEL_FILE_NAME = "gemma-3n-e4b-it-offline.bin"
-    const val MODEL_SIZE_BYTES = 4_700_000_000L // 4.7 GB as requested
+    // Link to Gemma 3 4B it (Multimodal)
+    const val MODEL_URL = "https://storage.googleapis.com/mediapipe-models/llm/gemma-3-4b-it-gpu.bin"
+    const val MODEL_FILE_NAME = "gemma-3-4b-it-gpu.bin"
+    const val MODEL_SIZE_BYTES = 4_700_000_000L // 4.7 GB
 
     fun isModelDownloaded(context: Context): Boolean {
         val file = File(context.getExternalFilesDir(null), MODEL_FILE_NAME)

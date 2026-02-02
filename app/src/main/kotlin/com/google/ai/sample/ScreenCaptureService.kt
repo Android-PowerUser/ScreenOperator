@@ -27,7 +27,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
-import com.google.ai.client.generativeai.type.ImagePart // For instance check
+import com.google.ai.client.generativeai.type.ImagePart
 import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI response
 import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
 import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
@@ -715,6 +715,9 @@ class ScreenCaptureService : Service() {
         try {
             val inference = getLlmInference() ?: return Pair(null, "Offline model not found or failed to initialize. Please download it first.")
 
+            // Extract image if present
+            val bitmap = inputContent.parts.filterIsInstance<ImagePart>().firstOrNull()?.image
+
             // Construct prompt from history and input
             val promptBuilder = StringBuilder()
 
@@ -728,15 +731,14 @@ class ScreenCaptureService : Service() {
 
             // Add current input
             inputContent.parts.filterIsInstance<TextPart>().forEach {
-                promptBuilder.append("<start_of_turn>user\n${it.text}<end_of_turn>\n<start_of_turn>model\n")
+                val imageToken = if (bitmap != null) "<image>" else ""
+                promptBuilder.append("<start_of_turn>user\n$imageToken${it.text}<end_of_turn>\n<start_of_turn>model\n")
             }
 
             val prompt = promptBuilder.toString()
             Log.d(TAG, "Offline prompt: $prompt")
 
-            // Use generateResponse for simplicity in this broadcast-based architecture
-            // but we can simulate streaming chunks if needed.
-            // For now, just get the full response and send it.
+            // Use generateResponse (multimodal not yet supported in this MediaPipe version)
             responseText = inference.generateResponse(prompt)
 
             // Broadcast the result as a stream chunk too, so the UI updates as if it was streaming
