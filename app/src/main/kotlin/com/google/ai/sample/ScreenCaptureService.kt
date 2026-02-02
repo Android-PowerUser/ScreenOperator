@@ -40,11 +40,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.MissingFieldException
+import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -70,6 +79,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_AI_CHAT_HISTORY_JSON = "com.google.ai.sample.EXTRA_AI_CHAT_HISTORY_JSON"
         const val EXTRA_AI_MODEL_NAME = "com.google.ai.sample.EXTRA_AI_MODEL_NAME" // For service to create model
         const val EXTRA_AI_API_KEY = "com.google.ai.sample.EXTRA_AI_API_KEY"     // For service to create model
+        const val EXTRA_AI_API_PROVIDER = "com.google.ai.sample.EXTRA_AI_API_PROVIDER" // For service to select API
         const val EXTRA_TEMP_FILE_PATHS = "com.google.ai.sample.EXTRA_TEMP_FILE_PATHS"
 
 
@@ -189,6 +199,8 @@ class ScreenCaptureService : Service() {
                 val chatHistoryJson = intent.getStringExtra(EXTRA_AI_CHAT_HISTORY_JSON)
                 val modelName = intent.getStringExtra(EXTRA_AI_MODEL_NAME)
                 val apiKey = intent.getStringExtra(EXTRA_AI_API_KEY)
+                val apiProviderString = intent.getStringExtra(EXTRA_AI_API_PROVIDER)
+                val apiProvider = ApiProvider.valueOf(apiProviderString ?: ApiProvider.GOOGLE.name)
                 val tempFilePaths = intent.getStringArrayListExtra(EXTRA_TEMP_FILE_PATHS) ?: ArrayList()
                 Log.d(TAG, "Received tempFilePaths for cleanup: $tempFilePaths")
 
@@ -253,22 +265,28 @@ class ScreenCaptureService : Service() {
                             }
                         }
                         try {
-                            val generativeModel = GenerativeModel(
-                                modelName = modelName,
-                                apiKey = apiKey
-                            )
-                            val tempChat = generativeModel.startChat(history = chatHistory)
-                            val fullResponse = StringBuilder()
-                            tempChat.sendMessageStream(inputContent).collect { chunk ->
-                                chunk.text?.let {
-                                    fullResponse.append(it)
-                                    val streamIntent = Intent(ACTION_AI_STREAM_UPDATE).apply {
-                                        putExtra(EXTRA_AI_STREAM_CHUNK, it)
+                            if (apiProvider == ApiProvider.VERCEL) {
+                                val result = callVercelApi(modelName, apiKey, chatHistory, inputContent)
+                                responseText = result.first
+                                errorMessage = result.second
+                            } else {
+                                val generativeModel = GenerativeModel(
+                                    modelName = modelName,
+                                    apiKey = apiKey
+                                )
+                                val tempChat = generativeModel.startChat(history = chatHistory)
+                                val fullResponse = StringBuilder()
+                                tempChat.sendMessageStream(inputContent).collect { chunk ->
+                                    chunk.text?.let {
+                                        fullResponse.append(it)
+                                        val streamIntent = Intent(ACTION_AI_STREAM_UPDATE).apply {
+                                            putExtra(EXTRA_AI_STREAM_CHUNK, it)
+                                        }
+                                        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(streamIntent)
                                     }
-                                    LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(streamIntent)
                                 }
+                                responseText = fullResponse.toString()
                             }
-                            responseText = fullResponse.toString()
                         } catch (e: MissingFieldException) {
                             Log.e(TAG, "Serialization error, potentially a 503 error.", e)
                             // Check if the error message indicates a 503-like error
@@ -679,4 +697,117 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+}
+
+// Data classes for Vercel API
+@Serializable
+data class VercelRequest(
+    val model: String,
+    val messages: List<VercelMessage>
+)
+
+@Serializable
+data class VercelMessage(
+    val role: String,
+    val content: List<VercelContent>
+)
+
+@Serializable
+data class VercelResponse(
+    val choices: List<VercelChoice>
+)
+
+@Serializable
+data class VercelChoice(
+    val message: VercelResponseMessage
+)
+
+@Serializable
+data class VercelResponseMessage(
+    val role: String,
+    val content: String
+)
+
+@Serializable
+@JsonClassDiscriminator("type")
+sealed class VercelContent
+
+@Serializable
+@SerialName("text")
+data class VercelTextContent(@SerialName("text") val content: String) : VercelContent()
+
+@Serializable
+@SerialName("image_url")
+data class VercelImageContent(@SerialName("image_url") val content: VercelImageUrl) : VercelContent()
+
+@Serializable
+data class VercelImageUrl(val url: String)
+
+private fun Bitmap.toBase64(): String {
+    val outputStream = java.io.ByteArrayOutputStream()
+    this.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+    return "data:image/jpeg;base64," + android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.DEFAULT)
+}
+
+private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+    var responseText: String? = null
+    var errorMessage: String? = null
+
+    val json = Json {
+        serializersModule = SerializersModule {
+            polymorphic(VercelContent::class) {
+                subclass(VercelTextContent::class, VercelTextContent.serializer())
+                subclass(VercelImageContent::class, VercelImageContent.serializer())
+            }
+        }
+        ignoreUnknownKeys = true
+    }
+
+    try {
+        val messages = (chatHistory + inputContent).map { content ->
+            val parts = content.parts.map { part ->
+                when (part) {
+                    is TextPart -> VercelTextContent(content = part.text)
+                    is ImagePart -> VercelImageContent(content = VercelImageUrl(url = part.image.toBase64()))
+                    else -> VercelTextContent(content = "") // Or handle other part types appropriately
+                }
+            }
+            VercelMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
+        }
+
+        val requestBody = VercelRequest(
+            model = modelName,
+            messages = messages
+        )
+
+        val client = OkHttpClient()
+        val mediaType = "application/json".toMediaType()
+        val jsonBody = json.encodeToString(VercelRequest.serializer(), requestBody)
+
+        val request = Request.Builder()
+            .url("https://ai-gateway.vercel.sh/v1/chat/completions")
+            .post(jsonBody.toRequestBody(mediaType))
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                errorMessage = "Unexpected code ${response.code} - ${response.body?.string()}"
+            } else {
+                val responseBody = response.body?.string()
+                if (responseBody != null) {
+                    val json = Json { ignoreUnknownKeys = true }
+                    val vercelResponse = json.decodeFromString(VercelResponse.serializer(), responseBody)
+                    responseText = vercelResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
+                } else {
+                    errorMessage = "Empty response body"
+                }
+            }
+        }
+    } catch (e: Exception) {
+        errorMessage = e.localizedMessage ?: "Vercel API call failed"
+    }
+
+    return Pair(responseText, errorMessage)
 }

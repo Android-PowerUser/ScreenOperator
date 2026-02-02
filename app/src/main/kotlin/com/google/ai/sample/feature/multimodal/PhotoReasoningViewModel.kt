@@ -859,6 +859,7 @@ class PhotoReasoningViewModel(
                 putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 // Add the new extra for file paths
                 putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
+                putExtra(ScreenCaptureService.EXTRA_AI_API_PROVIDER, currentModel.apiProvider.name)
             }
             context.startService(serviceIntent)
             Log.d(TAG, "sendMessageWithRetry: Sent intent to ScreenCaptureService to execute AI call.")
