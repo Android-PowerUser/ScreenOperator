@@ -4,7 +4,6 @@ This Android app operates the screen with commands from vision LLMs.
 
 
 #### • The first Android agent app in the world
-#### • Like Computer use and Operator but rather Smartphone use for Android
 
 
 
