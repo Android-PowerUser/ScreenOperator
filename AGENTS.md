@@ -1,6 +1,11 @@
 # Agent Instructions
 
-Do not perform any pre-commit steps except request code review and record learning content. After successful programming, the app must be built and submitted in the following way:
+• Do not perform any pre-commit steps except request code review and record learning content.
+• The code review must always happen before building the application.
+• The project does not contain a test suite in app/src.
+• Complete tasks using a heuristic approach
+
+After successful programming, the app must be built and submitted in the following way:
 
 If you are not Jules, then you will need to install the Android SDK first:
 
