@@ -35,6 +35,7 @@ import com.google.ai.client.generativeai.type.TextPart // For logging AI respons
 // Removed duplicate TextPart import
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -90,7 +91,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_AI_STREAM_UPDATE = "com.google.ai.sample.AI_STREAM_UPDATE"
         const val EXTRA_AI_STREAM_CHUNK = "com.google.ai.sample.EXTRA_AI_STREAM_CHUNK"
 
-        private var instance: ScreenCaptureService? = null
+        internal var instance: ScreenCaptureService? = null
 
         fun isRunning(): Boolean = instance != null && instance?.isReady == true
     }
@@ -101,6 +102,7 @@ class ScreenCaptureService : Service() {
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    internal var llmInference: LlmInference? = null
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -265,7 +267,9 @@ class ScreenCaptureService : Service() {
                             }
                         }
                         try {
-                            if (apiProvider == ApiProvider.VERCEL) {
+                            if (apiProvider == ApiProvider.OFFLINE_GEMMA) {
+                                responseText = callOfflineGemma(applicationContext, chatHistory, inputContent)
+                            } else if (apiProvider == ApiProvider.VERCEL) {
                                 val result = callVercelApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
                                 errorMessage = result.second
@@ -674,6 +678,9 @@ class ScreenCaptureService : Service() {
             mediaProjection?.unregisterCallback(mediaProjectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
+
+            llmInference?.close()
+            llmInference = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during full cleanup", e)
         } finally {
@@ -747,6 +754,56 @@ private fun Bitmap.toBase64(): String {
     val outputStream = java.io.ByteArrayOutputStream()
     this.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
     return "data:image/jpeg;base64," + android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.DEFAULT)
+}
+
+private fun callOfflineGemma(context: Context, chatHistory: List<Content>, inputContent: Content): String {
+    val modelFile = com.google.ai.sample.util.ModelDownloadManager.getModelFile(context)
+    if (!modelFile.exists()) {
+        return "Error: Offline model not found at ${modelFile.absolutePath}"
+    }
+
+    // Initialize LlmInference if not already done
+    val llm = ScreenCaptureService.getLlmInferenceInstance(context)
+
+    // Build the prompt from chat history and input content
+    val promptBuilder = StringBuilder()
+
+    for (content in chatHistory) {
+        val role = if (content.role == "user") "user" else "model"
+        val text = content.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
+        if (text.isNotBlank()) {
+            promptBuilder.append("<start_of_turn>$role\n$text<end_of_turn>\n")
+        }
+    }
+
+    val inputText = inputContent.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
+    promptBuilder.append("<start_of_turn>user\n$inputText<end_of_turn>\n<start_of_turn>model\n")
+
+    val finalPrompt = promptBuilder.toString()
+    Log.d("ScreenCaptureService", "Offline Gemma Prompt: $finalPrompt")
+
+    return try {
+        val response = llm.generateResponse(finalPrompt)
+        Log.d("ScreenCaptureService", "Offline Gemma Response: $response")
+        response
+    } catch (e: Exception) {
+        Log.e("ScreenCaptureService", "Error in offline Gemma inference", e)
+        "Error: ${e.localizedMessage}"
+    }
+}
+
+// Added helper to get or create LlmInference instance
+fun ScreenCaptureService.Companion.getLlmInferenceInstance(context: Context): LlmInference {
+    val service = instance ?: throw IllegalStateException("ScreenCaptureService not running")
+    if (service.llmInference == null) {
+        val modelFile = com.google.ai.sample.util.ModelDownloadManager.getModelFile(context)
+        val options = LlmInference.LlmInferenceOptions.builder()
+            .setModelPath(modelFile.absolutePath)
+            .setMaxTokens(1024)
+            .build()
+        service.llmInference = LlmInference.createFromOptions(context, options)
+    }
+    return service.llmInference!!
 }
 
 private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {

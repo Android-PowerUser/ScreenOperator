@@ -41,6 +41,10 @@ import android.Manifest // For Manifest.permission.POST_NOTIFICATIONS
 import androidx.compose.material3.AlertDialog // For the rationale dialog
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.util.Log
+import com.google.ai.sample.util.ModelDownloadManager
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.material3.LinearProgressIndicator
 
 data class MenuItem(
     val routeId: String,
@@ -67,6 +71,10 @@ fun MenuScreen(
     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -154,6 +162,15 @@ fun MenuScreen(
                                     DropdownMenuItem(
                                         text = { Text(modelOption.displayName) },
                                         onClick = {
+                                            if (modelOption.apiProvider == ApiProvider.OFFLINE_GEMMA) {
+                                                if (!ModelDownloadManager.isModelDownloaded(context)) {
+                                                    selectedModel = modelOption
+                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                    showDownloadDialog = true
+                                                    expanded = false
+                                                    return@DropdownMenuItem
+                                                }
+                                            }
                                             selectedModel = modelOption
                                             GenerativeAiViewModelFactory.setModel(modelOption)
                                             expanded = false
@@ -193,8 +210,25 @@ fun MenuScreen(
                                 if (isTrialExpired) {
                                     Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
                                 } else {
+                                    val currentModelOption = GenerativeAiViewModelFactory.getCurrentModel()
+                                    val mainActivity = context as? MainActivity
+
+                                    // Check for API key if not offline
+                                    if (currentModelOption.apiProvider != ApiProvider.OFFLINE_GEMMA) {
+                                        val apiKey = mainActivity?.getCurrentApiKey(currentModelOption.apiProvider)
+                                        if (apiKey.isNullOrEmpty()) {
+                                            mainActivity?.showApiKeyDialogWithProvider(currentModelOption.apiProvider)
+                                            return@TextButton
+                                        }
+                                    } else {
+                                        // Offline model - check if downloaded
+                                        if (!ModelDownloadManager.isModelDownloaded(context)) {
+                                            showDownloadDialog = true
+                                            return@TextButton
+                                        }
+                                    }
+
                                     if (menuItem.routeId == "photo_reasoning") {
-                                        val mainActivity = context as? MainActivity
                                         if (mainActivity != null) { // Ensure mainActivity is not null
                                             if (!mainActivity.isNotificationPermissionGranted()) {
                                                 Log.d("MenuScreen", "Notification permission NOT granted.")
@@ -312,6 +346,67 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
                 }
             }
         }
+    }
+
+    if (showDownloadDialog) {
+        val availableMB = ModelDownloadManager.getAvailableExternalStorage(context) / (1024 * 1024)
+        val availableGB = availableMB / 1024.0
+
+        AlertDialog(
+            onDismissRequest = { if (!isDownloading) showDownloadDialog = false },
+            title = { Text("Download Gemma 3n E4B") },
+            text = {
+                Column {
+                    Text("Should Gemma 3n E4B be downloaded? It requires 4.7 GB.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Available storage: ${String.format("%.2f", availableGB)} GB",
+                        color = if (availableGB < 5.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+
+                    if (isDownloading) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LinearProgressIndicator(
+                            progress = downloadProgress,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "${(downloadProgress * 100).toInt()}%",
+                            modifier = Modifier.align(Alignment.End),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (!isDownloading) {
+                    TextButton(
+                        onClick = {
+                            isDownloading = true
+                            scope.launch {
+                                val success = ModelDownloadManager.downloadModel(context) { progress ->
+                                    downloadProgress = progress
+                                }
+                                isDownloading = false
+                                if (success) {
+                                    showDownloadDialog = false
+                                    Toast.makeText(context, "Download complete", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Download failed", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isDownloading) {
+                    TextButton(onClick = { showDownloadDialog = false }) {
+                        Text("Abort")
+                    }
+                }
+            }
+        )
     }
 
     if (showRationaleDialogForPhotoReasoning) {
