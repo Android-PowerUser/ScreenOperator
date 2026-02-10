@@ -35,6 +35,10 @@ import com.google.ai.client.generativeai.type.TextPart // For logging AI respons
 // Removed duplicate TextPart import
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
+import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.framework.image.MPImage
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -90,7 +94,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_AI_STREAM_UPDATE = "com.google.ai.sample.AI_STREAM_UPDATE"
         const val EXTRA_AI_STREAM_CHUNK = "com.google.ai.sample.EXTRA_AI_STREAM_CHUNK"
 
-        private var instance: ScreenCaptureService? = null
+        internal var instance: ScreenCaptureService? = null
 
         fun isRunning(): Boolean = instance != null && instance?.isReady == true
     }
@@ -101,6 +105,9 @@ class ScreenCaptureService : Service() {
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    internal var llmInference: LlmInference? = null
+    internal var llmInferenceSession: LlmInferenceSession? = null
+    private var lastChatHistorySize: Int = -1
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -265,7 +272,9 @@ class ScreenCaptureService : Service() {
                             }
                         }
                         try {
-                            if (apiProvider == ApiProvider.VERCEL) {
+                            if (apiProvider == ApiProvider.OFFLINE_GEMMA) {
+                                responseText = callOfflineGemma(applicationContext, chatHistory, inputContent)
+                            } else if (apiProvider == ApiProvider.VERCEL) {
                                 val result = callVercelApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
                                 errorMessage = result.second
@@ -674,6 +683,11 @@ class ScreenCaptureService : Service() {
             mediaProjection?.unregisterCallback(mediaProjectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
+
+            llmInferenceSession?.close()
+            llmInferenceSession = null
+            llmInference?.close()
+            llmInference = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during full cleanup", e)
         } finally {
@@ -697,6 +711,56 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+    private fun callOfflineGemma(context: Context, chatHistory: List<Content>, inputContent: Content): String {
+        Log.d(TAG, "callOfflineGemma: chatHistory size=${chatHistory.size}")
+        val modelFile = com.google.ai.sample.util.ModelDownloadManager.getModelFile(context)
+        if (!modelFile.exists()) {
+            return "Error: Offline model not found at ${modelFile.absolutePath}. Please download it from the menu."
+        }
+
+        val llm = ScreenCaptureService.getLlmInferenceInstance(context)
+
+        // Recreate session if history is cleared or smaller than before (new conversation)
+        if (chatHistory.isEmpty() || llmInferenceSession == null || chatHistory.size <= lastChatHistorySize) {
+            llmInferenceSession?.close()
+            val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder().build()
+            llmInferenceSession = LlmInferenceSession.createFromOptions(llm, sessionOptions)
+
+            // Re-add full history to the new session
+            for (content in chatHistory) {
+                val text = content.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
+                if (text.isNotBlank()) {
+                    llmInferenceSession?.addQueryChunk("<start_of_turn>${if (content.role == "user") "user" else "model"}\n$text<end_of_turn>\n")
+                }
+            }
+        } else {
+            // Add only the latest message from history (the one that was added since last call)
+            val newContent = chatHistory.last()
+            val text = newContent.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
+            if (text.isNotBlank()) {
+                llmInferenceSession?.addQueryChunk("<start_of_turn>${if (newContent.role == "user") "user" else "model"}\n$text<end_of_turn>\n")
+            }
+        }
+
+        lastChatHistorySize = chatHistory.size
+        val inputText = inputContent.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
+        val images = inputContent.parts.filterIsInstance<ImagePart>().map { it.image }
+
+        return try {
+            llmInferenceSession?.addQueryChunk("<start_of_turn>user\n$inputText<end_of_turn>\n<start_of_turn>model\n")
+            for (bitmap in images) {
+                val mpImage = BitmapImageBuilder(bitmap).build()
+                llmInferenceSession?.addImage(mpImage)
+            }
+
+            val response = llmInferenceSession?.generateResponse() ?: "Error: Session is null"
+            Log.d(TAG, "Offline Gemma Response: $response")
+            response
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in offline Gemma inference", e)
+            "Error: ${e.localizedMessage}"
+        }
+    }
 }
 
 // Data classes for Vercel API
@@ -747,6 +811,21 @@ private fun Bitmap.toBase64(): String {
     val outputStream = java.io.ByteArrayOutputStream()
     this.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
     return "data:image/jpeg;base64," + android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.DEFAULT)
+}
+
+
+// Added helper to get or create LlmInference instance
+fun ScreenCaptureService.Companion.getLlmInferenceInstance(context: Context): LlmInference {
+    val service = instance ?: throw IllegalStateException("ScreenCaptureService not running")
+    if (service.llmInference == null) {
+        val modelFile = com.google.ai.sample.util.ModelDownloadManager.getModelFile(context)
+        val options = LlmInference.LlmInferenceOptions.builder()
+            .setModelPath(modelFile.absolutePath)
+            .setMaxTokens(1024)
+            .build()
+        service.llmInference = LlmInference.createFromOptions(context, options)
+    }
+    return service.llmInference!!
 }
 
 private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {

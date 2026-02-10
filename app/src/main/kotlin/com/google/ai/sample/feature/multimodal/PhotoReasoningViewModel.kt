@@ -855,7 +855,7 @@ class PhotoReasoningViewModel(
                 putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
                 val mainActivity = MainActivity.getInstance()
                 val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-                val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
+                val apiKey = if (currentModel.apiProvider == ApiProvider.OFFLINE_GEMMA) "OFFLINE" else (mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: "")
                 putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 // Add the new extra for file paths
                 putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
@@ -1307,8 +1307,7 @@ data class CerebrasResponseMessage(
         screenInfo: String? = null
     ) {
         if (modelName == "gemma-3n-e4b-it") {
-            // If the model is gemma-3n-e4b-it, we don't want to send the screenshot.
-            // Instead, we'll just send the screen info.
+            // Online Gemma 3n E4B it might still be text-only in the API
             val genericAnalysisPrompt = ""
             reason(
                 userInput = genericAnalysisPrompt,
