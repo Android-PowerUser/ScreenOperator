@@ -27,16 +27,11 @@ import android.view.WindowManager
 import android.widget.Toast
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
-import com.google.ai.client.generativeai.type.ImagePart
+import com.google.ai.client.generativeai.type.ImagePart // For instance check
 import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI response
 import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
 import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
 import com.google.ai.client.generativeai.type.TextPart // For logging AI response
-import com.google.mediapipe.tasks.genai.llminference.LlmInference
-import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
-import com.google.mediapipe.tasks.genai.llminference.GraphOptions
-import com.google.mediapipe.framework.image.BitmapImageBuilder
-import com.google.ai.sample.util.ModelDownloadManager
 // Removed duplicate TextPart import
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
@@ -106,8 +101,6 @@ class ScreenCaptureService : Service() {
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var llmInference: LlmInference? = null
-    private var llmSession: LlmInferenceSession? = null
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -272,11 +265,7 @@ class ScreenCaptureService : Service() {
                             }
                         }
                         try {
-                            if (apiProvider == ApiProvider.OFFLINE_GEMMA) {
-                                val result = callOfflineGemmaApi(chatHistory, inputContent)
-                                responseText = result.first
-                                errorMessage = result.second
-                            } else if (apiProvider == ApiProvider.VERCEL) {
+                            if (apiProvider == ApiProvider.VERCEL) {
                                 val result = callVercelApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
                                 errorMessage = result.second
@@ -685,11 +674,6 @@ class ScreenCaptureService : Service() {
             mediaProjection?.unregisterCallback(mediaProjectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
-
-        llmSession?.close()
-        llmSession = null
-        llmInference?.close()
-        llmInference = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during full cleanup", e)
         } finally {
@@ -713,93 +697,6 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun callOfflineGemmaApi(chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
-        var responseText: String? = null
-        var errorMessage: String? = null
-
-        try {
-            val session = getLlmSession() ?: return Pair(null, "Offline model not found or failed to initialize. Please download it first.")
-
-            // Extract image if present
-            val bitmap = inputContent.parts.filterIsInstance<ImagePart>().firstOrNull()?.image
-
-            // Construct prompt from history and input
-            // For session-based API, we might want to add history as query chunks if session is new
-            // or just the latest input.
-            // Gemma 3 multimodal prompt usually includes <image> token.
-
-            val inputText = inputContent.parts.filterIsInstance<TextPart>().joinToString("\n") { it.text }
-            val imageToken = if (bitmap != null) "<image>" else ""
-            val prompt = "<start_of_turn>user\n$imageToken$inputText<end_of_turn>\n<start_of_turn>model\n"
-
-            Log.d(TAG, "Offline prompt: $prompt")
-
-            if (bitmap != null) {
-                val mpImage = BitmapImageBuilder(bitmap).build()
-                session.addImage(mpImage)
-            }
-            session.addQueryChunk(prompt)
-
-            responseText = session.generateResponse()
-
-            // Broadcast the result as a stream chunk too, so the UI updates as if it was streaming
-            if (responseText != null) {
-                val streamIntent = Intent(ACTION_AI_STREAM_UPDATE).apply {
-                    putExtra(EXTRA_AI_STREAM_CHUNK, responseText)
-                }
-                LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(streamIntent)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Offline Gemma call failed", e)
-            errorMessage = e.localizedMessage ?: "Offline Gemma call failed"
-        }
-
-        return Pair(responseText, errorMessage)
-    }
-
-    private fun getLlmSession(): LlmInferenceSession? {
-        if (llmSession != null) return llmSession
-
-        try {
-            val inference = getLlmInference() ?: return null
-
-            val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
-                .setTemperature(0.0f)
-                .setTopK(40)
-                .setGraphOptions(GraphOptions.builder()
-                    .setEnableVisionModality(true)
-                    .build())
-                .build()
-
-            llmSession = LlmInferenceSession.createFromOptions(inference, sessionOptions)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create LlmInferenceSession", e)
-        }
-        return llmSession
-    }
-
-    private fun getLlmInference(): LlmInference? {
-        if (llmInference != null) return llmInference
-
-        try {
-            val modelFile = ModelDownloadManager.getModelFile(applicationContext)
-            if (!modelFile.exists()) {
-                return null
-            }
-
-            val options = LlmInference.LlmInferenceOptions.builder()
-                .setModelPath(modelFile.absolutePath)
-                .setMaxTopK(40)
-                .setMaxNumImages(10)
-                .build()
-
-            llmInference = LlmInference.createFromOptions(applicationContext, options)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create LlmInference", e)
-        }
-        return llmInference
-    }
 }
 
 // Data classes for Vercel API

@@ -22,12 +22,11 @@ import androidx.compose.ui.window.Dialog
 fun ApiKeyDialog(
     apiKeyManager: ApiKeyManager,
     isFirstLaunch: Boolean = false,
-    initialProvider: ApiProvider? = null,
     onDismiss: () -> Unit
 ) {
     var apiKeyInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    var selectedProvider by remember { mutableStateOf(initialProvider ?: ApiProvider.VERCEL) }
+    var selectedProvider by remember { mutableStateOf(ApiProvider.VERCEL) }
     val apiKeys = remember { mutableStateMapOf<ApiProvider, List<String>>() }
     var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex(selectedProvider)) }
     val context = LocalContext.current
@@ -44,7 +43,11 @@ fun ApiKeyDialog(
         loadKeysForProvider(ApiProvider.CEREBRAS)
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = {
+        if (!isFirstLaunch || (apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
+            onDismiss()
+        }
+    }) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -86,7 +89,6 @@ fun ApiKeyDialog(
                             ApiProvider.GOOGLE -> "https://makersuite.google.com/app/apikey"
                             ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
                             ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
-                            ApiProvider.OFFLINE_GEMMA -> "https://ai.google.dev/edge/gallery"
                         }
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         context.startActivity(intent)
@@ -192,8 +194,10 @@ fun ApiKeyDialog(
                         .padding(top = 16.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Close")
+                     if (!isFirstLaunch || (apiKeys[ApiProvider.VERCEL]?.isNotEmpty() == true || apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
+                        TextButton(onClick = onDismiss) {
+                            Text("Close")
+                        }
                     }
                 }
             }

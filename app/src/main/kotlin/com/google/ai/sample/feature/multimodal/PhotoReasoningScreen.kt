@@ -83,12 +83,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -273,28 +267,6 @@ fun PhotoReasoningScreen(
     var entryToEdit: SystemMessageEntry? by rememberSaveable(stateSaver = SystemMessageEntrySaver) { mutableStateOf(null) }
     val listState = rememberLazyListState()
     val context = LocalContext.current
-
-    val isScrolling = listState.isScrollInProgress
-    var lastScrollTime by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(isScrolling) {
-        if (isScrolling) {
-            lastScrollTime = System.currentTimeMillis()
-        }
-    }
-    var showScrollbar by remember { mutableStateOf(false) }
-    LaunchedEffect(isScrolling, lastScrollTime) {
-        if (isScrolling) {
-            showScrollbar = true
-        } else {
-            kotlinx.coroutines.delay(1000)
-            showScrollbar = false
-        }
-    }
-    val scrollbarAlpha by animateFloatAsState(
-        targetValue = if (showScrollbar) 0.5f else 0f,
-        animationSpec = tween(durationMillis = 500),
-        label = "scrollbarAlpha"
-    )
     var systemMessageEntries by rememberSaveable { mutableStateOf(emptyList<SystemMessageEntry>()) }
     val focusManager = LocalFocusManager.current
     val messages by chatMessages.collectAsState()
@@ -436,47 +408,7 @@ fun PhotoReasoningScreen(
             }
         }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .drawWithContent {
-                    drawContent()
-                    if (scrollbarAlpha > 0f) {
-                        val layoutInfo = listState.layoutInfo
-                        val visibleItemsInfo = layoutInfo.visibleItemsInfo
-                        if (visibleItemsInfo.isNotEmpty()) {
-                            val totalItemsCount = layoutInfo.totalItemsCount
-                            val viewportHeight = size.height
-
-                            val firstVisibleItem = visibleItemsInfo.first()
-                            val lastVisibleItem = visibleItemsInfo.last()
-
-                            val visibleItemsCount = visibleItemsInfo.size
-                            val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
-
-                            val firstItemIndex = firstVisibleItem.index
-                            val firstItemOffset = listState.firstVisibleItemScrollOffset.toFloat()
-                            val firstItemHeight = firstVisibleItem.size.toFloat()
-
-                            val scrollPercentage = if (totalItemsCount > visibleItemsCount) {
-                                (firstItemIndex + firstItemOffset / firstItemHeight) / totalItemsCount
-                            } else {
-                                0f
-                            }
-
-                            val scrollbarY = scrollPercentage * viewportHeight
-
-                            drawRect(
-                                color = Color.Gray.copy(alpha = scrollbarAlpha),
-                                topLeft = Offset(size.width - 4.dp.toPx(), scrollbarY),
-                                size = Size(4.dp.toPx(), scrollbarHeight.coerceAtLeast(20.dp.toPx()))
-                            )
-                        }
-                    }
-                }
-        ) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
             items(messages) { message ->
                 when (message.participant) {
                     PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)

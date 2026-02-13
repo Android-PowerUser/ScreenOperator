@@ -103,7 +103,6 @@ class MainActivity : ComponentActivity() {
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
     private lateinit var apiKeyManager: ApiKeyManager
     private var showApiKeyDialog by mutableStateOf(false)
-    private var selectedProviderForDialog by mutableStateOf<ApiProvider?>(null)
 
     // Google Play Billing
     private lateinit var billingClient: BillingClient
@@ -382,6 +381,12 @@ class MainActivity : ComponentActivity() {
 
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
+        if (apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty()) {
+             showApiKeyDialog = true
+             Log.d(TAG, "onCreate: No API key found, showApiKeyDialog set to true.")
+        } else {
+             Log.d(TAG, "onCreate: API key found.")
+        }
 
         // Log.d(TAG, "onCreate: Calling checkAndRequestPermissions.") // Deleted
         // checkAndRequestPermissions() // Deleted
@@ -543,11 +548,9 @@ class MainActivity : ComponentActivity() {
                             ApiKeyDialog(
                                 apiKeyManager = apiKeyManager,
                                 isFirstLaunch = apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty(),
-                                initialProvider = selectedProviderForDialog,
                                 onDismiss = {
                                     Log.d(TAG, "ApiKeyDialog onDismiss called.")
                                     showApiKeyDialog = false
-                                    selectedProviderForDialog = null
                                 }
                             )
                         } else {
@@ -733,9 +736,8 @@ class MainActivity : ComponentActivity() {
                             Log.w(TAG, "MenuScreen: Navigation to '$routeId' blocked due to trial state.")
                         }
                     },
-                    onApiKeyButtonClicked = { provider ->
-                        Log.d(TAG, "MenuScreen onApiKeyButtonClicked: Showing ApiKeyDialog for $provider.")
-                        selectedProviderForDialog = provider
+                    onApiKeyButtonClicked = {
+                        Log.d(TAG, "MenuScreen onApiKeyButtonClicked: Showing ApiKeyDialog.")
                         showApiKeyDialog = true
                     },
                     onDonationButtonClicked = {

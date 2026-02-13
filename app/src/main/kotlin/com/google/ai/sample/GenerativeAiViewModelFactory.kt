@@ -14,8 +14,7 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 enum class ApiProvider {
     VERCEL,
     GOOGLE,
-    CEREBRAS,
-    OFFLINE_GEMMA
+    CEREBRAS
 }
 
 enum class ModelOption(val displayName: String, val modelName: String, val apiProvider: ApiProvider = ApiProvider.GOOGLE) {
@@ -31,8 +30,7 @@ enum class ModelOption(val displayName: String, val modelName: String, val apiPr
     GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
     GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
     GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it"),
-    GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it"),
-    GEMMA_3N_E4B_IT_OFFLINE("Gemma 3n E4B it (offline GPU)", "gemma-3n-e4b-it-offline", ApiProvider.OFFLINE_GEMMA)
+    GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it")
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -50,14 +48,9 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
         val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+        val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
 
-        val apiKey = if (currentModel.apiProvider == ApiProvider.OFFLINE_GEMMA) {
-            "OFFLINE"
-        } else {
-            mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
-        }
-
-        if (apiKey.isEmpty() && currentModel.apiProvider != ApiProvider.OFFLINE_GEMMA) {
+        if (apiKey.isEmpty()) {
             throw IllegalStateException("API key for ${currentModel.apiProvider} is not available. Please set an API key.")
         }
 
@@ -66,21 +59,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
                     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
                     
-                    if (currentModel.apiProvider == ApiProvider.OFFLINE_GEMMA) {
-                        // Offline Gemma model
-                        // We use a dummy GenerativeModel because PhotoReasoningViewModel expects one
-                        // but it will use MediaPipe for actual inference.
-                        val dummyModel = GenerativeModel(
-                            modelName = currentModel.modelName,
-                            apiKey = "OFFLINE",
-                            generationConfig = config
-                        )
-                        PhotoReasoningViewModel(
-                            dummyModel,
-                            currentModel.modelName,
-                            null
-                        )
-                    } else if (currentModel.modelName.contains("live")) {
+                    if (currentModel.modelName.contains("live")) {
                         // Live API models
                         val liveApiManager = LiveApiManager(apiKey, currentModel.modelName)
                         

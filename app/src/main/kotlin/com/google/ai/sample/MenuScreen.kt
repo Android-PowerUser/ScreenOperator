@@ -41,7 +41,6 @@ import android.Manifest // For Manifest.permission.POST_NOTIFICATIONS
 import androidx.compose.material3.AlertDialog // For the rationale dialog
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.util.Log
-import com.google.ai.sample.util.ModelDownloadManager
 
 data class MenuItem(
     val routeId: String,
@@ -53,7 +52,7 @@ data class MenuItem(
 fun MenuScreen(
     innerPadding: PaddingValues,
     onItemClicked: (String) -> Unit = { },
-    onApiKeyButtonClicked: (ApiProvider?) -> Unit = { },
+    onApiKeyButtonClicked: () -> Unit = { },
     onDonationButtonClicked: () -> Unit = { },
     isTrialExpired: Boolean = false, // New parameter to indicate trial status
     isPurchased: Boolean = false
@@ -68,7 +67,6 @@ fun MenuScreen(
     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
-    var showDownloadDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -97,7 +95,7 @@ fun MenuScreen(
                             modifier = Modifier.weight(1f)
                         )
                         Button(
-                            onClick = { onApiKeyButtonClicked(null) },
+                            onClick = { onApiKeyButtonClicked() },
                             enabled = true, // Always enabled
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
@@ -159,12 +157,6 @@ fun MenuScreen(
                                             selectedModel = modelOption
                                             GenerativeAiViewModelFactory.setModel(modelOption)
                                             expanded = false
-
-                                            if (modelOption.apiProvider == ApiProvider.OFFLINE_GEMMA) {
-                                                if (!ModelDownloadManager.isModelDownloaded(context)) {
-                                                    showDownloadDialog = true
-                                                }
-                                            }
                                         },
                                         enabled = true // Always enabled
                                     )
@@ -201,21 +193,6 @@ fun MenuScreen(
                                 if (isTrialExpired) {
                                     Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
                                 } else {
-                                    val currentModelOption = GenerativeAiViewModelFactory.getCurrentModel()
-                                    if (currentModelOption.apiProvider == ApiProvider.OFFLINE_GEMMA) {
-                                        if (!ModelDownloadManager.isModelDownloaded(context)) {
-                                            showDownloadDialog = true
-                                            return@TextButton
-                                        }
-                                    } else {
-                                        val mainActivity = context as? MainActivity
-                                        val apiKey = mainActivity?.getCurrentApiKey(currentModelOption.apiProvider)
-                                        if (apiKey.isNullOrEmpty()) {
-                                            onApiKeyButtonClicked(currentModelOption.apiProvider)
-                                            return@TextButton
-                                        }
-                                    }
-
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
                                         if (mainActivity != null) { // Ensure mainActivity is not null
@@ -335,29 +312,6 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
                 }
             }
         }
-    }
-
-    if (showDownloadDialog) {
-        AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
-            title = { Text("Download Model") },
-            text = {
-                val availableSpace = "%.2f".format(ModelDownloadManager.getAvailableStorageGB(context))
-                Text("Should Gemma 3n E4B be downloaded? It requires 4.7 GB.\n\nAvailable storage: $availableSpace GB")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        ModelDownloadManager.downloadModel(context)
-                        showDownloadDialog = false
-                        Toast.makeText(context, "Download started...", Toast.LENGTH_SHORT).show()
-                    }
-                ) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDownloadDialog = false }) { Text("Abort") }
-            }
-        )
     }
 
     if (showRationaleDialogForPhotoReasoning) {
