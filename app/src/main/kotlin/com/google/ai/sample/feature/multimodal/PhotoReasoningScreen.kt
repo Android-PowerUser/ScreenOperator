@@ -90,6 +90,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -98,6 +105,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -408,7 +416,7 @@ fun PhotoReasoningScreen(
             }
         }
 
-        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f).simpleVerticalScrollbar(listState)) {
             items(messages) { message ->
                 when (message.participant) {
                     PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)
@@ -1269,5 +1277,50 @@ fun DatabaseListPopupEmptyPreview() {
 fun StopButtonPreview() {
     MaterialTheme {
         StopButton {}
+    }
+}
+
+@Composable
+fun Modifier.simpleVerticalScrollbar(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    width: androidx.compose.ui.unit.Dp = 4.dp
+): Modifier = composed {
+    val targetAlpha = remember { mutableStateOf(0f) }
+
+    LaunchedEffect(state.isScrollInProgress) {
+        if (state.isScrollInProgress) {
+            targetAlpha.value = 1f
+        } else {
+            delay(1000)
+            targetAlpha.value = 0f
+        }
+    }
+
+    val alpha by animateFloatAsState(
+        targetValue = targetAlpha.value,
+        animationSpec = tween(durationMillis = if (targetAlpha.value == 1f) 50 else 500)
+    )
+
+    drawWithContent {
+        drawContent()
+
+        val totalItemsCount = state.layoutInfo.totalItemsCount
+        val visibleItemsInfo = state.layoutInfo.visibleItemsInfo
+
+        if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty() && alpha > 0f) {
+            val firstVisibleItem = visibleItemsInfo.first()
+            val viewportHeight = size.height
+
+            // Estimation of scrollbar height and offset
+            val scrollbarHeight = (visibleItemsInfo.size.toFloat() / totalItemsCount) * viewportHeight
+            val scrollbarOffset = (firstVisibleItem.index.toFloat() / totalItemsCount) * viewportHeight
+
+            drawRoundRect(
+                color = Color.Gray.copy(alpha = alpha * 0.5f),
+                topLeft = Offset(size.width - width.toPx(), scrollbarOffset),
+                size = Size(width.toPx(), scrollbarHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(width.toPx() / 2)
+            )
+        }
     }
 }

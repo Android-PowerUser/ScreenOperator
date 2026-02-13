@@ -1,0 +1,2 @@
+Lerninhalt: Implementierung einer benutzerdefinierten Scrollleiste in Jetpack Compose mit drawWithContent und animateFloatAsState.
+Lerninhalt (Ergänzung): Imports in Kotlin/Compose müssen präzise sein, besonders bei Erweiterungseigenschaften wie .dp.
