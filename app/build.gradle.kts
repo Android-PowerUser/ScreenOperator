@@ -91,5 +91,6 @@ dependencies {
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+
 }
 

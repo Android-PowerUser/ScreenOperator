@@ -34,16 +34,20 @@ echo "INFO: Building the application..."
 ./gradlew assembleRelease
 
 # 6. Generate a Test Signing Key
-echo "INFO: Generating test signing key..."
-keytool -genkey -v \
-  -keystore debug.keystore \
-  -storepass android \
-  -alias androiddebugkey \
-  -keypass android \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -dname "CN=Android Debug,O=Android,C=US"
+if [ -f debug.keystore ]; then
+  echo "INFO: debug.keystore already exists. Skipping generation."
+else
+  echo "INFO: Generating test signing key..."
+  keytool -genkey -v \
+    -keystore debug.keystore \
+    -storepass android \
+    -alias androiddebugkey \
+    -keypass android \
+    -keyalg RSA \
+    -keysize 2048 \
+    -validity 10000 \
+    -dname "CN=Android Debug,O=Android,C=US"
+fi
 
 # 7. Sign the APK
 echo "INFO: Signing the APK..."

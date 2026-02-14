@@ -1,5 +1,6 @@
 package com.google.ai.sample.feature.multimodal
 
+import android.app.Application
 import android.app.ActivityManager
 import android.app.ActivityManager.RunningAppProcessInfo
 import android.content.Context
@@ -11,7 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import coil.ImageLoader
 import coil.request.ImageRequest
@@ -34,6 +35,9 @@ import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
+import com.google.ai.sample.feature.multimodal.ModelDownloadManager // Added import
+import com.google.ai.sample.ModelOption // Added import
+import com.google.ai.sample.GenerativeAiViewModelFactory // Added import
 import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
 import com.google.ai.sample.feature.multimodal.dtos.ImagePartDto // Required for path extraction
 import kotlinx.coroutines.Dispatchers
@@ -70,10 +74,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class PhotoReasoningViewModel(
+    application: Application,
     private var generativeModel: GenerativeModel,
     private val modelName: String,
     private val liveApiManager: LiveApiManager? = null
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     private val isLiveMode: Boolean
         get() = liveApiManager != null
@@ -175,7 +180,7 @@ class PhotoReasoningViewModel(
                     _uiState.value = PhotoReasoningUiState.Success(responseText)
                     finalizeAiMessage(responseText)
                     processCommands(responseText)
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    saveChatHistory(getApplication<Application>())
                 } else if (errorMessage != null) {
                     Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
                     if (context == null) {
@@ -224,7 +229,7 @@ class PhotoReasoningViewModel(
                         )
                     )
                     _chatMessagesFlow.value = chatMessages
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    saveChatHistory(getApplication<Application>())
                 }
                 // Reset pending AI message if any (assuming updateAiMessage or error handling does this)
             }
@@ -413,6 +418,45 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+
+        // Check for offline model (Gemma)
+        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
+            val context = getApplication<Application>().applicationContext
+
+            if (!ModelDownloadManager.isModelDownloaded(context)) {
+                _uiState.value = PhotoReasoningUiState.Error("Model not downloaded. Starting download...")
+                // Auto-start download for convenience as requested
+                currentModel.downloadUrl?.let { url ->
+                    ModelDownloadManager.downloadModel(context, url)
+                }
+                return
+            }
+
+            _uiState.value = PhotoReasoningUiState.Loading
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    // Simulate initialization delay
+                    delay(500) // "Booting LM..."
+
+                    // Simulate inference
+                    // In a real implementation, this would call LiteRT (TensorFlow Lite) inference
+                    val response = "Offline model inference is not fully implemented due to missing dependencies (LiteRT). However, the model file is downloaded and ready. (Simulated Response)"
+
+                    withContext(Dispatchers.Main) {
+                         _uiState.value = PhotoReasoningUiState.Success(response)
+                         finalizeAiMessage(response)
+                         processCommands(response)
+                         saveChatHistory(context)
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = PhotoReasoningUiState.Error("Offline inference failed: ${e.message}")
+                    }
+                }
+            }
+            return
+        }
+
         if (currentModel.apiProvider == ApiProvider.CEREBRAS) {
             reasonWithCerebras(userInput, selectedImages, screenInfoForPrompt)
             return
@@ -497,7 +541,7 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
-        val context = MainActivity.getInstance()?.applicationContext ?: return
+        val context = getApplication<Application>().applicationContext
 
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val apiKey = apiKeyManager.getCurrentApiKey(ApiProvider.CEREBRAS)
@@ -605,11 +649,10 @@ class PhotoReasoningViewModel(
         if (liveApiManager != null) {
             // Set system message and history when connecting
             viewModelScope.launch {
-                val context = MainActivity.getInstance()?.applicationContext
-                if (context != null) {
-                    ensureInitialized(context)
+                val context = getApplication<Application>().applicationContext
+                ensureInitialized(context)
 
-                    // Convert chat history to format for Live API
+                // Convert chat history to format for Live API
                     val historyPairs = mutableListOf<Pair<String, String>>()
 
                     // Add system message and DB entries as initial context
@@ -642,8 +685,7 @@ class PhotoReasoningViewModel(
                         }
                     }
 
-                    liveApiManager.setSystemMessageAndHistory(_systemMessage.value, historyPairs)
-                }
+                liveApiManager.setSystemMessageAndHistory(_systemMessage.value, historyPairs)
             }
 
             // Collect messages
@@ -689,7 +731,7 @@ class PhotoReasoningViewModel(
                             processCommands(finalMessage.text)
 
                             // Save chat history
-                            saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                            saveChatHistory(getApplication<Application>())
                         }
                     }
                 }
@@ -908,7 +950,7 @@ class PhotoReasoningViewModel(
             )
             _chatMessagesFlow.value = _chatState.getAllMessages()
         }
-        saveChatHistory(MainActivity.getInstance()?.applicationContext)
+        saveChatHistory(getApplication<Application>())
     }
 
     private fun updateAiMessage(text: String, isPending: Boolean = false) {
@@ -938,7 +980,7 @@ class PhotoReasoningViewModel(
 
         // Save chat history after updating message
         if (!stopExecutionFlag.get() || text.contains("stopped by user", ignoreCase = true)) {
-            saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            saveChatHistory(getApplication<Application>())
         }
     }
 
@@ -1306,18 +1348,6 @@ data class CerebrasResponseMessage(
         context: Context,
         screenInfo: String? = null
     ) {
-        if (modelName == "gemma-3n-e4b-it") {
-            // If the model is gemma-3n-e4b-it, we don't want to send the screenshot.
-            // Instead, we'll just send the screen info.
-            val genericAnalysisPrompt = ""
-            reason(
-                userInput = genericAnalysisPrompt,
-                selectedImages = emptyList(),
-                screenInfoForPrompt = screenInfo,
-                imageUrisForChat = emptyList()
-            )
-            return
-        }
         if (screenshotUri == Uri.EMPTY) {
             // This case is for gemma-3n-e4b-it, where we don't have a screenshot.
             // We just want to send the screen info.

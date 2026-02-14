@@ -152,7 +152,9 @@ fun MenuScreen(
 
                                 orderedModels.forEach { modelOption ->
                                     DropdownMenuItem(
-                                        text = { Text(modelOption.displayName) },
+                                        text = {
+                                            Text(modelOption.displayName + (modelOption.size?.let { " - $it" } ?: ""))
+                                        },
                                         onClick = {
                                             selectedModel = modelOption
                                             GenerativeAiViewModelFactory.setModel(modelOption)
