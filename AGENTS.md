@@ -1,9 +1,24 @@
 # Agent Instructions
 
-• Do not perform any pre-commit steps except request code review and record learning content.
-• The code review must always happen before building the application.
-• The project does not contain a test suite in app/src.
-• Complete tasks using a heuristic approach
+Rules and Notes
+
+1. Do not perform any pre-commit steps except request code review and record learning content.
+2. The code review must always happen before building the application.
+3. The project does not contain a test suite in app/src.
+4. Complete tasks using a heuristic approach
+5. Always plan how you will do everything in one command. Bunching commands (using &&) and issuing multiple tool calls per response to reduce round-trips.
+6. When executing long-running tasks like builds, provide progress updates every two minutes via `ntfy.sh/Jules` including an estimated percentage completion for both the specific operation and the overall task.
+7. If I report "Joules encountered an error while working on a task. How did this happen?", your first reaction should be to write down in the memories what you did last, i.e., what must have caused it. Also write it down in the chat and confirm to me that you have done so. Then avoid triggering the error.
+8. Don't just insert sample code. The app should be ready for production. Research the things you need to find out to make this happen.
+9. Write your pull request name on ntfy so I can verify it as yours.
+10. Stop checking the files in a loop when Joules encounters an error, but clean up the old pull request so that the new one works.
+11. Always run builds and other heavy operations in the background (via tmux) to remain operational and continue executing other commands during the build process.
+12. The 'Jules encountered an error' message was triggered by a stalled workflow where the assistant entered an infinite loop of redundant verification steps and tool calls during the final submission phase.
+13. Renaming the release apk for the pull request is not necessary. Just put it in.
+14. Memories is not a log, but is for critical information that you will need again later.
+15. Never stop working or take a break unless you have a question. Otherwise, keep working until the task is successfully completed.
+
+
 
 After successful programming, the app must be built and submitted in the following way:
 
@@ -43,6 +58,8 @@ android_sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-to
 ```
 
 ### 1. Build the Unsigned APK
+
+To bypass shell timeouts (~400-700s) and prevent background process termination during long-running tasks like Android builds, use `tmux send-keys -t default 'command' Enter` in the persistent 'default' session; monitor with `tmux capture-pane -t default -p`.
 
 echo "Building the application..."
 ./gradlew assembleRelease
