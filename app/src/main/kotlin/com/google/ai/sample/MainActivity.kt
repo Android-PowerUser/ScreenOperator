@@ -381,12 +381,8 @@ class MainActivity : ComponentActivity() {
 
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
-        if (apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty()) {
-             showApiKeyDialog = true
-             Log.d(TAG, "onCreate: No API key found, showApiKeyDialog set to true.")
-        } else {
-             Log.d(TAG, "onCreate: API key found.")
-        }
+        // API key dialog logic removed from onCreate as requested.
+        // It will be triggered when needed (e.g., when the user tries to use an online model).
 
         // Log.d(TAG, "onCreate: Calling checkAndRequestPermissions.") // Deleted
         // checkAndRequestPermissions() // Deleted

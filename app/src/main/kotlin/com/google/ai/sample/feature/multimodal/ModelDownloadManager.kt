@@ -18,11 +18,17 @@ object ModelDownloadManager {
 
     fun isModelDownloaded(context: Context): Boolean {
         val file = getModelFile(context)
-        return file.exists() && file.length() > 0
+        return file != null && file.exists() && file.length() > 0
     }
 
-    fun getModelFile(context: Context): File {
-        return File(context.getExternalFilesDir(null), MODEL_FILENAME)
+    fun getModelFile(context: Context): File? {
+        val externalFilesDir = context.getExternalFilesDir(null)
+        return if (externalFilesDir != null) {
+            File(externalFilesDir, MODEL_FILENAME)
+        } else {
+            Log.e(TAG, "External files directory is not available.")
+            null
+        }
     }
 
     fun downloadModel(context: Context, url: String) {
@@ -32,31 +38,45 @@ object ModelDownloadManager {
         }
 
         val file = getModelFile(context)
-        if (file.exists()) {
+        if (file != null && file.exists()) {
             file.delete() // Clean up partial or old file
         }
 
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("Downloading Gemma Model")
-            .setDescription("Downloading offline AI model (4.92 GB)...")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, null, MODEL_FILENAME)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
+        try {
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle("Downloading Gemma Model")
+                .setDescription("Downloading offline AI model (4.92 GB)...")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(context, null, MODEL_FILENAME)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
 
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        downloadId = downloadManager.enqueue(request)
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
 
-        Toast.makeText(context, "Download started. Check notifications.", Toast.LENGTH_LONG).show()
-        Log.d(TAG, "Download started with ID: $downloadId")
+            if (downloadManager != null) {
+                downloadId = downloadManager.enqueue(request)
+                Toast.makeText(context, "Download started. Check notifications.", Toast.LENGTH_LONG).show()
+                Log.d(TAG, "Download started with ID: $downloadId")
+            } else {
+                Log.e(TAG, "DownloadManager service not available.")
+                Toast.makeText(context, "Download service unavailable.", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting download: ${e.message}")
+            Toast.makeText(context, "Failed to start download.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun cancelDownload(context: Context) {
         if (downloadId != -1L) {
-            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            downloadManager.remove(downloadId)
-            downloadId = -1
-            Toast.makeText(context, "Download cancelled.", Toast.LENGTH_SHORT).show()
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            if (downloadManager != null) {
+                downloadManager.remove(downloadId)
+                downloadId = -1
+                Toast.makeText(context, "Download cancelled.", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.e(TAG, "DownloadManager service not available for cancellation.")
+            }
         }
     }
 }

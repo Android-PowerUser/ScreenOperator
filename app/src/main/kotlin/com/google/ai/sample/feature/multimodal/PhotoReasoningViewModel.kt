@@ -48,14 +48,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-// Removed duplicate StateFlow import
-// Removed duplicate asStateFlow import
-// import kotlinx.coroutines.isActive // Removed as we will use job.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
-// import kotlin.coroutines.coroutineContext // Removed if not used
 import java.util.concurrent.atomic.AtomicBoolean
 
 import android.graphics.Bitmap
@@ -63,6 +59,7 @@ import java.io.ByteArrayOutputStream
 import android.util.Base64
 import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.ApiProvider
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -83,13 +80,15 @@ class PhotoReasoningViewModel(
     private val isLiveMode: Boolean
         get() = liveApiManager != null
 
+    private var llmInference: LlmInference? = null
+    private val TAG = "PhotoReasoningViewModel"
+
     private fun Bitmap.toBase64(): String {
         val outputStream = ByteArrayOutputStream()
         this.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
         val bytes = outputStream.toByteArray()
         return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
-    private val TAG = "PhotoReasoningViewModel"
 
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
@@ -183,11 +182,7 @@ class PhotoReasoningViewModel(
                     saveChatHistory(getApplication<Application>())
                 } else if (errorMessage != null) {
                     Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
-                    if (context == null) {
-                        Log.e(TAG, "Context null in receiver, cannot handle error")
-                        return
-                    }
-                    val receiverContext = context
+                    val receiverContext = context ?: getApplication<Application>()
                     _uiState.value = PhotoReasoningUiState.Error(errorMessage)
                     _commandExecutionStatus.value = "Error during AI generation: $errorMessage"
                     _chatState.replaceLastPendingMessage()
@@ -237,36 +232,65 @@ class PhotoReasoningViewModel(
     }
 
     init {
-        // ... other init logic
-        val context = MainActivity.getInstance()?.applicationContext
-        if (context != null) {
-            val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
-            LocalBroadcastManager.getInstance(context).registerReceiver(aiResultReceiver, filter)
-            Log.d(TAG, "AIResultReceiver registered with LocalBroadcastManager.")
+        // Initialize model if it's the offline one and already downloaded
+        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+        val context = getApplication<Application>().applicationContext
+        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
+            if (ModelDownloadManager.isModelDownloaded(context)) {
+                initializeOfflineModel(context)
+            }
+        }
 
-            val streamFilter = IntentFilter(ScreenCaptureService.ACTION_AI_STREAM_UPDATE)
-            LocalBroadcastManager.getInstance(context).registerReceiver(aiResultStreamReceiver, streamFilter)
-            Log.d(TAG, "AIResultStreamReceiver registered with LocalBroadcastManager.")
-        } else {
-            Log.e(TAG, "Failed to register AIResultReceiver: applicationContext is null at init.")
+        // Register receivers after initialization block to ensure properties are initialized
+        val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
+        LocalBroadcastManager.getInstance(context).registerReceiver(aiResultReceiver, filter)
+        Log.d(TAG, "AIResultReceiver registered with LocalBroadcastManager.")
+
+        val streamFilter = IntentFilter(ScreenCaptureService.ACTION_AI_STREAM_UPDATE)
+        LocalBroadcastManager.getInstance(context).registerReceiver(aiResultStreamReceiver, streamFilter)
+        Log.d(TAG, "AIResultStreamReceiver registered with LocalBroadcastManager.")
+    }
+
+    private fun initializeOfflineModel(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (llmInference == null) {
+                    val modelFile = ModelDownloadManager.getModelFile(context)
+                    if (modelFile != null && modelFile.exists()) {
+                        val options = LlmInference.LlmInferenceOptions.builder()
+                            .setModelPath(modelFile.absolutePath)
+                            .setMaxTokens(1024)
+                            .build()
+                        llmInference = LlmInference.createFromOptions(context, options)
+                        Log.d(TAG, "Offline model initialized.")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize offline model", e)
+            }
         }
     }
 
     override fun onCleared() {
         super.onCleared()
         liveApiManager?.close()
-        val context = MainActivity.getInstance()?.applicationContext
-        if (context != null) {
-            LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultReceiver)
-            Log.d(TAG, "AIResultReceiver unregistered with LocalBroadcastManager.")
-            LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultStreamReceiver)
-            Log.d(TAG, "AIResultStreamReceiver unregistered with LocalBroadcastManager.")
+        val context = getApplication<Application>().applicationContext
+        LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultReceiver)
+        Log.d(TAG, "AIResultReceiver unregistered with LocalBroadcastManager.")
+        LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultStreamReceiver)
+        Log.d(TAG, "AIResultStreamReceiver unregistered with LocalBroadcastManager.")
+
+        try {
+            // Using reflection if specific method not known or standard cast
+            (llmInference as? java.io.Closeable)?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing LlmInference", e)
         }
-        // ... other onCleared logic
+        llmInference = null
     }
 
     private fun createChatWithSystemMessage(context: Context? = null): Chat {
-        val ctx = context ?: MainActivity.getInstance()?.applicationContext
+        val ctx = context ?: getApplication<Application>()
         val history = mutableListOf<Content>()
         if (_systemMessage.value.isNotBlank()) {
             history.add(content(role = "user") { text(_systemMessage.value) })
@@ -293,10 +317,10 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
     // Get context for rebuildChatHistory
-    val context = MainActivity.getInstance()?.applicationContext
+    val context = getApplication<Application>().applicationContext
 
     // Update the generative model with the current API key if retrying
-    if (currentRetryAttempt > 0 && context != null) {
+    if (currentRetryAttempt > 0) {
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
@@ -424,23 +448,26 @@ class PhotoReasoningViewModel(
             val context = getApplication<Application>().applicationContext
 
             if (!ModelDownloadManager.isModelDownloaded(context)) {
-                _uiState.value = PhotoReasoningUiState.Error("Model not downloaded. Starting download...")
-                // Auto-start download for convenience as requested
-                currentModel.downloadUrl?.let { url ->
-                    ModelDownloadManager.downloadModel(context, url)
-                }
+                _uiState.value = PhotoReasoningUiState.Error("Model not downloaded.")
                 return
             }
 
             _uiState.value = PhotoReasoningUiState.Loading
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    // Simulate initialization delay
-                    delay(500) // "Booting LM..."
+                    if (llmInference == null) {
+                        initializeOfflineModel(context)
+                        val modelFile = ModelDownloadManager.getModelFile(context)
+                        if (modelFile != null && modelFile.exists()) {
+                            val options = LlmInference.LlmInferenceOptions.builder()
+                                .setModelPath(modelFile.absolutePath)
+                                .setMaxTokens(1024)
+                                .build()
+                            llmInference = LlmInference.createFromOptions(context, options)
+                        }
+                    }
 
-                    // Simulate inference
-                    // In a real implementation, this would call LiteRT (TensorFlow Lite) inference
-                    val response = "Offline model inference is not fully implemented due to missing dependencies (LiteRT). However, the model file is downloaded and ready. (Simulated Response)"
+                    val response = llmInference?.generateResponse(userInput) ?: "Error: Inference engine not initialized"
 
                     withContext(Dispatchers.Main) {
                          _uiState.value = PhotoReasoningUiState.Success(response)
@@ -518,7 +545,7 @@ class PhotoReasoningViewModel(
                         )
                     )
                     _chatMessagesFlow.value = _chatState.getAllMessages()
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    saveChatHistory(getApplication<Application>())
                 }
             }
         } else {
