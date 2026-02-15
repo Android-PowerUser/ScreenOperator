@@ -17,7 +17,13 @@ enum class ApiProvider {
     CEREBRAS
 }
 
-enum class ModelOption(val displayName: String, val modelName: String, val apiProvider: ApiProvider = ApiProvider.GOOGLE) {
+enum class ModelOption(
+    val displayName: String,
+    val modelName: String,
+    val apiProvider: ApiProvider = ApiProvider.GOOGLE,
+    val downloadUrl: String? = null,
+    val size: String? = null
+) {
     GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
     GPT_5_1_CODEX_MINI("GPT-5.1 Codex Mini (Vercel)", "openai/gpt-5.1-codex-mini", ApiProvider.VERCEL),
     GPT_5_NANO("GPT-5 Nano (Vercel)", "openai/gpt-5-nano", ApiProvider.VERCEL),
@@ -30,7 +36,13 @@ enum class ModelOption(val displayName: String, val modelName: String, val apiPr
     GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
     GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
     GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it"),
-    GEMMA_3N_E4B_IT("Gemma 3n E4B it (online)", "gemma-3n-e4b-it")
+    GEMMA_3N_E4B_IT(
+        "Gemma 3n E4B it (offline)",
+        "gemma-3n-e4b-it",
+        ApiProvider.GOOGLE,
+        "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
+        "4.92 GB"
+    )
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -73,6 +85,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                         )
                         
                         val viewModel = PhotoReasoningViewModel(
+                            application,
                             fallbackModel, 
                             currentModel.modelName, 
                             liveApiManager
@@ -88,6 +101,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                             generationConfig = config
                         )
                         PhotoReasoningViewModel(
+                            application,
                             generativeModel, 
                             currentModel.modelName,
                             null // No LiveApiManager for regular models

@@ -102,6 +102,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.lazy.LazyListState
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -408,53 +414,59 @@ fun PhotoReasoningScreen(
             }
         }
 
-        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
-            items(messages) { message ->
-                when (message.participant) {
-                    PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)
-                    PhotoParticipant.MODEL -> ModelChatBubble(message.text, message.isPending)
-                    PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                items(messages) { message ->
+                    when (message.participant) {
+                        PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)
+                        PhotoParticipant.MODEL -> ModelChatBubble(message.text, message.isPending)
+                        PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
+                    }
                 }
-            }
 
-            if (commandExecutionStatus.isNotEmpty()) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Command Status:", style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(4.dp))
-                            Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                if (commandExecutionStatus.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Command Status:", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(4.dp))
+                                Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            }
                         }
                     }
                 }
-            }
 
-            if (detectedCommands.isNotEmpty()) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(4.dp))
-                            detectedCommands.forEachIndexed { index, command ->
-                                val commandText = when (command) {
-                                    is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
-                                    is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
-                                    is Command.TakeScreenshot -> "Take screenshot"
-                                    else -> command::class.simpleName ?: "Unknown Command"
+                if (detectedCommands.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(4.dp))
+                                detectedCommands.forEachIndexed { index, command ->
+                                    val commandText = when (command) {
+                                        is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
+                                        is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
+                                        is Command.TakeScreenshot -> "Take screenshot"
+                                        else -> command::class.simpleName ?: "Unknown Command"
+                                    }
+                                    Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                    if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
                                 }
-                                Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
                             }
                         }
                     }
                 }
             }
+            VerticalScrollbar(
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                listState = listState
+            )
         }
 
         val showStopButton = uiState is PhotoReasoningUiState.Loading // commandExecutionStatus check is implicitly handled by cards in LazyColumn
@@ -1269,5 +1281,47 @@ fun DatabaseListPopupEmptyPreview() {
 fun StopButtonPreview() {
     MaterialTheme {
         StopButton {}
+    }
+}
+
+@Composable
+fun VerticalScrollbar(
+    modifier: Modifier = Modifier,
+    listState: LazyListState
+) {
+    val scrollbarState by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            if (totalItems == 0) return@derivedStateOf null
+
+            val viewportHeight = layoutInfo.viewportSize.height.toFloat()
+            // Avoid division by zero and complex layout loops
+            val firstVisibleItemIndex = listState.firstVisibleItemIndex
+            val firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+
+            // Simple estimation logic
+            val elementHeight = if (layoutInfo.visibleItemsInfo.isNotEmpty())
+                layoutInfo.visibleItemsInfo.sumOf { it.size } / layoutInfo.visibleItemsInfo.size.toFloat()
+                else 100f // Fallback
+
+            val estimatedTotalHeight = elementHeight * totalItems
+            val thumbHeight = ((viewportHeight / estimatedTotalHeight) * viewportHeight).coerceAtLeast(20f) // Min size
+            val scrollOffset = ((firstVisibleItemIndex * elementHeight) + firstVisibleItemScrollOffset) / estimatedTotalHeight * viewportHeight
+
+            Pair(scrollOffset, thumbHeight)
+        }
+    }
+
+    if (scrollbarState != null) {
+        val (offset, height) = scrollbarState!!
+         Canvas(modifier = modifier.width(4.dp)) {
+            drawRoundRect(
+                color = Color.Gray,
+                topLeft = Offset(0f, offset),
+                size = Size(size.width, height),
+                cornerRadius = CornerRadius(4.dp.toPx())
+            )
+        }
     }
 }

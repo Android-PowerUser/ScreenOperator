@@ -41,6 +41,10 @@ import android.Manifest // For Manifest.permission.POST_NOTIFICATIONS
 import androidx.compose.material3.AlertDialog // For the rationale dialog
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.util.Log
+import android.os.Environment
+import android.os.StatFs
+import com.google.ai.sample.feature.multimodal.ModelDownloadManager
+import java.io.File
 
 data class MenuItem(
     val routeId: String,
@@ -67,6 +71,8 @@ fun MenuScreen(
     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadDialogModel by remember { mutableStateOf<ModelOption?>(null) }
 
     Column(
         modifier = Modifier
@@ -152,11 +158,24 @@ fun MenuScreen(
 
                                 orderedModels.forEach { modelOption ->
                                     DropdownMenuItem(
-                                        text = { Text(modelOption.displayName) },
+                                        text = {
+                                            Text(modelOption.displayName + (modelOption.size?.let { " - $it" } ?: ""))
+                                        },
                                         onClick = {
-                                            selectedModel = modelOption
-                                            GenerativeAiViewModelFactory.setModel(modelOption)
                                             expanded = false
+                                            if (modelOption == ModelOption.GEMMA_3N_E4B_IT) {
+                                                val isDownloaded = ModelDownloadManager.isModelDownloaded(context)
+                                                if (!isDownloaded) {
+                                                    downloadDialogModel = modelOption
+                                                    showDownloadDialog = true
+                                                } else {
+                                                    selectedModel = modelOption
+                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                }
+                                            } else {
+                                                selectedModel = modelOption
+                                                GenerativeAiViewModelFactory.setModel(modelOption)
+                                            }
                                         },
                                         enabled = true // Always enabled
                                     )
@@ -195,6 +214,19 @@ fun MenuScreen(
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
+                                        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+                                        // Check API Key for online models
+                                        if (currentModel.apiProvider != ApiProvider.GOOGLE || !currentModel.modelName.contains("litert")) { // Simple check, refine if needed. Actually offline model has specific Enum
+                                             if (currentModel != ModelOption.GEMMA_3N_E4B_IT) {
+                                                 val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider)
+                                                 if (apiKey.isNullOrEmpty()) {
+                                                     // Show API Key Dialog
+                                                     onApiKeyButtonClicked() // Or a specific callback to show dialog
+                                                     return@TextButton
+                                                 }
+                                             }
+                                        }
+
                                         if (mainActivity != null) { // Ensure mainActivity is not null
                                             if (!mainActivity.isNotificationPermissionGranted()) {
                                                 Log.d("MenuScreen", "Notification permission NOT granted.")
@@ -348,6 +380,41 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
                         mainActivity?.let { onItemClicked("photo_reasoning") }
                     }
                 ) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDownloadDialog && downloadDialogModel != null) {
+        val context = LocalContext.current
+        val statFs = StatFs(Environment.getExternalStorageDirectory().path)
+        val bytesAvailable = statFs.availableBlocksLong * statFs.blockSizeLong
+        val gbAvailable = bytesAvailable.toDouble() / (1024 * 1024 * 1024)
+        val formattedGbAvailable = String.format("%.2f", gbAvailable)
+
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = { Text("Download Model?") },
+            text = { Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDownloadDialog = false
+                        downloadDialogModel?.downloadUrl?.let { url ->
+                            ModelDownloadManager.downloadModel(context, url)
+                            // We set the model, but the user will have to wait for download
+                            selectedModel = downloadDialogModel!!
+                            GenerativeAiViewModelFactory.setModel(downloadDialogModel!!)
+                        }
+                    }
+                ) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDownloadDialog = false
+                        // Do not change model
+                    }
+                ) { Text("ABORT") }
             }
         )
     }
