@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
     private lateinit var apiKeyManager: ApiKeyManager
     private var showApiKeyDialog by mutableStateOf(false)
+    private var apiKeyDialogInitialProvider by mutableStateOf<ApiProvider?>(null)
 
     // Google Play Billing
     private lateinit var billingClient: BillingClient
@@ -544,9 +545,11 @@ class MainActivity : ComponentActivity() {
                             ApiKeyDialog(
                                 apiKeyManager = apiKeyManager,
                                 isFirstLaunch = apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty(),
+                                initialProvider = apiKeyDialogInitialProvider,
                                 onDismiss = {
                                     Log.d(TAG, "ApiKeyDialog onDismiss called.")
                                     showApiKeyDialog = false
+                                    apiKeyDialogInitialProvider = null
                                 }
                             )
                         } else {
@@ -732,8 +735,9 @@ class MainActivity : ComponentActivity() {
                             Log.w(TAG, "MenuScreen: Navigation to '$routeId' blocked due to trial state.")
                         }
                     },
-                    onApiKeyButtonClicked = {
-                        Log.d(TAG, "MenuScreen onApiKeyButtonClicked: Showing ApiKeyDialog.")
+                    onApiKeyButtonClicked = { provider ->
+                        Log.d(TAG, "MenuScreen onApiKeyButtonClicked: Showing ApiKeyDialog. Provider: $provider")
+                        apiKeyDialogInitialProvider = provider
                         showApiKeyDialog = true
                     },
                     onDonationButtonClicked = {

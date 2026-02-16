@@ -56,7 +56,7 @@ data class MenuItem(
 fun MenuScreen(
     innerPadding: PaddingValues,
     onItemClicked: (String) -> Unit = { },
-    onApiKeyButtonClicked: () -> Unit = { },
+    onApiKeyButtonClicked: (ApiProvider?) -> Unit = { },
     onDonationButtonClicked: () -> Unit = { },
     isTrialExpired: Boolean = false, // New parameter to indicate trial status
     isPurchased: Boolean = false
@@ -101,7 +101,7 @@ fun MenuScreen(
                             modifier = Modifier.weight(1f)
                         )
                         Button(
-                            onClick = { onApiKeyButtonClicked() },
+                            onClick = { onApiKeyButtonClicked(null) },
                             enabled = true, // Always enabled
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
@@ -221,7 +221,7 @@ fun MenuScreen(
                                                  val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider)
                                                  if (apiKey.isNullOrEmpty()) {
                                                      // Show API Key Dialog
-                                                     onApiKeyButtonClicked() // Or a specific callback to show dialog
+                                                     onApiKeyButtonClicked(currentModel.apiProvider) // Or a specific callback to show dialog
                                                      return@TextButton
                                                  }
                                              }

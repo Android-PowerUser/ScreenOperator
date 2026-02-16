@@ -22,11 +22,12 @@ import androidx.compose.ui.window.Dialog
 fun ApiKeyDialog(
     apiKeyManager: ApiKeyManager,
     isFirstLaunch: Boolean = false,
+    initialProvider: ApiProvider? = null,
     onDismiss: () -> Unit
 ) {
     var apiKeyInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    var selectedProvider by remember { mutableStateOf(ApiProvider.VERCEL) }
+    var selectedProvider by remember { mutableStateOf(initialProvider ?: ApiProvider.VERCEL) }
     val apiKeys = remember { mutableStateMapOf<ApiProvider, List<String>>() }
     var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex(selectedProvider)) }
     val context = LocalContext.current

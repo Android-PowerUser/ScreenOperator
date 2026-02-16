@@ -35,6 +35,7 @@ import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
+import com.google.ai.sample.util.UserInputPreferences // Added import
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager // Added import
 import com.google.ai.sample.ModelOption // Added import
 import com.google.ai.sample.GenerativeAiViewModelFactory // Added import
@@ -118,6 +119,8 @@ class PhotoReasoningViewModel(
 
     fun updateUserInput(text: String) {
         _userInput.value = text
+        val context = getApplication<Application>().applicationContext
+        UserInputPreferences.saveUserInput(context, text)
     }
     
     // Keep track of detected commands
@@ -1043,6 +1046,10 @@ class PhotoReasoningViewModel(
         // Also load chat history
         loadChatHistory(context) // This line calls rebuildChatHistory internally
         chat = createChatWithSystemMessage(context)
+
+        // Load persisted user input
+        val persistedInput = UserInputPreferences.loadUserInput(context)
+        _userInput.value = persistedInput
 
         _isInitialized.value = true // Add this line
     }
