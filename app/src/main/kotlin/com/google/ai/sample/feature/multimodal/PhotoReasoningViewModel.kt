@@ -111,6 +111,14 @@ class PhotoReasoningViewModel(
     
     // Keep track of the current user input
     private var currentUserInput: String = ""
+
+    // Observable state for the input field to persist across configuration changes
+    private val _userInput = MutableStateFlow("")
+    val userInput: StateFlow<String> = _userInput.asStateFlow()
+
+    fun updateUserInput(text: String) {
+        _userInput.value = text
+    }
     
     // Keep track of detected commands
     private val _detectedCommands = MutableStateFlow<List<Command>>(emptyList())

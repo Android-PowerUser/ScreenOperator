@@ -393,7 +393,7 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
 
         AlertDialog(
             onDismissRequest = { showDownloadDialog = false },
-            title = { Text("Download Model?") },
+            title = { Text("Download Model? (4.92 GB)") },
             text = { Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.") },
             confirmButton = {
                 TextButton(

@@ -55,7 +55,7 @@ object ModelDownloadManager {
 
             if (downloadManager != null) {
                 downloadId = downloadManager.enqueue(request)
-                Toast.makeText(context, "Download started. Check notifications.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Download started. Please do not pause the download, as it cannot be resumed.", Toast.LENGTH_LONG).show()
                 Log.d(TAG, "Download started with ID: $downloadId")
             } else {
                 Log.e(TAG, "DownloadManager service not available.")

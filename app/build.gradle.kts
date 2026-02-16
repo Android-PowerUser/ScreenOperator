@@ -92,5 +92,8 @@ dependencies {
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 
     // MediaPipe GenAI for offline inference (LLM)
-    implementation("com.google.mediapipe:tasks-genai:0.10.14")
+    implementation("com.google.mediapipe:tasks-genai:0.10.20")
+
+    // Camera Core to potentially fix missing JNI lib issue
+    implementation("androidx.camera:camera-core:1.4.0")
 }

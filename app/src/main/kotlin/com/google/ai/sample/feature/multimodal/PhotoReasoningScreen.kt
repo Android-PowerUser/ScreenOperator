@@ -161,6 +161,7 @@ internal fun PhotoReasoningRoute(
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
     val isInitialized by viewModel.isInitialized.collectAsState()
     val modelName by viewModel.modelNameState.collectAsState()
+    val userInput by viewModel.userInput.collectAsState()
 
     // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
     // This state will now be managed in PhotoReasoningRoute and passed down.
@@ -224,8 +225,11 @@ internal fun PhotoReasoningRoute(
         isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
         isMediaProjectionPermissionGranted = isMediaProjectionPermissionGranted,
         onEnableAccessibilityService = {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            val intent = Settings.ACTION_ACCESSIBILITY_SETTINGS
             try {
+                // val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) // Corrected
+                // accessibilitySettingsLauncher.launch(intent) // Corrected below
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 accessibilitySettingsLauncher.launch(intent)
             } catch (e: Exception) {
                 Toast.makeText(context, "Error opening Accessibility Settings.", Toast.LENGTH_LONG).show()
@@ -239,7 +243,9 @@ internal fun PhotoReasoningRoute(
         // showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute, // Removed
         // onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }, // Removed
         isInitialized = isInitialized, // Pass the collected state
-        modelName = modelName
+        modelName = modelName,
+        userQuestion = userInput,
+        onUserQuestionChanged = { viewModel.updateUserInput(it) }
     )
 }
 
@@ -263,9 +269,10 @@ fun PhotoReasoningScreen(
     // showNotificationRationaleDialog: Boolean, // Removed
     // onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // Removed
     isInitialized: Boolean = true, // Added parameter with default for preview
-    modelName: String = ""
+    modelName: String = "",
+    userQuestion: String = "",
+    onUserQuestionChanged: (String) -> Unit = {}
 ) {
-    var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
     var showDatabaseListPopup by rememberSaveable { mutableStateOf(false) }
@@ -488,7 +495,7 @@ fun PhotoReasoningScreen(
                         value = userQuestion,
                         label = { Text(stringResource(R.string.reason_label)) },
                         placeholder = { Text(stringResource(R.string.reason_hint)) },
-                        onValueChange = { userQuestion = it },
+                        onValueChange = onUserQuestionChanged,
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                         IconButton(
@@ -508,7 +515,7 @@ fun PhotoReasoningScreen(
                                         // This block will be executed after permission is granted
                                         if (userQuestion.isNotBlank()) {
                                             onReasonClicked(userQuestion, imageUris.toList())
-                                            userQuestion = ""
+                                            onUserQuestionChanged("")
                                             imageUris.clear()
                                         }
                                     }
@@ -518,7 +525,7 @@ fun PhotoReasoningScreen(
 
                                 if (userQuestion.isNotBlank()) {
                                     onReasonClicked(userQuestion, imageUris.toList())
-                                    userQuestion = ""
+                                    onUserQuestionChanged("")
                                     imageUris.clear()
                                 }
                             },
