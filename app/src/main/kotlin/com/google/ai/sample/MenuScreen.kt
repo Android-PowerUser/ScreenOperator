@@ -67,7 +67,8 @@ fun MenuScreen(
     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
-
+/** Das sollte auch im merge sein
+*/
     Column(
         modifier = Modifier
             .fillMaxSize()
