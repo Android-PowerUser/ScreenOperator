@@ -34,7 +34,8 @@ class ApiKeyManager(context: Context) {
         Log.d(TAG, "Getting current API key for $provider at index $safeIndex")
         return keys[safeIndex]
     }
-
+/** Das sollte im merge enthalten sein.
+*/
     /**
      * Get all stored API keys for a specific provider
      * @param provider The API provider
