@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,6 +30,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -41,6 +45,10 @@ import android.Manifest // For Manifest.permission.POST_NOTIFICATIONS
 import androidx.compose.material3.AlertDialog // For the rationale dialog
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.util.Log
+import android.os.Environment
+import android.os.StatFs
+import com.google.ai.sample.feature.multimodal.ModelDownloadManager
+import java.io.File
 
 data class MenuItem(
     val routeId: String,
@@ -52,7 +60,7 @@ data class MenuItem(
 fun MenuScreen(
     innerPadding: PaddingValues,
     onItemClicked: (String) -> Unit = { },
-    onApiKeyButtonClicked: () -> Unit = { },
+    onApiKeyButtonClicked: (ApiProvider?) -> Unit = { },
     onDonationButtonClicked: () -> Unit = { },
     isTrialExpired: Boolean = false, // New parameter to indicate trial status
     isPurchased: Boolean = false
@@ -67,6 +75,8 @@ fun MenuScreen(
     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadDialogModel by remember { mutableStateOf<ModelOption?>(null) }
 
     Column(
         modifier = Modifier
@@ -95,7 +105,7 @@ fun MenuScreen(
                             modifier = Modifier.weight(1f)
                         )
                         Button(
-                            onClick = { onApiKeyButtonClicked() },
+                            onClick = { onApiKeyButtonClicked(null) },
                             enabled = true, // Always enabled
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
@@ -152,16 +162,125 @@ fun MenuScreen(
 
                                 orderedModels.forEach { modelOption ->
                                     DropdownMenuItem(
-                                        text = { Text(modelOption.displayName) },
+                                        text = {
+                                            Text(modelOption.displayName + (modelOption.size?.let { " - $it" } ?: ""))
+                                        },
                                         onClick = {
-                                            selectedModel = modelOption
-                                            GenerativeAiViewModelFactory.setModel(modelOption)
                                             expanded = false
+                                            if (modelOption == ModelOption.GEMMA_3N_E4B_IT) {
+                                                val isDownloaded = ModelDownloadManager.isModelDownloaded(context)
+                                                if (!isDownloaded) {
+                                                    downloadDialogModel = modelOption
+                                                    showDownloadDialog = true
+                                                } else {
+                                                    selectedModel = modelOption
+                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                }
+                                            } else {
+                                                selectedModel = modelOption
+                                                GenerativeAiViewModelFactory.setModel(modelOption)
+                                            }
                                         },
                                         enabled = true // Always enabled
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // CPU/GPU Selection - only visible when offline model is selected
+            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+                item {
+                    val currentBackend = remember { mutableStateOf(GenerativeAiViewModelFactory.getBackend()) }
+                    
+                    // Load preference on first composition
+                    androidx.compose.runtime.LaunchedEffect(Unit) {
+                        GenerativeAiViewModelFactory.loadBackendPreference(context)
+                        currentBackend.value = GenerativeAiViewModelFactory.getBackend()
+                    }
+                    
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(all = 16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Prozessor-Auswahl (CPU / GPU)",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Aktuell: ${if (currentBackend.value == InferenceBackend.GPU) "GPU" else "CPU"}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        GenerativeAiViewModelFactory.setBackend(InferenceBackend.CPU, context)
+                                        currentBackend.value = InferenceBackend.CPU
+                                        // Re-initialize model with new backend
+                                        val mainActivity = context as? MainActivity
+                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
+                                        Toast.makeText(context, "CPU ausgewählt – Modell wird neu geladen", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = if (currentBackend.value == InferenceBackend.CPU)
+                                        ButtonDefaults.buttonColors()
+                                    else
+                                        ButtonDefaults.outlinedButtonColors(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("CPU")
+                                }
+
+                                Button(
+                                    onClick = {
+                                        GenerativeAiViewModelFactory.setBackend(InferenceBackend.GPU, context)
+                                        currentBackend.value = InferenceBackend.GPU
+                                        // Re-initialize model with new backend
+                                        val mainActivity = context as? MainActivity
+                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
+                                        Toast.makeText(context, "GPU ausgewählt – Modell wird in den RAM geladen und auf der GPU verarbeitet", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = if (currentBackend.value == InferenceBackend.GPU)
+                                        ButtonDefaults.buttonColors()
+                                    else
+                                        ButtonDefaults.outlinedButtonColors(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("GPU")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = "CPU-Verarbeitung: Das Modell wird auf dem Hauptprozessor (CPU) ausgeführt. " +
+                                    "Dies ist energiesparender und schont den Akku, ist aber langsamer bei der Textgenerierung. " +
+                                    "Empfohlen für längere Nutzung und wenn Akkulaufzeit wichtig ist.\n\n" +
+                                    "GPU-Verarbeitung: Das Modell wird in den RAM geladen und auf dem Grafikprozessor (GPU) verarbeitet. " +
+                                    "Die GPU kann viele Berechnungen parallel durchführen, wodurch die Textgenerierung deutlich schneller wird. " +
+                                    "Der Energieverbrauch ist jedoch höher, da die GPU mehr Strom benötigt. " +
+                                    "Empfohlen für schnelle Antworten, wenn das Gerät am Ladegerät hängt.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -195,6 +314,19 @@ fun MenuScreen(
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
+                                        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+                                        // Check API Key for online models
+                                        if (currentModel.apiProvider != ApiProvider.GOOGLE || !currentModel.modelName.contains("litert")) { // Simple check, refine if needed. Actually offline model has specific Enum
+                                             if (currentModel != ModelOption.GEMMA_3N_E4B_IT) {
+                                                 val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider)
+                                                 if (apiKey.isNullOrEmpty()) {
+                                                     // Show API Key Dialog
+                                                     onApiKeyButtonClicked(currentModel.apiProvider) // Or a specific callback to show dialog
+                                                     return@TextButton
+                                                 }
+                                             }
+                                        }
+
                                         if (mainActivity != null) { // Ensure mainActivity is not null
                                             if (!mainActivity.isNotificationPermissionGranted()) {
                                                 Log.d("MenuScreen", "Notification permission NOT granted.")
@@ -348,6 +480,41 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
                         mainActivity?.let { onItemClicked("photo_reasoning") }
                     }
                 ) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDownloadDialog && downloadDialogModel != null) {
+        val context = LocalContext.current
+        val statFs = StatFs(Environment.getExternalStorageDirectory().path)
+        val bytesAvailable = statFs.availableBlocksLong * statFs.blockSizeLong
+        val gbAvailable = bytesAvailable.toDouble() / (1024 * 1024 * 1024)
+        val formattedGbAvailable = String.format("%.2f", gbAvailable)
+
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = { Text("Download Model? (4.92 GB)") },
+            text = { Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDownloadDialog = false
+                        downloadDialogModel?.downloadUrl?.let { url ->
+                            ModelDownloadManager.downloadModel(context, url)
+                            // We set the model, but the user will have to wait for download
+                            selectedModel = downloadDialogModel!!
+                            GenerativeAiViewModelFactory.setModel(downloadDialogModel!!)
+                        }
+                    }
+                ) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDownloadDialog = false
+                        // Do not change model
+                    }
+                ) { Text("ABORT") }
             }
         )
     }

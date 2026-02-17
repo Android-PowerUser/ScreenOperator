@@ -1,0 +1,150 @@
+INFO: Starting build and sign process.
+INFO: Setting up Android SDK directory...
+INFO: Downloading Android SDK...
+INFO: Restructuring cmdline-tools...
+INFO: Installing SDK packages...
+INFO: Building the application...
+Configuration on demand is an incubating feature.
+> Task :app:buildKotlinToolingMetadata UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:generateReleaseBuildConfig UP-TO-DATE
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:mergeReleaseResources UP-TO-DATE
+> Task :app:packageReleaseResources UP-TO-DATE
+> Task :app:parseReleaseLocalResources UP-TO-DATE
+> Task :app:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseManifestForPackage UP-TO-DATE
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :app:mergeReleaseNativeLibs
+> Task :app:stripReleaseDebugSymbols
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:desugarReleaseFileDependencies UP-TO-DATE
+> Task :app:mergeReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseShaders UP-TO-DATE
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets UP-TO-DATE
+> Task :app:compressReleaseAssets UP-TO-DATE
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata UP-TO-DATE
+> Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :app:processReleaseResources
+> Task :app:optimizeReleaseResources UP-TO-DATE
+> Task :app:mergeExtDexRelease
+> Task :app:compileReleaseKotlin
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/GenerativeAiViewModelFactory.kt:50:9 The corresponding parameter in the supertype 'Factory' is named 'modelClass'. This may cause problems when calling this function with named arguments.
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/GenerativeAiViewModelFactory.kt:72:25 Name shadowed: currentModel
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/GenerativeAiViewModelFactory.kt:115:11 Unchecked cast: PhotoReasoningViewModel to T
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/MainActivity.kt:795:14 'enablePendingPurchases(): BillingClient.Builder' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/MainActivity.kt:1201:5 Parameter 'onDismiss' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:52:47 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:285:41 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:290:37 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:291:89 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:293:33 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:293:35 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:294:33 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:294:35 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:295:33 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:295:35 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:298:48 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:298:50 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:317:34 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:343:29 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:482:56 'getter for defaultDisplay: Display!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:484:40 'getRealMetrics(DisplayMetrics!): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:732:2 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenCaptureService.kt:800:25 Name shadowed: json
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:163:42 'FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY: Int' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:432:14 Unnecessary safe call on a non-null receiver of type AccessibilityEvent
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:526:29 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:565:34 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:584:46 'obtain(AccessibilityNodeInfo!): AccessibilityNodeInfo!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:591:23 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:611:46 'obtain(AccessibilityNodeInfo!): AccessibilityNodeInfo!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:618:23 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:731:22 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:744:73 Parameter 'buttonText' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:790:22 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:827:22 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:864:22 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:913:22 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:962:22 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:979:46 'obtain(AccessibilityNodeInfo!): AccessibilityNodeInfo!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:986:23 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1007:46 'obtain(AccessibilityNodeInfo!): AccessibilityNodeInfo!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1014:23 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1035:46 'obtain(AccessibilityNodeInfo!): AccessibilityNodeInfo!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1042:23 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1085:52 'obtain(AccessibilityNodeInfo!): AccessibilityNodeInfo!' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1092:23 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1127:28 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1132:24 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1158:28 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1163:24 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1590:21 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1619:22 'capitalize(Locale): String' is deprecated. Use replaceFirstChar instead.
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1645:32 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1654:37 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1655:36 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1658:33 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1663:32 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/ScreenOperatorAccessibilityService.kt:1667:28 'recycle(): Unit' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningScreen.kt:161:9 Variable 'chatMessages' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningScreen.kt:459:76 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningScreen.kt:529:47 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningScreen.kt:746:48 Check for instance is always 'false'
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningScreen.kt:975:5 Parameter 'onSkipAll' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:50:47 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:244:13 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:248:13 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:260:13 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:262:13 'LocalBroadcastManager' is deprecated. Deprecated in Java
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:540:9 Parameter 'selectedImages' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningViewModel.kt:824:69 Parameter 'retryCount' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/util/AppNamePackageMapper.kt:177:23 Name shadowed: appName
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/util/AppNamePackageMapper.kt:178:25 Name shadowed: packageName
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/util/CommandParser.kt:114:17 Variable 'lines' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/util/ImageUtils.kt:16:13 Variable 'safeQuality' is never used
+w: file:///app/app/src/main/kotlin/com/google/ai/sample/util/ImageUtils.kt:76:9 Unreachable code
+
+> Task :app:compileReleaseJavaWithJavac
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+3 warnings
+
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:dexBuilderRelease
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:processReleaseJavaRes
+> Task :app:mergeReleaseJavaResource
+> Task :app:mergeDexRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:assembleRelease
+
+BUILD SUCCESSFUL in 2m 12s
+46 actionable tasks: 23 executed, 23 up-to-date
+INFO: Generating test signing key...
+Generating 2,048 bit RSA key pair and self-signed certificate (SHA384withRSA) with a validity of 10,000 days
+	for: CN=Android Debug, O=Android, C=US
+[Storing debug.keystore]
+INFO: Signing the APK...
+INFO: Build and sign process complete.

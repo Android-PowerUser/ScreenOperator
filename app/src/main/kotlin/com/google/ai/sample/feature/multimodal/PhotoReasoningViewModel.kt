@@ -1,5 +1,6 @@
 package com.google.ai.sample.feature.multimodal
 
+import android.app.Application
 import android.app.ActivityManager
 import android.app.ActivityManager.RunningAppProcessInfo
 import android.content.Context
@@ -11,7 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import coil.ImageLoader
 import coil.request.ImageRequest
@@ -34,6 +35,11 @@ import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
+import com.google.ai.sample.util.UserInputPreferences // Added import
+import com.google.ai.sample.feature.multimodal.ModelDownloadManager // Added import
+import com.google.ai.sample.ModelOption // Added import
+import com.google.ai.sample.GenerativeAiViewModelFactory // Added import
+import com.google.ai.sample.InferenceBackend // Added import
 import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
 import com.google.ai.sample.feature.multimodal.dtos.ImagePartDto // Required for path extraction
 import kotlinx.coroutines.Dispatchers
@@ -44,21 +50,19 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-// Removed duplicate StateFlow import
-// Removed duplicate asStateFlow import
-// import kotlinx.coroutines.isActive // Removed as we will use job.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
-// import kotlin.coroutines.coroutineContext // Removed if not used
 import java.util.concurrent.atomic.AtomicBoolean
+import com.google.mediapipe.tasks.genai.llminference.ProgressListener
 
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import android.util.Base64
 import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.ApiProvider
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -70,13 +74,17 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class PhotoReasoningViewModel(
+    application: Application,
     private var generativeModel: GenerativeModel,
     private val modelName: String,
     private val liveApiManager: LiveApiManager? = null
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     private val isLiveMode: Boolean
         get() = liveApiManager != null
+
+    private var llmInference: LlmInference? = null
+    private val TAG = "PhotoReasoningViewModel"
 
     private fun Bitmap.toBase64(): String {
         val outputStream = ByteArrayOutputStream()
@@ -84,7 +92,6 @@ class PhotoReasoningViewModel(
         val bytes = outputStream.toByteArray()
         return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
-    private val TAG = "PhotoReasoningViewModel"
 
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
@@ -107,6 +114,16 @@ class PhotoReasoningViewModel(
     
     // Keep track of the current user input
     private var currentUserInput: String = ""
+
+    // Observable state for the input field to persist across configuration changes
+    private val _userInput = MutableStateFlow("")
+    val userInput: StateFlow<String> = _userInput.asStateFlow()
+
+    fun updateUserInput(text: String) {
+        _userInput.value = text
+        val context = getApplication<Application>().applicationContext
+        UserInputPreferences.saveUserInput(context, text)
+    }
     
     // Keep track of detected commands
     private val _detectedCommands = MutableStateFlow<List<Command>>(emptyList())
@@ -175,14 +192,10 @@ class PhotoReasoningViewModel(
                     _uiState.value = PhotoReasoningUiState.Success(responseText)
                     finalizeAiMessage(responseText)
                     processCommands(responseText)
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    saveChatHistory(getApplication<Application>())
                 } else if (errorMessage != null) {
                     Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
-                    if (context == null) {
-                        Log.e(TAG, "Context null in receiver, cannot handle error")
-                        return
-                    }
-                    val receiverContext = context
+                    val receiverContext = context ?: getApplication<Application>()
                     _uiState.value = PhotoReasoningUiState.Error(errorMessage)
                     _commandExecutionStatus.value = "Error during AI generation: $errorMessage"
                     _chatState.replaceLastPendingMessage()
@@ -224,7 +237,7 @@ class PhotoReasoningViewModel(
                         )
                     )
                     _chatMessagesFlow.value = chatMessages
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    saveChatHistory(getApplication<Application>())
                 }
                 // Reset pending AI message if any (assuming updateAiMessage or error handling does this)
             }
@@ -232,36 +245,100 @@ class PhotoReasoningViewModel(
     }
 
     init {
-        // ... other init logic
-        val context = MainActivity.getInstance()?.applicationContext
-        if (context != null) {
-            val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
-            LocalBroadcastManager.getInstance(context).registerReceiver(aiResultReceiver, filter)
-            Log.d(TAG, "AIResultReceiver registered with LocalBroadcastManager.")
+        // Initialize model if it's the offline one and already downloaded
+        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+        val context = getApplication<Application>().applicationContext
+        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
+            if (ModelDownloadManager.isModelDownloaded(context)) {
+                initializeOfflineModel(context)
+            }
+        }
 
-            val streamFilter = IntentFilter(ScreenCaptureService.ACTION_AI_STREAM_UPDATE)
-            LocalBroadcastManager.getInstance(context).registerReceiver(aiResultStreamReceiver, streamFilter)
-            Log.d(TAG, "AIResultStreamReceiver registered with LocalBroadcastManager.")
-        } else {
-            Log.e(TAG, "Failed to register AIResultReceiver: applicationContext is null at init.")
+        // Register receivers after initialization block to ensure properties are initialized
+        val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
+        LocalBroadcastManager.getInstance(context).registerReceiver(aiResultReceiver, filter)
+        Log.d(TAG, "AIResultReceiver registered with LocalBroadcastManager.")
+
+        val streamFilter = IntentFilter(ScreenCaptureService.ACTION_AI_STREAM_UPDATE)
+        LocalBroadcastManager.getInstance(context).registerReceiver(aiResultStreamReceiver, streamFilter)
+        Log.d(TAG, "AIResultStreamReceiver registered with LocalBroadcastManager.")
+    }
+
+    private fun initializeOfflineModel(context: Context) {
+        try {
+            if (llmInference == null) {
+                val modelFile = ModelDownloadManager.getModelFile(context)
+                if (modelFile != null && modelFile.exists()) {
+                    // Load backend preference
+                    GenerativeAiViewModelFactory.loadBackendPreference(context)
+                    val backend = GenerativeAiViewModelFactory.getBackend()
+                    
+                    val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(modelFile.absolutePath)
+                        .setMaxTokens(1024)
+                    
+                    // Set preferred backend (CPU or GPU)
+                    if (backend == InferenceBackend.GPU) {
+                        optionsBuilder.setPreferredBackend(LlmInference.Backend.GPU)
+                        Log.d(TAG, "Offline model: using GPU backend")
+                    } else {
+                        optionsBuilder.setPreferredBackend(LlmInference.Backend.CPU)
+                        Log.d(TAG, "Offline model: using CPU backend")
+                    }
+                    
+                    llmInference = LlmInference.createFromOptions(context, optionsBuilder.build())
+                    Log.d(TAG, "Offline model initialized with backend=$backend")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize offline model", e)
+        }
+    }
+    
+    fun reinitializeOfflineModel(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Close existing instance
+                try {
+                    (llmInference as? java.io.Closeable)?.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing existing LlmInference for reinit", e)
+                }
+                llmInference = null
+                
+                // Re-initialize with new settings
+                initializeOfflineModel(context)
+                
+                withContext(Dispatchers.Main) {
+                    val backend = GenerativeAiViewModelFactory.getBackend()
+                    Log.d(TAG, "Offline model re-initialized with backend: $backend")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to reinitialize offline model", e)
+            }
         }
     }
 
     override fun onCleared() {
         super.onCleared()
         liveApiManager?.close()
-        val context = MainActivity.getInstance()?.applicationContext
-        if (context != null) {
-            LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultReceiver)
-            Log.d(TAG, "AIResultReceiver unregistered with LocalBroadcastManager.")
-            LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultStreamReceiver)
-            Log.d(TAG, "AIResultStreamReceiver unregistered with LocalBroadcastManager.")
+        val context = getApplication<Application>().applicationContext
+        LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultReceiver)
+        Log.d(TAG, "AIResultReceiver unregistered with LocalBroadcastManager.")
+        LocalBroadcastManager.getInstance(context).unregisterReceiver(aiResultStreamReceiver)
+        Log.d(TAG, "AIResultStreamReceiver unregistered with LocalBroadcastManager.")
+
+        try {
+            // Using reflection if specific method not known or standard cast
+            (llmInference as? java.io.Closeable)?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing LlmInference", e)
         }
-        // ... other onCleared logic
+        llmInference = null
     }
 
     private fun createChatWithSystemMessage(context: Context? = null): Chat {
-        val ctx = context ?: MainActivity.getInstance()?.applicationContext
+        val ctx = context ?: getApplication<Application>()
         val history = mutableListOf<Content>()
         if (_systemMessage.value.isNotBlank()) {
             history.add(content(role = "user") { text(_systemMessage.value) })
@@ -288,10 +365,10 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
     // Get context for rebuildChatHistory
-    val context = MainActivity.getInstance()?.applicationContext
+    val context = getApplication<Application>().applicationContext
 
     // Update the generative model with the current API key if retrying
-    if (currentRetryAttempt > 0 && context != null) {
+    if (currentRetryAttempt > 0) {
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
@@ -413,6 +490,120 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+
+        // Check for offline model (Gemma)
+        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
+            val context = getApplication<Application>().applicationContext
+
+            if (!ModelDownloadManager.isModelDownloaded(context)) {
+                _uiState.value = PhotoReasoningUiState.Error("Model not downloaded.")
+                return
+            }
+
+            // Ensure system message and DB are loaded
+            ensureInitialized(context)
+
+            // Build the combined prompt with system message + DB entries + user input
+            val systemMsg = _systemMessage.value
+            val dbEntries = formatDatabaseEntriesAsText(context)
+            val combinedPromptParts = mutableListOf<String>()
+            if (systemMsg.isNotBlank()) {
+                combinedPromptParts.add(systemMsg)
+            }
+            if (dbEntries.isNotBlank()) {
+                combinedPromptParts.add(dbEntries)
+            }
+            if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
+                combinedPromptParts.add(screenInfoForPrompt)
+            }
+            combinedPromptParts.add(userInput)
+            val fullPrompt = combinedPromptParts.joinToString("\n\n")
+
+            // Add user message to chat state
+            val userMessageText = if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
+                "$userInput\n\n$screenInfoForPrompt"
+            } else {
+                userInput
+            }
+            val userMessage = PhotoReasoningMessage(
+                text = userMessageText,
+                participant = PhotoParticipant.USER,
+                imageUris = imageUrisForChat ?: emptyList(),
+                isPending = false
+            )
+            _chatState.addMessage(userMessage)
+
+            // Add pending AI message
+            val pendingAiMessage = PhotoReasoningMessage(
+                text = "",
+                participant = PhotoParticipant.MODEL,
+                isPending = true
+            )
+            _chatState.addMessage(pendingAiMessage)
+            _chatMessagesFlow.value = _chatState.getAllMessages()
+
+            _uiState.value = PhotoReasoningUiState.Loading
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    // Initialize model if needed
+                    if (llmInference == null) {
+                        initializeOfflineModel(context)
+                    }
+
+                    if (llmInference == null) {
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Error("Offline model could not be initialized.")
+                            _chatState.replaceLastPendingMessage()
+                            _chatState.addMessage(
+                                PhotoReasoningMessage(
+                                    text = "Error: Offline model could not be initialized.",
+                                    participant = PhotoParticipant.ERROR
+                                )
+                            )
+                            _chatMessagesFlow.value = _chatState.getAllMessages()
+                        }
+                        return@launch
+                    }
+
+                    Log.d(TAG, "Sending streaming prompt to offline model (length: ${fullPrompt.length})")
+
+                    // Use generateResponseAsync with ProgressListener for streaming
+                    val sb = StringBuilder()
+                    val finalResponse = llmInference!!.generateResponseAsync(fullPrompt) { partialResult, done ->
+                        val token = partialResult ?: ""
+                        sb.append(token)
+                        viewModelScope.launch(Dispatchers.Main) {
+                            if (!done) {
+                                updateAiMessage(sb.toString(), isPending = true)
+                            }
+                        }
+                    }.get()
+
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = PhotoReasoningUiState.Success(finalResponse)
+                        finalizeAiMessage(finalResponse)
+                        processCommands(finalResponse)
+                        saveChatHistory(context)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Offline inference failed", e)
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = PhotoReasoningUiState.Error("Offline inference failed: ${e.message}")
+                        _chatState.replaceLastPendingMessage()
+                        _chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = "Offline inference failed: ${e.message}",
+                                participant = PhotoParticipant.ERROR
+                            )
+                        )
+                        _chatMessagesFlow.value = _chatState.getAllMessages()
+                        saveChatHistory(context)
+                    }
+                }
+            }
+            return
+        }
+
         if (currentModel.apiProvider == ApiProvider.CEREBRAS) {
             reasonWithCerebras(userInput, selectedImages, screenInfoForPrompt)
             return
@@ -474,7 +665,7 @@ class PhotoReasoningViewModel(
                         )
                     )
                     _chatMessagesFlow.value = _chatState.getAllMessages()
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    saveChatHistory(getApplication<Application>())
                 }
             }
         } else {
@@ -497,7 +688,7 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
-        val context = MainActivity.getInstance()?.applicationContext ?: return
+        val context = getApplication<Application>().applicationContext
 
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val apiKey = apiKeyManager.getCurrentApiKey(ApiProvider.CEREBRAS)
@@ -605,11 +796,10 @@ class PhotoReasoningViewModel(
         if (liveApiManager != null) {
             // Set system message and history when connecting
             viewModelScope.launch {
-                val context = MainActivity.getInstance()?.applicationContext
-                if (context != null) {
-                    ensureInitialized(context)
+                val context = getApplication<Application>().applicationContext
+                ensureInitialized(context)
 
-                    // Convert chat history to format for Live API
+                // Convert chat history to format for Live API
                     val historyPairs = mutableListOf<Pair<String, String>>()
 
                     // Add system message and DB entries as initial context
@@ -642,8 +832,7 @@ class PhotoReasoningViewModel(
                         }
                     }
 
-                    liveApiManager.setSystemMessageAndHistory(_systemMessage.value, historyPairs)
-                }
+                liveApiManager.setSystemMessageAndHistory(_systemMessage.value, historyPairs)
             }
 
             // Collect messages
@@ -689,7 +878,7 @@ class PhotoReasoningViewModel(
                             processCommands(finalMessage.text)
 
                             // Save chat history
-                            saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                            saveChatHistory(getApplication<Application>())
                         }
                     }
                 }
@@ -908,7 +1097,7 @@ class PhotoReasoningViewModel(
             )
             _chatMessagesFlow.value = _chatState.getAllMessages()
         }
-        saveChatHistory(MainActivity.getInstance()?.applicationContext)
+        saveChatHistory(getApplication<Application>())
     }
 
     private fun updateAiMessage(text: String, isPending: Boolean = false) {
@@ -938,7 +1127,7 @@ class PhotoReasoningViewModel(
 
         // Save chat history after updating message
         if (!stopExecutionFlag.get() || text.contains("stopped by user", ignoreCase = true)) {
-            saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            saveChatHistory(getApplication<Application>())
         }
     }
 
@@ -966,6 +1155,10 @@ class PhotoReasoningViewModel(
         // Also load chat history
         loadChatHistory(context) // This line calls rebuildChatHistory internally
         chat = createChatWithSystemMessage(context)
+
+        // Load persisted user input
+        val persistedInput = UserInputPreferences.loadUserInput(context)
+        _userInput.value = persistedInput
 
         _isInitialized.value = true // Add this line
     }
@@ -1306,18 +1499,6 @@ data class CerebrasResponseMessage(
         context: Context,
         screenInfo: String? = null
     ) {
-        if (modelName == "gemma-3n-e4b-it") {
-            // If the model is gemma-3n-e4b-it, we don't want to send the screenshot.
-            // Instead, we'll just send the screen info.
-            val genericAnalysisPrompt = ""
-            reason(
-                userInput = genericAnalysisPrompt,
-                selectedImages = emptyList(),
-                screenInfoForPrompt = screenInfo,
-                imageUrisForChat = emptyList()
-            )
-            return
-        }
         if (screenshotUri == Uri.EMPTY) {
             // This case is for gemma-3n-e4b-it, where we don't have a screenshot.
             // We just want to send the screen info.
