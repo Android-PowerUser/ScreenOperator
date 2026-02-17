@@ -116,8 +116,13 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
     }
 }
 
+enum class InferenceBackend {
+    CPU, GPU
+}
+
 object GenerativeAiViewModelFactory {
     private var currentModel: ModelOption = ModelOption.GPT_5_1_CODEX_MAX
+    private var currentBackend: InferenceBackend = InferenceBackend.CPU
 
     fun setModel(modelOption: ModelOption) {
         currentModel = modelOption
@@ -125,5 +130,25 @@ object GenerativeAiViewModelFactory {
 
     fun getCurrentModel(): ModelOption {
         return currentModel
+    }
+
+    fun setBackend(backend: InferenceBackend, context: Context) {
+        currentBackend = backend
+        val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("preferred_backend", backend.name).apply()
+    }
+
+    fun getBackend(): InferenceBackend {
+        return currentBackend
+    }
+
+    fun loadBackendPreference(context: Context) {
+        val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
+        val backendName = prefs.getString("preferred_backend", InferenceBackend.CPU.name)
+        currentBackend = try {
+            InferenceBackend.valueOf(backendName ?: InferenceBackend.CPU.name)
+        } catch (e: IllegalArgumentException) {
+            InferenceBackend.CPU
+        }
     }
 }

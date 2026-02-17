@@ -45,9 +45,7 @@ fun ApiKeyDialog(
     }
 
     Dialog(onDismissRequest = {
-        if (!isFirstLaunch || (apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
-            onDismiss()
-        }
+        onDismiss()
     }) {
         Surface(
             modifier = Modifier
@@ -195,10 +193,8 @@ fun ApiKeyDialog(
                         .padding(top = 16.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                     if (!isFirstLaunch || (apiKeys[ApiProvider.VERCEL]?.isNotEmpty() == true || apiKeys[ApiProvider.GOOGLE]?.isNotEmpty() == true || apiKeys[ApiProvider.CEREBRAS]?.isNotEmpty() == true)) {
                         TextButton(onClick = onDismiss) {
-                            Text("Close")
-                        }
+                        Text("Close")
                     }
                 }
             }

@@ -39,6 +39,7 @@ import com.google.ai.sample.util.UserInputPreferences // Added import
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager // Added import
 import com.google.ai.sample.ModelOption // Added import
 import com.google.ai.sample.GenerativeAiViewModelFactory // Added import
+import com.google.ai.sample.InferenceBackend // Added import
 import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
 import com.google.ai.sample.feature.multimodal.dtos.ImagePartDto // Required for path extraction
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import com.google.mediapipe.tasks.genai.llminference.ProgressListener
 
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
@@ -263,21 +265,56 @@ class PhotoReasoningViewModel(
     }
 
     private fun initializeOfflineModel(context: Context) {
+        try {
+            if (llmInference == null) {
+                val modelFile = ModelDownloadManager.getModelFile(context)
+                if (modelFile != null && modelFile.exists()) {
+                    // Load backend preference
+                    GenerativeAiViewModelFactory.loadBackendPreference(context)
+                    val backend = GenerativeAiViewModelFactory.getBackend()
+                    
+                    val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(modelFile.absolutePath)
+                        .setMaxTokens(1024)
+                    
+                    // Set preferred backend (CPU or GPU)
+                    if (backend == InferenceBackend.GPU) {
+                        optionsBuilder.setPreferredBackend(LlmInference.Backend.GPU)
+                        Log.d(TAG, "Offline model: using GPU backend")
+                    } else {
+                        optionsBuilder.setPreferredBackend(LlmInference.Backend.CPU)
+                        Log.d(TAG, "Offline model: using CPU backend")
+                    }
+                    
+                    llmInference = LlmInference.createFromOptions(context, optionsBuilder.build())
+                    Log.d(TAG, "Offline model initialized with backend=$backend")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize offline model", e)
+        }
+    }
+    
+    fun reinitializeOfflineModel(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                if (llmInference == null) {
-                    val modelFile = ModelDownloadManager.getModelFile(context)
-                    if (modelFile != null && modelFile.exists()) {
-                        val options = LlmInference.LlmInferenceOptions.builder()
-                            .setModelPath(modelFile.absolutePath)
-                            .setMaxTokens(1024)
-                            .build()
-                        llmInference = LlmInference.createFromOptions(context, options)
-                        Log.d(TAG, "Offline model initialized.")
-                    }
+                // Close existing instance
+                try {
+                    (llmInference as? java.io.Closeable)?.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing existing LlmInference for reinit", e)
+                }
+                llmInference = null
+                
+                // Re-initialize with new settings
+                initializeOfflineModel(context)
+                
+                withContext(Dispatchers.Main) {
+                    val backend = GenerativeAiViewModelFactory.getBackend()
+                    Log.d(TAG, "Offline model re-initialized with backend: $backend")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to initialize offline model", e)
+                Log.e(TAG, "Failed to reinitialize offline model", e)
             }
         }
     }
@@ -463,32 +500,104 @@ class PhotoReasoningViewModel(
                 return
             }
 
+            // Ensure system message and DB are loaded
+            ensureInitialized(context)
+
+            // Build the combined prompt with system message + DB entries + user input
+            val systemMsg = _systemMessage.value
+            val dbEntries = formatDatabaseEntriesAsText(context)
+            val combinedPromptParts = mutableListOf<String>()
+            if (systemMsg.isNotBlank()) {
+                combinedPromptParts.add(systemMsg)
+            }
+            if (dbEntries.isNotBlank()) {
+                combinedPromptParts.add(dbEntries)
+            }
+            if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
+                combinedPromptParts.add(screenInfoForPrompt)
+            }
+            combinedPromptParts.add(userInput)
+            val fullPrompt = combinedPromptParts.joinToString("\n\n")
+
+            // Add user message to chat state
+            val userMessageText = if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
+                "$userInput\n\n$screenInfoForPrompt"
+            } else {
+                userInput
+            }
+            val userMessage = PhotoReasoningMessage(
+                text = userMessageText,
+                participant = PhotoParticipant.USER,
+                imageUris = imageUrisForChat ?: emptyList(),
+                isPending = false
+            )
+            _chatState.addMessage(userMessage)
+
+            // Add pending AI message
+            val pendingAiMessage = PhotoReasoningMessage(
+                text = "",
+                participant = PhotoParticipant.MODEL,
+                isPending = true
+            )
+            _chatState.addMessage(pendingAiMessage)
+            _chatMessagesFlow.value = _chatState.getAllMessages()
+
             _uiState.value = PhotoReasoningUiState.Loading
             viewModelScope.launch(Dispatchers.IO) {
                 try {
+                    // Initialize model if needed
                     if (llmInference == null) {
                         initializeOfflineModel(context)
-                        val modelFile = ModelDownloadManager.getModelFile(context)
-                        if (modelFile != null && modelFile.exists()) {
-                            val options = LlmInference.LlmInferenceOptions.builder()
-                                .setModelPath(modelFile.absolutePath)
-                                .setMaxTokens(1024)
-                                .build()
-                            llmInference = LlmInference.createFromOptions(context, options)
-                        }
                     }
 
-                    val response = llmInference?.generateResponse(userInput) ?: "Error: Inference engine not initialized"
+                    if (llmInference == null) {
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Error("Offline model could not be initialized.")
+                            _chatState.replaceLastPendingMessage()
+                            _chatState.addMessage(
+                                PhotoReasoningMessage(
+                                    text = "Error: Offline model could not be initialized.",
+                                    participant = PhotoParticipant.ERROR
+                                )
+                            )
+                            _chatMessagesFlow.value = _chatState.getAllMessages()
+                        }
+                        return@launch
+                    }
+
+                    Log.d(TAG, "Sending streaming prompt to offline model (length: ${fullPrompt.length})")
+
+                    // Use generateResponseAsync with ProgressListener for streaming
+                    val sb = StringBuilder()
+                    val finalResponse = llmInference!!.generateResponseAsync(fullPrompt) { partialResult, done ->
+                        val token = partialResult ?: ""
+                        sb.append(token)
+                        viewModelScope.launch(Dispatchers.Main) {
+                            if (!done) {
+                                updateAiMessage(sb.toString(), isPending = true)
+                            }
+                        }
+                    }.get()
 
                     withContext(Dispatchers.Main) {
-                         _uiState.value = PhotoReasoningUiState.Success(response)
-                         finalizeAiMessage(response)
-                         processCommands(response)
-                         saveChatHistory(context)
+                        _uiState.value = PhotoReasoningUiState.Success(finalResponse)
+                        finalizeAiMessage(finalResponse)
+                        processCommands(finalResponse)
+                        saveChatHistory(context)
                     }
                 } catch (e: Exception) {
+                    Log.e(TAG, "Offline inference failed", e)
                     withContext(Dispatchers.Main) {
                         _uiState.value = PhotoReasoningUiState.Error("Offline inference failed: ${e.message}")
+                        _chatState.replaceLastPendingMessage()
+                        _chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = "Offline inference failed: ${e.message}",
+                                participant = PhotoParticipant.ERROR
+                            )
+                        )
+                        _chatMessagesFlow.value = _chatState.getAllMessages()
+                        saveChatHistory(context)
                     }
                 }
             }

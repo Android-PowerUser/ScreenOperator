@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,6 +30,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -181,6 +185,102 @@ fun MenuScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // CPU/GPU Selection - only visible when offline model is selected
+            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+                item {
+                    val currentBackend = remember { mutableStateOf(GenerativeAiViewModelFactory.getBackend()) }
+                    
+                    // Load preference on first composition
+                    androidx.compose.runtime.LaunchedEffect(Unit) {
+                        GenerativeAiViewModelFactory.loadBackendPreference(context)
+                        currentBackend.value = GenerativeAiViewModelFactory.getBackend()
+                    }
+                    
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(all = 16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Prozessor-Auswahl (CPU / GPU)",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Aktuell: ${if (currentBackend.value == InferenceBackend.GPU) "GPU" else "CPU"}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        GenerativeAiViewModelFactory.setBackend(InferenceBackend.CPU, context)
+                                        currentBackend.value = InferenceBackend.CPU
+                                        // Re-initialize model with new backend
+                                        val mainActivity = context as? MainActivity
+                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
+                                        Toast.makeText(context, "CPU ausgewählt – Modell wird neu geladen", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = if (currentBackend.value == InferenceBackend.CPU)
+                                        ButtonDefaults.buttonColors()
+                                    else
+                                        ButtonDefaults.outlinedButtonColors(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("CPU")
+                                }
+
+                                Button(
+                                    onClick = {
+                                        GenerativeAiViewModelFactory.setBackend(InferenceBackend.GPU, context)
+                                        currentBackend.value = InferenceBackend.GPU
+                                        // Re-initialize model with new backend
+                                        val mainActivity = context as? MainActivity
+                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
+                                        Toast.makeText(context, "GPU ausgewählt – Modell wird in den RAM geladen und auf der GPU verarbeitet", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = if (currentBackend.value == InferenceBackend.GPU)
+                                        ButtonDefaults.buttonColors()
+                                    else
+                                        ButtonDefaults.outlinedButtonColors(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("GPU")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = "CPU-Verarbeitung: Das Modell wird auf dem Hauptprozessor (CPU) ausgeführt. " +
+                                    "Dies ist energiesparender und schont den Akku, ist aber langsamer bei der Textgenerierung. " +
+                                    "Empfohlen für längere Nutzung und wenn Akkulaufzeit wichtig ist.\n\n" +
+                                    "GPU-Verarbeitung: Das Modell wird in den RAM geladen und auf dem Grafikprozessor (GPU) verarbeitet. " +
+                                    "Die GPU kann viele Berechnungen parallel durchführen, wodurch die Textgenerierung deutlich schneller wird. " +
+                                    "Der Energieverbrauch ist jedoch höher, da die GPU mehr Strom benötigt. " +
+                                    "Empfohlen für schnelle Antworten, wenn das Gerät am Ladegerät hängt.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
