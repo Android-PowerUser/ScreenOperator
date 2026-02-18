@@ -88,6 +88,7 @@ fun ApiKeyDialog(
                             ApiProvider.GOOGLE -> "https://makersuite.google.com/app/apikey"
                             ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
                             ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
+                            ApiProvider.HUMAN_EXPERT -> return@Button // No API key needed
                         }
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         context.startActivity(intent)

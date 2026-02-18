@@ -264,7 +264,10 @@ class PhotoReasoningViewModel(
         Log.d(TAG, "AIResultStreamReceiver registered with LocalBroadcastManager.")
     }
 
-    private fun initializeOfflineModel(context: Context) {
+    /**
+     * Initialize the offline model. Returns null on success, or an error message on failure.
+     */
+    private fun initializeOfflineModel(context: Context): String? {
         try {
             if (llmInference == null) {
                 val modelFile = ModelDownloadManager.getModelFile(context)
@@ -288,10 +291,18 @@ class PhotoReasoningViewModel(
                     
                     llmInference = LlmInference.createFromOptions(context, optionsBuilder.build())
                     Log.d(TAG, "Offline model initialized with backend=$backend")
+                    return null // Success
                 }
             }
+            return null // Already initialized or no model file
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize offline model", e)
+            val msg = e.message ?: e.toString()
+            return if (msg.contains("memory", ignoreCase = true) || msg.contains("RAM", ignoreCase = true) || msg.contains("OOM", ignoreCase = true) || msg.contains("alloc", ignoreCase = true) || msg.contains("out of", ignoreCase = true)) {
+                "Not enough RAM to load the model on GPU. Try switching to CPU."
+            } else {
+                "Offline model could not be initialized: $msg"
+            }
         }
     }
     
@@ -307,11 +318,16 @@ class PhotoReasoningViewModel(
                 llmInference = null
                 
                 // Re-initialize with new settings
-                initializeOfflineModel(context)
+                val initError = initializeOfflineModel(context)
                 
                 withContext(Dispatchers.Main) {
-                    val backend = GenerativeAiViewModelFactory.getBackend()
-                    Log.d(TAG, "Offline model re-initialized with backend: $backend")
+                    if (initError != null) {
+                        Log.e(TAG, "Failed to reinitialize offline model: $initError")
+                        _uiState.value = PhotoReasoningUiState.Error(initError)
+                    } else {
+                        val backend = GenerativeAiViewModelFactory.getBackend()
+                        Log.d(TAG, "Offline model re-initialized with backend: $backend")
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to reinitialize offline model", e)
@@ -491,6 +507,12 @@ class PhotoReasoningViewModel(
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
 
+        // Check for Human Expert model
+        if (currentModel == ModelOption.HUMAN_EXPERT) {
+            _uiState.value = PhotoReasoningUiState.Error("Human Expert mode is not yet connected. The Human Operator app is required.")
+            return
+        }
+
         // Check for offline model (Gemma)
         if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
             val context = getApplication<Application>().applicationContext
@@ -546,17 +568,19 @@ class PhotoReasoningViewModel(
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     // Initialize model if needed
+                    var initError: String? = null
                     if (llmInference == null) {
-                        initializeOfflineModel(context)
+                        initError = initializeOfflineModel(context)
                     }
 
                     if (llmInference == null) {
+                        val errorMsg = initError ?: "Offline model could not be initialized."
                         withContext(Dispatchers.Main) {
-                            _uiState.value = PhotoReasoningUiState.Error("Offline model could not be initialized.")
+                            _uiState.value = PhotoReasoningUiState.Error(errorMsg)
                             _chatState.replaceLastPendingMessage()
                             _chatState.addMessage(
                                 PhotoReasoningMessage(
-                                    text = "Error: Offline model could not be initialized.",
+                                    text = "Error: $errorMsg",
                                     participant = PhotoParticipant.ERROR
                                 )
                             )
@@ -574,7 +598,7 @@ class PhotoReasoningViewModel(
                         sb.append(token)
                         viewModelScope.launch(Dispatchers.Main) {
                             if (!done) {
-                                updateAiMessage(sb.toString(), isPending = true)
+                                replaceAiMessageText(sb.toString(), isPending = true)
                             }
                         }
                     }.get()
@@ -1129,6 +1153,26 @@ class PhotoReasoningViewModel(
         if (!stopExecutionFlag.get() || text.contains("stopped by user", ignoreCase = true)) {
             saveChatHistory(getApplication<Application>())
         }
+    }
+
+    /**
+     * Replace the last pending AI message text (for streaming where the caller accumulates tokens).
+     * Unlike updateAiMessage which appends, this sets the full text directly.
+     */
+    private fun replaceAiMessageText(text: String, isPending: Boolean = true) {
+        val messages = _chatState.getAllMessages().toMutableList()
+        val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
+
+        if (lastAiMessageIndex != -1 && messages[lastAiMessageIndex].isPending) {
+            // Replace the full text (not append)
+            messages[lastAiMessageIndex] = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
+        } else {
+            // No pending message found, add a new one
+            messages.add(PhotoReasoningMessage(text = text, participant = PhotoParticipant.MODEL, isPending = isPending))
+        }
+
+        _chatState.setAllMessages(messages)
+        _chatMessagesFlow.value = _chatState.getAllMessages()
     }
 
     /**

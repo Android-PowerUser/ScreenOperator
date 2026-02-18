@@ -14,7 +14,8 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 enum class ApiProvider {
     VERCEL,
     GOOGLE,
-    CEREBRAS
+    CEREBRAS,
+    HUMAN_EXPERT
 }
 
 enum class ModelOption(
@@ -42,7 +43,8 @@ enum class ModelOption(
         ApiProvider.GOOGLE,
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
         "4.92 GB"
-    )
+    ),
+    HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT)
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -60,7 +62,11 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
         val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-        val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
+        val apiKey = if (currentModel == ModelOption.GEMMA_3N_E4B_IT || currentModel == ModelOption.HUMAN_EXPERT) {
+            "offline-no-key-needed" // Dummy key for offline/human expert models
+        } else {
+            mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
+        }
 
         if (apiKey.isEmpty()) {
             throw IllegalStateException("API key for ${currentModel.apiProvider} is not available. Please set an API key.")
@@ -122,7 +128,7 @@ enum class InferenceBackend {
 
 object GenerativeAiViewModelFactory {
     private var currentModel: ModelOption = ModelOption.GPT_5_1_CODEX_MAX
-    private var currentBackend: InferenceBackend = InferenceBackend.CPU
+    private var currentBackend: InferenceBackend = InferenceBackend.GPU
 
     fun setModel(modelOption: ModelOption) {
         currentModel = modelOption
