@@ -1,111 +1,198 @@
 package com.screenoperator.humanoperator
 
 import android.util.Log
-import com.google.gson.Gson
-import okhttp3.*
+import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 
 /**
- * WebSocket-based signaling client for WebRTC connection setup.
- * Connects to a stateless relay server that forwards SDP/ICE messages
- * between peers in the same room.
+ * Firebase Realtime Database signaling client for the task broker.
+ * Operators listen for open tasks, claim them, and exchange WebRTC signals.
  */
 class SignalingClient(
-    private val serverUrl: String,
     private val listener: SignalingListener
 ) {
     companion object {
         private const val TAG = "SignalingClient"
     }
 
-    private val client = OkHttpClient()
-    private var webSocket: WebSocket? = null
-    private val gson = Gson()
+    private val database: FirebaseDatabase = FirebaseDatabase.getInstance()
+    private val tasksRef: DatabaseReference = database.getReference("tasks")
+    
+    // Listener references for cleanup
+    private var tasksListener: ChildEventListener? = null
+    private var offerListener: ValueEventListener? = null
+    private var iceListener: ChildEventListener? = null
+    private var currentTaskId: String? = null
 
     interface SignalingListener {
+        fun onNewTask(taskId: String, text: String)
+        fun onTaskRemoved(taskId: String)
+        fun onClaimed(taskId: String)
+        fun onClaimFailed(reason: String)
         fun onSDPOffer(sdp: String)
-        fun onSDPAnswer(sdp: String)
         fun onICECandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int)
-        fun onPeerJoined()
-        fun onPeerLeft()
+        fun onPeerDisconnected()
         fun onError(message: String)
-        fun onConnected()
     }
 
-    data class SignalMessage(
-        val type: String,
-        val room: String? = null,
-        val sdp: String? = null,
-        val candidate: String? = null,
-        val sdpMid: String? = null,
-        val sdpMLineIndex: Int? = null
-    )
+    fun startListeningForTasks() {
+        Log.d(TAG, "Starting to listen for open tasks...")
+        
+        if (tasksListener != null) return
 
-    fun connect(roomCode: String) {
-        Log.d(TAG, "Connecting to signaling server: $serverUrl")
-        val request = Request.Builder().url(serverUrl).build()
-
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket connected, joining room: $roomCode")
-                val joinMsg = gson.toJson(SignalMessage(type = "join", room = roomCode))
-                webSocket.send(joinMsg)
-                listener.onConnected()
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                Log.d(TAG, "Received: ${text.take(200)}")
-                try {
-                    val msg = gson.fromJson(text, SignalMessage::class.java)
-                    when (msg.type) {
-                        "offer" -> msg.sdp?.let { listener.onSDPOffer(it) }
-                        "answer" -> msg.sdp?.let { listener.onSDPAnswer(it) }
-                        "ice" -> {
-                            msg.candidate?.let {
-                                listener.onICECandidate(it, msg.sdpMid, msg.sdpMLineIndex ?: 0)
-                            }
-                        }
-                        "peer_joined" -> listener.onPeerJoined()
-                        "peer_left" -> listener.onPeerLeft()
-                        "error" -> listener.onError(msg.sdp ?: "Unknown error")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse signaling message", e)
+        tasksListener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val status = snapshot.child("status").getValue(String::class.java)
+                if (status == "open") {
+                    val taskId = snapshot.key ?: return
+                    val text = snapshot.child("text").getValue(String::class.java) ?: ""
+                    Log.d(TAG, "New open task found: $taskId")
+                    listener.onNewTask(taskId, text)
                 }
             }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket failure", t)
-                listener.onError("Connection failed: ${t.message}")
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                val status = snapshot.child("status").getValue(String::class.java)
+                val taskId = snapshot.key ?: return
+                
+                // If task is no longer open (claimed by someone else or cancelled), remove it from list
+                if (status != "open") {
+                    listener.onTaskRemoved(taskId)
+                }
             }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closed: $reason")
+            override fun onChildRemoved(snapshot: DataSnapshot) {
+                val taskId = snapshot.key ?: return
+                listener.onTaskRemoved(taskId)
+            }
+
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {
+                Log.e(TAG, "Tasks listener cancelled: ${error.message}")
+                listener.onError("Failed to listen for tasks: ${error.message}")
+            }
+        }
+        
+        tasksRef.orderByChild("status").equalTo("open").addChildEventListener(tasksListener!!)
+    }
+
+    fun claimTask(taskId: String) {
+        Log.d(TAG, "Attempting to claim task: $taskId")
+        val taskStatusRef = tasksRef.child(taskId).child("status")
+        
+        taskStatusRef.runTransaction(object : com.google.firebase.database.Transaction.Handler {
+            override fun doTransaction(currentData: com.google.firebase.database.MutableData): com.google.firebase.database.Transaction.Result {
+                val status = currentData.getValue(String::class.java)
+                if (status == null || status == "open") {
+                    currentData.value = "claimed"
+                    return com.google.firebase.database.Transaction.success(currentData)
+                }
+                return com.google.firebase.database.Transaction.abort()
+            }
+
+            override fun onComplete(
+                error: DatabaseError?,
+                committed: Boolean,
+                currentData: DataSnapshot?
+            ) {
+                if (error != null) {
+                    Log.e(TAG, "Claim transaction error: ${error.message}")
+                    listener.onClaimFailed(error.message)
+                } else if (committed) {
+                    Log.d(TAG, "Task claimed successfully: $taskId")
+                    currentTaskId = taskId
+                    listener.onClaimed(taskId)
+                    listenForSignaling(taskId)
+                } else {
+                    Log.d(TAG, "Claim failed: Task already claimed or invalid.")
+                    listener.onClaimFailed("Task already taken")
+                }
             }
         })
     }
 
-    fun sendOffer(sdp: String) {
-        val msg = gson.toJson(SignalMessage(type = "offer", sdp = sdp))
-        webSocket?.send(msg)
+    private fun listenForSignaling(taskId: String) {
+        val taskRef = tasksRef.child(taskId)
+
+        // Listen for SDP Offer from Requester
+        offerListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val type = snapshot.child("type").getValue(String::class.java)
+                val sdp = snapshot.child("sdp").getValue(String::class.java)
+                
+                if (type == "offer" && sdp != null) {
+                    Log.d(TAG, "Received SDP Offer")
+                    listener.onSDPOffer(sdp)
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e(TAG, "Offer listener cancelled", error.toException())
+            }
+        }
+        taskRef.child("offer").addValueEventListener(offerListener!!)
+
+        // Listen for ICE Candidates from Requester
+        iceListener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val sender = snapshot.child("sender").getValue(String::class.java)
+                if (sender == "requester") {
+                    val candidate = snapshot.child("candidate").getValue(String::class.java)
+                    val sdpMid = snapshot.child("sdpMid").getValue(String::class.java)
+                    val sdpMLineIndex = snapshot.child("sdpMLineIndex").getValue(Int::class.java) ?: 0
+                    
+                    if (candidate != null) {
+                        Log.d(TAG, "Received ICE candidate from requester")
+                        listener.onICECandidate(candidate, sdpMid, sdpMLineIndex)
+                    }
+                }
+            }
+
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        taskRef.child("ice").addChildEventListener(iceListener!!)
     }
 
     fun sendAnswer(sdp: String) {
-        val msg = gson.toJson(SignalMessage(type = "answer", sdp = sdp))
-        webSocket?.send(msg)
+        val taskId = currentTaskId ?: return
+        Log.d(TAG, "Sending SDP Answer")
+        val answer = mapOf(
+            "type" to "answer",
+            "sdp" to sdp
+        )
+        tasksRef.child(taskId).child("answer").setValue(answer)
     }
 
     fun sendICECandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int) {
-        val msg = gson.toJson(SignalMessage(
-            type = "ice",
-            candidate = candidate,
-            sdpMid = sdpMid,
-            sdpMLineIndex = sdpMLineIndex
-        ))
-        webSocket?.send(msg)
+        val taskId = currentTaskId ?: return
+        val ice = mapOf(
+            "candidate" to candidate,
+            "sdpMid" to sdpMid,
+            "sdpMLineIndex" to sdpMLineIndex,
+            "sender" to "operator"
+        )
+        tasksRef.child(taskId).child("ice").push().setValue(ice)
     }
 
     fun disconnect() {
-        webSocket?.close(1000, "Disconnecting")
-        webSocket = null
+        Log.d(TAG, "Disconnecting SignalingClient")
+        tasksListener?.let { tasksRef.removeEventListener(it) }
+        
+        currentTaskId?.let { taskId ->
+            offerListener?.let { tasksRef.child(taskId).child("offer").removeEventListener(it) }
+            iceListener?.let { tasksRef.child(taskId).child("ice").removeEventListener(it) }
+        }
+        
+        tasksListener = null
+        offerListener = null
+        iceListener = null
+        currentTaskId = null
     }
 }

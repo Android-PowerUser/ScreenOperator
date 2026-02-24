@@ -72,6 +72,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.google.ai.sample.webrtc.WebRTCSender
+import com.google.ai.sample.webrtc.SignalingClient
+import org.webrtc.IceCandidate
 
 class PhotoReasoningViewModel(
     application: Application,
@@ -85,6 +88,14 @@ class PhotoReasoningViewModel(
 
     private var llmInference: LlmInference? = null
     private val TAG = "PhotoReasoningViewModel"
+    
+    // WebRTC & Signaling
+    private var webRTCSender: WebRTCSender? = null
+    private var signalingClient: SignalingClient? = null
+    private var lastMediaProjectionResultCode: Int = 0
+    private var lastMediaProjectionResultData: Intent? = null
+    
+
 
     private fun Bitmap.toBase64(): String {
         val outputStream = ByteArrayOutputStream()
@@ -351,6 +362,10 @@ class PhotoReasoningViewModel(
             Log.w(TAG, "Error closing LlmInference", e)
         }
         llmInference = null
+        
+        // WebRTC cleanup
+        webRTCSender?.stop()
+        signalingClient?.disconnect()
     }
 
     private fun createChatWithSystemMessage(context: Context? = null): Chat {
@@ -509,8 +524,36 @@ class PhotoReasoningViewModel(
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
-            _uiState.value = PhotoReasoningUiState.Error("Human Expert mode is not yet connected. The Human Operator app is required.")
-            return
+             // If we already have a specialized session running, maybe just send the text?
+             // For now, we assume the user hits "Send" to trigger the connection + task post.
+             
+             // Initial task post message
+             val userMessage = PhotoReasoningMessage(
+                 text = userInput,
+                 participant = PhotoParticipant.USER,
+                 imageUris = imageUrisForChat ?: emptyList(),
+                 isPending = false
+             )
+             _chatState.addMessage(userMessage)
+             
+             _uiState.value = PhotoReasoningUiState.Loading
+             
+             // We need to ensure we have MediaProjection permission.
+             // The UI (PhotoReasoningScreen) calls requestMediaProjectionPermission before calling reason()
+             // if permission is missing. So here we should ideally rely on onMediaProjectionPermissionGranted
+             // having been called or already having the intent.
+             
+             // But valid intent handling happens in onMediaProjectionPermissionGranted.
+             // If reason() is called, it means we likely have permission or it was just granted.
+             
+             // Check if we are already connected?
+             if (signalingClient == null) {
+                 startHumanExpertSession(userInput)
+             } else {
+                 // Already connected, just post the new task text or send via DataChannel if paired
+                 postTaskToHumanExpert(userInput)
+             }
+             return
         }
 
         // Check for offline model (Gemma)
@@ -1097,9 +1140,155 @@ class PhotoReasoningViewModel(
         }
     }
 
-    /**
-     * Update the AI message in chat history
-     */
+    // === Human Expert / WebRTC Logic ===
+
+    fun onMediaProjectionPermissionGranted(resultCode: Int, data: Intent) {
+        Log.d(TAG, "onMediaProjectionPermissionGranted: Storing result. Code=$resultCode")
+        lastMediaProjectionResultCode = resultCode
+        lastMediaProjectionResultData = data
+        
+        // If we were waiting to start a session, we could start it here.
+        // For now, if the user just clicked "Human Expert" and granted permission, 
+        // they might expect the connection to start. 
+        // But startHumanExpertSession is already called in reason() if permission was already there.
+        // If permission wasn't there, reason() wasn't called (MainActivity blocked it?).
+        // Actually MainActivity.requestMediaProjectionPermission callback invokes the lambda passed to it.
+        // That lambda calls reason(). So reason() will be called immediately after this.
+    }
+
+    private fun startHumanExpertSession(taskText: String) {
+        if (lastMediaProjectionResultData == null) {
+            _uiState.value = PhotoReasoningUiState.Error("Screen capture permission required.")
+            return
+        }
+
+        if (signalingClient != null) {
+            // Already connected
+            postTaskToHumanExpert(taskText)
+            return
+        }
+
+        _uiState.value = PhotoReasoningUiState.Loading
+        _chatState.addMessage(PhotoReasoningMessage(text = "Connecting to Human Expert network...", participant = PhotoParticipant.MODEL, isPending = true))
+        _chatMessagesFlow.value = _chatState.getAllMessages()
+
+        // Initialize WebRTC Sender
+        webRTCSender = WebRTCSender(getApplication(), object : WebRTCSender.WebRTCSenderListener {
+            override fun onLocalICECandidate(candidate: IceCandidate) {
+                signalingClient?.sendICECandidate(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
+            }
+
+            override fun onConnectionStateChanged(state: String) {
+                Log.d(TAG, "WebRTC State: $state")
+                viewModelScope.launch(Dispatchers.Main) {
+                    if (state == "CONNECTED") {
+                        _commandExecutionStatus.value = "Expert connected. Sharing screen."
+                        replaceAiMessageText("Expert connected! They can now see your screen and control your device.", isPending = false)
+                    } else if (state == "DISCONNECTED" || state == "FAILED") {
+                         _commandExecutionStatus.value = "Expert disconnected."
+                         // Keep the chat message as is
+                    }
+                }
+            }
+
+            override fun onTapReceived(x: Float, y: Float) {
+               dispatchTap(x, y)
+            }
+
+            override fun onError(message: String) {
+                Log.e(TAG, "WebRTC Error: $message")
+                viewModelScope.launch(Dispatchers.Main) {
+                     _uiState.value = PhotoReasoningUiState.Error("Video stream error: $message")
+                }
+            }
+        })
+        webRTCSender?.initialize()
+
+        // Initialize Signaling
+        // Initialize Signaling
+        signalingClient = SignalingClient(object : SignalingClient.SignalingListener {
+            override fun onTaskPosted(taskId: String) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    val msg = "Task posted. Waiting for an expert to claim it..."
+                    replaceAiMessageText(msg, isPending = true)
+                }
+            }
+
+            override fun onTaskClaimed(taskId: String) {
+                Log.d(TAG, "Task claimed! Starting WebRTC negotiation.")
+                viewModelScope.launch(Dispatchers.Main) {
+                    replaceAiMessageText("Expert found! Establishing video connection...", isPending = true)
+                }
+                
+                // Start screen capture
+                webRTCSender?.startScreenCapture(lastMediaProjectionResultData!!)
+                webRTCSender?.createPeerConnection()
+                
+                // Create Offer
+                webRTCSender?.createOffer { sdp ->
+                    signalingClient?.sendOffer(sdp)
+                }
+            }
+
+            override fun onSDPAnswer(sdp: String) {
+                webRTCSender?.setRemoteAnswer(sdp)
+            }
+
+            override fun onICECandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int) {
+                webRTCSender?.addIceCandidate(candidate, sdpMid, sdpMLineIndex)
+            }
+
+            override fun onPeerDisconnected() {
+                 viewModelScope.launch(Dispatchers.Main) {
+                    _commandExecutionStatus.value = "Expert disconnected."
+                    replaceAiMessageText("Expert disconnected.", isPending = false)
+                    // Cleanup WebRTC but keep signaling for next task?
+                    webRTCSender?.stop()
+                    // Re-init sender for next time? For simpler logic, user should reconnect.
+                }
+            }
+
+            override fun onError(message: String) {
+                 viewModelScope.launch(Dispatchers.Main) {
+                    _uiState.value = PhotoReasoningUiState.Error("Signaling error: $message")
+                }
+            }
+        })
+        
+        // Post the task immediately
+        Log.d(TAG, "Signaling initialized. Posting task.")
+        postTaskToHumanExpert(taskText)
+    }
+
+    private fun postTaskToHumanExpert(text: String) {
+         signalingClient?.postTask(text, hasScreenshot = false) // Capture live stream instead
+    }
+
+    private fun dispatchTap(x: Float, y: Float) {
+        Log.d(TAG, "Dispatching tap: ($x, $y)")
+        // Convert normalized to screen coordinates? 
+        // Command.TapCoordinates usually expects absolute pixels.
+        // ScreenOperatorAccessibilityService.executeCommand handles logic.
+        // But wait, the web client sends normalized (0-1).
+        
+        // We need the screen dimensions.
+        val displayMetrics = getApplication<Application>().resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        
+        val absX = (x * screenWidth).toInt()
+        val absY = (y * screenHeight).toInt()
+        
+        val command = Command.TapCoordinates(absX.toString(), absY.toString())
+        ScreenOperatorAccessibilityService.executeCommand(command)
+        
+        viewModelScope.launch(Dispatchers.Main) {
+            _commandExecutionStatus.value = "Expert tapped at ($absX, $absY)"
+        }
+    }
+
+
+
     private fun finalizeAiMessage(finalText: String) {
         Log.d(TAG, "finalizeAiMessage: Finalizing AI message.")
         val messages = _chatState.getAllMessages().toMutableList()

@@ -444,6 +444,10 @@ class MainActivity : ComponentActivity() {
                 if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                     val shouldTakeScreenshotOnThisStart = this@MainActivity.isProcessingExplicitScreenshotRequest
                     Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
+                    
+                    // Notify ViewModel about the permission grant (for Human Expert WebRTC)
+                    photoReasoningViewModel?.onMediaProjectionPermissionGranted(result.resultCode, result.data!!)
+
                     val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
                         action = ScreenCaptureService.ACTION_START_CAPTURE
                         putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
