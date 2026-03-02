@@ -9,7 +9,9 @@ plugins {
 }
 
 // Redirect build output to C: drive (NTFS) to avoid corrupted ExFAT build cache
-// layout.buildDirectory = file("C:/GradleBuild/app")
+if (System.getenv("CI") == null) {
+    layout.buildDirectory = file("C:/GradleBuild/app")
+}
 
 android {
     namespace = "com.google.ai.sample"
