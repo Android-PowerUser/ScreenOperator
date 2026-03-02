@@ -21,12 +21,12 @@ jobs:
     - name: Decode google-services.json (app)
       env:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
-      run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+      run: echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json
 
     - name: Decode google-services.json (humanoperator)
       env:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_HUMANOPERATOR }}
-      run: echo "$GOOGLE_SERVICES_JSON" > humanoperator/google-services.json
+      run: echo "$GOOGLE_SERVICES_JSON" | base64 -d > humanoperator/google-services.json
 
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
