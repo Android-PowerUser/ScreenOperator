@@ -9,6 +9,7 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.generationConfig
 import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
+import com.google.ai.sample.util.GenerationSettingsPreferences
 
 // Model options
 enum class ApiProvider {
@@ -44,7 +45,11 @@ enum class ModelOption(
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
         "4.92 GB"
     ),
-    HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT)
+    HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
+
+    /** Whether this model supports TopK/TopP/Temperature settings */
+    val supportsGenerationSettings: Boolean
+        get() = this != HUMAN_EXPERT
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -52,16 +57,20 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         viewModelClass: Class<T>,
         extras: CreationExtras
     ): T {
-        val config = generationConfig {
-            temperature = 0.0f
-        }
-
         // Get the application context from extras
         val application = checkNotNull(extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
+        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+        
+        // Load per-model generation settings
+        val genSettings = GenerationSettingsPreferences.loadSettings(application.applicationContext, currentModel.modelName)
+        val config = generationConfig {
+            temperature = genSettings.temperature
+            topP = genSettings.topP
+            topK = genSettings.topK
+        }
 
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
-        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
         val apiKey = if (currentModel == ModelOption.GEMMA_3N_E4B_IT || currentModel == ModelOption.HUMAN_EXPERT) {
             "offline-no-key-needed" // Dummy key for offline/human expert models
         } else {
@@ -75,8 +84,6 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         return with(viewModelClass) {
             when {
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
-                    val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-                    
                     if (currentModel.modelName.contains("live")) {
                         // Live API models
                         val liveApiManager = LiveApiManager(apiKey, currentModel.modelName)

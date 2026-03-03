@@ -509,8 +509,9 @@ fun PhotoReasoningScreen(
                                     return@IconButton
                                 }
 
-                                // Check MediaProjection for all models except gemma-3n-e4b-it
-                                if (!isMediaProjectionPermissionGranted && modelName != "gemma-3n-e4b-it") {
+                                // Check MediaProjection for all models except gemma-3n-e4b-it and human-expert
+                                // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService
+                                if (!isMediaProjectionPermissionGranted && modelName != "gemma-3n-e4b-it" && modelName != "human-expert") {
                                     mainActivity?.requestMediaProjectionPermission {
                                         // This block will be executed after permission is granted
                                         if (userQuestion.isNotBlank()) {

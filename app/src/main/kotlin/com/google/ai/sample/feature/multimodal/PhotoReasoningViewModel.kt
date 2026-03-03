@@ -175,6 +175,12 @@ class PhotoReasoningViewModel(
     private var commandProcessingJob: Job? = null
     private val stopExecutionFlag = AtomicBoolean(false)
 
+    // Track how many commands have been executed incrementally during streaming
+    // to avoid re-executing already-executed commands
+    private var incrementalCommandCount = 0
+    // Accumulated full text during streaming for incremental command parsing
+    private var streamingAccumulatedText = StringBuilder()
+
     // Added for retry on quota exceeded
     private var currentRetryAttempt = 0
     private var currentScreenInfoForPrompt: String? = null
@@ -186,6 +192,9 @@ class PhotoReasoningViewModel(
                 val chunk = intent.getStringExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK)
                 if (chunk != null) {
                     updateAiMessage(chunk, isPending = true)
+                    // Real-time command execution during streaming
+                    streamingAccumulatedText.append(chunk)
+                    processCommandsIncrementally(streamingAccumulatedText.toString())
                 }
             }
         }
@@ -289,7 +298,7 @@ class PhotoReasoningViewModel(
                     
                     val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
                         .setModelPath(modelFile.absolutePath)
-                        .setMaxTokens(1024)
+                        .setMaxTokens(4096)
                     
                     // Set preferred backend (CPU or GPU)
                     if (backend == InferenceBackend.GPU) {
@@ -443,9 +452,12 @@ class PhotoReasoningViewModel(
         currentScreenInfoForPrompt = screenInfoForPrompt
         currentImageUrisForChat = imageUrisForChat
 
-        // Clear previous commands
+        // Clear previous commands and reset incremental tracking
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
+        incrementalCommandCount = 0
+        streamingAccumulatedText.clear()
+        CommandParser.clearBuffer()
 
         // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
@@ -568,6 +580,13 @@ class PhotoReasoningViewModel(
             // Ensure system message and DB are loaded
             ensureInitialized(context)
 
+            // Reset incremental command tracking for this new reasoning
+            incrementalCommandCount = 0
+            streamingAccumulatedText.clear()
+            CommandParser.clearBuffer()
+            _detectedCommands.value = emptyList()
+            _commandExecutionStatus.value = ""
+
             // Build the combined prompt with system message + DB entries + user input
             val systemMsg = _systemMessage.value
             val dbEntries = formatDatabaseEntriesAsText(context)
@@ -613,7 +632,13 @@ class PhotoReasoningViewModel(
                     // Initialize model if needed
                     var initError: String? = null
                     if (llmInference == null) {
-                        initError = initializeOfflineModel(context)
+                        withContext(Dispatchers.Main) {
+                            replaceAiMessageText("Initializing offline model...", isPending = true)
+                        }
+                        // Use Default dispatcher for CPU-intensive model loading
+                        initError = withContext(Dispatchers.Default) {
+                            initializeOfflineModel(context)
+                        }
                     }
 
                     if (llmInference == null) {
@@ -642,6 +667,8 @@ class PhotoReasoningViewModel(
                         viewModelScope.launch(Dispatchers.Main) {
                             if (!done) {
                                 replaceAiMessageText(sb.toString(), isPending = true)
+                                // Real-time command execution during offline streaming
+                                processCommandsIncrementally(sb.toString())
                             }
                         }
                     }.get()
@@ -1157,11 +1184,6 @@ class PhotoReasoningViewModel(
     }
 
     private fun startHumanExpertSession(taskText: String) {
-        if (lastMediaProjectionResultData == null) {
-            _uiState.value = PhotoReasoningUiState.Error("Screen capture permission required.")
-            return
-        }
-
         if (signalingClient != null) {
             // Already connected
             postTaskToHumanExpert(taskText)
@@ -1186,7 +1208,6 @@ class PhotoReasoningViewModel(
                         replaceAiMessageText("Expert connected! They can now see your screen and control your device.", isPending = false)
                     } else if (state == "DISCONNECTED" || state == "FAILED") {
                          _commandExecutionStatus.value = "Expert disconnected."
-                         // Keep the chat message as is
                     }
                 }
             }
@@ -1205,7 +1226,6 @@ class PhotoReasoningViewModel(
         webRTCSender?.initialize()
 
         // Initialize Signaling
-        // Initialize Signaling
         signalingClient = SignalingClient(object : SignalingClient.SignalingListener {
             override fun onTaskPosted(taskId: String) {
                 viewModelScope.launch(Dispatchers.Main) {
@@ -1215,18 +1235,31 @@ class PhotoReasoningViewModel(
             }
 
             override fun onTaskClaimed(taskId: String) {
-                Log.d(TAG, "Task claimed! Starting WebRTC negotiation.")
+                Log.d(TAG, "Task claimed! Requesting fresh MediaProjection for WebRTC.")
                 viewModelScope.launch(Dispatchers.Main) {
-                    replaceAiMessageText("Expert found! Establishing video connection...", isPending = true)
-                }
-                
-                // Start screen capture
-                webRTCSender?.startScreenCapture(lastMediaProjectionResultData!!)
-                webRTCSender?.createPeerConnection()
-                
-                // Create Offer
-                webRTCSender?.createOffer { sdp ->
-                    signalingClient?.sendOffer(sdp)
+                    replaceAiMessageText("Expert found! Requesting screen capture permission...", isPending = true)
+                    
+                    // Request a fresh MediaProjection specifically for WebRTC
+                    // This does NOT start ScreenCaptureService - avoids token reuse crash
+                    val mainActivity = MainActivity.getInstance()
+                    if (mainActivity != null) {
+                        mainActivity.requestMediaProjectionForWebRTC { resultCode, resultData ->
+                            Log.d(TAG, "WebRTC MediaProjection granted. Starting screen capture.")
+                            replaceAiMessageText("Establishing video connection...", isPending = true)
+                            
+                            // Start screen capture for WebRTC with fresh permission data
+                            webRTCSender?.startScreenCapture(resultData)
+                            webRTCSender?.createPeerConnection()
+                            
+                            // Create Offer
+                            webRTCSender?.createOffer { sdp ->
+                                signalingClient?.sendOffer(sdp)
+                            }
+                        }
+                    } else {
+                        Log.e(TAG, "MainActivity not available for MediaProjection request")
+                        _uiState.value = PhotoReasoningUiState.Error("Cannot request screen capture - activity not available")
+                    }
                 }
             }
 
@@ -1242,9 +1275,7 @@ class PhotoReasoningViewModel(
                  viewModelScope.launch(Dispatchers.Main) {
                     _commandExecutionStatus.value = "Expert disconnected."
                     replaceAiMessageText("Expert disconnected.", isPending = false)
-                    // Cleanup WebRTC but keep signaling for next task?
                     webRTCSender?.stop()
-                    // Re-init sender for next time? For simpler logic, user should reconnect.
                 }
             }
 
@@ -1427,6 +1458,59 @@ class PhotoReasoningViewModel(
         return builder.toString()
     }
     
+    /**
+     * Incrementally process commands during streaming.
+     * Parses the full accumulated text but only executes NEW commands
+     * (i.e., commands beyond incrementalCommandCount).
+     * This avoids re-executing commands that were already executed in earlier chunks.
+     * 
+     * Skips takeScreenshot() during streaming since we don't want to interrupt generation.
+     * The final processCommands() call after streaming ends handles takeScreenshot.
+     */
+    private fun processCommandsIncrementally(accumulatedText: String) {
+        if (stopExecutionFlag.get()) return
+        
+        try {
+            // Parse all commands from the full accumulated text
+            // Use a fresh parse (not the buffer-based one) to get all commands in order
+            val allCommands = CommandParser.parseCommands(accumulatedText, clearBuffer = true)
+            
+            if (allCommands.size > incrementalCommandCount) {
+                // There are new commands to execute
+                val newCommands = allCommands.subList(incrementalCommandCount, allCommands.size)
+                Log.d(TAG, "Incremental: Found ${newCommands.size} new commands (total: ${allCommands.size}, already executed: $incrementalCommandCount)")
+                
+                for (command in newCommands) {
+                    if (stopExecutionFlag.get()) break
+                    
+                    // Skip takeScreenshot during streaming - it will be handled by final processCommands
+                    if (command is Command.TakeScreenshot) {
+                        Log.d(TAG, "Incremental: Skipping takeScreenshot during streaming (will be handled at end)")
+                        incrementalCommandCount++
+                        continue
+                    }
+                    
+                    try {
+                        Log.d(TAG, "Incremental: Executing command: $command")
+                        _commandExecutionStatus.value = "Executing: $command"
+                        ScreenOperatorAccessibilityService.executeCommand(command)
+                        
+                        // Track as executed
+                        val currentCommands = _detectedCommands.value.toMutableList()
+                        currentCommands.add(command)
+                        _detectedCommands.value = currentCommands
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Incremental: Error executing command: ${e.message}", e)
+                    }
+                    
+                    incrementalCommandCount++
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Incremental command parsing error: ${e.message}", e)
+        }
+    }
+
     /**
      * Process commands found in the AI response
      */
