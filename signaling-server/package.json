@@ -1,0 +1,12 @@
+{
+  "name": "screenoperator-signaling",
+  "version": "1.0.0",
+  "description": "Minimal WebSocket relay for WebRTC signaling",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

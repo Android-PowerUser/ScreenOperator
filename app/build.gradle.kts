@@ -5,6 +5,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.20"
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id("kotlin-parcelize")
+    id("com.google.gms.google-services")
+}
+
+// Redirect build output to C: drive (NTFS) to avoid corrupted ExFAT build cache
+if (System.getenv("CI") == null) {
+    layout.buildDirectory = file("C:/GradleBuild/app")
 }
 
 android {
@@ -12,7 +18,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.google.ai.sample"
+        applicationId = "io.github.android_poweruser"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -96,4 +102,14 @@ dependencies {
 
     // Camera Core to potentially fix missing JNI lib issue
     implementation("androidx.camera:camera-core:1.4.0")
+
+    // WebRTC
+    implementation("io.getstream:stream-webrtc-android:1.1.1")
+
+    // WebSocket for signaling
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
+    implementation("com.google.firebase:firebase-database")
 }

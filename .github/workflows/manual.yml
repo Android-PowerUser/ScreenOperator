@@ -1,35 +1,140 @@
 name: Android Build
 
 on:
- # push:
-   # branches: [ main, develop ]
- # pull_request:
-  #  branches: [ main ]
+  push:
+    branches: [ human-operator, main ]
   workflow_dispatch:  # Ermöglicht manuelle Ausführung des Workflows
 
 jobs:
-  build:
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      app_changed: ${{ steps.changes.outputs.app }}
+      humanoperator_changed: ${{ steps.changes.outputs.humanoperator }}
+      shared_changed: ${{ steps.changes.outputs.shared }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # Letzten 2 Commits holen für Diff
+
+    - name: Detect changed files
+      id: changes
+      run: |
+        # Bei workflow_dispatch immer alles bauen
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "app=true" >> $GITHUB_OUTPUT
+          echo "humanoperator=true" >> $GITHUB_OUTPUT
+          echo "shared=true" >> $GITHUB_OUTPUT
+          echo "Manual dispatch - building all modules"
+          exit 0
+        fi
+        
+        # Geänderte Dateien im letzten Commit ermitteln
+        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+        
+        # Falls kein vorheriger Commit existiert (erster Commit), alles bauen
+        if [ -z "$CHANGED_FILES" ]; then
+          echo "app=true" >> $GITHUB_OUTPUT
+          echo "humanoperator=true" >> $GITHUB_OUTPUT
+          echo "shared=true" >> $GITHUB_OUTPUT
+          echo "No previous commit found - building all modules"
+          exit 0
+        fi
+        
+        echo "Changed files:"
+        echo "$CHANGED_FILES"
+        
+        # Prüfen ob shared/root files geändert wurden (build.gradle, settings.gradle, etc.)
+        SHARED_CHANGED=false
+        if echo "$CHANGED_FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradle\.properties|gradle/|buildSrc/)'; then
+          SHARED_CHANGED=true
+        fi
+        
+        # Prüfen ob app/ Dateien geändert wurden
+        APP_CHANGED=false
+        if echo "$CHANGED_FILES" | grep -q '^app/'; then
+          APP_CHANGED=true
+        fi
+        
+        # Prüfen ob humanoperator/ Dateien geändert wurden
+        HUMANOPERATOR_CHANGED=false
+        if echo "$CHANGED_FILES" | grep -q '^humanoperator/'; then
+          HUMANOPERATOR_CHANGED=true
+        fi
+        
+        echo "app=$APP_CHANGED" >> $GITHUB_OUTPUT
+        echo "humanoperator=$HUMANOPERATOR_CHANGED" >> $GITHUB_OUTPUT
+        echo "shared=$SHARED_CHANGED" >> $GITHUB_OUTPUT
+        
+        echo "Results: app=$APP_CHANGED, humanoperator=$HUMANOPERATOR_CHANGED, shared=$SHARED_CHANGED"
+
+  build:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    env:
+      BUILD_APP: ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }}
+      BUILD_HUMANOPERATOR: ${{ needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }}
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Set up JDK
-      uses: actions/setup-java@v3
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
 
+    - name: Decode google-services.json (app)
+      env:
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
+      run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+    - name: Decode google-services.json (humanoperator)
+      env:
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_HUMANOPERATOR }}
+      run: printf '%s' "$GOOGLE_SERVICES_JSON" > humanoperator/google-services.json
+
+    - name: Create local.properties
+      run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+    - name: Fix gradle.properties for CI
+      run: |
+        sed -i '/org.gradle.java.home=/d' gradle.properties
+        sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m/' gradle.properties
+        sed -i 's/kotlin.daemon.jvmargs=.*/kotlin.daemon.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m/' gradle.properties
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build with Gradle
-      run: ./gradlew assembleRelease
+    - name: Build app module (debug)
+      if: env.BUILD_APP == 'true'
+      run: ./gradlew :app:assembleDebug
 
-    - name: Upload APK
+    - name: Build humanoperator module (debug)
+      if: env.BUILD_HUMANOPERATOR == 'true'
+      run: ./gradlew :humanoperator:assembleDebug
+
+    - name: Upload app APK
+      if: env.BUILD_APP == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: app-release
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
+        name: app-debug
+        path: app/build/outputs/apk/debug/app-debug.apk
+
+    - name: Upload humanoperator APK
+      if: env.BUILD_HUMANOPERATOR == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: humanoperator-debug
+        path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
+
+    - name: Build summary
+      run: |
+        echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "| Module | Built |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| app | ${{ env.BUILD_APP }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| humanoperator | ${{ env.BUILD_HUMANOPERATOR }} |" >> $GITHUB_STEP_SUMMARY

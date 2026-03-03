@@ -72,6 +72,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.google.ai.sample.webrtc.WebRTCSender
+import com.google.ai.sample.webrtc.SignalingClient
+import org.webrtc.IceCandidate
 
 class PhotoReasoningViewModel(
     application: Application,
@@ -85,6 +88,14 @@ class PhotoReasoningViewModel(
 
     private var llmInference: LlmInference? = null
     private val TAG = "PhotoReasoningViewModel"
+    
+    // WebRTC & Signaling
+    private var webRTCSender: WebRTCSender? = null
+    private var signalingClient: SignalingClient? = null
+    private var lastMediaProjectionResultCode: Int = 0
+    private var lastMediaProjectionResultData: Intent? = null
+    
+
 
     private fun Bitmap.toBase64(): String {
         val outputStream = ByteArrayOutputStream()
@@ -164,6 +175,12 @@ class PhotoReasoningViewModel(
     private var commandProcessingJob: Job? = null
     private val stopExecutionFlag = AtomicBoolean(false)
 
+    // Track how many commands have been executed incrementally during streaming
+    // to avoid re-executing already-executed commands
+    private var incrementalCommandCount = 0
+    // Accumulated full text during streaming for incremental command parsing
+    private var streamingAccumulatedText = StringBuilder()
+
     // Added for retry on quota exceeded
     private var currentRetryAttempt = 0
     private var currentScreenInfoForPrompt: String? = null
@@ -175,6 +192,9 @@ class PhotoReasoningViewModel(
                 val chunk = intent.getStringExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK)
                 if (chunk != null) {
                     updateAiMessage(chunk, isPending = true)
+                    // Real-time command execution during streaming
+                    streamingAccumulatedText.append(chunk)
+                    processCommandsIncrementally(streamingAccumulatedText.toString())
                 }
             }
         }
@@ -202,7 +222,23 @@ class PhotoReasoningViewModel(
 
                     val apiKeyManager = ApiKeyManager.getInstance(receiverContext)
                     val isQuotaError = isQuotaExceededError(errorMessage)
+                    val isHighDemand = isHighDemandError(errorMessage)
                     val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                    
+                    // Point 14: Don't switch keys for high-demand 503 errors
+                    if (isHighDemand) {
+                        Log.d(TAG, "High demand error detected - not switching API keys")
+                        _chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = "This model is currently experiencing high demand. Please try again later.",
+                                participant = PhotoParticipant.ERROR
+                            )
+                        )
+                        _chatMessagesFlow.value = chatMessages
+                        saveChatHistory(getApplication<Application>())
+                        return
+                    }
+                    
                     if (isQuotaError && currentRetryAttempt < MAX_RETRY_ATTEMPTS) {
                         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
                         if (currentKey != null) {
@@ -250,7 +286,20 @@ class PhotoReasoningViewModel(
         val context = getApplication<Application>().applicationContext
         if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
             if (ModelDownloadManager.isModelDownloaded(context)) {
-                initializeOfflineModel(context)
+                // Point 7 & 16: Initialize model asynchronously to not block UI
+                viewModelScope.launch(Dispatchers.IO) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = PhotoReasoningUiState.Loading
+                    }
+                    val error = initializeOfflineModel(context)
+                    withContext(Dispatchers.Main) {
+                        if (error != null) {
+                            _uiState.value = PhotoReasoningUiState.Error(error)
+                        } else {
+                            _uiState.value = PhotoReasoningUiState.Success("Model initialized.")
+                        }
+                    }
+                }
             }
         }
 
@@ -278,7 +327,7 @@ class PhotoReasoningViewModel(
                     
                     val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
                         .setModelPath(modelFile.absolutePath)
-                        .setMaxTokens(1024)
+                        .setMaxTokens(4096)
                     
                     // Set preferred backend (CPU or GPU)
                     if (backend == InferenceBackend.GPU) {
@@ -309,13 +358,18 @@ class PhotoReasoningViewModel(
     fun reinitializeOfflineModel(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Close existing instance
+                // Point 3: Properly close existing instance and free GPU resources
                 try {
-                    (llmInference as? java.io.Closeable)?.close()
+                    llmInference?.close()
+                    Log.d(TAG, "LlmInference closed for reinit")
                 } catch (e: Exception) {
                     Log.w(TAG, "Error closing existing LlmInference for reinit", e)
                 }
                 llmInference = null
+                
+                // Force garbage collection and wait for GPU resources to be freed
+                System.gc()
+                delay(500)
                 
                 // Re-initialize with new settings
                 val initError = initializeOfflineModel(context)
@@ -345,12 +399,18 @@ class PhotoReasoningViewModel(
         Log.d(TAG, "AIResultStreamReceiver unregistered with LocalBroadcastManager.")
 
         try {
-            // Using reflection if specific method not known or standard cast
-            (llmInference as? java.io.Closeable)?.close()
+            // Point 3: Properly close LlmInference to free GPU/RAM
+            llmInference?.close()
+            Log.d(TAG, "LlmInference closed in onCleared")
         } catch (e: Exception) {
             Log.w(TAG, "Error closing LlmInference", e)
         }
         llmInference = null
+        System.gc() // Help free GPU resources
+        
+        // WebRTC cleanup
+        webRTCSender?.stop()
+        signalingClient?.disconnect()
     }
 
     private fun createChatWithSystemMessage(context: Context? = null): Chat {
@@ -428,9 +488,12 @@ class PhotoReasoningViewModel(
         currentScreenInfoForPrompt = screenInfoForPrompt
         currentImageUrisForChat = imageUrisForChat
 
-        // Clear previous commands
+        // Clear previous commands and reset incremental tracking
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
+        incrementalCommandCount = 0
+        streamingAccumulatedText.clear()
+        CommandParser.clearBuffer()
 
         // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
@@ -509,8 +572,36 @@ class PhotoReasoningViewModel(
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
-            _uiState.value = PhotoReasoningUiState.Error("Human Expert mode is not yet connected. The Human Operator app is required.")
-            return
+             // If we already have a specialized session running, maybe just send the text?
+             // For now, we assume the user hits "Send" to trigger the connection + task post.
+             
+             // Initial task post message
+             val userMessage = PhotoReasoningMessage(
+                 text = userInput,
+                 participant = PhotoParticipant.USER,
+                 imageUris = imageUrisForChat ?: emptyList(),
+                 isPending = false
+             )
+             _chatState.addMessage(userMessage)
+             
+             _uiState.value = PhotoReasoningUiState.Loading
+             
+             // We need to ensure we have MediaProjection permission.
+             // The UI (PhotoReasoningScreen) calls requestMediaProjectionPermission before calling reason()
+             // if permission is missing. So here we should ideally rely on onMediaProjectionPermissionGranted
+             // having been called or already having the intent.
+             
+             // But valid intent handling happens in onMediaProjectionPermissionGranted.
+             // If reason() is called, it means we likely have permission or it was just granted.
+             
+             // Check if we are already connected?
+             if (signalingClient == null) {
+                 startHumanExpertSession(userInput)
+             } else {
+                 // Already connected, just post the new task text or send via DataChannel if paired
+                 postTaskToHumanExpert(userInput)
+             }
+             return
         }
 
         // Check for offline model (Gemma)
@@ -524,6 +615,13 @@ class PhotoReasoningViewModel(
 
             // Ensure system message and DB are loaded
             ensureInitialized(context)
+
+            // Reset incremental command tracking for this new reasoning
+            incrementalCommandCount = 0
+            streamingAccumulatedText.clear()
+            CommandParser.clearBuffer()
+            _detectedCommands.value = emptyList()
+            _commandExecutionStatus.value = ""
 
             // Build the combined prompt with system message + DB entries + user input
             val systemMsg = _systemMessage.value
@@ -570,7 +668,13 @@ class PhotoReasoningViewModel(
                     // Initialize model if needed
                     var initError: String? = null
                     if (llmInference == null) {
-                        initError = initializeOfflineModel(context)
+                        withContext(Dispatchers.Main) {
+                            replaceAiMessageText("Initializing offline model...", isPending = true)
+                        }
+                        // Use Default dispatcher for CPU-intensive model loading
+                        initError = withContext(Dispatchers.Default) {
+                            initializeOfflineModel(context)
+                        }
                     }
 
                     if (llmInference == null) {
@@ -599,6 +703,8 @@ class PhotoReasoningViewModel(
                         viewModelScope.launch(Dispatchers.Main) {
                             if (!done) {
                                 replaceAiMessageText(sb.toString(), isPending = true)
+                                // Real-time command execution during offline streaming
+                                processCommandsIncrementally(sb.toString())
                             }
                         }
                     }.get()
@@ -1097,9 +1203,178 @@ class PhotoReasoningViewModel(
         }
     }
 
-    /**
-     * Update the AI message in chat history
-     */
+    // === Human Expert / WebRTC Logic ===
+
+    fun onMediaProjectionPermissionGranted(resultCode: Int, data: Intent) {
+        Log.d(TAG, "onMediaProjectionPermissionGranted: Storing result. Code=$resultCode")
+        lastMediaProjectionResultCode = resultCode
+        lastMediaProjectionResultData = data
+        
+        // If we were waiting to start a session, we could start it here.
+        // For now, if the user just clicked "Human Expert" and granted permission, 
+        // they might expect the connection to start. 
+        // But startHumanExpertSession is already called in reason() if permission was already there.
+        // If permission wasn't there, reason() wasn't called (MainActivity blocked it?).
+        // Actually MainActivity.requestMediaProjectionPermission callback invokes the lambda passed to it.
+        // That lambda calls reason(). So reason() will be called immediately after this.
+    }
+
+    private fun startHumanExpertSession(taskText: String) {
+        if (signalingClient != null) {
+            // Already connected
+            postTaskToHumanExpert(taskText)
+            return
+        }
+
+        _uiState.value = PhotoReasoningUiState.Loading
+        _chatState.addMessage(PhotoReasoningMessage(text = "Connecting to Human Expert network...", participant = PhotoParticipant.MODEL, isPending = true))
+        _chatMessagesFlow.value = _chatState.getAllMessages()
+
+        // Initialize WebRTC Sender
+        webRTCSender = WebRTCSender(getApplication(), object : WebRTCSender.WebRTCSenderListener {
+            override fun onLocalICECandidate(candidate: IceCandidate) {
+                signalingClient?.sendICECandidate(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
+            }
+
+            override fun onConnectionStateChanged(state: String) {
+                Log.d(TAG, "WebRTC State: $state")
+                viewModelScope.launch(Dispatchers.Main) {
+                    if (state == "CONNECTED") {
+                        _commandExecutionStatus.value = "Expert connected. Sharing screen."
+                        replaceAiMessageText("Expert connected! They can now see your screen and control your device.", isPending = false)
+                    } else if (state == "DISCONNECTED" || state == "FAILED") {
+                         _commandExecutionStatus.value = "Expert disconnected."
+                    }
+                }
+            }
+
+            override fun onTapReceived(x: Float, y: Float) {
+               dispatchTap(x, y)
+            }
+
+            override fun onError(message: String) {
+                Log.e(TAG, "WebRTC Error: $message")
+                viewModelScope.launch(Dispatchers.Main) {
+                     _uiState.value = PhotoReasoningUiState.Error("Video stream error: $message")
+                }
+            }
+        })
+        webRTCSender?.initialize()
+
+        // Initialize Signaling
+        signalingClient = SignalingClient(object : SignalingClient.SignalingListener {
+            override fun onTaskPosted(taskId: String) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    val msg = "Task posted. Waiting for an expert to claim it..."
+                    replaceAiMessageText(msg, isPending = true)
+                }
+            }
+
+            override fun onTaskClaimed(taskId: String) {
+                Log.d(TAG, "Task claimed! Requesting fresh MediaProjection for WebRTC.")
+                viewModelScope.launch(Dispatchers.Main) {
+                    replaceAiMessageText("Expert found! Requesting screen capture permission...", isPending = true)
+                    
+                    // Request a fresh MediaProjection specifically for WebRTC
+                    // This does NOT start ScreenCaptureService - avoids token reuse crash
+                    val mainActivity = MainActivity.getInstance()
+                    if (mainActivity != null) {
+                        mainActivity.requestMediaProjectionForWebRTC { resultCode, resultData ->
+                            Log.d(TAG, "WebRTC MediaProjection granted. Starting foreground service first, then screen capture.")
+                            replaceAiMessageText("Establishing video connection...", isPending = true)
+                            
+                            // Point 11: Start ScreenCaptureService as foreground service FIRST
+                            // This is required because MediaProjection needs an active foreground
+                            // service of type MEDIA_PROJECTION on Android Q+
+                            val serviceIntent = Intent(mainActivity, ScreenCaptureService::class.java).apply {
+                                action = ScreenCaptureService.ACTION_START_CAPTURE
+                                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
+                                putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, false)
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                mainActivity.startForegroundService(serviceIntent)
+                            } else {
+                                mainActivity.startService(serviceIntent)
+                            }
+                            
+                            // Small delay to ensure foreground service is up before WebRTC capture
+                            viewModelScope.launch {
+                                delay(300)
+                                // Start screen capture for WebRTC with fresh permission data
+                                webRTCSender?.startScreenCapture(resultData)
+                                webRTCSender?.createPeerConnection()
+                                
+                                // Create Offer
+                                webRTCSender?.createOffer { sdp ->
+                                    signalingClient?.sendOffer(sdp)
+                                }
+                            }
+                        }
+                    } else {
+                        Log.e(TAG, "MainActivity not available for MediaProjection request")
+                        _uiState.value = PhotoReasoningUiState.Error("Cannot request screen capture - activity not available")
+                    }
+                }
+            }
+
+            override fun onSDPAnswer(sdp: String) {
+                webRTCSender?.setRemoteAnswer(sdp)
+            }
+
+            override fun onICECandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int) {
+                webRTCSender?.addIceCandidate(candidate, sdpMid, sdpMLineIndex)
+            }
+
+            override fun onPeerDisconnected() {
+                 viewModelScope.launch(Dispatchers.Main) {
+                    _commandExecutionStatus.value = "Expert disconnected."
+                    replaceAiMessageText("Expert disconnected.", isPending = false)
+                    webRTCSender?.stop()
+                }
+            }
+
+            override fun onError(message: String) {
+                 viewModelScope.launch(Dispatchers.Main) {
+                    _uiState.value = PhotoReasoningUiState.Error("Signaling error: $message")
+                }
+            }
+        })
+        
+        // Post the task immediately
+        Log.d(TAG, "Signaling initialized. Posting task.")
+        postTaskToHumanExpert(taskText)
+    }
+
+    private fun postTaskToHumanExpert(text: String) {
+         signalingClient?.postTask(text, hasScreenshot = false) // Capture live stream instead
+    }
+
+    private fun dispatchTap(x: Float, y: Float) {
+        Log.d(TAG, "Dispatching tap: ($x, $y)")
+        // Convert normalized to screen coordinates? 
+        // Command.TapCoordinates usually expects absolute pixels.
+        // ScreenOperatorAccessibilityService.executeCommand handles logic.
+        // But wait, the web client sends normalized (0-1).
+        
+        // We need the screen dimensions.
+        val displayMetrics = getApplication<Application>().resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        
+        val absX = (x * screenWidth).toInt()
+        val absY = (y * screenHeight).toInt()
+        
+        val command = Command.TapCoordinates(absX.toString(), absY.toString())
+        ScreenOperatorAccessibilityService.executeCommand(command)
+        
+        viewModelScope.launch(Dispatchers.Main) {
+            _commandExecutionStatus.value = "Expert tapped at ($absX, $absY)"
+        }
+    }
+
+
+
     private fun finalizeAiMessage(finalText: String) {
         Log.d(TAG, "finalizeAiMessage: Finalizing AI message.")
         val messages = _chatState.getAllMessages().toMutableList()
@@ -1216,8 +1491,19 @@ class PhotoReasoningViewModel(
     }
 
     private fun isQuotaExceededError(message: String): Boolean {
-        return message.contains("exceeded your current quota") ||
-                message.contains("Service Unavailable (503)")
+        // Only match actual quota exceeded errors, not high-demand 503s
+        return message.contains("exceeded your current quota")
+    }
+
+    /**
+     * Point 14: Check if error is a high-demand 503 (UNAVAILABLE) error.
+     * These should NOT trigger API key switching.
+     */
+    private fun isHighDemandError(message: String): Boolean {
+        return message.contains("Service Unavailable (503)") ||
+                message.contains("UNAVAILABLE") ||
+                message.contains("high demand") ||
+                message.contains("overloaded")
     }
 
     /**
@@ -1238,6 +1524,59 @@ class PhotoReasoningViewModel(
         return builder.toString()
     }
     
+    /**
+     * Incrementally process commands during streaming.
+     * Parses the full accumulated text but only executes NEW commands
+     * (i.e., commands beyond incrementalCommandCount).
+     * This avoids re-executing commands that were already executed in earlier chunks.
+     * 
+     * Skips takeScreenshot() during streaming since we don't want to interrupt generation.
+     * The final processCommands() call after streaming ends handles takeScreenshot.
+     */
+    private fun processCommandsIncrementally(accumulatedText: String) {
+        if (stopExecutionFlag.get()) return
+        
+        try {
+            // Parse all commands from the full accumulated text
+            // Use a fresh parse (not the buffer-based one) to get all commands in order
+            val allCommands = CommandParser.parseCommands(accumulatedText, clearBuffer = true)
+            
+            if (allCommands.size > incrementalCommandCount) {
+                // There are new commands to execute
+                val newCommands = allCommands.subList(incrementalCommandCount, allCommands.size)
+                Log.d(TAG, "Incremental: Found ${newCommands.size} new commands (total: ${allCommands.size}, already executed: $incrementalCommandCount)")
+                
+                for (command in newCommands) {
+                    if (stopExecutionFlag.get()) break
+                    
+                    // Skip takeScreenshot during streaming - it will be handled by final processCommands
+                    if (command is Command.TakeScreenshot) {
+                        Log.d(TAG, "Incremental: Skipping takeScreenshot during streaming (will be handled at end)")
+                        incrementalCommandCount++
+                        continue
+                    }
+                    
+                    try {
+                        Log.d(TAG, "Incremental: Executing command: $command")
+                        _commandExecutionStatus.value = "Executing: $command"
+                        ScreenOperatorAccessibilityService.executeCommand(command)
+                        
+                        // Track as executed
+                        val currentCommands = _detectedCommands.value.toMutableList()
+                        currentCommands.add(command)
+                        _detectedCommands.value = currentCommands
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Incremental: Error executing command: ${e.message}", e)
+                    }
+                    
+                    incrementalCommandCount++
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Incremental command parsing error: ${e.message}", e)
+        }
+    }
+
     /**
      * Process commands found in the AI response
      */

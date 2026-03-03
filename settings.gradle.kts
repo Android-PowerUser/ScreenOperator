@@ -33,3 +33,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "GenerativeAiSampleApp"
 include(":app")
+include(":humanoperator")

@@ -120,12 +120,14 @@ class MainActivity : ComponentActivity() {
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
+    private lateinit var webRtcMediaProjectionLauncher: ActivityResultLauncher<Intent>
 
     private var currentScreenInfoForScreenshot: String? = null
 
     private lateinit var navController: NavHostController
     private var isProcessingExplicitScreenshotRequest: Boolean = false
     private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
+    private var onWebRtcMediaProjectionResult: ((Int, Intent) -> Unit)? = null
 
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -187,13 +189,26 @@ class MainActivity : ComponentActivity() {
         // This should be guaranteed by its placement in onCreate.
         if (!::mediaProjectionManager.isInitialized) {
             Log.e(TAG, "requestMediaProjectionPermission: mediaProjectionManager not initialized!")
-            // Optionally, initialize it here as a fallback, though it indicates an issue with onCreate ordering
-            // mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            // Toast.makeText(this, "Error: Projection manager not ready. Please try again.", Toast.LENGTH_SHORT).show()
             return
         }
         val intent = mediaProjectionManager.createScreenCaptureIntent()
         mediaProjectionLauncher.launch(intent)
+    }
+
+    /**
+     * Request a fresh MediaProjection permission specifically for WebRTC (Human Expert).
+     * This does NOT start ScreenCaptureService - the result is passed directly to the callback.
+     */
+    fun requestMediaProjectionForWebRTC(onResult: (Int, Intent) -> Unit) {
+        Log.d(TAG, "Requesting MediaProjection permission for WebRTC")
+        onWebRtcMediaProjectionResult = onResult
+
+        if (!::mediaProjectionManager.isInitialized) {
+            Log.e(TAG, "requestMediaProjectionForWebRTC: mediaProjectionManager not initialized!")
+            return
+        }
+        val intent = mediaProjectionManager.createScreenCaptureIntent()
+        webRtcMediaProjectionLauncher.launch(intent)
     }
 
     fun takeAdditionalScreenshot() {
@@ -286,7 +301,7 @@ class MainActivity : ComponentActivity() {
 
         when (currentTrialState) {
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                trialInfoMessage = "Your 30-minute trial period has ended. Please subscribe to the app to continue using it."
+                trialInfoMessage = "Please support the development of the app so that you can continue using it \uD83C\uDF89"
                 showTrialInfoDialog = true
                 Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
             }
@@ -444,6 +459,10 @@ class MainActivity : ComponentActivity() {
                 if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                     val shouldTakeScreenshotOnThisStart = this@MainActivity.isProcessingExplicitScreenshotRequest
                     Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
+                    
+                    // Notify ViewModel about the permission grant (for Human Expert WebRTC)
+                    photoReasoningViewModel?.onMediaProjectionPermissionGranted(result.resultCode, result.data!!)
+
                     val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
                         action = ScreenCaptureService.ACTION_START_CAPTURE
                         putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
@@ -484,6 +503,21 @@ class MainActivity : ComponentActivity() {
                         this@MainActivity.isProcessingExplicitScreenshotRequest = false
                     }
                     _isMediaProjectionPermissionGranted.value = false
+                }
+            }
+
+            // Separate WebRTC MediaProjection launcher - does NOT start ScreenCaptureService
+            webRtcMediaProjectionLauncher = registerForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+                    Log.i(TAG, "WebRTC MediaProjection permission granted.")
+                    onWebRtcMediaProjectionResult?.invoke(result.resultCode, result.data!!)
+                    onWebRtcMediaProjectionResult = null
+                } else {
+                    Log.w(TAG, "WebRTC MediaProjection permission denied.")
+                    Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+                    onWebRtcMediaProjectionResult = null
                 }
             }
 
@@ -1222,7 +1256,7 @@ fun TrialExpiredDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Your 7-day trial period has ended. Please subscribe to the app to continue using it.",
+                    text = "Please support the development of the app so that you can continue using it \uD83C\uDF89",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )

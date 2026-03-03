@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +49,7 @@ import android.util.Log
 import android.os.Environment
 import android.os.StatFs
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager
+import androidx.compose.runtime.collectAsState
 import java.io.File
 
 data class MenuItem(
@@ -285,6 +287,111 @@ fun MenuScreen(
                 }
             }
 
+            // Generation Settings (TopK, TopP, Temperature) for current model
+            if (selectedModel.supportsGenerationSettings) {
+                item {
+                    val genSettings = remember(selectedModel) {
+                        mutableStateOf(
+                            com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(
+                                context, selectedModel.modelName
+                            )
+                        )
+                    }
+                    
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(all = 16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Generation Settings (${selectedModel.displayName})",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Temperature Slider (0.0 - 2.0)
+                            Text(
+                                text = "Temperature: ${"%.2f".format(genSettings.value.temperature)}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            androidx.compose.material3.Slider(
+                                value = genSettings.value.temperature,
+                                onValueChange = { newVal ->
+                                    genSettings.value = genSettings.value.copy(temperature = newVal)
+                                },
+                                onValueChangeFinished = {
+                                    com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
+                                        context, selectedModel.modelName, genSettings.value
+                                    )
+                                },
+                                valueRange = 0f..2f,
+                                steps = 0,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // TopP Slider (0.0 - 1.0)
+                            Text(
+                                text = "Top P: ${"%.2f".format(genSettings.value.topP)}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            androidx.compose.material3.Slider(
+                                value = genSettings.value.topP,
+                                onValueChange = { newVal ->
+                                    genSettings.value = genSettings.value.copy(topP = newVal)
+                                },
+                                onValueChangeFinished = {
+                                    com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
+                                        context, selectedModel.modelName, genSettings.value
+                                    )
+                                },
+                                valueRange = 0f..1f,
+                                steps = 0,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // TopK Slider (0 - 100)
+                            Text(
+                                text = "Top K: ${genSettings.value.topK}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            androidx.compose.material3.Slider(
+                                value = genSettings.value.topK.toFloat(),
+                                onValueChange = { newVal ->
+                                    genSettings.value = genSettings.value.copy(topK = Math.round(newVal))
+                                },
+                                onValueChangeFinished = {
+                                    com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
+                                        context, selectedModel.modelName, genSettings.value
+                                    )
+                                },
+                                valueRange = 0f..100f,
+                                steps = 0,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Note: LlmInference (offline model) may not support all generation parameters.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Menu Items
             items(menuItems) { menuItem ->
                 Card(
@@ -309,7 +416,7 @@ fun MenuScreen(
                         TextButton(
                             onClick = {
                                 if (isTrialExpired) {
-                                    Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "Please support the development of the app so that you can continue using it \uD83C\uDF89", Toast.LENGTH_LONG).show()
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
@@ -383,7 +490,7 @@ fun MenuScreen(
                             )
                         } else {
                             Text(
-                                text = "Support improvements",
+                                text = "Support Improvements \uD83C\uDF89",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -404,15 +511,28 @@ fun MenuScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
+                    val boldStyle = SpanStyle(fontWeight = FontWeight.Bold)
                     val annotatedText = buildAnnotatedString {
-                        append("""• Preview models could be deactivated by Google without being handed over to the final release.
-• GPT-oss 120b is a pure text model.
-• Gemma 3n E4B it cannot handle screenshots in the API.
-• GPT models (Vercel) have a free budget of $5 per month.
-GPT-5.1 Input: $1.25/M Output: $10.00/M
-GPT-5.1 mini Input: $0.25/ M Output: $2.00/M
-GPT-5 nano Input: $0.05/M Output: $0.40/M
-• There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at """)
+                        append("• ")
+                        withStyle(boldStyle) { append("Preview Models") }
+                        append(" could be deactivated by Google without being handed over to the final release.\n")
+                        append("• ")
+                        withStyle(boldStyle) { append("GPT-oss 120b") }
+                        append(" is a pure text model.\n")
+                        append("• ")
+                        withStyle(boldStyle) { append("Gemma 27B IT") }
+                        append(" cannot handle screenshots in the API.\n")
+                        append("• GPT models (")
+                        withStyle(boldStyle) { append("Vercel") }
+                        append(") have a free budget of \$5 per month and a credit card is necessary.\n")
+                        append("GPT-5.1 Input: \$1.25/M Output: \$10.00/M\n")
+                        append("GPT-5.1 mini Input: \$0.25/M Output: \$2.00/M\n")
+                        append("GPT-5 nano Input: \$0.05/M Output: \$0.40/M\n")
+                        append("• There are ")
+                        withStyle(boldStyle) { append("rate limits") }
+                        append(" for free use of ")
+                        withStyle(boldStyle) { append("Gemini models") }
+                        append(". The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
 
                         pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
                         withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
@@ -489,31 +609,127 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
         val bytesAvailable = statFs.availableBlocksLong * statFs.blockSizeLong
         val gbAvailable = bytesAvailable.toDouble() / (1024 * 1024 * 1024)
         val formattedGbAvailable = String.format("%.2f", gbAvailable)
+        
+        val dlState by ModelDownloadManager.downloadState.collectAsState()
 
         AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
-            title = { Text("Download Model? (4.92 GB)") },
-            text = { Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDownloadDialog = false
-                        downloadDialogModel?.downloadUrl?.let { url ->
-                            ModelDownloadManager.downloadModel(context, url)
-                            // We set the model, but the user will have to wait for download
-                            selectedModel = downloadDialogModel!!
-                            GenerativeAiViewModelFactory.setModel(downloadDialogModel!!)
+            onDismissRequest = {
+                if (dlState is ModelDownloadManager.DownloadState.Idle || dlState is ModelDownloadManager.DownloadState.Completed || dlState is ModelDownloadManager.DownloadState.Error) {
+                    showDownloadDialog = false
+                }
+                // Don't dismiss while downloading/paused
+            },
+            title = { Text("Download Model (4.92 GB)") },
+            text = {
+                Column {
+                    when (val state = dlState) {
+                        is ModelDownloadManager.DownloadState.Idle -> {
+                            Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.")
+                        }
+                        is ModelDownloadManager.DownloadState.Downloading -> {
+                            Text("Downloading...")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { state.progress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${ModelDownloadManager.formatBytes(state.bytesDownloaded)} / ${if (state.totalBytes > 0) ModelDownloadManager.formatBytes(state.totalBytes) else "?"}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "${"%.1f".format(state.progress * 100)}%",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        is ModelDownloadManager.DownloadState.Paused -> {
+                            Text("Download paused.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val progress = if (state.totalBytes > 0) state.bytesDownloaded.toFloat() / state.totalBytes else 0f
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${ModelDownloadManager.formatBytes(state.bytesDownloaded)} / ${if (state.totalBytes > 0) ModelDownloadManager.formatBytes(state.totalBytes) else "?"}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        is ModelDownloadManager.DownloadState.Completed -> {
+                            Text("Download complete! ✅")
+                        }
+                        is ModelDownloadManager.DownloadState.Error -> {
+                            Text("Error: ${state.message}")
                         }
                     }
-                ) { Text("OK") }
+                }
+            },
+            confirmButton = {
+                when (dlState) {
+                    is ModelDownloadManager.DownloadState.Idle -> {
+                        TextButton(
+                            onClick = {
+                                downloadDialogModel?.downloadUrl?.let { url ->
+                                    ModelDownloadManager.downloadModel(context, url)
+                                    // Don't set model yet - wait for download to complete (Point 17)
+                                }
+                            }
+                        ) { Text("Download") }
+                    }
+                    is ModelDownloadManager.DownloadState.Downloading -> {
+                        TextButton(onClick = { ModelDownloadManager.pauseDownload() }) { Text("Pause") }
+                    }
+                    is ModelDownloadManager.DownloadState.Paused -> {
+                        TextButton(
+                            onClick = {
+                                downloadDialogModel?.downloadUrl?.let { url ->
+                                    ModelDownloadManager.resumeDownload(context, url)
+                                }
+                            }
+                        ) { Text("Resume") }
+                    }
+                    is ModelDownloadManager.DownloadState.Completed -> {
+                        TextButton(onClick = {
+                            // Set model only after download is completed (Point 17)
+                            downloadDialogModel?.let {
+                                selectedModel = it
+                                GenerativeAiViewModelFactory.setModel(it)
+                            }
+                            showDownloadDialog = false
+                        }) { Text("Close") }
+                    }
+                    is ModelDownloadManager.DownloadState.Error -> {
+                        TextButton(
+                            onClick = {
+                                downloadDialogModel?.downloadUrl?.let { url ->
+                                    ModelDownloadManager.downloadModel(context, url)
+                                }
+                            }
+                        ) { Text("Retry") }
+                    }
+                }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        showDownloadDialog = false
-                        // Do not change model
+                when (dlState) {
+                    is ModelDownloadManager.DownloadState.Idle -> {
+                        TextButton(onClick = { showDownloadDialog = false }) { Text("Cancel") }
                     }
-                ) { Text("ABORT") }
+                    is ModelDownloadManager.DownloadState.Downloading,
+                    is ModelDownloadManager.DownloadState.Paused -> {
+                        TextButton(
+                            onClick = {
+                                ModelDownloadManager.cancelDownload(context)
+                                showDownloadDialog = false
+                            }
+                        ) { Text("Cancel Download") }
+                    }
+                    is ModelDownloadManager.DownloadState.Completed -> { /* No dismiss button */ }
+                    is ModelDownloadManager.DownloadState.Error -> {
+                        TextButton(onClick = { showDownloadDialog = false }) { Text("Close") }
+                    }
+                }
             }
         )
     }
