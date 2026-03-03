@@ -1,8 +1,12 @@
 package com.google.ai.sample.feature.multimodal
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +21,7 @@ import java.net.URL
 /**
  * Custom download manager for the Gemma 3n model.
  * Uses HttpURLConnection with Range-Request support for resume capability.
+ * Point 18: Includes Android notification for download progress.
  */
 object ModelDownloadManager {
     private const val TAG = "ModelDownloadManager"
@@ -26,6 +31,10 @@ object ModelDownloadManager {
     private const val MAX_RETRIES = 3
     private const val RETRY_DELAY_MS = 3000L
     private const val PROGRESS_UPDATE_INTERVAL_MS = 500L
+    
+    // Notification constants
+    private const val DOWNLOAD_CHANNEL_ID = "model_download_channel"
+    private const val DOWNLOAD_NOTIFICATION_ID = 3001
 
     sealed class DownloadState {
         object Idle : DownloadState()
@@ -70,6 +79,56 @@ object ModelDownloadManager {
         } else {
             null
         }
+    }
+    
+    private fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                DOWNLOAD_CHANNEL_ID,
+                "Model Download",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows progress of model downloads"
+                setShowBadge(false)
+            }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+    
+    private fun showDownloadNotification(context: Context, progress: Float, bytesDownloaded: Long, totalBytes: Long) {
+        createNotificationChannel(context)
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val progressPercent = (progress * 100).toInt()
+        val notification = NotificationCompat.Builder(context, DOWNLOAD_CHANNEL_ID)
+            .setContentTitle("Downloading Model")
+            .setContentText("${formatBytes(bytesDownloaded)} / ${if (totalBytes > 0) formatBytes(totalBytes) else "?"} ($progressPercent%)")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setProgress(100, progressPercent, totalBytes <= 0)
+            .setOnlyAlertOnce(true)
+            .build()
+        notificationManager.notify(DOWNLOAD_NOTIFICATION_ID, notification)
+    }
+    
+    private fun showDownloadCompleteNotification(context: Context) {
+        createNotificationChannel(context)
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(context, DOWNLOAD_CHANNEL_ID)
+            .setContentTitle("Model Download Complete")
+            .setContentText("The model is ready to use.")
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(DOWNLOAD_NOTIFICATION_ID, notification)
+    }
+    
+    private fun cancelDownloadNotification(context: Context) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(DOWNLOAD_NOTIFICATION_ID)
     }
 
     fun downloadModel(context: Context, url: String) {
@@ -120,6 +179,7 @@ object ModelDownloadManager {
         }
 
         _downloadState.value = DownloadState.Idle
+        cancelDownloadNotification(context)
         CoroutineScope(Dispatchers.Main).launch {
             Toast.makeText(context, "Download cancelled.", Toast.LENGTH_SHORT).show()
         }
@@ -178,6 +238,7 @@ object ModelDownloadManager {
                     }
                     else -> {
                         _downloadState.value = DownloadState.Error("Server error: $responseCode")
+                        cancelDownloadNotification(context)
                         return
                     }
                 }
@@ -199,6 +260,7 @@ object ModelDownloadManager {
                         while (input.read(buffer).also { bytesRead = it } != -1) {
                             if (!coroutineContext.isActive) {
                                 Log.d(TAG, "Download cancelled during read.")
+                                cancelDownloadNotification(context)
                                 return
                             }
 
@@ -208,6 +270,8 @@ object ModelDownloadManager {
                                     bytesDownloaded = bytesDownloaded,
                                     totalBytes = totalBytes
                                 )
+                                // Keep notification showing paused state
+                                showDownloadNotification(context, bytesDownloaded.toFloat() / totalBytes, bytesDownloaded, totalBytes)
                                 return
                             }
 
@@ -218,11 +282,14 @@ object ModelDownloadManager {
                             val now = System.currentTimeMillis()
                             if (now - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL_MS) {
                                 lastProgressUpdate = now
+                                val progress = if (totalBytes > 0) bytesDownloaded.toFloat() / totalBytes else 0f
                                 _downloadState.value = DownloadState.Downloading(
-                                    progress = if (totalBytes > 0) bytesDownloaded.toFloat() / totalBytes else 0f,
+                                    progress = progress,
                                     bytesDownloaded = bytesDownloaded,
                                     totalBytes = totalBytes
                                 )
+                                // Point 18: Update notification with progress
+                                showDownloadNotification(context, progress, bytesDownloaded, totalBytes)
                             }
                         }
                     }
@@ -234,11 +301,13 @@ object ModelDownloadManager {
                     if (tempFile.renameTo(finalFile)) {
                         Log.i(TAG, "Download complete! File: ${finalFile.absolutePath} (${finalFile.length()} bytes)")
                         _downloadState.value = DownloadState.Completed
+                        showDownloadCompleteNotification(context)
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "Model download complete!", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         _downloadState.value = DownloadState.Error("Failed to save model file.")
+                        cancelDownloadNotification(context)
                     }
                 }
                 return // Success, exit retry loop
@@ -248,6 +317,7 @@ object ModelDownloadManager {
                 retryCount++
                 if (retryCount > MAX_RETRIES) {
                     _downloadState.value = DownloadState.Error("Download failed after $MAX_RETRIES retries: ${e.message}")
+                    cancelDownloadNotification(context)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
                     }
@@ -278,3 +348,4 @@ object ModelDownloadManager {
         }
     }
 }
+

@@ -14,11 +14,11 @@ if (System.getenv("CI") == null) {
 }
 
 android {
-    namespace = "com.google.ai.sample"
+    namespace = "io.github.android_poweruser"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.google.ai.sample"
+        applicationId = "io.github.android_poweruser"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

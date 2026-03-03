@@ -301,7 +301,7 @@ class MainActivity : ComponentActivity() {
 
         when (currentTrialState) {
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                trialInfoMessage = "Your 30-minute trial period has ended. Please subscribe to the app to continue using it."
+                trialInfoMessage = "Please support the development of the app so that you can continue using it \uD83C\uDF89"
                 showTrialInfoDialog = true
                 Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
             }
@@ -1256,7 +1256,7 @@ fun TrialExpiredDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Your 7-day trial period has ended. Please subscribe to the app to continue using it.",
+                    text = "Please support the development of the app so that you can continue using it \uD83C\uDF89",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )

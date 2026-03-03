@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
@@ -330,7 +331,7 @@ fun MenuScreen(
                                     )
                                 },
                                 valueRange = 0f..2f,
-                                steps = 39,
+                                steps = 0,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
@@ -352,13 +353,13 @@ fun MenuScreen(
                                     )
                                 },
                                 valueRange = 0f..1f,
-                                steps = 19,
+                                steps = 0,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // TopK Slider (1 - 100)
+                            // TopK Slider (0 - 100)
                             Text(
                                 text = "Top K: ${genSettings.value.topK}",
                                 style = MaterialTheme.typography.bodyMedium
@@ -366,15 +367,15 @@ fun MenuScreen(
                             androidx.compose.material3.Slider(
                                 value = genSettings.value.topK.toFloat(),
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(topK = newVal.toInt())
+                                    genSettings.value = genSettings.value.copy(topK = Math.round(newVal))
                                 },
                                 onValueChangeFinished = {
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
                                 },
-                                valueRange = 1f..100f,
-                                steps = 98,
+                                valueRange = 0f..100f,
+                                steps = 0,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
@@ -415,7 +416,7 @@ fun MenuScreen(
                         TextButton(
                             onClick = {
                                 if (isTrialExpired) {
-                                    Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "Please support the development of the app so that you can continue using it \uD83C\uDF89", Toast.LENGTH_LONG).show()
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
@@ -489,7 +490,7 @@ fun MenuScreen(
                             )
                         } else {
                             Text(
-                                text = "Support improvements",
+                                text = "Support Improvements \uD83C\uDF89",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -510,15 +511,28 @@ fun MenuScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
+                    val boldStyle = SpanStyle(fontWeight = FontWeight.Bold)
                     val annotatedText = buildAnnotatedString {
-                        append("""• Preview models could be deactivated by Google without being handed over to the final release.
-• GPT-oss 120b is a pure text model.
-• Gemma 3n E4B it cannot handle screenshots in the API.
-• GPT models (Vercel) have a free budget of $5 per month.
-GPT-5.1 Input: $1.25/M Output: $10.00/M
-GPT-5.1 mini Input: $0.25/ M Output: $2.00/M
-GPT-5 nano Input: $0.05/M Output: $0.40/M
-• There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at """)
+                        append("• ")
+                        withStyle(boldStyle) { append("Preview Models") }
+                        append(" could be deactivated by Google without being handed over to the final release.\n")
+                        append("• ")
+                        withStyle(boldStyle) { append("GPT-oss 120b") }
+                        append(" is a pure text model.\n")
+                        append("• ")
+                        withStyle(boldStyle) { append("Gemma 27B IT") }
+                        append(" cannot handle screenshots in the API.\n")
+                        append("• GPT models (")
+                        withStyle(boldStyle) { append("Vercel") }
+                        append(") have a free budget of \$5 per month and a credit card is necessary.\n")
+                        append("GPT-5.1 Input: \$1.25/M Output: \$10.00/M\n")
+                        append("GPT-5.1 mini Input: \$0.25/M Output: \$2.00/M\n")
+                        append("GPT-5 nano Input: \$0.05/M Output: \$0.40/M\n")
+                        append("• There are ")
+                        withStyle(boldStyle) { append("rate limits") }
+                        append(" for free use of ")
+                        withStyle(boldStyle) { append("Gemini models") }
+                        append(". The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
 
                         pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
                         withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
@@ -659,8 +673,7 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
                             onClick = {
                                 downloadDialogModel?.downloadUrl?.let { url ->
                                     ModelDownloadManager.downloadModel(context, url)
-                                    selectedModel = downloadDialogModel!!
-                                    GenerativeAiViewModelFactory.setModel(downloadDialogModel!!)
+                                    // Don't set model yet - wait for download to complete (Point 17)
                                 }
                             }
                         ) { Text("Download") }
@@ -678,7 +691,14 @@ GPT-5 nano Input: $0.05/M Output: $0.40/M
                         ) { Text("Resume") }
                     }
                     is ModelDownloadManager.DownloadState.Completed -> {
-                        TextButton(onClick = { showDownloadDialog = false }) { Text("Close") }
+                        TextButton(onClick = {
+                            // Set model only after download is completed (Point 17)
+                            downloadDialogModel?.let {
+                                selectedModel = it
+                                GenerativeAiViewModelFactory.setModel(it)
+                            }
+                            showDownloadDialog = false
+                        }) { Text("Close") }
                     }
                     is ModelDownloadManager.DownloadState.Error -> {
                         TextButton(

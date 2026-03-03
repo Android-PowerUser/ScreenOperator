@@ -222,7 +222,23 @@ class PhotoReasoningViewModel(
 
                     val apiKeyManager = ApiKeyManager.getInstance(receiverContext)
                     val isQuotaError = isQuotaExceededError(errorMessage)
+                    val isHighDemand = isHighDemandError(errorMessage)
                     val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                    
+                    // Point 14: Don't switch keys for high-demand 503 errors
+                    if (isHighDemand) {
+                        Log.d(TAG, "High demand error detected - not switching API keys")
+                        _chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = "This model is currently experiencing high demand. Please try again later.",
+                                participant = PhotoParticipant.ERROR
+                            )
+                        )
+                        _chatMessagesFlow.value = chatMessages
+                        saveChatHistory(getApplication<Application>())
+                        return
+                    }
+                    
                     if (isQuotaError && currentRetryAttempt < MAX_RETRY_ATTEMPTS) {
                         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
                         if (currentKey != null) {
@@ -270,7 +286,20 @@ class PhotoReasoningViewModel(
         val context = getApplication<Application>().applicationContext
         if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
             if (ModelDownloadManager.isModelDownloaded(context)) {
-                initializeOfflineModel(context)
+                // Point 7 & 16: Initialize model asynchronously to not block UI
+                viewModelScope.launch(Dispatchers.IO) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = PhotoReasoningUiState.Loading
+                    }
+                    val error = initializeOfflineModel(context)
+                    withContext(Dispatchers.Main) {
+                        if (error != null) {
+                            _uiState.value = PhotoReasoningUiState.Error(error)
+                        } else {
+                            _uiState.value = PhotoReasoningUiState.Success("Model initialized.")
+                        }
+                    }
+                }
             }
         }
 
@@ -329,13 +358,18 @@ class PhotoReasoningViewModel(
     fun reinitializeOfflineModel(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Close existing instance
+                // Point 3: Properly close existing instance and free GPU resources
                 try {
-                    (llmInference as? java.io.Closeable)?.close()
+                    llmInference?.close()
+                    Log.d(TAG, "LlmInference closed for reinit")
                 } catch (e: Exception) {
                     Log.w(TAG, "Error closing existing LlmInference for reinit", e)
                 }
                 llmInference = null
+                
+                // Force garbage collection and wait for GPU resources to be freed
+                System.gc()
+                delay(500)
                 
                 // Re-initialize with new settings
                 val initError = initializeOfflineModel(context)
@@ -365,12 +399,14 @@ class PhotoReasoningViewModel(
         Log.d(TAG, "AIResultStreamReceiver unregistered with LocalBroadcastManager.")
 
         try {
-            // Using reflection if specific method not known or standard cast
-            (llmInference as? java.io.Closeable)?.close()
+            // Point 3: Properly close LlmInference to free GPU/RAM
+            llmInference?.close()
+            Log.d(TAG, "LlmInference closed in onCleared")
         } catch (e: Exception) {
             Log.w(TAG, "Error closing LlmInference", e)
         }
         llmInference = null
+        System.gc() // Help free GPU resources
         
         // WebRTC cleanup
         webRTCSender?.stop()
@@ -1244,16 +1280,35 @@ class PhotoReasoningViewModel(
                     val mainActivity = MainActivity.getInstance()
                     if (mainActivity != null) {
                         mainActivity.requestMediaProjectionForWebRTC { resultCode, resultData ->
-                            Log.d(TAG, "WebRTC MediaProjection granted. Starting screen capture.")
+                            Log.d(TAG, "WebRTC MediaProjection granted. Starting foreground service first, then screen capture.")
                             replaceAiMessageText("Establishing video connection...", isPending = true)
                             
-                            // Start screen capture for WebRTC with fresh permission data
-                            webRTCSender?.startScreenCapture(resultData)
-                            webRTCSender?.createPeerConnection()
+                            // Point 11: Start ScreenCaptureService as foreground service FIRST
+                            // This is required because MediaProjection needs an active foreground
+                            // service of type MEDIA_PROJECTION on Android Q+
+                            val serviceIntent = Intent(mainActivity, ScreenCaptureService::class.java).apply {
+                                action = ScreenCaptureService.ACTION_START_CAPTURE
+                                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
+                                putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, false)
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                mainActivity.startForegroundService(serviceIntent)
+                            } else {
+                                mainActivity.startService(serviceIntent)
+                            }
                             
-                            // Create Offer
-                            webRTCSender?.createOffer { sdp ->
-                                signalingClient?.sendOffer(sdp)
+                            // Small delay to ensure foreground service is up before WebRTC capture
+                            viewModelScope.launch {
+                                delay(300)
+                                // Start screen capture for WebRTC with fresh permission data
+                                webRTCSender?.startScreenCapture(resultData)
+                                webRTCSender?.createPeerConnection()
+                                
+                                // Create Offer
+                                webRTCSender?.createOffer { sdp ->
+                                    signalingClient?.sendOffer(sdp)
+                                }
                             }
                         }
                     } else {
@@ -1436,8 +1491,19 @@ class PhotoReasoningViewModel(
     }
 
     private fun isQuotaExceededError(message: String): Boolean {
-        return message.contains("exceeded your current quota") ||
-                message.contains("Service Unavailable (503)")
+        // Only match actual quota exceeded errors, not high-demand 503s
+        return message.contains("exceeded your current quota")
+    }
+
+    /**
+     * Point 14: Check if error is a high-demand 503 (UNAVAILABLE) error.
+     * These should NOT trigger API key switching.
+     */
+    private fun isHighDemandError(message: String): Boolean {
+        return message.contains("Service Unavailable (503)") ||
+                message.contains("UNAVAILABLE") ||
+                message.contains("high demand") ||
+                message.contains("overloaded")
     }
 
     /**

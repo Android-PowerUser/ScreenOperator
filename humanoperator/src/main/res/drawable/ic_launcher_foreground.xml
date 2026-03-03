@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Human figure icon for Human Operator -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28c4.42,0 8,-3.58 8,-8s-3.58,-8 -8,-8 -8,3.58 -8,8 3.58,8 8,8zM54,32c-5.33,0 -16,2.67 -16,8v4h32v-4c0,-5.33 -10.67,-8 -16,-8z"/>
+    <!-- Circle around head -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,50l-10,14h6v16h8v-16h6z"/>
+</vector>

@@ -289,21 +289,24 @@ class ScreenCaptureService : Service() {
                             }
                         } catch (e: MissingFieldException) {
                             Log.e(TAG, "Serialization error, potentially a 503 error.", e)
-                            // Check if the error message indicates a 503-like error
-                            if (e.message?.contains("UNAVAILABLE") == true ||
+                            // Point 15: Check for missing 'parts' field (Gemma 27B issue)
+                            if (e.message?.contains("parts") == true) {
+                                errorMessage = "The model returned an incomplete response. This can happen with larger models. Please try again."
+                            } else if (e.message?.contains("UNAVAILABLE") == true ||
                                 e.message?.contains("503") == true ||
                                 e.message?.contains("overloaded") == true) {
-                                errorMessage = "Service Unavailable (503) - Retry with new key"
+                                // Point 14: User-friendly high-demand message
+                                errorMessage = "This model is currently experiencing high demand. Please try again later."
                             } else {
                                 errorMessage = e.localizedMessage ?: "Serialization error"
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Direct error in AI call", e)
-                            // Also check for 503 patterns in general exceptions
+                            // Point 14: Check for high-demand 503 patterns
                             if (e.message?.contains("503") == true ||
                                 e.message?.contains("overloaded") == true ||
                                 e.message?.contains("UNAVAILABLE") == true) {
-                                errorMessage = "Service Unavailable (503) - Retry with new key"
+                                errorMessage = "This model is currently experiencing high demand. Please try again later."
                             } else {
                                 errorMessage = e.localizedMessage ?: "AI call failed"
                             }
@@ -319,11 +322,14 @@ class ScreenCaptureService : Service() {
                             e.message?.contains("UNAVAILABLE") == true ||
                             e.message?.contains("503") == true ||
                             e.message?.contains("overloaded") == true)) {
-                            errorMessage = "Service Unavailable (503) - Retry with new key"
+                            errorMessage = "This model is currently experiencing high demand. Please try again later."
+                        } else if (e is MissingFieldException && e.message?.contains("parts") == true) {
+                            // Point 15: Gemma 27B incomplete response
+                            errorMessage = "The model returned an incomplete response. This can happen with larger models. Please try again."
                         } else if (e.message?.contains("503") == true ||
                                 e.message?.contains("overloaded") == true ||
                                 e.message?.contains("UNAVAILABLE") == true) {
-                            errorMessage = "Service Unavailable (503) - Retry with new key"
+                            errorMessage = "This model is currently experiencing high demand. Please try again later."
                         } else {
                             errorMessage = e.localizedMessage ?: "Unknown error"
                         }

@@ -12,8 +12,8 @@ object GenerationSettingsPreferences {
 
     data class GenerationSettings(
         val temperature: Float = 0.0f,
-        val topP: Float = 0.95f,
-        val topK: Int = 40
+        val topP: Float = 0.0f,
+        val topK: Int = 0
     )
 
     fun saveSettings(context: Context, modelName: String, settings: GenerationSettings) {
@@ -30,8 +30,8 @@ object GenerationSettingsPreferences {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return GenerationSettings(
             temperature = prefs.getFloat("${modelName}_temperature", 0.0f),
-            topP = prefs.getFloat("${modelName}_topP", 0.95f),
-            topK = prefs.getInt("${modelName}_topK", 40)
+            topP = prefs.getFloat("${modelName}_topP", 0.0f),
+            topK = prefs.getInt("${modelName}_topK", 0)
         )
     }
 }
