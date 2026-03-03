@@ -101,7 +101,10 @@ jobs:
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
     - name: Fix gradle.properties for CI
-      run: sed -i '/org.gradle.java.home=/d' gradle.properties
+      run: |
+        sed -i '/org.gradle.java.home=/d' gradle.properties
+        sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m/' gradle.properties
+        sed -i 's/kotlin.daemon.jvmargs=.*/kotlin.daemon.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m/' gradle.properties
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
