@@ -21,6 +21,15 @@ jobs:
     - name: Detect changed files
       id: changes
       run: |
+        # Bei workflow_dispatch immer alles bauen
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "app=true" >> $GITHUB_OUTPUT
+          echo "humanoperator=true" >> $GITHUB_OUTPUT
+          echo "shared=true" >> $GITHUB_OUTPUT
+          echo "Manual dispatch - building all modules"
+          exit 0
+        fi
+        
         # Geänderte Dateien im letzten Commit ermitteln
         CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
         
