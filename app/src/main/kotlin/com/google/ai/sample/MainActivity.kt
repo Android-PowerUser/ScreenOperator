@@ -645,7 +645,7 @@ class MainActivity : ComponentActivity() {
 
                         // Task 6: Payment Method Dialog
                         if (showPaymentMethodDialog) {
-                            AlertDialog(
+                            androidx.compose.material3.AlertDialog(
                                 onDismissRequest = { showPaymentMethodDialog = false },
                                 title = { Text("Choose Payment Method") },
                                 text = {
