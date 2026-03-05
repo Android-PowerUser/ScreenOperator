@@ -28,6 +28,7 @@ class WebRTCSender(
         fun onLocalICECandidate(candidate: IceCandidate)
         fun onConnectionStateChanged(state: String)
         fun onTapReceived(x: Float, y: Float)
+        fun onTextReceived(text: String)
         fun onError(message: String)
     }
 
@@ -136,10 +137,18 @@ class WebRTCSender(
                     Log.d(TAG, "Received DataChannel message: $message")
                     
                     val json = com.google.gson.JsonParser.parseString(message).asJsonObject
-                    if (json.has("type") && json.get("type").asString == "tap") {
-                        val x = json.get("x").asFloat
-                        val y = json.get("y").asFloat
-                        listener.onTapReceived(x, y)
+                    if (json.has("type")) {
+                        when (json.get("type").asString) {
+                            "tap" -> {
+                                val x = json.get("x").asFloat
+                                val y = json.get("y").asFloat
+                                listener.onTapReceived(x, y)
+                            }
+                            "text" -> {
+                                val text = json.get("text").asString
+                                listener.onTextReceived(text)
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing DataChannel message", e)

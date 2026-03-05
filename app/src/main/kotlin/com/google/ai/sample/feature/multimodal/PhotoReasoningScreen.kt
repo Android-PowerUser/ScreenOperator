@@ -152,8 +152,17 @@ fun StopButton(onClick: () -> Unit) {
 @Composable
 internal fun PhotoReasoningRoute(
     innerPadding: PaddingValues,  // Füge Parameter hinzu
-    viewModel: PhotoReasoningViewModel = viewModel(factory = GenerativeViewModelFactory)
+    viewModelStoreOwner: androidx.lifecycle.ViewModelStoreOwner = androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner.current!!
 ) {
+    val context = LocalContext.current
+    val mainActivity = context as? MainActivity
+    
+    // Scoped to MainActivity so it survives navigation, fixing duplicate init (Task 20)
+    val owner = mainActivity ?: viewModelStoreOwner
+    val viewModel: PhotoReasoningViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        viewModelStoreOwner = owner, 
+        factory = GenerativeViewModelFactory
+    )
     val photoReasoningUiState by viewModel.uiState.collectAsState()
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
@@ -476,12 +485,13 @@ fun PhotoReasoningScreen(
             )
         }
 
-        val showStopButton = uiState is PhotoReasoningUiState.Loading // commandExecutionStatus check is implicitly handled by cards in LazyColumn
-
-        if (showStopButton) {
-            StopButton(onClick = onStopClicked)
-        } else {
-            Card(modifier = Modifier.fillMaxWidth()) {
+        // Task 18: Always show Stop button for offline model to allow manual closing
+        val showStopButton = modelName == "gemma-3n-e4b-it" || uiState is PhotoReasoningUiState.Loading
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (showStopButton) {
+                    StopButton(onClick = onStopClicked)
+                }
                 Row(modifier = Modifier.padding(top = 16.dp)) {
                     Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
                         IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
@@ -1304,20 +1314,24 @@ fun VerticalScrollbar(
             if (totalItems == 0) return@derivedStateOf null
 
             val viewportHeight = layoutInfo.viewportSize.height.toFloat()
-            // Avoid division by zero and complex layout loops
             val firstVisibleItemIndex = listState.firstVisibleItemIndex
-            val firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            val visibleItemCount = layoutInfo.visibleItemsInfo.size
 
-            // Simple estimation logic
-            val elementHeight = if (layoutInfo.visibleItemsInfo.isNotEmpty())
-                layoutInfo.visibleItemsInfo.sumOf { it.size } / layoutInfo.visibleItemsInfo.size.toFloat()
-                else 100f // Fallback
+            if (visibleItemCount >= totalItems) return@derivedStateOf null // All items visible, no scrollbar
 
-            val estimatedTotalHeight = elementHeight * totalItems
-            val thumbHeight = ((viewportHeight / estimatedTotalHeight) * viewportHeight).coerceAtLeast(20f) // Min size
-            val scrollOffset = ((firstVisibleItemIndex * elementHeight) + firstVisibleItemScrollOffset) / estimatedTotalHeight * viewportHeight
+            // Simple ratio-based calculation for even behavior
+            val thumbHeight = (visibleItemCount.toFloat() / totalItems * viewportHeight).coerceAtLeast(20f)
+            
+            // Calculate scroll progress considering sub-item offset
+            val firstItemOffset = if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                val firstItem = layoutInfo.visibleItemsInfo.first()
+                if (firstItem.size > 0) listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size else 0f
+            } else 0f
+            
+            val scrollProgress = (firstVisibleItemIndex + firstItemOffset) / (totalItems - visibleItemCount).coerceAtLeast(1)
+            val scrollOffset = scrollProgress * (viewportHeight - thumbHeight)
 
-            Pair(scrollOffset, thumbHeight)
+            Pair(scrollOffset.coerceIn(0f, viewportHeight - thumbHeight), thumbHeight)
         }
     }
 

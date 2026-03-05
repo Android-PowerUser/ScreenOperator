@@ -50,6 +50,8 @@ import android.os.Environment
 import android.os.StatFs
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import java.io.File
 
 data class MenuItem(
@@ -79,6 +81,7 @@ fun MenuScreen(
     var expanded by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var downloadDialogModel by remember { mutableStateOf<ModelOption?>(null) }
+    var showHumanExpertSupportDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -169,6 +172,8 @@ fun MenuScreen(
                                         },
                                         onClick = {
                                             expanded = false
+                                            val wasOfflineModel = selectedModel == ModelOption.GEMMA_3N_E4B_IT
+                                            
                                             if (modelOption == ModelOption.GEMMA_3N_E4B_IT) {
                                                 val isDownloaded = ModelDownloadManager.isModelDownloaded(context)
                                                 if (!isDownloaded) {
@@ -177,13 +182,31 @@ fun MenuScreen(
                                                 } else {
                                                     selectedModel = modelOption
                                                     GenerativeAiViewModelFactory.setModel(modelOption)
+                                                    
+                                                    // Task 15: Initialize offline model upon selection
+                                                    val mainActivity = context as? MainActivity
+                                                    mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
                                                 }
                                             } else if (modelOption == ModelOption.HUMAN_EXPERT) {
-                                                selectedModel = modelOption
-                                                GenerativeAiViewModelFactory.setModel(modelOption)
+                                                if (isPurchased) {
+                                                    selectedModel = modelOption
+                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                    if (wasOfflineModel) {
+                                                        // Task 19: Close offline model to free RAM
+                                                        val mainActivity = context as? MainActivity
+                                                        mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                                    }
+                                                } else {
+                                                    showHumanExpertSupportDialog = true
+                                                }
                                             } else {
                                                 selectedModel = modelOption
                                                 GenerativeAiViewModelFactory.setModel(modelOption)
+                                                if (wasOfflineModel) {
+                                                    // Task 19: Close offline model to free RAM
+                                                    val mainActivity = context as? MainActivity
+                                                    mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                                }
                                             }
                                         },
                                         enabled = true // Always enabled
@@ -332,7 +355,9 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..2f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
+                                    detectHorizontalDragGestures { _, _ -> /* consume to prevent parent scroll */ }
+                                }
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -354,7 +379,9 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..1f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
+                                    detectHorizontalDragGestures { _, _ -> /* consume to prevent parent scroll */ }
+                                }
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -376,7 +403,9 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..100f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
+                                    detectHorizontalDragGestures { _, _ -> /* consume to prevent parent scroll */ }
+                                }
                             )
 
                             if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
@@ -490,7 +519,7 @@ fun MenuScreen(
                             )
                         } else {
                             Text(
-                                text = "Support Improvements \uD83C\uDF89",
+                                text = "Support Improvements\n            \uD83C\uDF89",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -528,6 +557,7 @@ fun MenuScreen(
                         append("GPT-5.1 Input: \$1.25/M Output: \$10.00/M\n")
                         append("GPT-5.1 mini Input: \$0.25/M Output: \$2.00/M\n")
                         append("GPT-5 nano Input: \$0.05/M Output: \$0.40/M\n")
+                        append("• When a language model repeats a token, Top K and Top P must be lowered.\n")
                         append("• There are ")
                         withStyle(boldStyle) { append("rate limits") }
                         append(" for free use of ")
@@ -673,7 +703,11 @@ fun MenuScreen(
                             onClick = {
                                 downloadDialogModel?.downloadUrl?.let { url ->
                                     ModelDownloadManager.downloadModel(context, url)
-                                    // Don't set model yet - wait for download to complete (Point 17)
+                                    // Task 2: Request notification permission when download starts
+                                    val mainActivity = context as? MainActivity
+                                    if (mainActivity != null && !mainActivity.isNotificationPermissionGranted()) {
+                                        mainActivity.requestNotificationPermission()
+                                    }
                                 }
                             }
                         ) { Text("Download") }
@@ -729,6 +763,32 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Error -> {
                         TextButton(onClick = { showDownloadDialog = false }) { Text("Close") }
                     }
+                }
+            }
+        )
+    }
+
+    // Human Expert Support Dialog (Task 4)
+    if (showHumanExpertSupportDialog) {
+        AlertDialog(
+            onDismissRequest = { showHumanExpertSupportDialog = false },
+            title = { Text("Human Expert") },
+            text = {
+                Text("To ensure that a human expert accepts the task, please support the expert.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showHumanExpertSupportDialog = false
+                        onDonationButtonClicked()
+                    }
+                ) {
+                    Text("Support \uD83C\uDF89")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHumanExpertSupportDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )

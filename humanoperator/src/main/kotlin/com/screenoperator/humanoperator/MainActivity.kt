@@ -2,12 +2,16 @@ package com.screenoperator.humanoperator
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -18,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,13 +55,49 @@ class MainActivity : ComponentActivity() {
     private var webRTCClient: WebRTCClient? = null
     private var signalingClient: SignalingClient? = null
 
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            startTaskListenerService()
+        } else {
+            Toast.makeText(this, "Notifications are required to receive tasks in the background.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createNotificationChannel()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    startTaskListenerService()
+                }
+                else -> {
+                    requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        } else {
+            startTaskListenerService()
+        }
+
         setContent {
             HumanOperatorTheme {
                 HumanOperatorScreen()
             }
+        }
+    }
+
+    private fun startTaskListenerService() {
+        val serviceIntent = Intent(this, TaskListenerService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
         }
     }
 
@@ -115,7 +156,7 @@ class MainActivity : ComponentActivity() {
         MaterialTheme(colorScheme = darkColorScheme, content = content)
     }
 
-    data class TaskInfo(val taskId: String, val text: String)
+    data class TaskInfo(val taskId: String, val text: String, val supportId: String?)
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -129,6 +170,7 @@ class MainActivity : ComponentActivity() {
         var eglContext by remember { mutableStateOf<EglBase.Context?>(null) }
         val availableTasks = remember { mutableStateListOf<TaskInfo>() }
         var claimedTaskId by remember { mutableStateOf<String?>(null) }
+        var inputText by remember { mutableStateOf("") } // Task 9: Text input state
         val context = LocalContext.current
 
         fun connectToServer() {
@@ -169,9 +211,9 @@ class MainActivity : ComponentActivity() {
 
             // Connect signaling
             val signaling = SignalingClient(object : SignalingClient.SignalingListener {
-                override fun onNewTask(taskId: String, text: String) {
-                    Log.d(TAG, "New task: $taskId")
-                    availableTasks.add(TaskInfo(taskId, text))
+                override fun onNewTask(taskId: String, text: String, supportId: String?) {
+                    Log.d(TAG, "New task: $taskId (SupportID: $supportId)")
+                    availableTasks.add(TaskInfo(taskId, text, supportId))
                     showTaskNotification(taskId, text)
                     if (!isConnected) {
                         isConnected = true
@@ -334,6 +376,34 @@ class MainActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Task 9: Text input for Human Operator
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("Send message...") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        IconButton(
+                            onClick = {
+                                if (inputText.isNotBlank()) {
+                                    webRTCClient?.sendText(inputText)
+                                    inputText = ""
+                                }
+                            },
+                            enabled = inputText.isNotBlank()
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
 
                 } else if (isPaired) {
                     // Paired but waiting for video
@@ -406,16 +476,28 @@ class MainActivity : ComponentActivity() {
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Column(modifier = Modifier.padding(16.dp)) {
-                                        if (task.text.isNotBlank()) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Task ID: ${task.taskId.take(8)}...",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            if (task.supportId != null) {
+                                                Text(
+                                                    text = "Support ID: ${task.supportId}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.Green,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                             Text(
                                                 text = task.text,
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 3,
+                                                maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Spacer(modifier = Modifier.height(12.dp))
                                         }
+                                        Spacer(modifier = Modifier.height(12.dp))
                                         Button(
                                             onClick = { signalingClient?.claimTask(task.taskId) },
                                             modifier = Modifier.fillMaxWidth(),

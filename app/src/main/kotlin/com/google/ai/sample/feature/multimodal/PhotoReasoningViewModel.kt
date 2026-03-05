@@ -389,6 +389,17 @@ class PhotoReasoningViewModel(
         }
     }
 
+    fun closeOfflineModel() {
+        try {
+            llmInference?.close()
+            llmInference = null
+            System.gc()
+            Log.d(TAG, "Offline model explicitly closed to free RAM")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing offline model", e)
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         liveApiManager?.close()
@@ -569,6 +580,11 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+
+    // Task 12: Clear any stale error state from previous model interactions
+    if (_uiState.value is PhotoReasoningUiState.Error) {
+        _uiState.value = PhotoReasoningUiState.Initial
+    }
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
@@ -1043,6 +1059,15 @@ class PhotoReasoningViewModel(
             liveApiManager?.close()
         }
 
+        // Task 18: Close offline model ONLY if no inference/commands are running
+        val isReasoningActive = currentReasoningJob?.isActive == true
+        val isCommandProcessingActive = commandProcessingJob?.isActive == true
+        if (!isReasoningActive && !isCommandProcessingActive && com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT) {
+            closeOfflineModel()
+            _uiState.value = PhotoReasoningUiState.Initial
+            return // We are done here, just closed
+        }
+
         // Rest of the existing onStopClicked code
         _showStopNotificationFlow.value = false
         stopExecutionFlag.set(true)
@@ -1252,6 +1277,19 @@ class PhotoReasoningViewModel(
                dispatchTap(x, y)
             }
 
+            // Task 9: Handle incoming text from Human Operator
+            override fun onTextReceived(text: String) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    val newMessage = PhotoReasoningMessage(
+                        text = "Operator: $text",
+                        participant = PhotoParticipant.MODEL,
+                        isPending = false
+                    )
+                    _chatState.addMessage(newMessage)
+                    _chatMessagesFlow.value = _chatState.getAllMessages()
+                }
+            }
+
             override fun onError(message: String) {
                 Log.e(TAG, "WebRTC Error: $message")
                 viewModelScope.launch(Dispatchers.Main) {
@@ -1283,24 +1321,27 @@ class PhotoReasoningViewModel(
                             Log.d(TAG, "WebRTC MediaProjection granted. Starting foreground service first, then screen capture.")
                             replaceAiMessageText("Establishing video connection...", isPending = true)
                             
-                            // Point 11: Start ScreenCaptureService as foreground service FIRST
-                            // This is required because MediaProjection needs an active foreground
-                            // service of type MEDIA_PROJECTION on Android Q+
-                            val serviceIntent = Intent(mainActivity, ScreenCaptureService::class.java).apply {
-                                action = ScreenCaptureService.ACTION_START_CAPTURE
-                                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-                                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
-                                putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, false)
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                mainActivity.startForegroundService(serviceIntent)
+                            // Task 1: Only start ScreenCaptureService if not already running
+                            // This prevents ForegroundServiceDidNotStartInTimeException
+                            if (!ScreenCaptureService.isRunning()) {
+                                val serviceIntent = Intent(mainActivity, ScreenCaptureService::class.java).apply {
+                                    action = ScreenCaptureService.ACTION_START_CAPTURE
+                                    putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                                    putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
+                                    putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, false)
+                                }
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    mainActivity.startForegroundService(serviceIntent)
+                                } else {
+                                    mainActivity.startService(serviceIntent)
+                                }
                             } else {
-                                mainActivity.startService(serviceIntent)
+                                Log.d(TAG, "ScreenCaptureService already running, skipping service start.")
                             }
                             
-                            // Small delay to ensure foreground service is up before WebRTC capture
+                            // Delay to ensure foreground service is up before WebRTC capture
                             viewModelScope.launch {
-                                delay(300)
+                                delay(500)
                                 // Start screen capture for WebRTC with fresh permission data
                                 webRTCSender?.startScreenCapture(resultData)
                                 webRTCSender?.createPeerConnection()
@@ -1347,7 +1388,11 @@ class PhotoReasoningViewModel(
     }
 
     private fun postTaskToHumanExpert(text: String) {
-         signalingClient?.postTask(text, hasScreenshot = false) // Capture live stream instead
+         val context = getApplication<Application>().applicationContext
+         val prefs = context.getSharedPreferences(com.google.ai.sample.MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+         val supportId = prefs.getString("payment_support_id", null)
+         
+         signalingClient?.postTask(text, hasScreenshot = false, supportId = supportId) // Capture live stream instead
     }
 
     private fun dispatchTap(x: Float, y: Float) {

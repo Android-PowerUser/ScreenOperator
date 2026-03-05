@@ -129,6 +129,11 @@ class MainActivity : ComponentActivity() {
     private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
     private var onWebRtcMediaProjectionResult: ((Int, Intent) -> Unit)? = null
 
+    // Payment Dialog State (Task 6)
+    private var showPaymentMethodDialog by mutableStateOf(false)
+    private var showPayPalWebViewDialog by mutableStateOf(false)
+    private var paypalSubscriptionId by mutableStateOf("")
+
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT) {
@@ -326,7 +331,7 @@ class MainActivity : ComponentActivity() {
             }
         } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             Log.i(TAG, "purchasesUpdatedListener: User cancelled the purchase flow.")
-            Toast.makeText(this, "Donation process cancelled.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Support cancelled.", Toast.LENGTH_SHORT).show()
         } else {
             Log.e(TAG, "purchasesUpdatedListener: Billing error: ${billingResult.debugMessage} (Code: ${billingResult.responseCode})")
             Toast.makeText(this, "Error during donation process: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
@@ -636,6 +641,116 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+
+                        // Task 6: Payment Method Dialog
+                        if (showPaymentMethodDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showPaymentMethodDialog = false },
+                                title = { Text("Choose Payment Method") },
+                                text = {
+                                    Column {
+                                        Button(
+                                            onClick = {
+                                                showPaymentMethodDialog = false
+                                                showPayPalWebViewDialog = true
+                                            },
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                                        ) {
+                                            Text("PayPal (2,60 €/Month)")
+                                        }
+                                        Button(
+                                            onClick = {
+                                                showPaymentMethodDialog = false
+                                                launchGooglePlayBilling()
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Google Play (2,90 €/Month)")
+                                        }
+                                    }
+                                },
+                                confirmButton = {},
+                                dismissButton = {
+                                    TextButton(onClick = { showPaymentMethodDialog = false }) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            )
+                        }
+
+                        // Task 6: PayPal WebView Dialog
+                        if (showPayPalWebViewDialog) {
+                            Dialog(onDismissRequest = { showPayPalWebViewDialog = false }) {
+                                Card(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("PayPal Subscription", style = MaterialTheme.typography.titleMedium)
+                                            TextButton(onClick = { showPayPalWebViewDialog = false }) {
+                                                Text("Close")
+                                            }
+                                        }
+                                        
+                                        androidx.compose.ui.viewinterop.AndroidView(
+                                            factory = { ctx ->
+                                                android.webkit.WebView(ctx).apply {
+                                                    settings.javaScriptEnabled = true
+                                                    settings.domStorageEnabled = true
+                                                    webViewClient = android.webkit.WebViewClient()
+                                                    
+                                                    // Generate Short UUID
+                                                    val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
+                                                    
+                                                    // Save it to SharedPreferences
+                                                    ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                                                        .edit()
+                                                        .putString("payment_support_id", shortId)
+                                                        .apply()
+                                                        
+                                                    val html = """
+                                                        <!DOCTYPE html>
+                                                        <html>
+                                                        <head>
+                                                          <meta name="viewport" content="width=device-width, initial-scale=1">
+                                                        </head>
+                                                        <body>
+                                                          <div id="paypal-button-container-P-5J921557TD348880GNGUCRSI"></div>
+                                                          <script src="https://www.paypal.com/sdk/js?client-id=AQ52P9G85S3RCHw7lWnEDH_Pudk-5JdE8S6gBfS72jWwMng-xR-0qNrtmS8Mv5RtdK--a1cZ0G-12_rZ&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
+                                                          <script>
+                                                            paypal.Buttons({
+                                                              style: {
+                                                                shape: 'rect',
+                                                                color: 'gold',
+                                                                layout: 'vertical',
+                                                                label: 'subscribe'
+                                                              },
+                                                              createSubscription: function(data, actions) {
+                                                                return actions.subscription.create({
+                                                                  'plan_id': 'P-5J921557TD348880GNGUCRSI',
+                                                                  'custom_id': '$shortId'
+                                                                });
+                                                              },
+                                                              onApprove: function(data, actions) {
+                                                                alert('Thank you for your subscription! Your Support ID is: $shortId');
+                                                              }
+                                                            }).render('#paypal-button-container-P-5J921557TD348880GNGUCRSI');
+                                                          </script>
+                                                        </body>
+                                                        </html>
+                                                    """.trimIndent()
+                                                    
+                                                    loadDataWithBaseURL("https://www.paypal.com", html, "text/html", "UTF-8", null)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -880,28 +995,32 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initiateDonationPurchase() {
-        Log.d(TAG, "initiateDonationPurchase called.")
+        Log.d(TAG, "initiateDonationPurchase called. Showing Payment Method Dialog.")
+        showPaymentMethodDialog = true
+    }
+
+    private fun launchGooglePlayBilling() {
         if (!::billingClient.isInitialized) {
-            Log.e(TAG, "initiateDonationPurchase: BillingClient not initialized.")
+            Log.e(TAG, "launchGooglePlayBilling: BillingClient not initialized.")
             updateStatusMessage("Payment service not initialized. Please try again later.", true)
             return
         }
         if (!billingClient.isReady) {
-            Log.e(TAG, "initiateDonationPurchase: BillingClient not ready. Connection state: ${billingClient.connectionState}")
+            Log.e(TAG, "launchGooglePlayBilling: BillingClient not ready. Connection state: ${billingClient.connectionState}")
             updateStatusMessage("Payment service not ready. Please try again later.", true)
             if (billingClient.connectionState == BillingClient.ConnectionState.CLOSED || billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED){
-                Log.d(TAG, "initiateDonationPurchase: BillingClient disconnected, attempting to reconnect.")
+                Log.d(TAG, "launchGooglePlayBilling: BillingClient disconnected, attempting to reconnect.")
                 billingClient.startConnection(object : BillingClientStateListener {
                     override fun onBillingSetupFinished(setupResult: BillingResult) {
-                        Log.i(TAG, "initiateDonationPurchase (reconnect): onBillingSetupFinished. ResponseCode: ${setupResult.responseCode}")
+                        Log.i(TAG, "launchGooglePlayBilling (reconnect): onBillingSetupFinished. ResponseCode: ${setupResult.responseCode}")
                         if (setupResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                            Log.d(TAG, "initiateDonationPurchase (reconnect): Reconnection successful, retrying purchase.")
-                            initiateDonationPurchase()
+                            Log.d(TAG, "launchGooglePlayBilling (reconnect): Reconnection successful, retrying purchase.")
+                            launchGooglePlayBilling()
                         } else {
-                             Log.e(TAG, "initiateDonationPurchase (reconnect): BillingClient setup failed after disconnect: ${setupResult.debugMessage}")
+                             Log.e(TAG, "launchGooglePlayBilling (reconnect): BillingClient setup failed after disconnect: ${setupResult.debugMessage}")
                         }
                     }
-                    override fun onBillingServiceDisconnected() { Log.w(TAG, "initiateDonationPurchase (reconnect): BillingClient still disconnected.") }
+                    override fun onBillingServiceDisconnected() { Log.w(TAG, "launchGooglePlayBilling (reconnect): BillingClient still disconnected.") }
                 })
             }
             return

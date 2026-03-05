@@ -29,7 +29,7 @@ class SignalingClient(
     private var currentTaskId: String? = null
 
     interface SignalingListener {
-        fun onNewTask(taskId: String, text: String)
+        fun onNewTask(taskId: String, text: String, supportId: String?)
         fun onTaskRemoved(taskId: String)
         fun onClaimed(taskId: String)
         fun onClaimFailed(reason: String)
@@ -50,8 +50,9 @@ class SignalingClient(
                 if (status == "open") {
                     val taskId = snapshot.key ?: return
                     val text = snapshot.child("text").getValue(String::class.java) ?: ""
+                    val supportId = snapshot.child("supportId").getValue(String::class.java)
                     Log.d(TAG, "New open task found: $taskId")
-                    listener.onNewTask(taskId, text)
+                    listener.onNewTask(taskId, text, supportId)
                 }
             }
 

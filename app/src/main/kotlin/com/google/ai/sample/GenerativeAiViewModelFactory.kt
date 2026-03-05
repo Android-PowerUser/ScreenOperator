@@ -157,11 +157,11 @@ object GenerativeAiViewModelFactory {
 
     fun loadBackendPreference(context: Context) {
         val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
-        val backendName = prefs.getString("preferred_backend", InferenceBackend.CPU.name)
+        val backendName = prefs.getString("preferred_backend", InferenceBackend.GPU.name)
         currentBackend = try {
-            InferenceBackend.valueOf(backendName ?: InferenceBackend.CPU.name)
+            InferenceBackend.valueOf(backendName ?: InferenceBackend.GPU.name)
         } catch (e: IllegalArgumentException) {
-            InferenceBackend.CPU
+            InferenceBackend.GPU
         }
     }
 }
