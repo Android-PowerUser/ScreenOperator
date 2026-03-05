@@ -116,9 +116,6 @@ jobs:
   build:
     needs: [detect-changes, compile-check]
     runs-on: ubuntu-latest
-    env:
-      BUILD_APP: ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }}
-      BUILD_HUMANOPERATOR: ${{ needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }}
 
     steps:
     - name: Checkout code
@@ -154,22 +151,22 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build app module (debug)
-      if: env.BUILD_APP == 'true'
+      if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       run: ./gradlew :app:assembleDebug
 
     - name: Build humanoperator module (debug)
-      if: env.BUILD_HUMANOPERATOR == 'true'
+      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       run: ./gradlew :humanoperator:assembleDebug
 
     - name: Upload app APK
-      if: env.BUILD_APP == 'true'
+      if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Upload humanoperator APK
-      if: env.BUILD_HUMANOPERATOR == 'true'
+      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: humanoperator-debug
