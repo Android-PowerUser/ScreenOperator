@@ -180,8 +180,6 @@ internal fun PhotoReasoningRoute(
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
     val imageLoader = ImageLoader.Builder(LocalContext.current).build()
-    val context = LocalContext.current
-    val mainActivity = context as? MainActivity
 
     val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
     val isMediaProjectionPermissionGranted by mainActivity?.isMediaProjectionPermissionGrantedFlow?.collectAsState() ?: mutableStateOf(false)

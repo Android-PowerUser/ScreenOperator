@@ -1389,7 +1389,7 @@ class PhotoReasoningViewModel(
 
     private fun postTaskToHumanExpert(text: String) {
          val context = getApplication<Application>().applicationContext
-         val prefs = context.getSharedPreferences(com.google.ai.sample.MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+         val prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
          val supportId = prefs.getString("payment_support_id", null)
          
          signalingClient?.postTask(text, hasScreenshot = false, supportId = supportId) // Capture live stream instead
