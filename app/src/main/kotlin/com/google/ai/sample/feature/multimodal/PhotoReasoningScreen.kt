@@ -501,12 +501,13 @@ fun PhotoReasoningScreen(
 
         // Task 18: Always show Stop button for offline model to allow manual closing
         val showStopButton = modelName == "gemma-3n-e4b-it" || uiState is PhotoReasoningUiState.Loading
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                val isGenerating = (uiState is PhotoReasoningUiState.Loading) && (messages.lastOrNull()?.isPending == true)
-                val showTextFieldRow = !isGenerating
-                
-                if (showTextFieldRow) {
+        
+        val isGenerating = (uiState is PhotoReasoningUiState.Loading) && (messages.lastOrNull()?.isPending == true)
+        val showTextFieldRow = !isGenerating
+
+        if (showTextFieldRow) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.padding(top = 16.dp)) {
                         Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
                             IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
@@ -569,14 +570,15 @@ fun PhotoReasoningScreen(
                     LazyRow(modifier = Modifier.padding(all = 8.dp)) {
                         items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
                     }
-                }
-                
-                // Task 1: Stop button is independent and below the text field
-                if (showStopButton) {
-                    StopButton(onClick = onStopClicked)
-                }
-            } // Closes Column
-        } // Closes Card
+                } // Closes Column
+            } // Closes Card
+        }
+        
+        // Task 1: Stop button is independent and below the text field
+        if (showStopButton) {
+            Spacer(modifier = Modifier.height(8.dp))
+            StopButton(onClick = onStopClicked)
+        }
         }
 
         // Popups remain outside the main content flow, attached to the screen Column

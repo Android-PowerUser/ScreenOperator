@@ -515,7 +515,7 @@ fun MenuScreen(
                             )
                         } else {
                             Text(
-                                text = "Support Improvements\n    \uD83C\uDF89",
+                                text = "Support Improvements\n                \uD83C\uDF89",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f)
                             )

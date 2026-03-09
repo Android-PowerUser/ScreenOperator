@@ -1059,7 +1059,7 @@ class PhotoReasoningViewModel(
             liveApiManager?.close()
         }
 
-        // Task 18: Close offline model ONLY if no inference/commands are running
+        // Close offline model ONLY if no inference/commands are running
         val isReasoningActive = currentReasoningJob?.isActive == true
         val isCommandProcessingActive = commandProcessingJob?.isActive == true
         if (!isReasoningActive && !isCommandProcessingActive && com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT) {

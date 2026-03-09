@@ -518,7 +518,18 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.StartActivityForResult()
             ) { result ->
                 if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                    Log.i(TAG, "WebRTC MediaProjection permission granted.")
+                    Log.i(TAG, "WebRTC MediaProjection permission granted. Starting keep-alive service.")
+                    
+                    // Task 4: Keep Service Alive to satisfy Android 14 MediaProjection requirements
+                    val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                        action = ScreenCaptureService.ACTION_KEEP_ALIVE_FOR_WEBRTC
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+
                     onWebRtcMediaProjectionResult?.invoke(result.resultCode, result.data!!)
                     onWebRtcMediaProjectionResult = null
                 } else {
@@ -654,7 +665,22 @@ class MainActivity : ComponentActivity() {
                                         Button(
                                             onClick = {
                                                 showPaymentMethodDialog = false
-                                                showPayPalWebViewDialog = true
+                                                
+                                                // Generate Short UUID
+                                                val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
+                                                
+                                                // Save it to SharedPreferences
+                                                val ctx = this@MainActivity
+                                                ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                                                    .edit()
+                                                    .putString("payment_support_id", shortId)
+                                                    .apply()
+                                                    
+                                                Toast.makeText(ctx, "Your Support ID is: $shortId", Toast.LENGTH_LONG).show()
+
+                                                val url = "https://www.paypal.com/webapps/billing/subscriptions?plan_id=P-5J921557TD348880GNGUCRSI&custom_id=$shortId"
+                                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                                ctx.startActivity(intent)
                                             },
                                             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                                         ) {
@@ -680,82 +706,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // Task 6: PayPal WebView Dialog
-                        if (showPayPalWebViewDialog) {
-                            Dialog(
-                                onDismissRequest = { showPayPalWebViewDialog = false },
-                                properties = DialogProperties(usePlatformDefaultWidth = false)
-                            ) {
-                                Card(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                    Column(modifier = Modifier.fillMaxSize()) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("PayPal Subscription", style = MaterialTheme.typography.titleMedium)
-                                            TextButton(onClick = { showPayPalWebViewDialog = false }) {
-                                                Text("Close")
-                                            }
-                                        }
-                                        
-                                        androidx.compose.ui.viewinterop.AndroidView(
-                                            factory = { ctx ->
-                                                android.webkit.WebView(ctx).apply {
-                                                    settings.javaScriptEnabled = true
-                                                    settings.domStorageEnabled = true
-                                                    webViewClient = android.webkit.WebViewClient()
-                                                    
-                                                    // Generate Short UUID
-                                                    val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
-                                                    
-                                                    // Save it to SharedPreferences
-                                                    ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                                                        .edit()
-                                                        .putString("payment_support_id", shortId)
-                                                        .apply()
-                                                        
-                                                    val html = """
-                                                        <!DOCTYPE html>
-                                                        <html>
-                                                        <head>
-                                                          <meta name="viewport" content="width=device-width, initial-scale=1">
-                                                        </head>
-                                                        <body>
-                                                          <div id="paypal-button-container-P-5J921557TD348880GNGUCRSI"></div>
-                                                          <script src="https://www.paypal.com/sdk/js?client-id=AQ52P9G85S3RCHw7lWnEDH_Pudk-5JdE8S6gBfS72jWwMng-xR-0qNrtmS8Mv5RtdK--a1cZ0G-12_rZ&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
-                                                          <script>
-                                                            paypal.Buttons({
-                                                              style: {
-                                                                shape: 'rect',
-                                                                color: 'gold',
-                                                                layout: 'vertical',
-                                                                label: 'subscribe'
-                                                              },
-                                                              createSubscription: function(data, actions) {
-                                                                return actions.subscription.create({
-                                                                  'plan_id': 'P-5J921557TD348880GNGUCRSI',
-                                                                  'custom_id': '$shortId'
-                                                                });
-                                                              },
-                                                              onApprove: function(data, actions) {
-                                                                alert('Thank you for your subscription! Your Support ID is: $shortId');
-                                                              }
-                                                            }).render('#paypal-button-container-P-5J921557TD348880GNGUCRSI');
-                                                          </script>
-                                                        </body>
-                                                        </html>
-                                                    """.trimIndent()
-                                                    
-                                                    loadDataWithBaseURL("https://www.paypal.com", html, "text/html", "UTF-8", null)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-                            }
-                        }
+
                     }
                 }
             }
