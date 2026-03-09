@@ -44,7 +44,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -1050,7 +1050,7 @@ fun UserChatBubble(
                     .align(Alignment.CenterVertically)
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.Undo,
+                    imageVector = Icons.Rounded.Refresh,
                     contentDescription = "Undo",
                     tint = Color.Gray
                 )
