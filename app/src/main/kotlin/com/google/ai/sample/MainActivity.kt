@@ -67,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
@@ -681,7 +682,10 @@ class MainActivity : ComponentActivity() {
 
                         // Task 6: PayPal WebView Dialog
                         if (showPayPalWebViewDialog) {
-                            Dialog(onDismissRequest = { showPayPalWebViewDialog = false }) {
+                            Dialog(
+                                onDismissRequest = { showPayPalWebViewDialog = false },
+                                properties = DialogProperties(usePlatformDefaultWidth = false)
+                            ) {
                                 Card(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                                     Column(modifier = Modifier.fillMaxSize()) {
                                         Row(

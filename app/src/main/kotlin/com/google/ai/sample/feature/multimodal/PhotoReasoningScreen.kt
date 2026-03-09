@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -432,7 +433,22 @@ fun PhotoReasoningScreen(
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(messages) { message ->
                     when (message.participant) {
-                        PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)
+                        PhotoParticipant.USER -> {
+                            // If index == 0, it's the first message, show the undo button
+                            val isFirstMessage = messages.indexOf(message) == 0
+                            UserChatBubble(
+                                text = message.text,
+                                isPending = message.isPending,
+                                imageUris = message.imageUris,
+                                showUndo = isFirstMessage,
+                                onUndoClicked = {
+                                    // Set the text back to the input box
+                                    onUserQuestionChanged(message.text)
+                                    // Clear chat history
+                                    onClearChatHistory()
+                                }
+                            )
+                        }
                         PhotoParticipant.MODEL -> ModelChatBubble(message.text, message.isPending)
                         PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
                     }
@@ -487,25 +503,26 @@ fun PhotoReasoningScreen(
         val showStopButton = modelName == "gemma-3n-e4b-it" || uiState is PhotoReasoningUiState.Loading
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                if (showStopButton) {
-                    StopButton(onClick = onStopClicked)
-                }
-                Row(modifier = Modifier.padding(top = 16.dp)) {
-                    Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
-                        IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
-                            Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
+                val isGenerating = (uiState is PhotoReasoningUiState.Loading) && (messages.lastOrNull()?.isPending == true)
+                val showTextFieldRow = !isGenerating
+                
+                if (showTextFieldRow) {
+                    Row(modifier = Modifier.padding(top = 16.dp)) {
+                        Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                            IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
+                                Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
+                            }
+                            IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
+                                drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
+                            }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                         }
-                        IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
-                            drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-                        }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
-                    }
-                    OutlinedTextField(
-                        value = userQuestion,
-                        label = { Text(stringResource(R.string.reason_label)) },
-                        placeholder = { Text(stringResource(R.string.reason_hint)) },
-                        onValueChange = onUserQuestionChanged,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
-                    )
+                        OutlinedTextField(
+                            value = userQuestion,
+                            label = { Text(stringResource(R.string.reason_label)) },
+                            placeholder = { Text(stringResource(R.string.reason_hint)) },
+                            onValueChange = onUserQuestionChanged,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
                         IconButton(
                             onClick = {
                                 val mainActivity = context as? MainActivity
@@ -552,8 +569,14 @@ fun PhotoReasoningScreen(
                     LazyRow(modifier = Modifier.padding(all = 8.dp)) {
                         items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
                     }
-                } // Closes Card
-            }
+                }
+                
+                // Task 1: Stop button is independent and below the text field
+                if (showStopButton) {
+                    StopButton(onClick = onStopClicked)
+                }
+            } // Closes Column
+        } // Closes Card
         }
 
         // Popups remain outside the main content flow, attached to the screen Column
@@ -1009,7 +1032,9 @@ fun OverwriteConfirmationDialog(
 fun UserChatBubble(
     text: String,
     isPending: Boolean,
-    imageUris: List<String> = emptyList()
+    imageUris: List<String> = emptyList(),
+    showUndo: Boolean = false,
+    onUndoClicked: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -1017,6 +1042,20 @@ fun UserChatBubble(
             .fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
+        if (showUndo) {
+            IconButton(
+                onClick = onUndoClicked,
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .align(Alignment.CenterVertically)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Undo,
+                    contentDescription = "Undo",
+                    tint = Color.Gray
+                )
+            }
+        }
         Spacer(modifier = Modifier.weight(1f))
         Card(
             shape = MaterialTheme.shapes.medium,

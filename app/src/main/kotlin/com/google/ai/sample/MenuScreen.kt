@@ -282,6 +282,8 @@ fun MenuScreen(
                                         currentBackend.value = InferenceBackend.CPU
                                         // Re-initialize model with new backend
                                         val mainActivity = context as? MainActivity
+                                        // Explicitly kill the model from GPU to free RAM before reloading
+                                        mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
                                         mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
                                         Toast.makeText(context, "CPU selected – Model reloading", Toast.LENGTH_SHORT).show()
                                     },
@@ -355,9 +357,7 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..2f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
-                                    detectHorizontalDragGestures { _, _ -> /* consume to prevent parent scroll */ }
-                                }
+                                modifier = Modifier.fillMaxWidth()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -379,9 +379,7 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..1f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
-                                    detectHorizontalDragGestures { _, _ -> /* consume to prevent parent scroll */ }
-                                }
+                                modifier = Modifier.fillMaxWidth()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -403,9 +401,7 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..100f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
-                                    detectHorizontalDragGestures { _, _ -> /* consume to prevent parent scroll */ }
-                                }
+                                modifier = Modifier.fillMaxWidth()
                             )
 
                             if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
@@ -434,11 +430,11 @@ fun MenuScreen(
                             .fillMaxWidth()
                     ) {
                         Text(
-                            text = stringResource(menuItem.titleResId),
+                            text = if (menuItem.routeId == "photo_reasoning" && selectedModel == ModelOption.HUMAN_EXPERT) "Operate with human expert" else stringResource(menuItem.titleResId),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = stringResource(menuItem.descriptionResId),
+                            text = if (menuItem.routeId == "photo_reasoning" && selectedModel == ModelOption.HUMAN_EXPERT) "A human expert uses screen mirroring and operates with tap's" else stringResource(menuItem.descriptionResId),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp)
                         )
@@ -519,7 +515,7 @@ fun MenuScreen(
                             )
                         } else {
                             Text(
-                                text = "Support Improvements\n            \uD83C\uDF89",
+                                text = "Support Improvements\n    \uD83C\uDF89",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f)
                             )
