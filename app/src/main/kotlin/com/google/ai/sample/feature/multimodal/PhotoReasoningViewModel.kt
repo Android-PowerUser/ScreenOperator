@@ -822,6 +822,25 @@ class PhotoReasoningViewModel(
                 _uiState.value = PhotoReasoningUiState.Error("Application not ready")
                 return
             }
+            
+            // Task 3: Sync model before API call
+            val apiKeyManager = ApiKeyManager.getInstance(context)
+            val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
+            if (currentKey != null && currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
+                val config = com.google.ai.client.generativeai.type.generationConfig {
+                    temperature = genSettings.temperature
+                    topP = genSettings.topP
+                    topK = genSettings.topK
+                }
+                generativeModel = GenerativeModel(
+                    modelName = currentModel.modelName,
+                    apiKey = currentKey,
+                    generationConfig = config
+                )
+                _modelNameState.value = currentModel.modelName
+            }
+            
             ensureInitialized(context)
             currentRetryAttempt = 0
             performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
@@ -1059,13 +1078,9 @@ class PhotoReasoningViewModel(
             liveApiManager?.close()
         }
 
-        // Close offline model ONLY if no inference/commands are running
-        val isReasoningActive = currentReasoningJob?.isActive == true
-        val isCommandProcessingActive = commandProcessingJob?.isActive == true
-        if (!isReasoningActive && !isCommandProcessingActive && com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT) {
+        // Close offline model instance to force stop generation or just release RAM
+        if (com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT) {
             closeOfflineModel()
-            _uiState.value = PhotoReasoningUiState.Initial
-            return // We are done here, just closed
         }
 
         // Rest of the existing onStopClicked code

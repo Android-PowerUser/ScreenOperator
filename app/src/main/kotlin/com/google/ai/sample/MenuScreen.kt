@@ -181,7 +181,7 @@ fun MenuScreen(
                                                     showDownloadDialog = true
                                                 } else {
                                                     selectedModel = modelOption
-                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                    GenerativeAiViewModelFactory.setModel(modelOption, context)
                                                     
                                                     // Task 15: Initialize offline model upon selection
                                                     val mainActivity = context as? MainActivity
@@ -190,7 +190,7 @@ fun MenuScreen(
                                             } else if (modelOption == ModelOption.HUMAN_EXPERT) {
                                                 if (isPurchased) {
                                                     selectedModel = modelOption
-                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                    GenerativeAiViewModelFactory.setModel(modelOption, context)
                                                     if (wasOfflineModel) {
                                                         // Task 19: Close offline model to free RAM
                                                         val mainActivity = context as? MainActivity
@@ -201,7 +201,7 @@ fun MenuScreen(
                                                 }
                                             } else {
                                                 selectedModel = modelOption
-                                                GenerativeAiViewModelFactory.setModel(modelOption)
+                                                GenerativeAiViewModelFactory.setModel(modelOption, context)
                                                 if (wasOfflineModel) {
                                                     // Task 19: Close offline model to free RAM
                                                     val mainActivity = context as? MainActivity
@@ -261,10 +261,9 @@ fun MenuScreen(
                                     onClick = {
                                         GenerativeAiViewModelFactory.setBackend(InferenceBackend.GPU, context)
                                         currentBackend.value = InferenceBackend.GPU
-                                        // Re-initialize model with new backend
                                         val mainActivity = context as? MainActivity
-                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
-                                        Toast.makeText(context, "GPU selected – Model loaded into RAM and processed on GPU", Toast.LENGTH_SHORT).show()
+                                        mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                        Toast.makeText(context, "GPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.GPU)
@@ -280,12 +279,9 @@ fun MenuScreen(
                                     onClick = {
                                         GenerativeAiViewModelFactory.setBackend(InferenceBackend.CPU, context)
                                         currentBackend.value = InferenceBackend.CPU
-                                        // Re-initialize model with new backend
                                         val mainActivity = context as? MainActivity
-                                        // Explicitly kill the model from GPU to free RAM before reloading
                                         mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
-                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
-                                        Toast.makeText(context, "CPU selected – Model reloading", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "CPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.CPU)
@@ -322,6 +318,9 @@ fun MenuScreen(
                             )
                         )
                     }
+                    var tempSlider by remember(selectedModel) { mutableStateOf(genSettings.value.temperature) }
+                    var topPSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topP) }
+                    var topKSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topK.toFloat()) }
                     
                     Card(
                         modifier = Modifier
@@ -342,15 +341,16 @@ fun MenuScreen(
 
                             // Temperature Slider (0.0 - 2.0)
                             Text(
-                                text = "Temperature: ${"%.2f".format(genSettings.value.temperature)}",
+                                text = "Temperature: ${"%.2f".format(tempSlider)}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             androidx.compose.material3.Slider(
-                                value = genSettings.value.temperature,
+                                value = tempSlider,
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(temperature = newVal)
+                                    tempSlider = newVal
                                 },
                                 onValueChangeFinished = {
+                                    genSettings.value = genSettings.value.copy(temperature = tempSlider)
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
@@ -364,15 +364,16 @@ fun MenuScreen(
 
                             // TopP Slider (0.0 - 1.0)
                             Text(
-                                text = "Top P: ${"%.2f".format(genSettings.value.topP)}",
+                                text = "Top P: ${"%.2f".format(topPSlider)}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             androidx.compose.material3.Slider(
-                                value = genSettings.value.topP,
+                                value = topPSlider,
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(topP = newVal)
+                                    topPSlider = newVal
                                 },
                                 onValueChangeFinished = {
+                                    genSettings.value = genSettings.value.copy(topP = topPSlider)
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
@@ -386,15 +387,16 @@ fun MenuScreen(
 
                             // TopK Slider (0 - 100)
                             Text(
-                                text = "Top K: ${genSettings.value.topK}",
+                                text = "Top K: ${Math.round(topKSlider)}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             androidx.compose.material3.Slider(
-                                value = genSettings.value.topK.toFloat(),
+                                value = topKSlider,
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(topK = Math.round(newVal))
+                                    topKSlider = newVal
                                 },
                                 onValueChangeFinished = {
+                                    genSettings.value = genSettings.value.copy(topK = Math.round(topKSlider))
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
@@ -725,7 +727,7 @@ fun MenuScreen(
                             // Set model only after download is completed (Point 17)
                             downloadDialogModel?.let {
                                 selectedModel = it
-                                GenerativeAiViewModelFactory.setModel(it)
+                                GenerativeAiViewModelFactory.setModel(it, context)
                             }
                             showDownloadDialog = false
                         }) { Text("Close") }

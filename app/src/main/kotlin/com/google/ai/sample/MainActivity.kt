@@ -412,6 +412,9 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onCreate: Calling setupBillingClient.")
         setupBillingClient()
 
+        Log.d(TAG, "onCreate: Loading Model Preference.")
+        GenerativeAiViewModelFactory.loadModelPreference(this)
+
         Log.d(TAG, "onCreate: Calling TrialManager.initializeTrialStateFlagsIfNecessary.")
         TrialManager.initializeTrialStateFlagsIfNecessary(this)
 
