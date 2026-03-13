@@ -172,6 +172,8 @@ internal fun PhotoReasoningRoute(
     val isInitialized by viewModel.isInitialized.collectAsState()
     val modelName by viewModel.modelNameState.collectAsState()
     val userInput by viewModel.userInput.collectAsState()
+    val isGenerationRunning by viewModel.isGenerationRunningFlow.collectAsState()
+    val isOfflineGpuModelLoaded by viewModel.isOfflineGpuModelLoadedFlow.collectAsState()
 
     // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
     // This state will now be managed in PhotoReasoningRoute and passed down.
@@ -248,12 +250,12 @@ internal fun PhotoReasoningRoute(
         },
         isKeyboardOpen = isKeyboardOpen,
         onStopClicked = { viewModel.onStopClicked() },
-        // showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute, // Removed
-        // onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }, // Removed
-        isInitialized = isInitialized, // Pass the collected state
+        isInitialized = isInitialized,
         modelName = modelName,
         userQuestion = userInput,
-        onUserQuestionChanged = { viewModel.updateUserInput(it) }
+        onUserQuestionChanged = { viewModel.updateUserInput(it) },
+        isGenerationRunning = isGenerationRunning,
+        isOfflineGpuModelLoaded = isOfflineGpuModelLoaded
     )
 }
 
@@ -274,12 +276,12 @@ fun PhotoReasoningScreen(
     onClearChatHistory: () -> Unit = {},
     isKeyboardOpen: Boolean,
     onStopClicked: () -> Unit = {},
-    // showNotificationRationaleDialog: Boolean, // Removed
-    // onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // Removed
-    isInitialized: Boolean = true, // Added parameter with default for preview
+    isInitialized: Boolean = true,
     modelName: String = "",
     userQuestion: String = "",
-    onUserQuestionChanged: (String) -> Unit = {}
+    onUserQuestionChanged: (String) -> Unit = {},
+    isGenerationRunning: Boolean = false,
+    isOfflineGpuModelLoaded: Boolean = false
 ) {
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
@@ -499,11 +501,9 @@ fun PhotoReasoningScreen(
             )
         }
 
-        // Task 18: Always show Stop button for offline model to allow manual closing
-        val showStopButton = modelName == "gemma-3n-e4b-it" || uiState is PhotoReasoningUiState.Loading
-        
-        val isGenerating = (uiState is PhotoReasoningUiState.Loading) && (messages.lastOrNull()?.isPending == true)
-        val showTextFieldRow = !isGenerating
+        val showStopButton = isGenerationRunning || isOfflineGpuModelLoaded
+        val stopButtonText = if (isGenerationRunning) "Stop" else "Modell entladen"
+        val showTextFieldRow = !isGenerationRunning
 
         if (showTextFieldRow) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -574,10 +574,18 @@ fun PhotoReasoningScreen(
             } // Closes Card
         }
         
-        // Task 1: Stop button is independent and below the text field
+        // Stop button: zeigt 'Stop' bei aktiver Generierung, 'Modell entladen' bei geladenem GPU-Modell
         if (showStopButton) {
             Spacer(modifier = Modifier.height(8.dp))
-            StopButton(onClick = onStopClicked)
+            Button(
+                onClick = onStopClicked,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Text(stopButtonText, color = Color.White)
+            }
         }
         }
 

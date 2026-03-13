@@ -51,8 +51,46 @@ import android.os.StatFs
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import java.io.File
+
+/**
+ * Modifier, der sicherstellt dass horizontale Touch-Events für Slider
+ * nicht von einer übergeordneten LazyColumn abgefangen werden.
+ * Behebt den Swipe-Bug wo das Wischen über Slider in LazyColumn hakelt.
+ *
+ * Konsumiert nur horizontale Drag-Events auf Main-Pass-Ebene,
+ * damit die LazyColumn nicht vorzeitig das Scrollen übernimmt.
+ * Der Slider selbst behält die volle Kontrolle über die Interaktion.
+ */
+fun Modifier.sliderFriendly(): Modifier = this.pointerInput(Unit) {
+    awaitEachGesture {
+        // Ersten Touch abwarten (keine Konsumation, nur beobachten)
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var lastX = down.position.x
+        var isDraggingHorizontally = false
+
+        // Weitere Pointer-Events beobachten
+        do {
+            val event = awaitPointerEvent(pass = PointerEventPass.Main)
+            val change = event.changes.firstOrNull() ?: break
+
+            val dx = kotlin.math.abs(change.position.x - lastX)
+            val dy = kotlin.math.abs(change.position.y - change.previousPosition.y)
+
+            // Wenn horizontale Bewegung dominiert, konsumiere den Event
+            // damit die LazyColumn nicht vertikal scrollt
+            if (dx > dy || isDraggingHorizontally) {
+                isDraggingHorizontally = true
+                change.consume()
+            }
+            lastX = change.position.x
+        } while (event.changes.any { it.pressed })
+    }
+}
 
 data class MenuItem(
     val routeId: String,
@@ -357,7 +395,7 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..2f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -380,7 +418,7 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..1f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -403,7 +441,7 @@ fun MenuScreen(
                                 },
                                 valueRange = 0f..100f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
                             if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
