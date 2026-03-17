@@ -72,6 +72,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
 import com.google.ai.sample.webrtc.WebRTCSender
 import com.google.ai.sample.webrtc.SignalingClient
 import org.webrtc.IceCandidate
@@ -777,6 +780,11 @@ class PhotoReasoningViewModel(
             return
         }
 
+        if (currentModel.apiProvider == ApiProvider.MISTRAL) {
+            reasonWithMistral(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+            return
+        }
+
         if (currentModel.apiProvider == ApiProvider.CEREBRAS) {
             reasonWithCerebras(userInput, selectedImages, screenInfoForPrompt)
             return
@@ -969,6 +977,155 @@ class PhotoReasoningViewModel(
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Log.e(TAG, "Cerebras API call failed", e)
+                    _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
+                    _chatState.replaceLastPendingMessage()
+                    _chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = "Error: ${e.message}",
+                            participant = PhotoParticipant.ERROR
+                        )
+                    )
+                    _chatMessagesFlow.value = _chatState.getAllMessages()
+                    saveChatHistory(context)
+                }
+            }
+        }
+    }
+    
+    private fun reasonWithMistral(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
+    ) {
+        _uiState.value = PhotoReasoningUiState.Loading
+        val context = getApplication<Application>().applicationContext
+
+        val apiKeyManager = ApiKeyManager.getInstance(context)
+        val apiKey = apiKeyManager.getCurrentApiKey(ApiProvider.MISTRAL)
+
+        if (apiKey.isNullOrEmpty()) {
+            _uiState.value = PhotoReasoningUiState.Error("Mistral API key not found.")
+            return
+        }
+
+        val combinedPromptText = (userInput + "\n\n" + (screenInfoForPrompt ?: "")).trim()
+
+        // Add user message to chat history for the UI
+        val userMessage = PhotoReasoningMessage(
+            text = combinedPromptText,
+            participant = PhotoParticipant.USER,
+            imageUris = imageUrisForChat ?: emptyList(),
+            isPending = false
+        )
+        _chatState.addMessage(userMessage)
+
+        // Add pending AI message for the UI
+        val pendingAiMessage = PhotoReasoningMessage(
+            text = "",
+            participant = PhotoParticipant.MODEL,
+            isPending = true
+        )
+        _chatState.addMessage(pendingAiMessage)
+        _chatMessagesFlow.value = _chatState.getAllMessages()
+
+        // Reset incremental command tracking
+        incrementalCommandCount = 0
+        streamingAccumulatedText.clear()
+        CommandParser.clearBuffer()
+        _detectedCommands.value = emptyList()
+        _commandExecutionStatus.value = ""
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Build the full message history for the API call
+                val apiMessages = mutableListOf<MistralMessage>()
+
+                // Add System Message and DB Entries
+                if (_systemMessage.value.isNotBlank()) {
+                    apiMessages.add(MistralMessage(role = "user", content = listOf(MistralTextContent(text = _systemMessage.value))))
+                }
+                val formattedDbEntries = formatDatabaseEntriesAsText(context)
+                if (formattedDbEntries.isNotBlank()) {
+                    apiMessages.add(MistralMessage(role = "user", content = listOf(MistralTextContent(text = formattedDbEntries))))
+                }
+
+                // Add Chat History
+                _chatState.getAllMessages().filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.forEach { message ->
+                    val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
+                    val contentParts = mutableListOf<MistralContent>()
+                    contentParts.add(MistralTextContent(text = message.text))
+                    apiMessages.add(MistralMessage(role = role, content = contentParts))
+                }
+
+                // Add current images to the last user message if present
+                if (selectedImages.isNotEmpty() && apiMessages.isNotEmpty()) {
+                    val lastUserMsg = apiMessages.last()
+                    if (lastUserMsg.role == "user") {
+                        val updatedContent = lastUserMsg.content.toMutableList()
+                        for (bitmap in selectedImages) {
+                            val base64 = bitmap.toBase64()
+                            updatedContent.add(MistralImageContent(imageUrl = MistralImageUrl(url = "data:image/jpeg;base64,$base64")))
+                        }
+                        apiMessages[apiMessages.lastIndex] = lastUserMsg.copy(content = updatedContent)
+                    }
+                }
+
+                // Load generation settings
+                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
+
+                val client = OkHttpClient()
+                val mediaType = "application/json".toMediaType()
+
+                val requestBody = MistralRequest(
+                    model = currentModel.modelName,
+                    messages = apiMessages,
+                    temperature = genSettings.temperature.toDouble(),
+                    top_p = genSettings.topP.toDouble(),
+                    max_tokens = 4096
+                )
+                val json = Json {
+                    serializersModule = SerializersModule {
+                        polymorphic(MistralContent::class) {
+                            subclass(MistralTextContent::class, MistralTextContent.serializer())
+                            subclass(MistralImageContent::class, MistralImageContent.serializer())
+                        }
+                    }
+                    ignoreUnknownKeys = true
+                }
+                val jsonBody = json.encodeToString(MistralRequest.serializer(), requestBody)
+
+                val request = Request.Builder()
+                    .url("https://api.mistral.ai/v1/chat/completions")
+                    .post(jsonBody.toRequestBody(mediaType))
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("Unexpected code ${response.code} - ${response.body?.string()}")
+                    }
+
+                    val responseBody = response.body?.string()
+                    if (responseBody != null) {
+                        val mistralResponse = json.decodeFromString<MistralResponse>(responseBody)
+                        val aiResponseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
+
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Success(aiResponseText)
+                            finalizeAiMessage(aiResponseText)
+                            processCommands(aiResponseText)
+                            saveChatHistory(context)
+                        }
+                    } else {
+                        throw IOException("Empty response body")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Mistral API call failed", e)
                     _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
                     _chatState.replaceLastPendingMessage()
                     _chatState.addMessage(
@@ -1773,6 +1930,54 @@ data class CerebrasChoice(
 
 @Serializable
 data class CerebrasResponseMessage(
+    val role: String,
+    val content: String
+)
+
+// Data classes for Mistral API
+@Serializable
+data class MistralRequest(
+    val model: String,
+    val messages: List<MistralMessage>,
+    val max_tokens: Int = 4096,
+    val temperature: Double = 0.7,
+    val top_p: Double = 1.0,
+    val stream: Boolean = false
+)
+
+@Serializable
+data class MistralMessage(
+    val role: String,
+    val content: List<MistralContent>
+)
+
+@Serializable
+@JsonClassDiscriminator("type")
+sealed class MistralContent
+
+@Serializable
+@kotlinx.serialization.SerialName("text")
+data class MistralTextContent(val type: String = "text", val text: String) : MistralContent()
+
+@Serializable
+@kotlinx.serialization.SerialName("image_url")
+data class MistralImageContent(val type: String = "image_url", @kotlinx.serialization.SerialName("image_url") val imageUrl: MistralImageUrl) : MistralContent()
+
+@Serializable
+data class MistralImageUrl(val url: String)
+
+@Serializable
+data class MistralResponse(
+    val choices: List<MistralChoice>
+)
+
+@Serializable
+data class MistralChoice(
+    val message: MistralResponseMessage
+)
+
+@Serializable
+data class MistralResponseMessage(
     val role: String,
     val content: String
 )

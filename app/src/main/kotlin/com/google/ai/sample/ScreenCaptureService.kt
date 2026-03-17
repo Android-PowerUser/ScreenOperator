@@ -281,6 +281,10 @@ class ScreenCaptureService : Service() {
                                 val result = callVercelApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
                                 errorMessage = result.second
+                            } else if (apiProvider == ApiProvider.MISTRAL) {
+                                val result = callMistralApi(modelName, apiKey, chatHistory, inputContent)
+                                responseText = result.first
+                                errorMessage = result.second
                             } else {
                                 val generativeModel = GenerativeModel(
                                     modelName = modelName,
@@ -825,6 +829,116 @@ private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory
         }
     } catch (e: Exception) {
         errorMessage = e.localizedMessage ?: "Vercel API call failed"
+    }
+
+    return Pair(responseText, errorMessage)
+}
+
+// Data classes for Mistral API in Service
+@Serializable
+data class ServiceMistralRequest(
+    val model: String,
+    val messages: List<ServiceMistralMessage>,
+    val max_tokens: Int = 4096,
+    val temperature: Double = 0.7,
+    val top_p: Double = 1.0,
+    val stream: Boolean = false
+)
+
+@Serializable
+data class ServiceMistralMessage(
+    val role: String,
+    val content: List<ServiceMistralContent>
+)
+
+@Serializable
+@JsonClassDiscriminator("type")
+sealed class ServiceMistralContent
+
+@Serializable
+@SerialName("text")
+data class ServiceMistralTextContent(@SerialName("text") val text: String) : ServiceMistralContent()
+
+@Serializable
+@SerialName("image_url")
+data class ServiceMistralImageContent(@SerialName("image_url") val imageUrl: ServiceMistralImageUrl) : ServiceMistralContent()
+
+@Serializable
+data class ServiceMistralImageUrl(val url: String)
+
+@Serializable
+data class ServiceMistralResponse(
+    val choices: List<ServiceMistralChoice>
+)
+
+@Serializable
+data class ServiceMistralChoice(
+    val message: ServiceMistralResponseMessage
+)
+
+@Serializable
+data class ServiceMistralResponseMessage(
+    val role: String,
+    val content: String
+)
+
+private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+    var responseText: String? = null
+    var errorMessage: String? = null
+
+    val json = Json {
+        serializersModule = SerializersModule {
+            polymorphic(ServiceMistralContent::class) {
+                subclass(ServiceMistralTextContent::class, ServiceMistralTextContent.serializer())
+                subclass(ServiceMistralImageContent::class, ServiceMistralImageContent.serializer())
+            }
+        }
+        ignoreUnknownKeys = true
+    }
+
+    try {
+        val messages = (chatHistory + inputContent).map { content ->
+            val parts = content.parts.map { part ->
+                when (part) {
+                    is TextPart -> ServiceMistralTextContent(text = part.text)
+                    is ImagePart -> ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = part.image.toBase64()))
+                    else -> ServiceMistralTextContent(text = "")
+                }
+            }
+            ServiceMistralMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
+        }
+
+        val requestBody = ServiceMistralRequest(
+            model = modelName,
+            messages = messages
+        )
+
+        val client = OkHttpClient()
+        val mediaType = "application/json".toMediaType()
+        val jsonBody = json.encodeToString(ServiceMistralRequest.serializer(), requestBody)
+
+        val request = Request.Builder()
+            .url("https://api.mistral.ai/v1/chat/completions")
+            .post(jsonBody.toRequestBody(mediaType))
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                errorMessage = "Unexpected code ${response.code} - ${response.body?.string()}"
+            } else {
+                val responseBody = response.body?.string()
+                if (responseBody != null) {
+                    val mistralResponse = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
+                    responseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
+                } else {
+                    errorMessage = "Empty response body"
+                }
+            }
+        }
+    } catch (e: Exception) {
+        errorMessage = e.localizedMessage ?: "Mistral API call failed"
     }
 
     return Pair(responseText, errorMessage)

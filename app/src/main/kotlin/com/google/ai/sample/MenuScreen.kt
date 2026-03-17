@@ -582,9 +582,13 @@ fun MenuScreen(
                         withStyle(boldStyle) { append("Preview Models") }
                         append(" could be deactivated by Google without being handed over to the final release.\n")
                         append("• ")
+                        withStyle(boldStyle) { append("Mistral Large 3") }
+                        append(" is a multimodal model (supports screenshots) and requires an API key.\n")
+                        append("• ")
                         withStyle(boldStyle) { append("GPT-oss 120b") }
                         append(" is a pure text model.\n")
                         append("• ")
+
                         withStyle(boldStyle) { append("Gemma 27B IT") }
                         append(" cannot handle screenshots in the API.\n")
                         append("• GPT models (")

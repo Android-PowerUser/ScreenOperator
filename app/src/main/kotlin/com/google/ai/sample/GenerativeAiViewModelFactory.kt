@@ -16,6 +16,7 @@ enum class ApiProvider {
     VERCEL,
     GOOGLE,
     CEREBRAS,
+    MISTRAL,
     HUMAN_EXPERT
 }
 
@@ -45,6 +46,7 @@ enum class ModelOption(
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
         "4.92 GB"
     ),
+    MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
     /** Whether this model supports TopK/TopP/Temperature settings */
@@ -134,7 +136,7 @@ enum class InferenceBackend {
 }
 
 object GenerativeAiViewModelFactory {
-    private var currentModel: ModelOption = ModelOption.GPT_5_1_CODEX_MAX
+    private var currentModel: ModelOption = ModelOption.MISTRAL_LARGE_3
     private var currentBackend: InferenceBackend = InferenceBackend.GPU
 
     fun setModel(modelOption: ModelOption, context: Context? = null) {
@@ -171,11 +173,11 @@ object GenerativeAiViewModelFactory {
 
     fun loadModelPreference(context: Context) {
         val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
-        val modelNameStr = prefs.getString("selected_model", ModelOption.GPT_5_1_CODEX_MAX.name)
+        val modelNameStr = prefs.getString("selected_model", ModelOption.MISTRAL_LARGE_3.name)
         currentModel = try {
-            ModelOption.valueOf(modelNameStr ?: ModelOption.GPT_5_1_CODEX_MAX.name)
+            ModelOption.valueOf(modelNameStr ?: ModelOption.MISTRAL_LARGE_3.name)
         } catch (e: IllegalArgumentException) {
-            ModelOption.GPT_5_1_CODEX_MAX
+            ModelOption.MISTRAL_LARGE_3
         }
     }
 }

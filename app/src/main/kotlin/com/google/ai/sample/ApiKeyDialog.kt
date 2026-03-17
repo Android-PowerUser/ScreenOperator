@@ -42,6 +42,7 @@ fun ApiKeyDialog(
         loadKeysForProvider(ApiProvider.VERCEL)
         loadKeysForProvider(ApiProvider.GOOGLE)
         loadKeysForProvider(ApiProvider.CEREBRAS)
+        loadKeysForProvider(ApiProvider.MISTRAL)
     }
 
     Dialog(onDismissRequest = {
@@ -67,7 +68,7 @@ fun ApiKeyDialog(
 
                 // Provider selection
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE).forEach { provider ->
+                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE, ApiProvider.MISTRAL).forEach { provider ->
                         FilterChip(
                             selected = selectedProvider == provider,
                             onClick = {
@@ -88,6 +89,7 @@ fun ApiKeyDialog(
                             ApiProvider.GOOGLE -> "https://makersuite.google.com/app/apikey"
                             ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
                             ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
+                            ApiProvider.MISTRAL -> "https://console.mistral.ai/home?profile_dialog=api-keys"
                             ApiProvider.HUMAN_EXPERT -> return@Button
                         }
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
