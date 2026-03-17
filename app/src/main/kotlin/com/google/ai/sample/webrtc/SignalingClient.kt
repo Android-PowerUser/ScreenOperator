@@ -38,7 +38,7 @@ class SignalingClient(
         fun onError(message: String)
     }
 
-    fun postTask(text: String, hasScreenshot: Boolean) {
+    fun postTask(text: String, hasScreenshot: Boolean, supportId: String? = null) {
         // Create a new task entry
         val taskId = tasksRef.push().key
         if (taskId == null) {
@@ -48,11 +48,14 @@ class SignalingClient(
 
         currentTaskId = taskId
         
-        val taskData = mapOf(
+        val taskData = mutableMapOf<String, Any>(
             "text" to text,
             "status" to "open",
             "timestamp" to System.currentTimeMillis()
         )
+        if (supportId != null) {
+            taskData["supportId"] = supportId
+        }
 
         tasksRef.child(taskId).setValue(taskData)
             .addOnSuccessListener {

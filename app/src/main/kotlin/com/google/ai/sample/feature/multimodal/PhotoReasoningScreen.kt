@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -152,8 +153,17 @@ fun StopButton(onClick: () -> Unit) {
 @Composable
 internal fun PhotoReasoningRoute(
     innerPadding: PaddingValues,  // Füge Parameter hinzu
-    viewModel: PhotoReasoningViewModel = viewModel(factory = GenerativeViewModelFactory)
+    viewModelStoreOwner: androidx.lifecycle.ViewModelStoreOwner = androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner.current!!
 ) {
+    val context = LocalContext.current
+    val mainActivity = context as? MainActivity
+    
+    // Scoped to MainActivity so it survives navigation, fixing duplicate init (Task 20)
+    val owner = mainActivity ?: viewModelStoreOwner
+    val viewModel: PhotoReasoningViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        viewModelStoreOwner = owner, 
+        factory = GenerativeViewModelFactory
+    )
     val photoReasoningUiState by viewModel.uiState.collectAsState()
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
@@ -162,6 +172,8 @@ internal fun PhotoReasoningRoute(
     val isInitialized by viewModel.isInitialized.collectAsState()
     val modelName by viewModel.modelNameState.collectAsState()
     val userInput by viewModel.userInput.collectAsState()
+    val isGenerationRunning by viewModel.isGenerationRunningFlow.collectAsState()
+    val isOfflineGpuModelLoaded by viewModel.isOfflineGpuModelLoadedFlow.collectAsState()
 
     // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
     // This state will now be managed in PhotoReasoningRoute and passed down.
@@ -171,8 +183,6 @@ internal fun PhotoReasoningRoute(
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
     val imageLoader = ImageLoader.Builder(LocalContext.current).build()
-    val context = LocalContext.current
-    val mainActivity = context as? MainActivity
 
     val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
     val isMediaProjectionPermissionGranted by mainActivity?.isMediaProjectionPermissionGrantedFlow?.collectAsState() ?: mutableStateOf(false)
@@ -240,12 +250,12 @@ internal fun PhotoReasoningRoute(
         },
         isKeyboardOpen = isKeyboardOpen,
         onStopClicked = { viewModel.onStopClicked() },
-        // showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute, // Removed
-        // onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }, // Removed
-        isInitialized = isInitialized, // Pass the collected state
+        isInitialized = isInitialized,
         modelName = modelName,
         userQuestion = userInput,
-        onUserQuestionChanged = { viewModel.updateUserInput(it) }
+        onUserQuestionChanged = { viewModel.updateUserInput(it) },
+        isGenerationRunning = isGenerationRunning,
+        isOfflineGpuModelLoaded = isOfflineGpuModelLoaded
     )
 }
 
@@ -266,12 +276,12 @@ fun PhotoReasoningScreen(
     onClearChatHistory: () -> Unit = {},
     isKeyboardOpen: Boolean,
     onStopClicked: () -> Unit = {},
-    // showNotificationRationaleDialog: Boolean, // Removed
-    // onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // Removed
-    isInitialized: Boolean = true, // Added parameter with default for preview
+    isInitialized: Boolean = true,
     modelName: String = "",
     userQuestion: String = "",
-    onUserQuestionChanged: (String) -> Unit = {}
+    onUserQuestionChanged: (String) -> Unit = {},
+    isGenerationRunning: Boolean = false,
+    isOfflineGpuModelLoaded: Boolean = false
 ) {
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
@@ -425,7 +435,22 @@ fun PhotoReasoningScreen(
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(messages) { message ->
                     when (message.participant) {
-                        PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)
+                        PhotoParticipant.USER -> {
+                            // If index == 0, it's the first message, show the undo button
+                            val isFirstMessage = messages.indexOf(message) == 0
+                            UserChatBubble(
+                                text = message.text,
+                                isPending = message.isPending,
+                                imageUris = message.imageUris,
+                                showUndo = isFirstMessage,
+                                onUndoClicked = {
+                                    // Set the text back to the input box
+                                    onUserQuestionChanged(message.text)
+                                    // Clear chat history
+                                    onClearChatHistory()
+                                }
+                            )
+                        }
                         PhotoParticipant.MODEL -> ModelChatBubble(message.text, message.isPending)
                         PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
                     }
@@ -476,28 +501,29 @@ fun PhotoReasoningScreen(
             )
         }
 
-        val showStopButton = uiState is PhotoReasoningUiState.Loading // commandExecutionStatus check is implicitly handled by cards in LazyColumn
+        val showStopButton = isGenerationRunning || isOfflineGpuModelLoaded
+        val stopButtonText = if (isGenerationRunning) "Stop" else "Modell entladen"
+        val showTextFieldRow = !isGenerationRunning
 
-        if (showStopButton) {
-            StopButton(onClick = onStopClicked)
-        } else {
+        if (showTextFieldRow) {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(top = 16.dp)) {
-                    Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
-                        IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
-                            Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(modifier = Modifier.padding(top = 16.dp)) {
+                        Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                            IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
+                                Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
+                            }
+                            IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
+                                drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
+                            }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                         }
-                        IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
-                            drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-                        }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
-                    }
-                    OutlinedTextField(
-                        value = userQuestion,
-                        label = { Text(stringResource(R.string.reason_label)) },
-                        placeholder = { Text(stringResource(R.string.reason_hint)) },
-                        onValueChange = onUserQuestionChanged,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
-                    )
+                        OutlinedTextField(
+                            value = userQuestion,
+                            label = { Text(stringResource(R.string.reason_label)) },
+                            placeholder = { Text(stringResource(R.string.reason_hint)) },
+                            onValueChange = onUserQuestionChanged,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
                         IconButton(
                             onClick = {
                                 val mainActivity = context as? MainActivity
@@ -544,8 +570,23 @@ fun PhotoReasoningScreen(
                     LazyRow(modifier = Modifier.padding(all = 8.dp)) {
                         items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
                     }
-                } // Closes Card
+                } // Closes Column
+            } // Closes Card
+        }
+        
+        // Stop button: zeigt 'Stop' bei aktiver Generierung, 'Modell entladen' bei geladenem GPU-Modell
+        if (showStopButton) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onStopClicked,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Text(stopButtonText, color = Color.White)
             }
+        }
         }
 
         // Popups remain outside the main content flow, attached to the screen Column
@@ -1001,7 +1042,9 @@ fun OverwriteConfirmationDialog(
 fun UserChatBubble(
     text: String,
     isPending: Boolean,
-    imageUris: List<String> = emptyList()
+    imageUris: List<String> = emptyList(),
+    showUndo: Boolean = false,
+    onUndoClicked: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -1009,6 +1052,20 @@ fun UserChatBubble(
             .fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
+        if (showUndo) {
+            IconButton(
+                onClick = onUndoClicked,
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .align(Alignment.CenterVertically)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = "Undo",
+                    tint = Color.Gray
+                )
+            }
+        }
         Spacer(modifier = Modifier.weight(1f))
         Card(
             shape = MaterialTheme.shapes.medium,
@@ -1304,20 +1361,24 @@ fun VerticalScrollbar(
             if (totalItems == 0) return@derivedStateOf null
 
             val viewportHeight = layoutInfo.viewportSize.height.toFloat()
-            // Avoid division by zero and complex layout loops
             val firstVisibleItemIndex = listState.firstVisibleItemIndex
-            val firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            val visibleItemCount = layoutInfo.visibleItemsInfo.size
 
-            // Simple estimation logic
-            val elementHeight = if (layoutInfo.visibleItemsInfo.isNotEmpty())
-                layoutInfo.visibleItemsInfo.sumOf { it.size } / layoutInfo.visibleItemsInfo.size.toFloat()
-                else 100f // Fallback
+            if (visibleItemCount >= totalItems) return@derivedStateOf null // All items visible, no scrollbar
 
-            val estimatedTotalHeight = elementHeight * totalItems
-            val thumbHeight = ((viewportHeight / estimatedTotalHeight) * viewportHeight).coerceAtLeast(20f) // Min size
-            val scrollOffset = ((firstVisibleItemIndex * elementHeight) + firstVisibleItemScrollOffset) / estimatedTotalHeight * viewportHeight
+            // Simple ratio-based calculation for even behavior
+            val thumbHeight = (visibleItemCount.toFloat() / totalItems * viewportHeight).coerceAtLeast(20f)
+            
+            // Calculate scroll progress considering sub-item offset
+            val firstItemOffset = if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                val firstItem = layoutInfo.visibleItemsInfo.first()
+                if (firstItem.size > 0) listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size else 0f
+            } else 0f
+            
+            val scrollProgress = (firstVisibleItemIndex + firstItemOffset) / (totalItems - visibleItemCount).coerceAtLeast(1)
+            val scrollOffset = scrollProgress * (viewportHeight - thumbHeight)
 
-            Pair(scrollOffset, thumbHeight)
+            Pair(scrollOffset.coerceIn(0f, viewportHeight - thumbHeight), thumbHeight)
         }
     }
 

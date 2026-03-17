@@ -154,6 +154,11 @@ class WebRTCClient(
 
     fun sendClaim() = sendDataChannelMessage("{\"type\":\"claim\"}")
     fun sendReject() = sendDataChannelMessage("{\"type\":\"reject\"}")
+    
+    fun sendText(text: String) {
+        val payload = mapOf("type" to "text", "text" to text)
+        sendDataChannelMessage(gson.toJson(payload))
+    }
 
     private fun sendDataChannelMessage(message: String) {
         val buffer = DataChannel.Buffer(java.nio.ByteBuffer.wrap(message.toByteArray()), false)

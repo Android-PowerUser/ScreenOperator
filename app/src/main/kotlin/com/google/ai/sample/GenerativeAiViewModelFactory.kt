@@ -137,8 +137,12 @@ object GenerativeAiViewModelFactory {
     private var currentModel: ModelOption = ModelOption.GPT_5_1_CODEX_MAX
     private var currentBackend: InferenceBackend = InferenceBackend.GPU
 
-    fun setModel(modelOption: ModelOption) {
+    fun setModel(modelOption: ModelOption, context: Context? = null) {
         currentModel = modelOption
+        if (context != null) {
+            val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("selected_model", modelOption.name).apply()
+        }
     }
 
     fun getCurrentModel(): ModelOption {
@@ -157,11 +161,21 @@ object GenerativeAiViewModelFactory {
 
     fun loadBackendPreference(context: Context) {
         val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
-        val backendName = prefs.getString("preferred_backend", InferenceBackend.CPU.name)
+        val backendName = prefs.getString("preferred_backend", InferenceBackend.GPU.name)
         currentBackend = try {
-            InferenceBackend.valueOf(backendName ?: InferenceBackend.CPU.name)
+            InferenceBackend.valueOf(backendName ?: InferenceBackend.GPU.name)
         } catch (e: IllegalArgumentException) {
-            InferenceBackend.CPU
+            InferenceBackend.GPU
+        }
+    }
+
+    fun loadModelPreference(context: Context) {
+        val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
+        val modelNameStr = prefs.getString("selected_model", ModelOption.GPT_5_1_CODEX_MAX.name)
+        currentModel = try {
+            ModelOption.valueOf(modelNameStr ?: ModelOption.GPT_5_1_CODEX_MAX.name)
+        } catch (e: IllegalArgumentException) {
+            ModelOption.GPT_5_1_CODEX_MAX
         }
     }
 }

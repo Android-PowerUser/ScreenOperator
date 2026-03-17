@@ -69,6 +69,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_START_CAPTURE = "com.google.ai.sample.START_CAPTURE"
         const val ACTION_TAKE_SCREENSHOT = "com.google.ai.sample.TAKE_SCREENSHOT" // New action
         const val ACTION_STOP_CAPTURE = "com.google.ai.sample.STOP_CAPTURE"   // New action
+        const val ACTION_KEEP_ALIVE_FOR_WEBRTC = "com.google.ai.sample.KEEP_ALIVE_FOR_WEBRTC" // Added for Task 4
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TAKE_SCREENSHOT_ON_START = "take_screenshot_on_start"
@@ -121,6 +122,17 @@ class ScreenCaptureService : Service() {
         Log.d(TAG, "onStartCommand: action=${intent?.action}, isReady=$isReady, mediaProjectionIsNull=${mediaProjection==null}")
 
         when (intent?.action) {
+            ACTION_KEEP_ALIVE_FOR_WEBRTC -> {
+                Log.d(TAG, "Received ACTION_KEEP_ALIVE_FOR_WEBRTC. Starting foreground to hold MediaProjection token.")
+                val notification = createNotification()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+                isReady = true // Consider it ready so it doesn't try to start again
+                return START_STICKY
+            }
             ACTION_START_CAPTURE -> {
                 if (isReady && mediaProjection != null) {
                     Log.w(TAG, "MediaProjection already active, ignoring duplicate START_CAPTURE")

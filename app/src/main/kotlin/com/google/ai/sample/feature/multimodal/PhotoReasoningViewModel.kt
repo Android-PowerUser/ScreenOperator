@@ -114,6 +114,12 @@ class PhotoReasoningViewModel(
 
     private val _showStopNotificationFlow = MutableStateFlow(false)
     val showStopNotificationFlow: StateFlow<Boolean> = _showStopNotificationFlow.asStateFlow()
+
+    private val _isGenerationRunningFlow = MutableStateFlow(false)
+    val isGenerationRunningFlow: StateFlow<Boolean> = _isGenerationRunningFlow.asStateFlow()
+
+    private val _isOfflineGpuModelLoadedFlow = MutableStateFlow(false)
+    val isOfflineGpuModelLoadedFlow: StateFlow<Boolean> = _isOfflineGpuModelLoadedFlow.asStateFlow()
         
     // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
@@ -389,6 +395,38 @@ class PhotoReasoningViewModel(
         }
     }
 
+    private fun isGenerationRunning(): Boolean {
+        val lastMessage = _chatState.getAllMessages().lastOrNull()
+        val hasPendingModelMessage =
+            lastMessage?.participant == PhotoParticipant.MODEL && lastMessage.isPending
+        val hasActiveJob =
+            currentReasoningJob?.isActive == true || commandProcessingJob?.isActive == true
+        return hasPendingModelMessage || hasActiveJob
+    }
+
+    private fun isOfflineGpuModelLoaded(): Boolean {
+        return com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT &&
+            com.google.ai.sample.GenerativeAiViewModelFactory.getBackend() == InferenceBackend.GPU &&
+            llmInference != null
+    }
+
+    private fun refreshStopButtonState() {
+        _isGenerationRunningFlow.value = isGenerationRunning()
+        _isOfflineGpuModelLoadedFlow.value = isOfflineGpuModelLoaded()
+    }
+
+    fun closeOfflineModel() {
+        try {
+            llmInference?.close()
+            llmInference = null
+            System.gc()
+            refreshStopButtonState()
+            Log.d(TAG, "Offline model explicitly closed to free RAM")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing offline model", e)
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         liveApiManager?.close()
@@ -569,6 +607,11 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+
+    // Task 12: Clear any stale error state from previous model interactions
+    if (_uiState.value is PhotoReasoningUiState.Error) {
+        _uiState.value = PhotoReasoningUiState.Initial
+    }
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
@@ -806,6 +849,25 @@ class PhotoReasoningViewModel(
                 _uiState.value = PhotoReasoningUiState.Error("Application not ready")
                 return
             }
+            
+            // Task 3: Sync model before API call
+            val apiKeyManager = ApiKeyManager.getInstance(context)
+            val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
+            if (currentKey != null && currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
+                val config = com.google.ai.client.generativeai.type.generationConfig {
+                    temperature = genSettings.temperature
+                    topP = genSettings.topP
+                    topK = genSettings.topK
+                }
+                generativeModel = GenerativeModel(
+                    modelName = currentModel.modelName,
+                    apiKey = currentKey,
+                    generationConfig = config
+                )
+                _modelNameState.value = currentModel.modelName
+            }
+            
             ensureInitialized(context)
             currentRetryAttempt = 0
             performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
@@ -1038,13 +1100,27 @@ class PhotoReasoningViewModel(
     }
 
     fun onStopClicked() {
+        _showStopNotificationFlow.value = false
+
+        val generationRunning = isGenerationRunning()
+
+        // Kein aktiver Lauf: zweiter Klick => Modell entladen, keine Chat-Nachricht
+        if (!generationRunning) {
+            if (isOfflineGpuModelLoaded()) {
+                closeOfflineModel()
+                Log.d(TAG, "Stop clicked while idle: offline GPU model closed to free RAM")
+            } else {
+                refreshStopButtonState()
+                Log.d(TAG, "Stop clicked while idle: nothing to stop and no offline GPU model loaded")
+            }
+            return
+        }
+
+        // Aktive Generierung: nur stoppen, Modell NICHT direkt schließen
         if (isLiveMode) {
-            // For live mode, close the connection
             liveApiManager?.close()
         }
 
-        // Rest of the existing onStopClicked code
-        _showStopNotificationFlow.value = false
         stopExecutionFlag.set(true)
         currentReasoningJob?.cancel()
         commandProcessingJob?.cancel()
@@ -1063,11 +1139,10 @@ class PhotoReasoningViewModel(
                 )
             )
         } else if (lastMessage != null && lastMessage.participant == PhotoParticipant.MODEL && !lastMessage.isPending) {
-             // If the last message was a successful model response, update it.
-            messages[messages.size - 1] = lastMessage.copy(text = lastMessage.text + "\n\n[Stopped by user]")
+            messages[messages.lastIndex] =
+                lastMessage.copy(text = lastMessage.text + "\n\n[Stopped by user]")
         } else {
-            // If no relevant model message, or last message was user/error, add a new model message
-             messages.add(
+            messages.add(
                 PhotoReasoningMessage(
                     text = statusMessage,
                     participant = PhotoParticipant.MODEL,
@@ -1075,19 +1150,17 @@ class PhotoReasoningViewModel(
                 )
             )
         }
+
         _chatState.setAllMessages(messages)
         _chatMessagesFlow.value = _chatState.getAllMessages()
-
-
-        // _uiState.value = PhotoReasoningUiState.Stopped; // No longer setting this as the final state.
-        _commandExecutionStatus.value = "" // Set to empty string
+        _commandExecutionStatus.value = ""
         _detectedCommands.value = emptyList()
         Log.d(TAG, "Stop clicked, operations cancelled, command status cleared.")
 
-        // Set a success state to indicate the stop operation itself was successful
-        // and the UI can return to an idle/interactive state.
         _uiState.value = PhotoReasoningUiState.Success("Operation stopped.")
         Log.d(TAG, "UI updated to Success state after stop.")
+
+        refreshStopButtonState()
     }
 
     /**
@@ -1252,6 +1325,19 @@ class PhotoReasoningViewModel(
                dispatchTap(x, y)
             }
 
+            // Task 9: Handle incoming text from Human Operator
+            override fun onTextReceived(text: String) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    val newMessage = PhotoReasoningMessage(
+                        text = "Operator: $text",
+                        participant = PhotoParticipant.MODEL,
+                        isPending = false
+                    )
+                    _chatState.addMessage(newMessage)
+                    _chatMessagesFlow.value = _chatState.getAllMessages()
+                }
+            }
+
             override fun onError(message: String) {
                 Log.e(TAG, "WebRTC Error: $message")
                 viewModelScope.launch(Dispatchers.Main) {
@@ -1275,39 +1361,40 @@ class PhotoReasoningViewModel(
                 viewModelScope.launch(Dispatchers.Main) {
                     replaceAiMessageText("Expert found! Requesting screen capture permission...", isPending = true)
                     
-                    // Request a fresh MediaProjection specifically for WebRTC
-                    // This does NOT start ScreenCaptureService - avoids token reuse crash
+                    // Request a fresh MediaProjection specifically for WebRTC.
+                    // MainActivity startet bereits ACTION_KEEP_ALIVE_FOR_WEBRTC BEVOR dieser Callback gerufen wird.
+                    // Kein weiterer startForegroundService()-Aufruf nötig - verhindert ForegroundServiceDidNotStartInTimeException.
                     val mainActivity = MainActivity.getInstance()
                     if (mainActivity != null) {
                         mainActivity.requestMediaProjectionForWebRTC { resultCode, resultData ->
-                            Log.d(TAG, "WebRTC MediaProjection granted. Starting foreground service first, then screen capture.")
+                            Log.d(TAG, "WebRTC MediaProjection granted. Service läuft bereits via KEEP_ALIVE. Starte Screen Capture.")
                             replaceAiMessageText("Establishing video connection...", isPending = true)
                             
-                            // Point 11: Start ScreenCaptureService as foreground service FIRST
-                            // This is required because MediaProjection needs an active foreground
-                            // service of type MEDIA_PROJECTION on Android Q+
-                            val serviceIntent = Intent(mainActivity, ScreenCaptureService::class.java).apply {
-                                action = ScreenCaptureService.ACTION_START_CAPTURE
-                                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-                                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
-                                putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, false)
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                mainActivity.startForegroundService(serviceIntent)
-                            } else {
-                                mainActivity.startService(serviceIntent)
-                            }
+                            // KEIN startForegroundService() hier - MainActivity hat bereits ACTION_KEEP_ALIVE_FOR_WEBRTC gesendet.
+                            // Das vermeidet doppelten Service-Start und ForegroundServiceDidNotStartInTimeException.
                             
-                            // Small delay to ensure foreground service is up before WebRTC capture
                             viewModelScope.launch {
+                                // Kurze Verzögerung zur Stabilisierung des Foreground-Services
                                 delay(300)
-                                // Start screen capture for WebRTC with fresh permission data
-                                webRTCSender?.startScreenCapture(resultData)
-                                webRTCSender?.createPeerConnection()
-                                
-                                // Create Offer
-                                webRTCSender?.createOffer { sdp ->
-                                    signalingClient?.sendOffer(sdp)
+                                try {
+                                    // Start screen capture for WebRTC with fresh permission data
+                                    webRTCSender?.startScreenCapture(resultData)
+                                    webRTCSender?.createPeerConnection()
+                                    
+                                    // Create Offer
+                                    webRTCSender?.createOffer { sdp ->
+                                        signalingClient?.sendOffer(sdp)
+                                    }
+                                } catch (e: SecurityException) {
+                                    Log.e(TAG, "SecurityException beim WebRTC Screen Capture - MediaProjection Token ungültig?", e)
+                                    viewModelScope.launch(Dispatchers.Main) {
+                                        _uiState.value = PhotoReasoningUiState.Error("Screen capture permission expired. Please try again.")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Fehler beim Starten des WebRTC Screen Capture", e)
+                                    viewModelScope.launch(Dispatchers.Main) {
+                                        _uiState.value = PhotoReasoningUiState.Error("Video connection failed: ${e.message}")
+                                    }
                                 }
                             }
                         }
@@ -1347,7 +1434,11 @@ class PhotoReasoningViewModel(
     }
 
     private fun postTaskToHumanExpert(text: String) {
-         signalingClient?.postTask(text, hasScreenshot = false) // Capture live stream instead
+         val context = getApplication<Application>().applicationContext
+         val prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+         val supportId = prefs.getString("payment_support_id", null)
+         
+         signalingClient?.postTask(text, hasScreenshot = false, supportId = supportId) // Capture live stream instead
     }
 
     private fun dispatchTap(x: Float, y: Float) {

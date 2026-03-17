@@ -50,7 +50,47 @@ import android.os.Environment
 import android.os.StatFs
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import java.io.File
+
+/**
+ * Modifier, der sicherstellt dass horizontale Touch-Events für Slider
+ * nicht von einer übergeordneten LazyColumn abgefangen werden.
+ * Behebt den Swipe-Bug wo das Wischen über Slider in LazyColumn hakelt.
+ *
+ * Konsumiert nur horizontale Drag-Events auf Main-Pass-Ebene,
+ * damit die LazyColumn nicht vorzeitig das Scrollen übernimmt.
+ * Der Slider selbst behält die volle Kontrolle über die Interaktion.
+ */
+fun Modifier.sliderFriendly(): Modifier = this.pointerInput(Unit) {
+    awaitEachGesture {
+        // Ersten Touch abwarten (keine Konsumation, nur beobachten)
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var lastX = down.position.x
+        var isDraggingHorizontally = false
+
+        // Weitere Pointer-Events beobachten
+        do {
+            val event = awaitPointerEvent(pass = PointerEventPass.Main)
+            val change = event.changes.firstOrNull() ?: break
+
+            val dx = kotlin.math.abs(change.position.x - lastX)
+            val dy = kotlin.math.abs(change.position.y - change.previousPosition.y)
+
+            // Wenn horizontale Bewegung dominiert, konsumiere den Event
+            // damit die LazyColumn nicht vertikal scrollt
+            if (dx > dy || isDraggingHorizontally) {
+                isDraggingHorizontally = true
+                change.consume()
+            }
+            lastX = change.position.x
+        } while (event.changes.any { it.pressed })
+    }
+}
 
 data class MenuItem(
     val routeId: String,
@@ -79,6 +119,7 @@ fun MenuScreen(
     var expanded by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var downloadDialogModel by remember { mutableStateOf<ModelOption?>(null) }
+    var showHumanExpertSupportDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -169,6 +210,8 @@ fun MenuScreen(
                                         },
                                         onClick = {
                                             expanded = false
+                                            val wasOfflineModel = selectedModel == ModelOption.GEMMA_3N_E4B_IT
+                                            
                                             if (modelOption == ModelOption.GEMMA_3N_E4B_IT) {
                                                 val isDownloaded = ModelDownloadManager.isModelDownloaded(context)
                                                 if (!isDownloaded) {
@@ -176,14 +219,32 @@ fun MenuScreen(
                                                     showDownloadDialog = true
                                                 } else {
                                                     selectedModel = modelOption
-                                                    GenerativeAiViewModelFactory.setModel(modelOption)
+                                                    GenerativeAiViewModelFactory.setModel(modelOption, context)
+                                                    
+                                                    // Task 15: Initialize offline model upon selection
+                                                    val mainActivity = context as? MainActivity
+                                                    mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
                                                 }
                                             } else if (modelOption == ModelOption.HUMAN_EXPERT) {
-                                                selectedModel = modelOption
-                                                GenerativeAiViewModelFactory.setModel(modelOption)
+                                                if (isPurchased) {
+                                                    selectedModel = modelOption
+                                                    GenerativeAiViewModelFactory.setModel(modelOption, context)
+                                                    if (wasOfflineModel) {
+                                                        // Task 19: Close offline model to free RAM
+                                                        val mainActivity = context as? MainActivity
+                                                        mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                                    }
+                                                } else {
+                                                    showHumanExpertSupportDialog = true
+                                                }
                                             } else {
                                                 selectedModel = modelOption
-                                                GenerativeAiViewModelFactory.setModel(modelOption)
+                                                GenerativeAiViewModelFactory.setModel(modelOption, context)
+                                                if (wasOfflineModel) {
+                                                    // Task 19: Close offline model to free RAM
+                                                    val mainActivity = context as? MainActivity
+                                                    mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                                }
                                             }
                                         },
                                         enabled = true // Always enabled
@@ -238,10 +299,9 @@ fun MenuScreen(
                                     onClick = {
                                         GenerativeAiViewModelFactory.setBackend(InferenceBackend.GPU, context)
                                         currentBackend.value = InferenceBackend.GPU
-                                        // Re-initialize model with new backend
                                         val mainActivity = context as? MainActivity
-                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
-                                        Toast.makeText(context, "GPU selected – Model loaded into RAM and processed on GPU", Toast.LENGTH_SHORT).show()
+                                        mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                        Toast.makeText(context, "GPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.GPU)
@@ -257,10 +317,9 @@ fun MenuScreen(
                                     onClick = {
                                         GenerativeAiViewModelFactory.setBackend(InferenceBackend.CPU, context)
                                         currentBackend.value = InferenceBackend.CPU
-                                        // Re-initialize model with new backend
                                         val mainActivity = context as? MainActivity
-                                        mainActivity?.getPhotoReasoningViewModel()?.reinitializeOfflineModel(context)
-                                        Toast.makeText(context, "CPU selected – Model reloading", Toast.LENGTH_SHORT).show()
+                                        mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
+                                        Toast.makeText(context, "CPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.CPU)
@@ -297,6 +356,9 @@ fun MenuScreen(
                             )
                         )
                     }
+                    var tempSlider by remember(selectedModel) { mutableStateOf(genSettings.value.temperature) }
+                    var topPSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topP) }
+                    var topKSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topK.toFloat()) }
                     
                     Card(
                         modifier = Modifier
@@ -317,66 +379,69 @@ fun MenuScreen(
 
                             // Temperature Slider (0.0 - 2.0)
                             Text(
-                                text = "Temperature: ${"%.2f".format(genSettings.value.temperature)}",
+                                text = "Temperature: ${"%.2f".format(tempSlider)}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             androidx.compose.material3.Slider(
-                                value = genSettings.value.temperature,
+                                value = tempSlider,
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(temperature = newVal)
+                                    tempSlider = newVal
                                 },
                                 onValueChangeFinished = {
+                                    genSettings.value = genSettings.value.copy(temperature = tempSlider)
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
                                 },
                                 valueRange = 0f..2f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // TopP Slider (0.0 - 1.0)
                             Text(
-                                text = "Top P: ${"%.2f".format(genSettings.value.topP)}",
+                                text = "Top P: ${"%.2f".format(topPSlider)}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             androidx.compose.material3.Slider(
-                                value = genSettings.value.topP,
+                                value = topPSlider,
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(topP = newVal)
+                                    topPSlider = newVal
                                 },
                                 onValueChangeFinished = {
+                                    genSettings.value = genSettings.value.copy(topP = topPSlider)
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
                                 },
                                 valueRange = 0f..1f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // TopK Slider (0 - 100)
                             Text(
-                                text = "Top K: ${genSettings.value.topK}",
+                                text = "Top K: ${Math.round(topKSlider)}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             androidx.compose.material3.Slider(
-                                value = genSettings.value.topK.toFloat(),
+                                value = topKSlider,
                                 onValueChange = { newVal ->
-                                    genSettings.value = genSettings.value.copy(topK = Math.round(newVal))
+                                    topKSlider = newVal
                                 },
                                 onValueChangeFinished = {
+                                    genSettings.value = genSettings.value.copy(topK = Math.round(topKSlider))
                                     com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
                                         context, selectedModel.modelName, genSettings.value
                                     )
                                 },
                                 valueRange = 0f..100f,
                                 steps = 0,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
                             if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
@@ -405,11 +470,11 @@ fun MenuScreen(
                             .fillMaxWidth()
                     ) {
                         Text(
-                            text = stringResource(menuItem.titleResId),
+                            text = if (menuItem.routeId == "photo_reasoning" && selectedModel == ModelOption.HUMAN_EXPERT) "Operate with human expert" else stringResource(menuItem.titleResId),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = stringResource(menuItem.descriptionResId),
+                            text = if (menuItem.routeId == "photo_reasoning" && selectedModel == ModelOption.HUMAN_EXPERT) "A human expert uses screen mirroring and operates with tap's" else stringResource(menuItem.descriptionResId),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp)
                         )
@@ -490,7 +555,7 @@ fun MenuScreen(
                             )
                         } else {
                             Text(
-                                text = "Support Improvements \uD83C\uDF89",
+                                text = "Support Improvements\n                \uD83C\uDF89",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -528,6 +593,7 @@ fun MenuScreen(
                         append("GPT-5.1 Input: \$1.25/M Output: \$10.00/M\n")
                         append("GPT-5.1 mini Input: \$0.25/M Output: \$2.00/M\n")
                         append("GPT-5 nano Input: \$0.05/M Output: \$0.40/M\n")
+                        append("• When a language model repeats a token, Top K and Top P must be lowered.\n")
                         append("• There are ")
                         withStyle(boldStyle) { append("rate limits") }
                         append(" for free use of ")
@@ -673,7 +739,11 @@ fun MenuScreen(
                             onClick = {
                                 downloadDialogModel?.downloadUrl?.let { url ->
                                     ModelDownloadManager.downloadModel(context, url)
-                                    // Don't set model yet - wait for download to complete (Point 17)
+                                    // Task 2: Request notification permission when download starts
+                                    val mainActivity = context as? MainActivity
+                                    if (mainActivity != null && !mainActivity.isNotificationPermissionGranted()) {
+                                        mainActivity.requestNotificationPermission()
+                                    }
                                 }
                             }
                         ) { Text("Download") }
@@ -695,7 +765,7 @@ fun MenuScreen(
                             // Set model only after download is completed (Point 17)
                             downloadDialogModel?.let {
                                 selectedModel = it
-                                GenerativeAiViewModelFactory.setModel(it)
+                                GenerativeAiViewModelFactory.setModel(it, context)
                             }
                             showDownloadDialog = false
                         }) { Text("Close") }
@@ -729,6 +799,32 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Error -> {
                         TextButton(onClick = { showDownloadDialog = false }) { Text("Close") }
                     }
+                }
+            }
+        )
+    }
+
+    // Human Expert Support Dialog (Task 4)
+    if (showHumanExpertSupportDialog) {
+        AlertDialog(
+            onDismissRequest = { showHumanExpertSupportDialog = false },
+            title = { Text("Human Expert") },
+            text = {
+                Text("To ensure that a human expert accepts the task, please support the expert.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showHumanExpertSupportDialog = false
+                        onDonationButtonClicked()
+                    }
+                ) {
+                    Text("Support \uD83C\uDF89")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHumanExpertSupportDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )
