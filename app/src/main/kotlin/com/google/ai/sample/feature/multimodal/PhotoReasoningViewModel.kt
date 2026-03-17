@@ -1163,7 +1163,7 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String?,
         imageUrisForChat: List<String>?
     ) {
-        val apiKey = mainActivity?.getCurrentApiKey(ApiProvider.PUTER) ?: ""
+        val apiKey = com.google.ai.sample.MainActivity.getInstance()?.getCurrentApiKey(ApiProvider.PUTER) ?: ""
         if (apiKey.isEmpty()) {
             _uiState.value = PhotoReasoningUiState.Error("Puter Authentication Token (API Key) is missing")
             return
@@ -1551,7 +1551,7 @@ class PhotoReasoningViewModel(
                 putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
                 val mainActivity = MainActivity.getInstance()
                 val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-                val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
+                val apiKey = com.google.ai.sample.MainActivity.getInstance()?.getCurrentApiKey(currentModel.apiProvider) ?: ""
                 putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 // Add the new extra for file paths
                 putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
