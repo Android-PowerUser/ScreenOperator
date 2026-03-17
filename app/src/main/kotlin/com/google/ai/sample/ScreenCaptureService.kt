@@ -897,20 +897,30 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
     }
 
     try {
-        val messages = (chatHistory + inputContent).map { content ->
-            val parts = content.parts.map { part ->
+        val apiMessages = mutableListOf<ServiceMistralMessage>()
+
+        // Combine history and input, but handle system role if needed
+        (chatHistory + inputContent).forEach { content ->
+            val parts = content.parts.mapNotNull { part ->
                 when (part) {
-                    is TextPart -> ServiceMistralTextContent(text = part.text)
+                    is TextPart -> if (part.text.isNotBlank()) ServiceMistralTextContent(text = part.text) else null
                     is ImagePart -> ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = part.image.toBase64()))
-                    else -> ServiceMistralTextContent(text = "")
+                    else -> null
                 }
             }
-            ServiceMistralMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
+            if (parts.isNotEmpty()) {
+                val role = when (content.role) {
+                    "user" -> "user"
+                    "system" -> "system"
+                    else -> "assistant"
+                }
+                apiMessages.add(ServiceMistralMessage(role = role, content = parts))
+            }
         }
 
         val requestBody = ServiceMistralRequest(
             model = modelName,
-            messages = messages
+            messages = apiMessages
         )
 
         val client = OkHttpClient()
@@ -925,20 +935,22 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
             .build()
 
         client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
             if (!response.isSuccessful) {
-                errorMessage = "Unexpected code ${response.code} - ${response.body?.string()}"
+                Log.e("ScreenCaptureService", "Mistral API Error ($response.code): $responseBody")
+                errorMessage = "Mistral Error ${response.code}: $responseBody"
             } else {
-                val responseBody = response.body?.string()
                 if (responseBody != null) {
                     val mistralResponse = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
                     responseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
                 } else {
-                    errorMessage = "Empty response body"
+                    errorMessage = "Empty response body from Mistral"
                 }
             }
         }
     } catch (e: Exception) {
         errorMessage = e.localizedMessage ?: "Mistral API call failed"
+        Log.e("ScreenCaptureService", "Mistral API failure", e)
     }
 
     return Pair(responseText, errorMessage)

@@ -1041,21 +1041,29 @@ class PhotoReasoningViewModel(
                 // Build the full message history for the API call
                 val apiMessages = mutableListOf<MistralMessage>()
 
-                // Add System Message and DB Entries
+                // Combine System Message and DB Entries into one System message
+                val systemContent = mutableListOf<MistralContent>()
                 if (_systemMessage.value.isNotBlank()) {
-                    apiMessages.add(MistralMessage(role = "user", content = listOf(MistralTextContent(text = _systemMessage.value))))
+                    systemContent.add(MistralTextContent(text = _systemMessage.value))
                 }
                 val formattedDbEntries = formatDatabaseEntriesAsText(context)
                 if (formattedDbEntries.isNotBlank()) {
-                    apiMessages.add(MistralMessage(role = "user", content = listOf(MistralTextContent(text = formattedDbEntries))))
+                    systemContent.add(MistralTextContent(text = "Additional context from database:\n$formattedDbEntries"))
+                }
+                if (systemContent.isNotEmpty()) {
+                    apiMessages.add(MistralMessage(role = "system", content = systemContent))
                 }
 
                 // Add Chat History
                 _chatState.getAllMessages().filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.forEach { message ->
                     val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
                     val contentParts = mutableListOf<MistralContent>()
-                    contentParts.add(MistralTextContent(text = message.text))
-                    apiMessages.add(MistralMessage(role = role, content = contentParts))
+                    if (message.text.isNotBlank()) {
+                        contentParts.add(MistralTextContent(text = message.text))
+                    }
+                    if (contentParts.isNotEmpty()) {
+                        apiMessages.add(MistralMessage(role = role, content = contentParts))
+                    }
                 }
 
                 // Add current images to the last user message if present
@@ -1081,8 +1089,8 @@ class PhotoReasoningViewModel(
                 val requestBody = MistralRequest(
                     model = currentModel.modelName,
                     messages = apiMessages,
-                    temperature = genSettings.temperature.toDouble(),
-                    top_p = genSettings.topP.toDouble(),
+                    temperature = genSettings.temperature.toDouble().coerceAtLeast(0.01),
+                    top_p = genSettings.topP.toDouble().coerceAtLeast(0.01),
                     max_tokens = 4096
                 )
                 val json = Json {
@@ -1104,11 +1112,12 @@ class PhotoReasoningViewModel(
                     .build()
 
                 client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string()
                     if (!response.isSuccessful) {
-                        throw IOException("Unexpected code ${response.code} - ${response.body?.string()}")
+                        Log.e(TAG, "Mistral API Error ($response.code): $responseBody")
+                        throw IOException("Mistral Error ${response.code}: $responseBody")
                     }
 
-                    val responseBody = response.body?.string()
                     if (responseBody != null) {
                         val mistralResponse = json.decodeFromString<MistralResponse>(responseBody)
                         val aiResponseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
@@ -1120,7 +1129,7 @@ class PhotoReasoningViewModel(
                             saveChatHistory(context)
                         }
                     } else {
-                        throw IOException("Empty response body")
+                        throw IOException("Empty response body from Mistral")
                     }
                 }
             } catch (e: Exception) {
