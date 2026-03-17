@@ -75,7 +75,7 @@ fun ApiKeyDialog(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE, ApiProvider.MISTRAL).forEach { provider ->
+                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE, ApiProvider.MISTRAL, ApiProvider.PUTER).forEach { provider ->
                         FilterChip(
                             selected = selectedProvider == provider,
                             onClick = {
@@ -97,6 +97,7 @@ fun ApiKeyDialog(
                             ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
                             ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
                             ApiProvider.MISTRAL -> "https://console.mistral.ai/home?profile_dialog=api-keys"
+                            ApiProvider.PUTER -> "https://puter.com/dashboard"
                             ApiProvider.HUMAN_EXPERT -> return@Button
                         }
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))

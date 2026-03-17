@@ -285,6 +285,10 @@ class ScreenCaptureService : Service() {
                                 val result = callMistralApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
                                 errorMessage = result.second
+                            } else if (apiProvider == ApiProvider.PUTER) {
+                                val result = callPuterApi(modelName, apiKey, chatHistory, inputContent)
+                                responseText = result.first
+                                errorMessage = result.second
                             } else {
                                 val generativeModel = GenerativeModel(
                                     modelName = modelName,
@@ -785,13 +789,20 @@ private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory
         ignoreUnknownKeys = true
     }
 
+    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
+    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+
     try {
         val messages = (chatHistory + inputContent).map { content ->
-            val parts = content.parts.map { part ->
+            val parts = content.parts.mapNotNull { part ->
                 when (part) {
                     is TextPart -> VercelTextContent(content = part.text)
-                    is ImagePart -> VercelImageContent(content = VercelImageUrl(url = part.image.toBase64()))
-                    else -> VercelTextContent(content = "") // Or handle other part types appropriately
+                    is ImagePart -> {
+                        if (supportsScreenshot) {
+                            VercelImageContent(content = VercelImageUrl(url = part.image.toBase64()))
+                        } else null
+                    }
+                    else -> null
                 }
             }
             VercelMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
@@ -896,6 +907,9 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
         ignoreUnknownKeys = true
     }
 
+    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
+    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+
     try {
         val apiMessages = mutableListOf<ServiceMistralMessage>()
 
@@ -904,7 +918,11 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
             val parts = content.parts.mapNotNull { part ->
                 when (part) {
                     is TextPart -> if (part.text.isNotBlank()) ServiceMistralTextContent(text = part.text) else null
-                    is ImagePart -> ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = part.image.toBase64()))
+                    is ImagePart -> {
+                        if (supportsScreenshot) {
+                            ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = part.image.toBase64()))
+                        } else null
+                    }
                     else -> null
                 }
             }
@@ -951,6 +969,55 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
     } catch (e: Exception) {
         errorMessage = e.localizedMessage ?: "Mistral API call failed"
         Log.e("ScreenCaptureService", "Mistral API failure", e)
+    }
+
+    return Pair(responseText, errorMessage)
+}
+
+private suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+    var responseText: String? = null
+    var errorMessage: String? = null
+    
+    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
+    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+
+    try {
+        val apiMessages = mutableListOf<com.google.ai.sample.network.PuterMessage>()
+
+        // Combine history and input, but handle system role if needed
+        (chatHistory + inputContent).forEach { content ->
+            val parts = content.parts.mapNotNull { part ->
+                when (part) {
+                    is TextPart -> if (part.text.isNotBlank()) com.google.ai.sample.network.PuterTextContent(text = part.text) else null
+                    is ImagePart -> {
+                        if (supportsScreenshot) {
+                            val base64Uri = com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(part.image)
+                            com.google.ai.sample.network.PuterImageContent(image_url = com.google.ai.sample.network.PuterImageUrl(url = base64Uri))
+                        } else null
+                    }
+                    else -> null
+                }
+            }
+            if (parts.isNotEmpty()) {
+                val role = when (content.role) {
+                    "user" -> "user"
+                    "system" -> "system"
+                    else -> "assistant"
+                }
+                apiMessages.add(com.google.ai.sample.network.PuterMessage(role = role, content = parts))
+            }
+        }
+
+        val requestBody = com.google.ai.sample.network.PuterRequest(
+            model = modelName,
+            messages = apiMessages
+        )
+
+        responseText = com.google.ai.sample.network.PuterApiClient.call(apiKey, requestBody)
+        
+    } catch (e: Exception) {
+        errorMessage = e.localizedMessage ?: "Puter API call failed"
+        Log.e("ScreenCaptureService", "Puter API failure", e)
     }
 
     return Pair(responseText, errorMessage)
