@@ -1957,11 +1957,11 @@ sealed class MistralContent
 
 @Serializable
 @kotlinx.serialization.SerialName("text")
-data class MistralTextContent(val type: String = "text", val text: String) : MistralContent()
+data class MistralTextContent(val text: String) : MistralContent()
 
 @Serializable
 @kotlinx.serialization.SerialName("image_url")
-data class MistralImageContent(val type: String = "image_url", @kotlinx.serialization.SerialName("image_url") val imageUrl: MistralImageUrl) : MistralContent()
+data class MistralImageContent(@kotlinx.serialization.SerialName("image_url") val imageUrl: MistralImageUrl) : MistralContent()
 
 @Serializable
 data class MistralImageUrl(val url: String)
