@@ -540,7 +540,7 @@ class PhotoReasoningViewModel(
         val userMessage = PhotoReasoningMessage(
             text = aiPromptText, // Use the combined text
             participant = PhotoParticipant.USER,
-            imageUris = imageUrisForChat ?: emptyList(), // Use the new parameter here
+            imageUris = if (com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
             isPending = false
         )
         Log.d(TAG, "performReasoning: Adding user message to _chatState. Text: \"${userMessage.text.take(100)}...\", Images: ${userMessage.imageUris.size}")
@@ -626,7 +626,7 @@ class PhotoReasoningViewModel(
              val userMessage = PhotoReasoningMessage(
                  text = userInput,
                  participant = PhotoParticipant.USER,
-                 imageUris = imageUrisForChat ?: emptyList(),
+                 imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
                  isPending = false
              )
              _chatState.addMessage(userMessage)
@@ -695,7 +695,7 @@ class PhotoReasoningViewModel(
             val userMessage = PhotoReasoningMessage(
                 text = userMessageText,
                 participant = PhotoParticipant.USER,
-                imageUris = imageUrisForChat ?: emptyList(),
+                imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
                 isPending = false
             )
             _chatState.addMessage(userMessage)
@@ -817,7 +817,7 @@ class PhotoReasoningViewModel(
                     val userMessage = PhotoReasoningMessage(
                         text = combinedPromptText,
                         participant = PhotoParticipant.USER,
-                        imageUris = imageUrisForChat ?: emptyList(),
+                        imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
                         isPending = false
                     )
                     _chatState.addMessage(userMessage)
@@ -1021,7 +1021,7 @@ class PhotoReasoningViewModel(
         val userMessage = PhotoReasoningMessage(
             text = combinedPromptText,
             participant = PhotoParticipant.USER,
-            imageUris = imageUrisForChat ?: emptyList(),
+            imageUris = if (com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
             isPending = false
         )
         _chatState.addMessage(userMessage)
@@ -1182,7 +1182,7 @@ class PhotoReasoningViewModel(
         val userMessage = PhotoReasoningMessage(
             text = userMessageText,
             participant = PhotoParticipant.USER,
-            imageUris = imageUrisForChat ?: emptyList(),
+            imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
             isPending = false
         )
         _chatState.addMessage(userMessage)
