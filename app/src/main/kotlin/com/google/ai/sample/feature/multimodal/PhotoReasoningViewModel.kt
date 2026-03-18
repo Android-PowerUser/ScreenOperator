@@ -123,6 +123,9 @@ class PhotoReasoningViewModel(
 
     private val _isOfflineGpuModelLoadedFlow = MutableStateFlow(false)
     val isOfflineGpuModelLoadedFlow: StateFlow<Boolean> = _isOfflineGpuModelLoadedFlow.asStateFlow()
+
+    private val _isInitializingOfflineModelFlow = MutableStateFlow(false)
+    val isInitializingOfflineModelFlow: StateFlow<Boolean> = _isInitializingOfflineModelFlow.asStateFlow()
         
     // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
@@ -300,13 +303,16 @@ class PhotoReasoningViewModel(
                     withContext(Dispatchers.Main) {
                         _uiState.value = PhotoReasoningUiState.Loading
                     }
+                    _isInitializingOfflineModelFlow.value = true
                     val error = initializeOfflineModel(context)
+                    _isInitializingOfflineModelFlow.value = false
                     withContext(Dispatchers.Main) {
                         if (error != null) {
                             _uiState.value = PhotoReasoningUiState.Error(error)
                         } else {
                             _uiState.value = PhotoReasoningUiState.Success("Model initialized.")
                         }
+                        refreshStopButtonState()
                     }
                 }
             }
@@ -388,12 +394,14 @@ class PhotoReasoningViewModel(
                         Log.e(TAG, "Failed to reinitialize offline model: $initError")
                         _uiState.value = PhotoReasoningUiState.Error(initError)
                     } else {
-                        val backend = GenerativeAiViewModelFactory.getBackend()
-                        Log.d(TAG, "Offline model re-initialized with backend: $backend")
+                        refreshStopButtonState()
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to reinitialize offline model", e)
+            } finally {
+                _isInitializingOfflineModelFlow.value = false
+                refreshStopButtonState()
             }
         }
     }
@@ -601,7 +609,9 @@ class PhotoReasoningViewModel(
 
             if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation outside content block
             sendMessageWithRetry(inputContent, 0)
+            refreshStopButtonState()
         }
+        refreshStopButtonState()
     }
 
     fun reason(
@@ -719,9 +729,12 @@ class PhotoReasoningViewModel(
                             replaceAiMessageText("Initializing offline model...", isPending = true)
                         }
                         // Use Default dispatcher for CPU-intensive model loading
+                        _isInitializingOfflineModelFlow.value = true
+                        refreshStopButtonState()
                         initError = withContext(Dispatchers.Default) {
                             initializeOfflineModel(context)
                         }
+                        _isInitializingOfflineModelFlow.value = false
                     }
 
                     if (llmInference == null) {
@@ -736,9 +749,12 @@ class PhotoReasoningViewModel(
                                 )
                             )
                             _chatMessagesFlow.value = _chatState.getAllMessages()
+                            refreshStopButtonState()
                         }
                         return@launch
                     }
+
+                    refreshStopButtonState()
 
                     Log.d(TAG, "Sending streaming prompt to offline model (length: ${fullPrompt.length})")
 
@@ -765,6 +781,12 @@ class PhotoReasoningViewModel(
                 } catch (e: Exception) {
                     Log.e(TAG, "Offline inference failed", e)
                     withContext(Dispatchers.Main) {
+                        saveChatHistory(context)
+                        refreshStopButtonState()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Offline inference failed", e)
+                    withContext(Dispatchers.Main) {
                         _uiState.value = PhotoReasoningUiState.Error("Offline inference failed: ${e.message}")
                         _chatState.replaceLastPendingMessage()
                         _chatState.addMessage(
@@ -775,7 +797,11 @@ class PhotoReasoningViewModel(
                         )
                         _chatMessagesFlow.value = _chatState.getAllMessages()
                         saveChatHistory(context)
+                        refreshStopButtonState()
                     }
+                } finally {
+                    _isInitializingOfflineModelFlow.value = false
+                    refreshStopButtonState()
                 }
             }
             return
@@ -1792,6 +1818,7 @@ class PhotoReasoningViewModel(
             _chatMessagesFlow.value = _chatState.getAllMessages()
         }
         saveChatHistory(getApplication<Application>())
+        refreshStopButtonState()
     }
 
     private fun updateAiMessage(text: String, isPending: Boolean = false) {
@@ -2044,6 +2071,7 @@ private fun processCommands(text: String) {
             if (stopExecutionFlag.get()){
                  _commandExecutionStatus.value = "Command processing finished after stop request."
             }
+            refreshStopButtonState()
         }
     }
 }

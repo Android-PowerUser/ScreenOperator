@@ -582,11 +582,9 @@ fun MenuScreen(
                         withStyle(boldStyle) { append("Preview Models") }
                         append(" could be deactivated by Google without being handed over to the final release.\n")
                         append("• ")
-                        withStyle(boldStyle) { append("GLM-5 (Puter)") }
-                        append(" is provided by Puter API. Enter your Puter Auth-Token as the API Key.\n")
-                        append("• ")
-                        withStyle(boldStyle) { append("Mistral Large 3") }
-                        append(" is a multimodal model (supports screenshots) and requires an API key.\n")
+                        withStyle(boldStyle) { append("API Keys") }
+                        append(" are automatically switched if multiple are inserted and one is exhausted.\n")
+
                         append("• ")
                         withStyle(boldStyle) { append("GPT-oss 120b") }
                         append(" is a pure text model.\n")

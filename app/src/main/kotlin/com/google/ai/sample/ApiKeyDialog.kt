@@ -1,7 +1,11 @@
 package com.google.ai.sample
 
+import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -97,9 +101,18 @@ fun ApiKeyDialog(
                             ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
                             ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
                             ApiProvider.MISTRAL -> "https://console.mistral.ai/home?profile_dialog=api-keys"
-                            ApiProvider.PUTER -> "https://puter.com/dashboard"
+                            ApiProvider.PUTER -> "https://puter.com/dashboard#account"
                             ApiProvider.HUMAN_EXPERT -> return@Button
                         }
+
+                        if (selectedProvider == ApiProvider.PUTER) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Puter Link", url)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Link is in the clipboard.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "After the sign up paste the link in the Browser", Toast.LENGTH_LONG).show()
+                        }
+
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         context.startActivity(intent)
                     },
@@ -107,7 +120,14 @@ fun ApiKeyDialog(
                         .fillMaxWidth()
                         .padding(bottom = 16.dp)
                 ) {
-                    Text("Get API Key for ${selectedProvider.name.replaceFirstChar { it.uppercase() }}")
+                } {
+                    val buttonText = if (selectedProvider == ApiProvider.PUTER) {
+                        "Get Auth Token for Puter"
+                    } else {
+                        "Get API Key for ${selectedProvider.name.replaceFirstChar { it.uppercase() }}"
+                    }
+                    Text(buttonText)
+                }
                 }
 
                 // Input and Add section
@@ -118,7 +138,14 @@ fun ApiKeyDialog(
                             apiKeyInput = it
                             errorMessage = ""
                         },
-                        label = { Text("Enter ${selectedProvider.name.replaceFirstChar { it.uppercase() }} API Key") },
+                        label = { 
+                            val labelText = if (selectedProvider == ApiProvider.PUTER) {
+                                "Enter PUTER Auth Token"
+                            } else {
+                                "Enter ${selectedProvider.name.replaceFirstChar { it.uppercase() }} API Key"
+                            }
+                            Text(labelText)
+                        },
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
