@@ -120,14 +120,12 @@ fun ApiKeyDialog(
                         .fillMaxWidth()
                         .padding(bottom = 16.dp)
                 ) {
-                } {
                     val buttonText = if (selectedProvider == ApiProvider.PUTER) {
                         "Get Auth Token for Puter"
                     } else {
                         "Get API Key for ${selectedProvider.name.replaceFirstChar { it.uppercase() }}"
                     }
                     Text(buttonText)
-                }
                 }
 
                 // Input and Add section
