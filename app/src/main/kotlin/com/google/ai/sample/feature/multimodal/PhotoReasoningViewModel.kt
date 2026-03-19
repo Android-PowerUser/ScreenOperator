@@ -300,6 +300,7 @@ class PhotoReasoningViewModel(
                         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
                         if (currentKey != null) {
                             apiKeyManager.markKeyAsFailed(currentKey, currentModel.apiProvider)
+                            val newKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
                             if (newKey != null && newKey != currentKey) {
                                 // Increment retry attempt
                                 currentRetryAttempt++
