@@ -408,7 +408,7 @@ fun PhotoReasoningScreen(
                     value = systemMessage,
                     onValueChange = onSystemMessageChanged,
                     placeholder = { Text("Enter a system message here that will be sent with every request") },
-                    modifier = Modifier.fillMaxWidth().height(systemMessageHeight)
+                    modifier = Modifier.fillMaxWidth().heightIn(max = systemMessageHeight)
                         .onFocusChanged { focusState -> isSystemMessageFocused = focusState.isFocused },
                     minLines = currentMinLines,
                     maxLines = currentMaxLines
