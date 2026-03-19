@@ -1174,13 +1174,34 @@ private fun reasonWithMistral(
                 apiKeyManager.markKeyAsFailed(currentKey, ApiProvider.MISTRAL)
                 val nextKey = apiKeyManager.switchToNextAvailableKey(ApiProvider.MISTRAL)
                 if (nextKey != null && nextKey != currentKey) {
+                    // Anderer Key verfugbar -> sofort wechseln wie bisher
                     currentKey = nextKey
                     val elapsed2 = System.currentTimeMillis() - lastMistralRequestTimeMs
                     if (elapsed2 < MISTRAL_MIN_INTERVAL_MS) delay(MISTRAL_MIN_INTERVAL_MS - elapsed2)
                     response = client.newCall(buildRequest(currentKey)).execute()
                     lastMistralRequestTimeMs = System.currentTimeMillis()
                 } else {
-                    throw IOException("Mistral rate limit reached. Please add another API key.")
+                    // Kein anderer Key -> 5 Sekunden lang sofort wiederholen
+                    apiKeyManager.resetFailedKeys(ApiProvider.MISTRAL)
+                    withContext(Dispatchers.Main) {
+                        replaceAiMessageText("Rate limit erreicht. Wiederhole...", isPending = true)
+                    }
+                    val retryDeadline = System.currentTimeMillis() + 5000L
+                    var retryResponse: okhttp3.Response? = null
+                    while (System.currentTimeMillis() < retryDeadline) {
+                        if (stopExecutionFlag.get()) break
+                        val retryResp = client.newCall(buildRequest(currentKey)).execute()
+                        lastMistralRequestTimeMs = System.currentTimeMillis()
+                        if (retryResp.code != 429) {
+                            retryResponse = retryResp
+                            break
+                        }
+                        retryResp.close()
+                    }
+                    if (retryResponse == null || stopExecutionFlag.get()) {
+                        throw IOException("Mistral rate limit: Kein Erfolg innerhalb von 5 Sekunden.")
+                    }
+                    response = retryResponse
                 }
             }
 

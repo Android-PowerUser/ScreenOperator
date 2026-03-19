@@ -506,9 +506,10 @@ fun PhotoReasoningScreen(
         }
 
         val isGemma = modelName == "gemma-3n-e4b-it"
-        val showStopButton = isGenerationRunning || isOfflineGpuModelLoaded || isGemma
-        val stopButtonText = if (isGenerationRunning) "Stop" else "Model Unload"
-        val showTextFieldRow = !isGenerationRunning || isInitializingOfflineModel
+        val isLoading = uiState is PhotoReasoningUiState.Loading
+        val showStopButton = isGenerationRunning || isLoading || isOfflineGpuModelLoaded || isGemma
+        val stopButtonText = if (isGenerationRunning || isLoading) "Stop" else "Model Unload"
+        val showTextFieldRow = (!isGenerationRunning && !isLoading) || isInitializingOfflineModel
 
         if (showTextFieldRow) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -1371,19 +1372,23 @@ fun VerticalScrollbar(
 
             if (visibleItemCount >= totalItems) return@derivedStateOf null // All items visible, no scrollbar
 
-            // Simple ratio-based calculation for even behavior
-            val thumbHeight = (visibleItemCount.toFloat() / totalItems * viewportHeight).coerceAtLeast(20f)
-            
-            // Calculate scroll progress considering sub-item offset
+            val thumbHeight = (visibleItemCount.toFloat() / totalItems * viewportHeight)
+                .coerceAtLeast(20f)
+                .coerceAtMost(viewportHeight)
+
+            val maxScrollOffset = (viewportHeight - thumbHeight).coerceAtLeast(0f)
+            if (maxScrollOffset == 0f) return@derivedStateOf null
+
             val firstItemOffset = if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
                 val firstItem = layoutInfo.visibleItemsInfo.first()
                 if (firstItem.size > 0) listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size else 0f
             } else 0f
-            
-            val scrollProgress = (firstVisibleItemIndex + firstItemOffset) / (totalItems - visibleItemCount).coerceAtLeast(1)
-            val scrollOffset = scrollProgress * (viewportHeight - thumbHeight)
 
-            Pair(scrollOffset.coerceIn(0f, viewportHeight - thumbHeight), thumbHeight)
+            val scrollProgress = (firstVisibleItemIndex + firstItemOffset) /
+                (totalItems - visibleItemCount).coerceAtLeast(1)
+            val scrollOffset = (scrollProgress * maxScrollOffset).coerceIn(0f, maxScrollOffset)
+
+            Pair(scrollOffset, thumbHeight)
         }
     }
 
