@@ -278,9 +278,7 @@ class ScreenCaptureService : Service() {
                         }
                         try {
                             if (apiProvider == ApiProvider.VERCEL) {
-                                val result = callVercelApi(modelName, apiKey, chatHistory, inputContent)
-                                responseText = result.first
-                                errorMessage = result.second
+                                responseText = callVercelApi(applicationContext, modelName, apiKey, chatHistoryDtos, inputContentDto)
                             } else if (apiProvider == ApiProvider.MISTRAL) {
                                 val result = callMistralApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
@@ -412,6 +410,19 @@ class ScreenCaptureService : Service() {
         }
         applicationContext.sendBroadcast(errorIntent)
         Log.d(TAG, "Broadcast error sent for AI_CALL_RESULT: $message")
+    }
+
+    private fun broadcastAiResult(responseText: String? = null, errorMessage: String? = null, isError: Boolean = false) {
+        val resultIntent = Intent(ACTION_AI_CALL_RESULT).apply {
+            if (responseText != null && !isError) {
+                putExtra(EXTRA_AI_RESPONSE_TEXT, responseText)
+            }
+            if (errorMessage != null || isError) {
+                putExtra(EXTRA_AI_ERROR_MESSAGE, errorMessage ?: "An unknown error occurred.")
+            }
+        }
+        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(resultIntent)
+        Log.d(TAG, "Local broadcast sent for AI_CALL_RESULT. Error: $errorMessage, Response: ${responseText != null}")
     }
 
     private fun createAiOperationNotification(): Notification {
@@ -630,7 +641,7 @@ class ScreenCaptureService : Service() {
             // List existing screenshot files
             val screenshotFiles = picturesDir.listFiles { _, name ->
                 name.startsWith("screenshot_") && name.endsWith(".png")
-            }?.toMutableList() ?: mutableListOf()
+            )?.toMutableList() ?: mutableListOf()
 
             // Sort files by name (timestamp) to find the oldest
             screenshotFiles.sortBy { it.name }
@@ -729,120 +740,108 @@ class ScreenCaptureService : Service() {
 @Serializable
 data class VercelRequest(
     val model: String,
-    val messages: List<VercelMessage>
+    val messages: List<VercelMessage>,
+    val stream: Boolean = true
+)
+
+@Serializable
+data class VercelStreamChunk(
+    val choices: List<VercelStreamChoice>
+)
+
+@Serializable
+data class VercelStreamChoice(
+    val delta: VercelStreamDelta
+)
+
+@Serializable
+data class VercelStreamDelta(
+    val content: String? = null
 )
 
 @Serializable
 data class VercelMessage(
     val role: String,
-    val content: List<VercelContent>
-)
-
-@Serializable
-data class VercelResponse(
-    val choices: List<VercelChoice>
-)
-
-@Serializable
-data class VercelChoice(
-    val message: VercelResponseMessage
-)
-
-@Serializable
-data class VercelResponseMessage(
-    val role: String,
     val content: String
 )
 
-@Serializable
-@JsonClassDiscriminator("type")
-sealed class VercelContent
-
-@Serializable
-@SerialName("text")
-data class VercelTextContent(@SerialName("text") val content: String) : VercelContent()
-
-@Serializable
-@SerialName("image_url")
-data class VercelImageContent(@SerialName("image_url") val content: VercelImageUrl) : VercelContent()
-
-@Serializable
-data class VercelImageUrl(val url: String)
-
-private fun Bitmap.toBase64(): String {
-    val outputStream = java.io.ByteArrayOutputStream()
-    this.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-    return "data:image/jpeg;base64," + android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.DEFAULT)
-}
-
-private suspend fun callVercelApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
-    var responseText: String? = null
-    var errorMessage: String? = null
-
-    val json = Json {
-        serializersModule = SerializersModule {
-            polymorphic(VercelContent::class) {
-                subclass(VercelTextContent::class, VercelTextContent.serializer())
-                subclass(VercelImageContent::class, VercelImageContent.serializer())
-            }
-        }
-        ignoreUnknownKeys = true
+private suspend fun callVercelApi(
+    context: android.content.Context,
+    modelName: String,
+    apiKey: String,
+    chatHistory: List<com.google.ai.sample.feature.multimodal.ContentDto>,
+    inputContent: com.google.ai.sample.feature.multimodal.ContentDto
+): String {
+    val messages = mutableListOf<VercelMessage>()
+    
+    // Add Chat History
+    chatHistory.forEach { contentDto ->
+        val role = if (contentDto.role == "user") "user" else "assistant"
+        val text = contentDto.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.TextPartDto>()
+            .joinToString("\n") { it.text }
+        if (text.isNotBlank()) messages.add(VercelMessage(role = role, content = text))
     }
 
-    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
-    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+    // Add current input
+    val inputText = inputContent.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.TextPartDto>()
+        .joinToString("\n") { it.text }
+    if (inputText.isNotBlank()) messages.add(VercelMessage(role = "user", content = inputText))
+
+    val requestBodyJson = Json.encodeToString(VercelRequest(model = modelName, messages = messages, stream = true))
+    val mediaType = "application/json".toMediaType()
+
+    val httpRequest = Request.Builder()
+        .url("https://v0-screen-operator-clon-pi.vercel.app/api/chat")
+        .post(requestBodyJson.toRequestBody(mediaType))
+        .addHeader("Content-Type", "application/json")
+        .addHeader("x-api-key", apiKey)
+        .build()
+
+    val client = OkHttpClient()
+    val response = client.newCall(httpRequest).execute()
+
+    if (!response.isSuccessful) {
+        val err = response.body?.string()
+        response.close()
+        throw IOException("Vercel API error ${response.code}: $err")
+    }
+
+    val body = response.body ?: throw IOException("Empty response from Vercel")
+    val reader = body.charStream().buffered()
+    val accumulated = StringBuilder()
+    val sseJson = Json { ignoreUnknownKeys = true }
 
     try {
-        val messages = (chatHistory + inputContent).map { content ->
-            val parts = content.parts.mapNotNull { part ->
-                when (part) {
-                    is TextPart -> VercelTextContent(content = part.text)
-                    is ImagePart -> {
-                        if (supportsScreenshot) {
-                            VercelImageContent(content = VercelImageUrl(url = part.image.toBase64()))
-                        } else null
+        var line: String?
+        while (reader.readLine().also { line = it } != null) {
+            val l = line ?: break
+            if (l.startsWith("data: ")) {
+                val data = l.removePrefix("data: ").trim()
+                if (data == "[DONE]") break
+                if (data.isEmpty()) continue
+                
+                try {
+                    val chunk = sseJson.decodeFromString<VercelStreamChunk>(data)
+                    val delta = chunk.choices.firstOrNull()?.delta?.content
+                    if (!delta.isNullOrEmpty()) {
+                        accumulated.append(delta)
+                        // Broadcast update to ViewModel
+                        val intent = Intent(ScreenCaptureService.ACTION_AI_STREAM_UPDATE).apply {
+                            putExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK, accumulated.toString())
+                        }
+                        androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
                     }
-                    else -> null
-                }
-            }
-            VercelMessage(role = if (content.role == "user") "user" else "assistant", content = parts)
-        }
-
-        val requestBody = VercelRequest(
-            model = modelName,
-            messages = messages
-        )
-
-        val client = OkHttpClient()
-        val mediaType = "application/json".toMediaType()
-        val jsonBody = json.encodeToString(VercelRequest.serializer(), requestBody)
-
-        val request = Request.Builder()
-            .url("https://ai-gateway.vercel.sh/v1/chat/completions")
-            .post(jsonBody.toRequestBody(mediaType))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                errorMessage = "Unexpected code ${response.code} - ${response.body?.string()}"
-            } else {
-                val responseBody = response.body?.string()
-                if (responseBody != null) {
-                    val json = Json { ignoreUnknownKeys = true }
-                    val vercelResponse = json.decodeFromString(VercelResponse.serializer(), responseBody)
-                    responseText = vercelResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
-                } else {
-                    errorMessage = "Empty response body"
+                } catch (e: Exception) {
+                    // Skip malformed chunks
                 }
             }
         }
-    } catch (e: Exception) {
-        errorMessage = e.localizedMessage ?: "Vercel API call failed"
+    } finally {
+        reader.close()
+        response.close()
     }
 
-    return Pair(responseText, errorMessage)
+    return accumulated.toString()
 }
 
 // Data classes for Mistral API in Service
