@@ -75,6 +75,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
 import com.google.ai.sample.webrtc.WebRTCSender
 import com.google.ai.sample.webrtc.SignalingClient
 import org.webrtc.IceCandidate
