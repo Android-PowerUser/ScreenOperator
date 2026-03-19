@@ -16,6 +16,8 @@ enum class ApiProvider {
     VERCEL,
     GOOGLE,
     CEREBRAS,
+    MISTRAL,
+    PUTER,
     HUMAN_EXPERT
 }
 
@@ -24,12 +26,15 @@ enum class ModelOption(
     val modelName: String,
     val apiProvider: ApiProvider = ApiProvider.GOOGLE,
     val downloadUrl: String? = null,
-    val size: String? = null
+    val size: String? = null,
+    val supportsScreenshot: Boolean = true
 ) {
+    PUTER_GLM5("GLM-5 (Puter)", "z-ai/glm-5", ApiProvider.PUTER, supportsScreenshot = false),
+    MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
     GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
     GPT_5_1_CODEX_MINI("GPT-5.1 Codex Mini (Vercel)", "openai/gpt-5.1-codex-mini", ApiProvider.VERCEL),
     GPT_5_NANO("GPT-5 Nano (Vercel)", "openai/gpt-5-nano", ApiProvider.VERCEL),
-    GPT_OSS_120B("GPT-OSS 120B (Cerebras)", "gpt-oss-120b", ApiProvider.CEREBRAS),
+    GPT_OSS_120B("GPT-OSS 120B (Cerebras)", "gpt-oss-120b", ApiProvider.CEREBRAS, supportsScreenshot = false),
     GEMINI_3_FLASH("Gemini 3 Flash", "gemini-3-flash-preview"),
     GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro"),
     GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
@@ -37,7 +42,7 @@ enum class ModelOption(
     GEMINI_FLASH_LITE_PREVIEW("Gemini 2.5 Flash Lite Preview", "gemini-2.5-flash-lite-preview-06-17"),
     GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
     GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
-    GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it"),
+    GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it", supportsScreenshot = false),
     GEMMA_3N_E4B_IT(
         "Gemma 3n E4B it (offline)",
         "gemma-3n-e4b-it",
@@ -134,7 +139,7 @@ enum class InferenceBackend {
 }
 
 object GenerativeAiViewModelFactory {
-    private var currentModel: ModelOption = ModelOption.GPT_5_1_CODEX_MAX
+    private var currentModel: ModelOption = ModelOption.MISTRAL_LARGE_3
     private var currentBackend: InferenceBackend = InferenceBackend.GPU
 
     fun setModel(modelOption: ModelOption, context: Context? = null) {
@@ -171,11 +176,11 @@ object GenerativeAiViewModelFactory {
 
     fun loadModelPreference(context: Context) {
         val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
-        val modelNameStr = prefs.getString("selected_model", ModelOption.GPT_5_1_CODEX_MAX.name)
+        val modelNameStr = prefs.getString("selected_model", ModelOption.MISTRAL_LARGE_3.name)
         currentModel = try {
-            ModelOption.valueOf(modelNameStr ?: ModelOption.GPT_5_1_CODEX_MAX.name)
+            ModelOption.valueOf(modelNameStr ?: ModelOption.MISTRAL_LARGE_3.name)
         } catch (e: IllegalArgumentException) {
-            ModelOption.GPT_5_1_CODEX_MAX
+            ModelOption.MISTRAL_LARGE_3
         }
     }
 }

@@ -582,9 +582,14 @@ fun MenuScreen(
                         withStyle(boldStyle) { append("Preview Models") }
                         append(" could be deactivated by Google without being handed over to the final release.\n")
                         append("• ")
+                        withStyle(boldStyle) { append("API Keys") }
+                        append(" are automatically switched if multiple are inserted and one is exhausted.\n")
+
+                        append("• ")
                         withStyle(boldStyle) { append("GPT-oss 120b") }
                         append(" is a pure text model.\n")
                         append("• ")
+
                         withStyle(boldStyle) { append("Gemma 27B IT") }
                         append(" cannot handle screenshots in the API.\n")
                         append("• GPT models (")

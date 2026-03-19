@@ -174,6 +174,7 @@ internal fun PhotoReasoningRoute(
     val userInput by viewModel.userInput.collectAsState()
     val isGenerationRunning by viewModel.isGenerationRunningFlow.collectAsState()
     val isOfflineGpuModelLoaded by viewModel.isOfflineGpuModelLoadedFlow.collectAsState()
+    val isInitializingOfflineModel by viewModel.isInitializingOfflineModelFlow.collectAsState()
 
     // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
     // This state will now be managed in PhotoReasoningRoute and passed down.
@@ -255,7 +256,8 @@ internal fun PhotoReasoningRoute(
         userQuestion = userInput,
         onUserQuestionChanged = { viewModel.updateUserInput(it) },
         isGenerationRunning = isGenerationRunning,
-        isOfflineGpuModelLoaded = isOfflineGpuModelLoaded
+        isOfflineGpuModelLoaded = isOfflineGpuModelLoaded,
+        isInitializingOfflineModel = isInitializingOfflineModel
     )
 }
 
@@ -281,7 +283,8 @@ fun PhotoReasoningScreen(
     userQuestion: String = "",
     onUserQuestionChanged: (String) -> Unit = {},
     isGenerationRunning: Boolean = false,
-    isOfflineGpuModelLoaded: Boolean = false
+    isOfflineGpuModelLoaded: Boolean = false,
+    isInitializingOfflineModel: Boolean = false
 ) {
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
@@ -501,9 +504,10 @@ fun PhotoReasoningScreen(
             )
         }
 
-        val showStopButton = isGenerationRunning || isOfflineGpuModelLoaded
-        val stopButtonText = if (isGenerationRunning) "Stop" else "Modell entladen"
-        val showTextFieldRow = !isGenerationRunning
+        val isGemma = modelName == "gemma-3n-e4b-it"
+        val showStopButton = isGenerationRunning || isOfflineGpuModelLoaded || isGemma
+        val stopButtonText = if (isGenerationRunning) "Stop" else "Model Unload"
+        val showTextFieldRow = !isGenerationRunning || isInitializingOfflineModel
 
         if (showTextFieldRow) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -574,7 +578,7 @@ fun PhotoReasoningScreen(
             } // Closes Card
         }
         
-        // Stop button: zeigt 'Stop' bei aktiver Generierung, 'Modell entladen' bei geladenem GPU-Modell
+        // Stop button: zeigt 'Stop' bei aktiver Generierung, 'Model Unload' bei geladenem GPU-Modell oder Offline-Selektion
         if (showStopButton) {
             Spacer(modifier = Modifier.height(8.dp))
             Button(
