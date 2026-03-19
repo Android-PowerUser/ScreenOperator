@@ -48,6 +48,7 @@ import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import okhttp3.MediaType.Companion.toMediaType
@@ -639,9 +640,9 @@ class ScreenCaptureService : Service() {
             }
 
             // List existing screenshot files
-            val screenshotFiles = picturesDir.listFiles { _, name ->
+            val screenshotFiles = picturesDir.listFiles({ _, name ->
                 name.startsWith("screenshot_") && name.endsWith(".png")
-            )?.toMutableList() ?: mutableListOf()
+            })?.toMutableList() ?: mutableListOf()
 
             // Sort files by name (timestamp) to find the oldest
             screenshotFiles.sortBy { it.name }

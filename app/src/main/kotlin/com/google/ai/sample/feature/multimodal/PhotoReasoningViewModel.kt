@@ -1137,10 +1137,10 @@ private fun reasonWithMistral(
             }
 
             val jsonSerializer = Json {
-                serializersModule = kotlinx.serialization.modules.SerializersModule {
-                    kotlinx.serialization.modules.polymorphic(MistralContent::class) {
-                        subclass(MistralTextContent::class, MistralTextContent.serializer())
-                        subclass(MistralImageContent::class, MistralImageContent.serializer())
+                serializersModule = SerializersModule {
+                    polymorphic(MistralContent::class) {
+                        subclass(MistralTextContent::class)
+                        subclass(MistralImageContent::class)
                     }
                 }
                 ignoreUnknownKeys = true
