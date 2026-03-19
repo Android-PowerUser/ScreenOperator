@@ -55,8 +55,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
-import java.io.FileOutputStream
+import java.io.File`nimport java.io.IOException`nimport java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -770,25 +769,25 @@ private suspend fun callVercelApi(
     context: android.content.Context,
     modelName: String,
     apiKey: String,
-    chatHistory: List<com.google.ai.sample.feature.multimodal.ContentDto>,
-    inputContent: com.google.ai.sample.feature.multimodal.ContentDto
+    chatHistory: List<ContentDto>,
+    inputContent: ContentDto
 ): String {
     val messages = mutableListOf<VercelMessage>()
     
     // Add Chat History
     chatHistory.forEach { contentDto ->
         val role = if (contentDto.role == "user") "user" else "assistant"
-        val text = contentDto.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.TextPartDto>()
+        val text = contentDto.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.dtos.TextPartDto>()
             .joinToString("\n") { it.text }
         if (text.isNotBlank()) messages.add(VercelMessage(role = role, content = text))
     }
 
     // Add current input
-    val inputText = inputContent.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.TextPartDto>()
+    val inputText = inputContent.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.dtos.TextPartDto>()
         .joinToString("\n") { it.text }
     if (inputText.isNotBlank()) messages.add(VercelMessage(role = "user", content = inputText))
 
-    val requestBodyJson = Json.encodeToString(VercelRequest(model = modelName, messages = messages, stream = true))
+    val requestBodyJson = Json.encodeToString(VercelRequest.serializer(), VercelRequest(model = modelName, messages = messages, stream = true))
     val mediaType = "application/json".toMediaType()
 
     val httpRequest = Request.Builder()
@@ -920,7 +919,7 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
                     is TextPart -> if (part.text.isNotBlank()) ServiceMistralTextContent(text = part.text) else null
                     is ImagePart -> {
                         if (supportsScreenshot) {
-                            ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = part.image.toBase64()))
+                            ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}"))
                         } else null
                     }
                     else -> null
