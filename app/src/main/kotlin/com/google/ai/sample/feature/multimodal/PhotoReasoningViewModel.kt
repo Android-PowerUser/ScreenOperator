@@ -1528,6 +1528,8 @@ private fun reasonWithMistral(
         stopExecutionFlag.set(true)
         currentReasoningJob?.cancel()
         commandProcessingJob?.cancel()
+        // NEU:
+        ScreenOperatorAccessibilityService.clearCommandQueue()
 
         val messages = _chatState.getAllMessages().toMutableList()
         val lastMessage = messages.lastOrNull()

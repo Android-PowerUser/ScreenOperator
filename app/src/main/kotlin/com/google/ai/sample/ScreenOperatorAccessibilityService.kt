@@ -93,6 +93,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         
         /**
+         * Clear the command queue and reset the processing flag
+         */
+        fun clearCommandQueue() {
+            val instance = serviceInstance
+            if (instance != null) {
+                instance.commandQueue.clear()
+                instance.isProcessingQueue.set(false)
+                Log.d(TAG, "Command queue cleared and processing flag reset.")
+            } else {
+                Log.w(TAG, "clearCommandQueue: serviceInstance is null, nothing to clear.")
+            }
+        }
+
+        /**
          * Execute a command using the accessibility service
          */
         fun executeCommand(command: Command) {
