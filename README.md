@@ -3,7 +3,7 @@
 This Android app operates the screen with commands from vision LLMs.
 
 
-#### • The first Android agent app in the world (since June/2025
+#### • The first Android agent app in the world (since June/2025)
 
 
 
