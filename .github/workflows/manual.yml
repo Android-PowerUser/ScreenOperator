@@ -104,6 +104,14 @@ jobs:
       if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       run: ./gradlew :humanoperator:compileDebugKotlin
 
+    - name: Detect (app)
+      if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
+      run: ./gradlew :app:detect
+
+    - name: Detect (humanoperator)
+      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
+      run: ./gradlew :humanoperator:detect
+
   build:
     needs: [detect-changes, compile-check]
     runs-on: ubuntu-latest
