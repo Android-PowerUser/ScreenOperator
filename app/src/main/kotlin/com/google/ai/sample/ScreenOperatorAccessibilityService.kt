@@ -27,6 +27,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.google.ai.sample.util.AppNamePackageMapper
 import com.google.ai.sample.util.Command
+import com.google.ai.sample.util.CoordinateParser
 import java.io.File
 import java.text.SimpleDateFormat
 import com.google.ai.sample.GenerativeViewModelFactory
@@ -37,6 +38,16 @@ import java.lang.NumberFormatException
 import java.util.LinkedList
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
+    private data class ResolvedPoint(val xPx: Float, val yPx: Float)
+    private data class ResolvedScrollGesture(
+        val xPx: Float,
+        val yPx: Float,
+        val distancePx: Float,
+        val durationMs: Long
+    )
+
+    private enum class ScrollAxis { HORIZONTAL, VERTICAL }
+
     private val commandQueue = LinkedList<Command>()
     private val isProcessingQueue = AtomicBoolean(false)
     // private val handler = Handler(Looper.getMainLooper()) // Already exists at the class level
@@ -206,6 +217,28 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }, nextCommandDelay)
     }
 
+    private fun resolvePoint(x: String, y: String, screenWidth: Int, screenHeight: Int): ResolvedPoint {
+        return ResolvedPoint(
+            xPx = convertCoordinate(x, screenWidth),
+            yPx = convertCoordinate(y, screenHeight)
+        )
+    }
+
+    private fun resolveScrollGesture(
+        x: String,
+        y: String,
+        distance: String,
+        durationMs: Long,
+        axis: ScrollAxis,
+        screenWidth: Int,
+        screenHeight: Int
+    ): ResolvedScrollGesture {
+        val point = resolvePoint(x, y, screenWidth, screenHeight)
+        val distanceBasis = if (axis == ScrollAxis.HORIZONTAL) screenWidth else screenHeight
+        val distancePx = convertCoordinate(distance, distanceBasis)
+        return ResolvedScrollGesture(point.xPx, point.yPx, distancePx, durationMs)
+    }
+
     private fun executeSingleCommand(command: Command): Boolean {
         val displayMetrics = this.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
@@ -226,11 +259,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 true // Asynchronous
             }
             is Command.TapCoordinates -> {
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
-                this.showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
-                this.tapAtCoordinates(xPx, yPx)
+                val point = resolvePoint(command.x, command.y, screenWidth, screenHeight)
+                Log.d(TAG, "Tapping at coordinates: (${command.x} -> ${point.xPx}, ${command.y} -> ${point.yPx})")
+                this.showToast("Trying to tap coordinates: (${point.xPx}, ${point.yPx})", false)
+                this.tapAtCoordinates(point.xPx, point.yPx)
                 true // Asynchronous
             }
             is Command.TakeScreenshot -> {
@@ -267,81 +299,119 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             is Command.PressHomeButton -> {
-                Log.d(TAG, "Pressing home button")
-                this.showToast("Trying to press Home button", false)
-                this.pressHomeButton()
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Pressing home button",
+                    toastMessage = "Trying to press Home button"
+                ) {
+                    pressHomeButton()
+                }
             }
             is Command.PressBackButton -> {
-                Log.d(TAG, "Pressing back button")
-                this.showToast("Trying to press Back button", false)
-                this.pressBackButton()
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Pressing back button",
+                    toastMessage = "Trying to press Back button"
+                ) {
+                    pressBackButton()
+                }
             }
             is Command.ShowRecentApps -> {
-                Log.d(TAG, "Showing recent apps")
-                this.showToast("Trying to open recent apps overview", false)
-                this.showRecentApps()
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Showing recent apps",
+                    toastMessage = "Trying to open recent apps overview"
+                ) {
+                    showRecentApps()
+                }
             }
             is Command.ScrollDown -> {
-                Log.d(TAG, "Scrolling down")
-                this.showToast("Trying to scroll down", false)
-                this.scrollDown()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling down",
+                    toastMessage = "Trying to scroll down"
+                ) {
+                    scrollDown()
+                }
             }
             is Command.ScrollUp -> {
-                Log.d(TAG, "Scrolling up")
-                this.showToast("Trying to scroll up", false)
-                this.scrollUp()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling up",
+                    toastMessage = "Trying to scroll up"
+                ) {
+                    scrollUp()
+                }
             }
             is Command.ScrollLeft -> {
-                Log.d(TAG, "Scrolling left")
-                this.showToast("Trying to scroll left", false)
-                this.scrollLeft()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling left",
+                    toastMessage = "Trying to scroll left"
+                ) {
+                    scrollLeft()
+                }
             }
             is Command.ScrollRight -> {
-                Log.d(TAG, "Scrolling right")
-                this.showToast("Trying to scroll right", false)
-                this.scrollRight()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling right",
+                    toastMessage = "Trying to scroll right"
+                ) {
+                    scrollRight()
+                }
             }
             is Command.ScrollDownFromCoordinates -> {
                 Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenHeight)
-                this.showToast("Trying to scroll down from position ($xPx, $yPx)", false)
-                this.scrollDown(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.VERTICAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll down from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollDown(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.ScrollUpFromCoordinates -> {
                 Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenHeight)
-                this.showToast("Trying to scroll up from position ($xPx, $yPx)", false)
-                this.scrollUp(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.VERTICAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll up from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollUp(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.ScrollLeftFromCoordinates -> {
                 Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenWidth)
-                this.showToast("Trying to scroll left from position ($xPx, $yPx)", false)
-                this.scrollLeft(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.HORIZONTAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll left from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollLeft(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.ScrollRightFromCoordinates -> {
                 Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenWidth)
-                this.showToast("Trying to scroll right from position ($xPx, $yPx)", false)
-                this.scrollRight(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.HORIZONTAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll right from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollRight(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.OpenApp -> {
@@ -369,12 +439,36 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 false // Synchronous
             }
             is Command.PressEnterKey -> {
-                Log.d(TAG, "Pressing Enter key")
-                this.showToast("Trying to press Enter key", false)
-                this.pressEnterKey()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Pressing Enter key",
+                    toastMessage = "Trying to press Enter key"
+                ) {
+                    pressEnterKey()
+                }
             }
         }
+    }
+
+    private fun executeSyncCommandAction(
+        logMessage: String,
+        toastMessage: String,
+        action: () -> Unit
+    ): Boolean {
+        Log.d(TAG, logMessage)
+        showToast(toastMessage, false)
+        action()
+        return false
+    }
+
+    private fun executeAsyncCommandAction(
+        logMessage: String,
+        toastMessage: String,
+        action: () -> Unit
+    ): Boolean {
+        Log.d(TAG, logMessage)
+        showToast(toastMessage, false)
+        action()
+        return true
     }
 
     private fun processCommandQueue() {
@@ -409,12 +503,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private fun convertCoordinate(coordinateString: String, screenSize: Int): Float {
         return try {
-            if (coordinateString.endsWith("%")) {
-                val numericValue = coordinateString.removeSuffix("%").toFloat()
-                (numericValue / 100.0f) * screenSize
-            } else {
-                coordinateString.toFloat()
-            }
+            CoordinateParser.parse(coordinateString, screenSize)
         } catch (e: NumberFormatException) {
             Log.e(TAG, "Error converting coordinate string: '$coordinateString'", e)
             showToast("Error parsing coordinate: '$coordinateString'. Using 0f.", true)

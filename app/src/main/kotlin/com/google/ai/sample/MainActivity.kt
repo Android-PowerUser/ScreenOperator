@@ -88,6 +88,7 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.ui.theme.GenerativeAISample
+import com.google.ai.sample.util.BroadcastReceiverCompat
 import com.google.ai.sample.util.NotificationUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -425,11 +426,7 @@ class MainActivity : ComponentActivity() {
             addAction(TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE)
         }
         Log.d(TAG, "onCreate: Registering trialStatusReceiver.")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(trialStatusReceiver, intentFilter, RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(trialStatusReceiver, intentFilter)
-        }
+        BroadcastReceiverCompat.register(this, trialStatusReceiver, intentFilter)
         Log.d(TAG, "onCreate: trialStatusReceiver registered.")
 
         Log.d(TAG, "onCreate: Performing initial trial state check. Calling TrialManager.getTrialState with null time (will use local time).")
@@ -721,20 +718,12 @@ class MainActivity : ComponentActivity() {
         // Register screenshot request handler
         Log.d(TAG, "Registering screenshotRequestHandler for ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT.")
         val requestFilter = IntentFilter(ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(screenshotRequestHandler, requestFilter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(screenshotRequestHandler, requestFilter)
-        }
+        BroadcastReceiverCompat.register(this, screenshotRequestHandler, requestFilter)
 
         // Register screenshot result handler
         Log.d(TAG, "Registering screenshotResultHandler for ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED.")
         val resultFilter = IntentFilter(ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(screenshotResultHandler, resultFilter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(screenshotResultHandler, resultFilter)
-        }
+        BroadcastReceiverCompat.register(this, screenshotResultHandler, resultFilter)
 
         requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
@@ -1187,28 +1176,9 @@ class MainActivity : ComponentActivity() {
 
         stopScreenCaptureService() // Call to stop the service
 
-        // Unregister screenshot request handler (already there)
-        Log.d(TAG, "Unregistering screenshotRequestHandler.")
-        try {
-            unregisterReceiver(screenshotRequestHandler)
-        } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Screenshot request handler was not registered or already unregistered.", e)
-        }
-
-        // Unregister screenshot result handler (already there)
-        Log.d(TAG, "Unregistering screenshotResultHandler.")
-    try {
-        unregisterReceiver(screenshotResultHandler)
-    } catch (e: IllegalArgumentException) { Log.w(TAG, "Screenshot result handler was not registered or already unregistered.", e) }
-
-        // ... rest of existing onDestroy code (trialStatusReceiver, billingClient, etc.)
-        Log.d(TAG, "onDestroy: Unregistering trialStatusReceiver.")
-        try {
-            unregisterReceiver(trialStatusReceiver)
-            Log.d(TAG, "onDestroy: trialStatusReceiver unregistered successfully.")
-        } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "onDestroy: trialStatusReceiver was not registered or already unregistered.", e)
-        }
+        BroadcastReceiverCompat.unregister(this, screenshotRequestHandler, "screenshotRequestHandler", TAG)
+        BroadcastReceiverCompat.unregister(this, screenshotResultHandler, "screenshotResultHandler", TAG)
+        BroadcastReceiverCompat.unregister(this, trialStatusReceiver, "trialStatusReceiver", TAG)
 
         if (::billingClient.isInitialized && billingClient.isReady) {
             Log.d(TAG, "onDestroy: BillingClient is initialized and ready. Ending connection.")

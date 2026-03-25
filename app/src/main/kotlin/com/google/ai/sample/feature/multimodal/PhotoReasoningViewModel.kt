@@ -41,7 +41,7 @@ import com.google.ai.sample.ModelOption // Added import
 import com.google.ai.sample.GenerativeAiViewModelFactory // Added import
 import com.google.ai.sample.InferenceBackend // Added import
 import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
-import com.google.ai.sample.feature.multimodal.dtos.ImagePartDto // Required for path extraction
+import com.google.ai.sample.feature.multimodal.dtos.TempFilePathCollector
 import kotlinx.coroutines.Dispatchers
 import java.util.ArrayList // Required for StringArrayListExtra
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +68,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -107,6 +108,12 @@ class PhotoReasoningViewModel(
         val bytes = outputStream.toByteArray()
         return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
+
+    private fun mainActivityApplicationContextOrNull(): Context? =
+        MainActivity.getInstance()?.applicationContext
+
+    private fun currentApiKeyOrEmpty(provider: ApiProvider): String =
+        MainActivity.getInstance()?.getCurrentApiKey(provider) ?: ""
 
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
@@ -232,7 +239,7 @@ class PhotoReasoningViewModel(
                             accumulated.append(delta)
                             onChunk(accumulated.toString())
                         }
-                    } catch (e: Exception) {
+                    } catch (e: SerializationException) {
                         // Fehlerhafte Chunk überspringen
                     }
                 }
@@ -928,7 +935,7 @@ class PhotoReasoningViewModel(
             }
         } else {
             // Regular mode - existing code
-            val context = MainActivity.getInstance()?.applicationContext
+            val context = mainActivityApplicationContextOrNull()
             if (context == null) {
                 Log.e(TAG, "Context not available, cannot proceed with reasoning")
                 _uiState.value = PhotoReasoningUiState.Error("Application not ready")
@@ -1245,7 +1252,7 @@ private fun reasonWithMistral(
         screenInfoForPrompt: String?,
         imageUrisForChat: List<String>?
     ) {
-        val apiKey = com.google.ai.sample.MainActivity.getInstance()?.getCurrentApiKey(ApiProvider.PUTER) ?: ""
+        val apiKey = currentApiKeyOrEmpty(ApiProvider.PUTER)
         if (apiKey.isEmpty()) {
             _uiState.value = PhotoReasoningUiState.Error("Puter Authentication Token (API Key) is missing")
             return
@@ -1603,7 +1610,7 @@ private fun reasonWithMistral(
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
         Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService.")
 
-        val context = MainActivity.getInstance()?.applicationContext
+        val context = mainActivityApplicationContextOrNull()
         if (context == null) {
             Log.e(TAG, "sendMessageWithRetry: Context is null, cannot delegate AI call.")
             _uiState.value = PhotoReasoningUiState.Error("Application context not available for AI call.")
@@ -1654,54 +1661,78 @@ private fun reasonWithMistral(
             val chatHistoryJson = Json.encodeToString(chatHistoryDtos)
 
             // Collect Temporary File Paths
-            val tempFilePaths = ArrayList<String>()
-            inputContentDto.parts.forEach { partDto ->
-                if (partDto is ImagePartDto) {
-                    tempFilePaths.add(partDto.imageFilePath)
-                }
-            }
-            chatHistoryDtos.forEach { contentDto ->
-                contentDto.parts.forEach { partDto ->
-                    if (partDto is ImagePartDto) {
-                        tempFilePaths.add(partDto.imageFilePath)
-                    }
-                }
-            }
+            val tempFilePaths = TempFilePathCollector.collect(inputContentDto, chatHistoryDtos)
             Log.d(TAG, "Collected temporary file paths to send to service: $tempFilePaths")
 
-            val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
-                action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
-                putExtra(ScreenCaptureService.EXTRA_AI_INPUT_CONTENT_JSON, inputContentJson)
-                putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
-                putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
-                val mainActivity = MainActivity.getInstance()
-                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-                val apiKey = com.google.ai.sample.MainActivity.getInstance()?.getCurrentApiKey(currentModel.apiProvider) ?: ""
-                putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
-                // Add the new extra for file paths
-                putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
-                putExtra(ScreenCaptureService.EXTRA_AI_API_PROVIDER, currentModel.apiProvider.name)
-            }
+            val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+            val apiKey = currentApiKeyOrEmpty(currentModel.apiProvider)
+            val serviceIntent = createExecuteAiCallIntent(
+                context = context,
+                inputContentJson = inputContentJson,
+                chatHistoryJson = chatHistoryJson,
+                modelName = generativeModel.modelName,
+                apiKey = apiKey,
+                apiProvider = currentModel.apiProvider,
+                tempFilePaths = tempFilePaths
+            )
             context.startService(serviceIntent)
             Log.d(TAG, "sendMessageWithRetry: Sent intent to ScreenCaptureService to execute AI call.")
             // The UI state (_uiState.value = PhotoReasoningUiState.Loading) and
             // _showStopNotificationFlow.value = true should have been set by the calling method (performReasoning)
             // The receiver will handle setting them to false or success/error state.
 
-        } catch (e: Exception) {
-            Log.e(TAG, "sendMessageWithRetry: Error serializing or starting service for AI call.", e)
-            _uiState.value = PhotoReasoningUiState.Error("Error preparing AI call: ${e.localizedMessage}")
-            _showStopNotificationFlow.value = false
-            // Also update chat with this local error
-            _chatState.replaceLastPendingMessage()
-            _chatState.addMessage(
-                PhotoReasoningMessage(
-                    text = "Error preparing AI call: ${e.localizedMessage}",
-                    participant = PhotoParticipant.ERROR
-                )
+        } catch (e: SerializationException) {
+            handleLocalAiPreparationError(
+                context = context,
+                logMessage = "sendMessageWithRetry: Serialization error while preparing AI call.",
+                error = e
             )
-            _chatMessagesFlow.value = chatMessages
-            saveChatHistory(context)
+        } catch (e: IllegalStateException) {
+            handleLocalAiPreparationError(
+                context = context,
+                logMessage = "sendMessageWithRetry: State error while starting AI service call.",
+                error = e
+            )
+        }
+    }
+
+    private fun handleLocalAiPreparationError(
+        context: Context,
+        logMessage: String,
+        error: Throwable
+    ) {
+        Log.e(TAG, logMessage, error)
+        val uiMessage = "Error preparing AI call: ${error.localizedMessage}"
+        _uiState.value = PhotoReasoningUiState.Error(uiMessage)
+        _showStopNotificationFlow.value = false
+        _chatState.replaceLastPendingMessage()
+        _chatState.addMessage(
+            PhotoReasoningMessage(
+                text = uiMessage,
+                participant = PhotoParticipant.ERROR
+            )
+        )
+        _chatMessagesFlow.value = chatMessages
+        saveChatHistory(context)
+    }
+
+    private fun createExecuteAiCallIntent(
+        context: Context,
+        inputContentJson: String,
+        chatHistoryJson: String,
+        modelName: String,
+        apiKey: String,
+        apiProvider: ApiProvider,
+        tempFilePaths: ArrayList<String>
+    ): Intent {
+        return Intent(context, ScreenCaptureService::class.java).apply {
+            action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
+            putExtra(ScreenCaptureService.EXTRA_AI_INPUT_CONTENT_JSON, inputContentJson)
+            putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
+            putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, modelName)
+            putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
+            putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
+            putExtra(ScreenCaptureService.EXTRA_AI_API_PROVIDER, apiProvider.name)
         }
     }
 

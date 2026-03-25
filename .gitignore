@@ -19,10 +19,19 @@
 build/
 
 # Local configuration file (sdk path, etc)
+local.properties
 
 
 # Log Files
 *.log
+build_log*.txt
+build_errors*.txt
+build_output*.txt
+build_apk_log.txt
+compile_error.txt
+ho_build_result.txt
+inspection_output.txt
+signaling-server/node_modules/
 
 # Android Studio Navigation editor files
 .navigation/
