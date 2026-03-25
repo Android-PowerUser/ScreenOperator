@@ -247,16 +247,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Execute the command
         return when (command) {
             is Command.ClickButton -> {
-                Log.d(TAG, "Clicking button with text: ${command.buttonText}")
-                this.showToast("Trying to click button: \"${command.buttonText}\"", false)
-                this.findAndClickButtonByText(command.buttonText)
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Clicking button with text: ${command.buttonText}",
+                    toastMessage = "Trying to click button: \"${command.buttonText}\""
+                ) {
+                    findAndClickButtonByText(command.buttonText)
+                }
             }
             is Command.LongClickButton -> {
-                Log.d(TAG, "Long clicking button with text: ${command.buttonText}")
-                this.showToast("Trying to long click button: \"${command.buttonText}\"", false)
-                this.findAndLongClickButtonByText(command.buttonText)
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Long clicking button with text: ${command.buttonText}",
+                    toastMessage = "Trying to long click button: \"${command.buttonText}\""
+                ) {
+                    findAndLongClickButtonByText(command.buttonText)
+                }
             }
             is Command.TapCoordinates -> {
                 val point = resolvePoint(command.x, command.y, screenWidth, screenHeight)
@@ -415,28 +419,36 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 true // Asynchronous
             }
             is Command.OpenApp -> {
-                Log.d(TAG, "Opening app: ${command.packageName}")
-                this.showToast("Trying to open app: ${command.packageName}", false)
-                this.openApp(command.packageName)
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Opening app: ${command.packageName}",
+                    toastMessage = "Trying to open app: ${command.packageName}"
+                ) {
+                    openApp(command.packageName)
+                }
             }
             is Command.WriteText -> {
-                Log.d(TAG, "Writing text: ${command.text}")
-                this.showToast("Trying to write text: \"${command.text}\"", false)
-                this.writeText(command.text)
-                false // Synchronous for now
+                executeSyncCommandAction(
+                    logMessage = "Writing text: ${command.text}",
+                    toastMessage = "Trying to write text: \"${command.text}\""
+                ) {
+                    writeText(command.text)
+                }
             }
             is Command.UseHighReasoningModel -> {
-                Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
-                this.showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
-                GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_PRO)
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)",
+                    toastMessage = "Switching to more powerful model (gemini-2.5-pro-preview-03-25)"
+                ) {
+                    GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_PRO)
+                }
             }
             is Command.UseLowReasoningModel -> {
-                Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
-                this.showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
-                GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_FLASH_LITE)
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Switching to low reasoning model (gemini-2.0-flash-lite)",
+                    toastMessage = "Switching to faster model (gemini-2.0-flash-lite)"
+                ) {
+                    GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_FLASH_LITE)
+                }
             }
             is Command.PressEnterKey -> {
                 executeAsyncCommandAction(
