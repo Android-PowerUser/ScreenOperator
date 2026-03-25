@@ -35,6 +35,7 @@ import com.google.ai.client.generativeai.type.TextPart // For logging AI respons
 // Removed duplicate TextPart import
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
+import com.google.ai.sample.service.AiCallRequestExtras
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,6 +46,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.MissingFieldException
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -113,6 +115,35 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    private fun startForegroundCompat(notificationId: Int, notification: Notification, foregroundType: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(notificationId, notification, foregroundType)
+        } else {
+            startForeground(notificationId, notification)
+        }
+    }
+
+    private fun isHighDemandMessage(message: String?): Boolean {
+        return message?.contains("503") == true ||
+            message?.contains("overloaded") == true ||
+            message?.contains("UNAVAILABLE") == true
+    }
+
+    private fun showLongToast(message: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun broadcastScreenshotCaptured(screenshotUri: Uri) {
+        val intent = Intent(MainActivity.ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED).apply {
+            putExtra(MainActivity.EXTRA_SCREENSHOT_URI, screenshotUri.toString())
+            `package` = applicationContext.packageName
+        }
+        applicationContext.sendBroadcast(intent)
+        Log.d(TAG, "Sent broadcast ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED with URI: $screenshotUri")
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -127,11 +158,7 @@ class ScreenCaptureService : Service() {
             ACTION_KEEP_ALIVE_FOR_WEBRTC -> {
                 Log.d(TAG, "Received ACTION_KEEP_ALIVE_FOR_WEBRTC. Starting foreground to hold MediaProjection token.")
                 val notification = createNotification()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-                } else {
-                    startForeground(NOTIFICATION_ID, notification)
-                }
+                startForegroundCompat(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
                 isReady = true // Consider it ready so it doesn't try to start again
                 return START_STICKY
             }
@@ -141,11 +168,7 @@ class ScreenCaptureService : Service() {
                     return START_STICKY
                 }
                 val notification = createNotification()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-                } else {
-                    startForeground(NOTIFICATION_ID, notification)
-                }
+                startForegroundCompat(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
                 Log.d(TAG, "Service started in foreground for ACTION_START_CAPTURE.")
 
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
@@ -172,7 +195,7 @@ class ScreenCaptureService : Service() {
                     takeScreenshot()
                 } else {
                     Log.e(TAG, "Service not ready or MediaProjection not available for TAKE_SCREENSHOT. isReady=$isReady, mediaProjectionIsNull=${mediaProjection == null}")
-                    Toast.makeText(this, "Screenshot service not ready. Please re-grant permission if necessary.", Toast.LENGTH_LONG).show()
+                    showLongToast("Screenshot service not ready. Please re-grant permission if necessary.")
                     // Optionally, broadcast a failure or request MainActivity to re-initiate.
                     // If not ready, and this action is called, it implies a logic error or race condition.
                     // MainActivity should ideally prevent calling this if service isn't running/ready.
@@ -195,11 +218,7 @@ class ScreenCaptureService : Service() {
                     } else {
                         0 // Use none for older versions
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        startForeground(NOTIFICATION_ID_AI, aiNotification, foregroundType)
-                    } else {
-                        startForeground(NOTIFICATION_ID_AI, aiNotification)
-                    }
+                    startForegroundCompat(NOTIFICATION_ID_AI, aiNotification, foregroundType)
                     Log.d(TAG, "Started foreground with type ${foregroundType} for AI processing (since not ready).")
                     startedForegroundForAi = true
                 } else {
@@ -209,13 +228,13 @@ class ScreenCaptureService : Service() {
                 Log.d(TAG, "Received ACTION_EXECUTE_AI_CALL")
                 // This service, already a Foreground Service for MediaProjection,
                 // is now also responsible for executing AI calls to leverage foreground network priority.
-                val inputContentJson = intent.getStringExtra(EXTRA_AI_INPUT_CONTENT_JSON)
-                val chatHistoryJson = intent.getStringExtra(EXTRA_AI_CHAT_HISTORY_JSON)
-                val modelName = intent.getStringExtra(EXTRA_AI_MODEL_NAME)
-                val apiKey = intent.getStringExtra(EXTRA_AI_API_KEY)
-                val apiProviderString = intent.getStringExtra(EXTRA_AI_API_PROVIDER)
-                val apiProvider = ApiProvider.valueOf(apiProviderString ?: ApiProvider.GOOGLE.name)
-                val tempFilePaths = intent.getStringArrayListExtra(EXTRA_TEMP_FILE_PATHS) ?: ArrayList()
+                val extras = AiCallRequestExtras.fromIntent(intent)
+                val inputContentJson = extras.inputContentJson
+                val chatHistoryJson = extras.chatHistoryJson
+                val modelName = extras.modelName
+                val apiKey = extras.apiKey
+                val apiProvider = extras.apiProvider
+                val tempFilePaths = extras.tempFilePaths
                 Log.d(TAG, "Received tempFilePaths for cleanup: $tempFilePaths")
 
                 if (inputContentJson == null || chatHistoryJson == null || modelName == null || apiKey == null) {
@@ -312,9 +331,7 @@ class ScreenCaptureService : Service() {
                             // Point 15: Check for missing 'parts' field (Gemma 27B issue)
                             if (e.message?.contains("parts") == true) {
                                 errorMessage = "The model returned an incomplete response. This can happen with larger models. Please try again."
-                            } else if (e.message?.contains("UNAVAILABLE") == true ||
-                                e.message?.contains("503") == true ||
-                                e.message?.contains("overloaded") == true) {
+                            } else if (isHighDemandMessage(e.message)) {
                                 // Point 14: User-friendly high-demand message
                                 errorMessage = "This model is currently experiencing high demand. Please try again later."
                             } else {
@@ -323,9 +340,7 @@ class ScreenCaptureService : Service() {
                         } catch (e: Exception) {
                             Log.e(TAG, "Direct error in AI call", e)
                             // Point 14: Check for high-demand 503 patterns
-                            if (e.message?.contains("503") == true ||
-                                e.message?.contains("overloaded") == true ||
-                                e.message?.contains("UNAVAILABLE") == true) {
+                            if (isHighDemandMessage(e.message)) {
                                 errorMessage = "This model is currently experiencing high demand. Please try again later."
                             } else {
                                 errorMessage = e.localizedMessage ?: "AI call failed"
@@ -338,17 +353,12 @@ class ScreenCaptureService : Service() {
 
                         // Check if this is a 503-related error
                         if (e is MissingFieldException &&
-                            (e.message?.contains("GRpcError") == true ||
-                            e.message?.contains("UNAVAILABLE") == true ||
-                            e.message?.contains("503") == true ||
-                            e.message?.contains("overloaded") == true)) {
+                            (e.message?.contains("GRpcError") == true || isHighDemandMessage(e.message))) {
                             errorMessage = "This model is currently experiencing high demand. Please try again later."
                         } else if (e is MissingFieldException && e.message?.contains("parts") == true) {
                             // Point 15: Gemma 27B incomplete response
                             errorMessage = "The model returned an incomplete response. This can happen with larger models. Please try again."
-                        } else if (e.message?.contains("503") == true ||
-                                e.message?.contains("overloaded") == true ||
-                                e.message?.contains("UNAVAILABLE") == true) {
+                        } else if (isHighDemandMessage(e.message)) {
                             errorMessage = "This model is currently experiencing high demand. Please try again later."
                         } else {
                             errorMessage = e.localizedMessage ?: "Unknown error"
@@ -575,7 +585,7 @@ class ScreenCaptureService : Service() {
                             } else {
                                 Log.w(TAG, "acquireLatestImage returned null despite requested flag.")
                             }
-                        } catch (e: Exception) {
+                        } catch (e: IllegalStateException) {
                             Log.e(TAG, "Error processing image in listener", e)
                         } finally {
                             image?.close()
@@ -588,7 +598,7 @@ class ScreenCaptureService : Service() {
                         var imageToDiscard: android.media.Image? = null
                         try {
                             imageToDiscard = reader.acquireLatestImage()
-                        } catch (e: Exception) {
+                        } catch (e: IllegalStateException) {
                             // This catch is important because acquireLatestImage can fail if buffers are truly messed up
                             Log.e(TAG, "Error acquiring image to discard in OnImageAvailableListener else block", e)
                         } finally {
@@ -624,7 +634,7 @@ class ScreenCaptureService : Service() {
                 // The listener is already set up and will handle the new image
             }
 
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             Log.e(TAG, "Error in takeScreenshot setup", e)
             virtualDisplay?.release()
             virtualDisplay = null
@@ -677,27 +687,20 @@ class ScreenCaptureService : Service() {
 
             Log.i(TAG, "Screenshot saved to: ${file.absolutePath}")
 
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(
-                    applicationContext,
-                    "Screenshot saved to: Android/data/com.google.ai.sample/files/Pictures/Screenshots/",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            showLongToast("Screenshot saved to: Android/data/com.google.ai.sample/files/Pictures/Screenshots/")
 
             val screenshotUri = Uri.fromFile(file)
-            val intent = Intent(MainActivity.ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED).apply {
-                putExtra(MainActivity.EXTRA_SCREENSHOT_URI, screenshotUri.toString())
-                `package` = applicationContext.packageName
-            }
-            applicationContext.sendBroadcast(intent)
-            Log.d(TAG, "Sent broadcast ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED with URI: $screenshotUri")
+            broadcastScreenshotCaptured(screenshotUri)
 
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to save screenshot (I/O)", e)
+            showLongToast("Failed to save screenshot: ${e.message}")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Failed to save screenshot (security)", e)
+            showLongToast("Failed to save screenshot: ${e.message}")
+        } catch (e: IllegalStateException) {
             Log.e(TAG, "Failed to save screenshot", e)
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(applicationContext, "Failed to save screenshot: ${e.message}", Toast.LENGTH_LONG).show()
-            }
+            showLongToast("Failed to save screenshot: ${e.message}")
         }
     }
 
@@ -713,7 +716,7 @@ class ScreenCaptureService : Service() {
             mediaProjection?.unregisterCallback(mediaProjectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             Log.e(TAG, "Error during full cleanup", e)
         } finally {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -833,7 +836,7 @@ private suspend fun callVercelApi(
                         }
                         androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
                     }
-                } catch (e: Exception) {
+                } catch (e: SerializationException) {
                     // Skip malformed chunks
                 }
             }
@@ -967,9 +970,15 @@ private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistor
                 }
             }
         }
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        errorMessage = e.localizedMessage ?: "Mistral API network call failed"
+        Log.e("ScreenCaptureService", "Mistral API network failure", e)
+    } catch (e: SerializationException) {
+        errorMessage = e.localizedMessage ?: "Mistral API response parse failed"
+        Log.e("ScreenCaptureService", "Mistral API parse failure", e)
+    } catch (e: IllegalStateException) {
         errorMessage = e.localizedMessage ?: "Mistral API call failed"
-        Log.e("ScreenCaptureService", "Mistral API failure", e)
+        Log.e("ScreenCaptureService", "Mistral API state failure", e)
     }
 
     return Pair(responseText, errorMessage)
@@ -1016,9 +1025,12 @@ private suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory:
 
         responseText = com.google.ai.sample.network.PuterApiClient.call(apiKey, requestBody)
         
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        errorMessage = e.localizedMessage ?: "Puter API network call failed"
+        Log.e("ScreenCaptureService", "Puter API network failure", e)
+    } catch (e: IllegalStateException) {
         errorMessage = e.localizedMessage ?: "Puter API call failed"
-        Log.e("ScreenCaptureService", "Puter API failure", e)
+        Log.e("ScreenCaptureService", "Puter API state failure", e)
     }
 
     return Pair(responseText, errorMessage)
