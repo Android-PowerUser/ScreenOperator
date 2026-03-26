@@ -11,9 +11,7 @@ import java.io.FileOutputStream
 
 object ImageUtils {
 
-    fun bitmapToBase64(bitmap: Bitmap, quality: Int = 80): String {
-        // Ensure quality is within a reasonable range (0-100)
-        val safeQuality = quality.coerceIn(0, 100)
+    fun bitmapToBase64(bitmap: Bitmap, @Suppress("UNUSED_PARAMETER") quality: Int = 80): String {
         val outputStream = ByteArrayOutputStream()
         // Compress format can be PNG for lossless (but larger) or JPEG for lossy (smaller)
         // PNG is generally safer for AI models if exact pixel data matters.
@@ -82,14 +80,14 @@ object ImageUtils {
                 } else {
                     Log.w("ImageUtils", "Failed to delete file: $filePath")
                 }
-                return deleted
+                deleted
             } else {
                 Log.w("ImageUtils", "File not found for deletion: $filePath")
-                return false // Or true if "not existing" means "successfully not there"
+                false // Or true if "not existing" means "successfully not there"
             }
         } catch (e: Exception) {
             Log.e("ImageUtils", "Error deleting file: $filePath", e)
-            return false
+            false
         }
     }
 }

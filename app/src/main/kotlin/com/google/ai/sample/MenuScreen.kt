@@ -485,14 +485,14 @@ fun MenuScreen(
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
-                                        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+                                        val activeModel = GenerativeAiViewModelFactory.getCurrentModel()
                                         // Check API Key for online models
-                                        if (currentModel.apiProvider != ApiProvider.GOOGLE || !currentModel.modelName.contains("litert")) { // Simple check, refine if needed. Actually offline model has specific Enum
-                                             if (currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
-                                                 val apiKey = mainActivity?.getCurrentApiKey(currentModel.apiProvider)
+                                        if (activeModel.apiProvider != ApiProvider.GOOGLE || !activeModel.modelName.contains("litert")) { // Simple check, refine if needed. Actually offline model has specific Enum
+                                             if (activeModel != ModelOption.GEMMA_3N_E4B_IT && activeModel != ModelOption.HUMAN_EXPERT) {
+                                                 val apiKey = mainActivity?.getCurrentApiKey(activeModel.apiProvider)
                                                  if (apiKey.isNullOrEmpty()) {
                                                      // Show API Key Dialog
-                                                     onApiKeyButtonClicked(currentModel.apiProvider) // Or a specific callback to show dialog
+                                                     onApiKeyButtonClicked(activeModel.apiProvider) // Or a specific callback to show dialog
                                                      return@TextButton
                                                  }
                                              }
@@ -675,7 +675,6 @@ fun MenuScreen(
     }
 
     if (showDownloadDialog && downloadDialogModel != null) {
-        val context = LocalContext.current
         val statFs = StatFs(Environment.getExternalStorageDirectory().path)
         val bytesAvailable = statFs.availableBlocksLong * statFs.blockSizeLong
         val gbAvailable = bytesAvailable.toDouble() / (1024 * 1024 * 1024)

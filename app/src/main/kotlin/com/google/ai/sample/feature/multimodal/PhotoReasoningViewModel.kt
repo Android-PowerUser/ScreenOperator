@@ -68,6 +68,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -519,11 +520,9 @@ class PhotoReasoningViewModel(
         if (_systemMessage.value.isNotBlank()) {
             history.add(content(role = "user") { text(_systemMessage.value) })
         }
-        ctx?.let {
-            val formattedDbEntries = formatDatabaseEntriesAsText(it)
-            if (formattedDbEntries.isNotBlank()) {
-                history.add(content(role = "user") { text(formattedDbEntries) })
-            }
+        val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
+        if (formattedDbEntries.isNotBlank()) {
+            history.add(content(role = "user") { text(formattedDbEntries) })
         }
         return generativeModel.startChat(history = history)
     }
@@ -988,7 +987,7 @@ class PhotoReasoningViewModel(
 
     private fun reasonWithCerebras(
         userInput: String,
-        selectedImages: List<Bitmap>,
+        @Suppress("UNUSED_PARAMETER") selectedImages: List<Bitmap>,
         screenInfoForPrompt: String? = null
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
@@ -1651,7 +1650,7 @@ private fun reasonWithMistral(
     // This method now delegates the AI call to ScreenCaptureService
     // to ensure it runs with foreground priority and avoids background network restrictions.
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
-        Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService.")
+        Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService (retryCount=$retryCount).")
 
         val context = mainActivityApplicationContextOrNull()
         if (context == null) {
@@ -1869,7 +1868,7 @@ private fun reasonWithMistral(
                     // Kein weiterer startForegroundService()-Aufruf nötig - verhindert ForegroundServiceDidNotStartInTimeException.
                     val mainActivity = MainActivity.getInstance()
                     if (mainActivity != null) {
-                        mainActivity.requestMediaProjectionForWebRTC { resultCode, resultData ->
+                        mainActivity.requestMediaProjectionForWebRTC { _, resultData ->
                             Log.d(TAG, "WebRTC MediaProjection granted. Service läuft bereits via KEEP_ALIVE. Starte Screen Capture.")
                             replaceAiMessageText("Establishing video connection...", isPending = true)
                             
@@ -2302,6 +2301,7 @@ data class MistralMessage(
 )
 
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 @JsonClassDiscriminator("type")
 sealed class MistralContent
 

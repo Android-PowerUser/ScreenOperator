@@ -38,8 +38,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.foundation.BorderStroke
@@ -52,13 +52,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -159,7 +159,6 @@ internal fun PhotoReasoningRoute(
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
-    val chatMessages by viewModel.chatMessagesFlow.collectAsState()
     val isInitialized by viewModel.isInitialized.collectAsState()
     val modelName by viewModel.modelNameState.collectAsState()
     val userInput by viewModel.userInput.collectAsState()
@@ -226,7 +225,6 @@ internal fun PhotoReasoningRoute(
         isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
         isMediaProjectionPermissionGranted = isMediaProjectionPermissionGranted,
         onEnableAccessibilityService = {
-            val intent = Settings.ACTION_ACCESSIBILITY_SETTINGS
             try {
                 // val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) // Corrected
                 // accessibilitySettingsLauncher.launch(intent) // Corrected below
@@ -481,7 +479,12 @@ fun PhotoReasoningScreen(
                                         else -> command::class.simpleName ?: "Unknown Command"
                                     }
                                     Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
+                                    if (index < detectedCommands.size - 1) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 4.dp),
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -555,7 +558,7 @@ fun PhotoReasoningScreen(
                             modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
                         ) {
                             Icon(
-                                Icons.Default.Send,
+                                Icons.AutoMirrored.Filled.Send,
                                 stringResource(R.string.action_go),
                                 tint = if (isInitialized && userQuestion.isNotBlank())
                                     MaterialTheme.colorScheme.primary else Color.Gray,
@@ -784,14 +787,19 @@ fun DatabaseListPopup(
                             )
                         }
                     } ?: Log.w(TAG_IMPORT_PROCESS, "ContentResolver.openInputStream returned null for URI: $uri (second check).")
+                } catch (oom: OutOfMemoryError) {
+                    Log.e(TAG_IMPORT_PROCESS, "Out of memory during file import for URI: $uri on thread: ${Thread.currentThread().name}", oom)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            "Error importing file: Out of memory. File may be too large or contain too many entries." as CharSequence,
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG_IMPORT_PROCESS, "Error during file import for URI: $uri on thread: ${Thread.currentThread().name}", e)
                     withContext(Dispatchers.Main) {
-                        val errorMessage = if (e is OutOfMemoryError) {
-                            "Out of memory. File may be too large or contain too many entries."
-                        } else {
-                            e.message ?: "Unknown error during import."
-                        }
+                        val errorMessage = e.message ?: "Unknown error during import."
                         Toast.makeText(context, "Error importing file: $errorMessage" as CharSequence, Toast.LENGTH_LONG).show()
                     }
                 }
@@ -1016,7 +1024,7 @@ fun OverwriteConfirmationDialog(
     entryTitle: String,
     onConfirm: () -> Unit,
     onDeny: () -> Unit,
-    onSkipAll: () -> Unit, 
+    onSkipAll: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1027,7 +1035,10 @@ fun OverwriteConfirmationDialog(
             TextButton(onClick = onConfirm) { Text("Yes") }
         },
         dismissButton = {
-            TextButton(onClick = onDeny) { Text("No") }
+            Row {
+                TextButton(onClick = onSkipAll) { Text("Skip All") }
+                TextButton(onClick = onDeny) { Text("No") }
+            }
         }
     )
 }

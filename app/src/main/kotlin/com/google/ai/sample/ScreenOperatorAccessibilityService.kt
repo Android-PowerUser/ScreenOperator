@@ -208,7 +208,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         info.notificationTimeout = 100
         info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
                 AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         
         // Apply the configuration
@@ -567,31 +566,29 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         // Process accessibility events
-        event?.let {
-            when (it.eventType) {
-                AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                    Log.d(TAG, "Accessibility event: View clicked")
-                }
-                AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
-                    Log.d(TAG, "Accessibility event: View focused")
-                }
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                    Log.d(TAG, "Accessibility event: Window state changed")
-                }
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                    Log.d(TAG, "Accessibility event: Window content changed")
-                }
-                else -> {
-                    // Handle all other event types
-                    Log.d(TAG, "Accessibility event: Other event type: ${it.eventType}")
-                }
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                Log.d(TAG, "Accessibility event: View clicked")
             }
-            
-            // Refresh the root node when window state or content changes
-            if (it.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                it.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-                refreshRootNode()
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                Log.d(TAG, "Accessibility event: View focused")
             }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                Log.d(TAG, "Accessibility event: Window state changed")
+            }
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                Log.d(TAG, "Accessibility event: Window content changed")
+            }
+            else -> {
+                // Handle all other event types
+                Log.d(TAG, "Accessibility event: Other event type: ${event.eventType}")
+            }
+        }
+
+        // Refresh the root node when window state or content changes
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            refreshRootNode()
         }
     }
     
@@ -875,7 +872,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val centerX = rect.centerX()
             val centerY = rect.centerY()
             
-            Log.d(TAG, "Trying to tap at the center of the button: ($centerX, $centerY)")
+            Log.d(TAG, "Trying alternative tap for button \"$buttonText\" at center: ($centerX, $centerY)")
             showToast("Trying to tap coordinates: ($centerX, $centerY)", false)
             
             // Tap at the center of the button
@@ -1709,7 +1706,9 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     .replace("_", " ")
                     .replace(Regex("([a-z])([A-Z])"), "$1 $2")
                     .lowercase(Locale.getDefault())
-                    .capitalize(Locale.getDefault())
+                    .replaceFirstChar { char ->
+                        if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
+                    }
                 
                 // If it contains common button names like "new", "add", etc., return it
                 val commonButtonNames = listOf("new", "add", "edit", "delete", "save", "cancel", "ok", "send")

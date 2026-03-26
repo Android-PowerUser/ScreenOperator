@@ -42,6 +42,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.MissingFieldException
@@ -569,15 +570,10 @@ class ScreenCaptureService : Service() {
                 val displayMetrics = DisplayMetrics()
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val defaultDisplay = windowManager.defaultDisplay
-                    if (defaultDisplay != null) {
-                        defaultDisplay.getRealMetrics(displayMetrics)
-                    } else {
-                        val bounds = windowManager.currentWindowMetrics.bounds
-                        displayMetrics.widthPixels = bounds.width()
-                        displayMetrics.heightPixels = bounds.height()
-                        displayMetrics.densityDpi = resources.displayMetrics.densityDpi
-                    }
+                    val bounds = windowManager.currentWindowMetrics.bounds
+                    displayMetrics.widthPixels = bounds.width()
+                    displayMetrics.heightPixels = bounds.height()
+                    displayMetrics.densityDpi = resources.displayMetrics.densityDpi
                 } else {
                     @Suppress("DEPRECATION")
                     windowManager.defaultDisplay.getMetrics(displayMetrics)
@@ -876,6 +872,7 @@ data class ServiceMistralMessage(
 )
 
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 @JsonClassDiscriminator("type")
 sealed class ServiceMistralContent
 

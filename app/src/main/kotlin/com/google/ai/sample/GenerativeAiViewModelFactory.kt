@@ -59,7 +59,7 @@ enum class ModelOption(
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(
-        viewModelClass: Class<T>,
+        modelClass: Class<T>,
         extras: CreationExtras
     ): T {
         // Get the application context from extras
@@ -86,7 +86,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
             throw IllegalStateException("API key for ${currentModel.apiProvider} is not available. Please set an API key.")
         }
 
-        return with(viewModelClass) {
+        val createdViewModel = with(modelClass) {
             when {
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
                     if (currentModel.modelName.contains("live")) {
@@ -128,9 +128,11 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                 }
 
                 else ->
-                    throw IllegalArgumentException("Unknown ViewModel class: ${viewModelClass.name}")
+                    throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
             }
-        } as T
+        }
+
+        return modelClass.cast(createdViewModel)
     }
 }
 
