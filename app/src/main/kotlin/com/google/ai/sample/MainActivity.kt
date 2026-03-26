@@ -84,6 +84,7 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.android.billingclient.api.PendingPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.GenerativeAiViewModelFactory
@@ -840,7 +841,11 @@ class MainActivity : ComponentActivity() {
 
         billingClient = BillingClient.newBuilder(this)
             .setListener(purchasesUpdatedListener)
-            .enablePendingPurchases()
+            .enablePendingPurchases(
+                PendingPurchasesParams.newBuilder()
+                    .enableOneTimeProducts()
+                    .build()
+            )
             .build()
         Log.d(TAG, "setupBillingClient: BillingClient built. Starting connection.")
 
@@ -1308,7 +1313,7 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
 @Composable
 fun TrialExpiredDialog(
     onPurchaseClick: () -> Unit,
-    onDismiss: () -> Unit 
+    @Suppress("UNUSED_PARAMETER") onDismiss: () -> Unit
 ) {
     Log.d("TrialExpiredDialog", "Composing TrialExpiredDialog")
     Dialog(onDismissRequest = {
