@@ -1,6 +1,6 @@
 package com.google.ai.sample
 
-import android.app.Activity // Make sure this import is present
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,7 +15,7 @@ import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.net.Uri // Added for broadcasting URI
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -27,12 +27,11 @@ import android.view.WindowManager
 import android.widget.Toast
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
-import com.google.ai.client.generativeai.type.ImagePart // For instance check
-import com.google.ai.client.generativeai.type.FunctionCallPart // For logging AI response
-import com.google.ai.client.generativeai.type.FunctionResponsePart // For logging AI response
-import com.google.ai.client.generativeai.type.BlobPart // For logging AI response
-import com.google.ai.client.generativeai.type.TextPart // For logging AI response
-// Removed duplicate TextPart import
+import com.google.ai.client.generativeai.type.ImagePart
+import com.google.ai.client.generativeai.type.FunctionCallPart
+import com.google.ai.client.generativeai.type.FunctionResponsePart
+import com.google.ai.client.generativeai.type.BlobPart
+import com.google.ai.client.generativeai.type.TextPart
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
 import com.google.ai.sample.service.AiCallRequestExtras
@@ -73,7 +72,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_START_CAPTURE = "com.google.ai.sample.START_CAPTURE"
         const val ACTION_TAKE_SCREENSHOT = "com.google.ai.sample.TAKE_SCREENSHOT" // New action
         const val ACTION_STOP_CAPTURE = "com.google.ai.sample.STOP_CAPTURE"   // New action
-        const val ACTION_KEEP_ALIVE_FOR_WEBRTC = "com.google.ai.sample.KEEP_ALIVE_FOR_WEBRTC" // Added for Task 4
+        const val ACTION_KEEP_ALIVE_FOR_WEBRTC = "com.google.ai.sample.KEEP_ALIVE_FOR_WEBRTC"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TAKE_SCREENSHOT_ON_START = "take_screenshot_on_start"

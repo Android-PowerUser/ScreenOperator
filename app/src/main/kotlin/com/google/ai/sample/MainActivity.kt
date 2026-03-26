@@ -117,7 +117,6 @@ class MainActivity : ComponentActivity() {
     private var showTrialInfoDialog by mutableStateOf(false)
     private var trialInfoMessage by mutableStateOf("")
 
-    // private var showPermissionRationaleDialog by mutableStateOf(false) // Deleted
     private var permissionRequestCount by mutableStateOf(0)
 
     // MediaProjection
@@ -132,7 +131,7 @@ class MainActivity : ComponentActivity() {
     private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
     private var onWebRtcMediaProjectionResult: ((Int, Intent) -> Unit)? = null
 
-    // Payment Dialog State (Task 6)
+    // Payment dialog state
     private var showPaymentMethodDialog by mutableStateOf(false)
     private var showPayPalWebViewDialog by mutableStateOf(false)
     private var paypalSubscriptionId by mutableStateOf("")
@@ -140,18 +139,7 @@ class MainActivity : ComponentActivity() {
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT) {
-                Log.d(TAG, "Received request for screenshot via broadcast.")
-                currentScreenInfoForScreenshot = intent.getStringExtra(EXTRA_SCREEN_INFO)
-                Log.d(TAG, "Stored screenInfo for upcoming screenshot.")
-
-                if (ScreenCaptureService.isRunning()) {
-                    Log.d(TAG, "ScreenCaptureService is running. Calling takeAdditionalScreenshot().")
-                    this@MainActivity.takeAdditionalScreenshot()
-                } else {
-                    Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
-                    this@MainActivity.isProcessingExplicitScreenshotRequest = true
-                    this@MainActivity.requestMediaProjectionPermission()
-                }
+                handleScreenshotRequest(intent)
             }
         }
     }
@@ -159,21 +147,7 @@ class MainActivity : ComponentActivity() {
     private val screenshotResultHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED) {
-                val screenshotUriString = intent.getStringExtra(EXTRA_SCREENSHOT_URI)
-                if (screenshotUriString != null) {
-                    val screenshotUri = Uri.parse(screenshotUriString)
-                    Log.d(TAG, "Received screenshot captured broadcast. URI: $screenshotUri")
-                    Log.d(TAG, "Using screenInfo: ${currentScreenInfoForScreenshot?.substring(0, minOf(100, currentScreenInfoForScreenshot?.length ?: 0))}...")
-
-                    photoReasoningViewModel?.addScreenshotToConversation(
-                        screenshotUri,
-                        this@MainActivity, // or applicationContext
-                        currentScreenInfoForScreenshot
-                    )
-                    currentScreenInfoForScreenshot = null // Clear after use
-                } else {
-                    Log.e(TAG, "Screenshot URI was null in broadcast.")
-                }
+                handleScreenshotResult(intent)
             }
         }
     }
@@ -181,7 +155,6 @@ class MainActivity : ComponentActivity() {
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var requestForegroundServicePermissionLauncher: ActivityResultLauncher<String>
-    // private val requestPermissionLauncher = registerForActivityResult(...) // Deleted
 
     fun requestMediaProjectionPermission(onGranted: (() -> Unit)? = null) {
         Log.d(TAG, "Requesting MediaProjection permission")
@@ -195,8 +168,7 @@ class MainActivity : ComponentActivity() {
 
         // Ensure mediaProjectionManager is initialized before using it.
         // This should be guaranteed by its placement in onCreate.
-        if (!::mediaProjectionManager.isInitialized) {
-            Log.e(TAG, "requestMediaProjectionPermission: mediaProjectionManager not initialized!")
+        if (!isMediaProjectionManagerInitialized("requestMediaProjectionPermission")) {
             return
         }
         val intent = mediaProjectionManager.createScreenCaptureIntent()
@@ -211,12 +183,211 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Requesting MediaProjection permission for WebRTC")
         onWebRtcMediaProjectionResult = onResult
 
-        if (!::mediaProjectionManager.isInitialized) {
-            Log.e(TAG, "requestMediaProjectionForWebRTC: mediaProjectionManager not initialized!")
+        if (!isMediaProjectionManagerInitialized("requestMediaProjectionForWebRTC")) {
             return
         }
         val intent = mediaProjectionManager.createScreenCaptureIntent()
         webRtcMediaProjectionLauncher.launch(intent)
+    }
+
+    private fun initializeMediaProjection() {
+        Log.d(TAG, "onCreate: Initializing MediaProjectionManager")
+        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+        Log.d(TAG, "onCreate: Initializing MediaProjection launcher")
+        mediaProjectionLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            handleMediaProjectionResult(result.resultCode, result.data)
+        }
+
+        webRtcMediaProjectionLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            handleWebRtcMediaProjectionResult(result.resultCode, result.data)
+        }
+    }
+
+    private fun handleMediaProjectionResult(resultCode: Int, resultData: Intent?) {
+        if (resultCode == Activity.RESULT_OK && resultData != null) {
+            val shouldTakeScreenshotOnThisStart = isProcessingExplicitScreenshotRequest
+            Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
+
+            photoReasoningViewModel?.onMediaProjectionPermissionGranted(resultCode, resultData)
+
+            val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                action = ScreenCaptureService.ACTION_START_CAPTURE
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
+                putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, shouldTakeScreenshotOnThisStart)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) == PackageManager.PERMISSION_GRANTED) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+                } else {
+                    requestForegroundServicePermissionLauncher.launch(android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
+                }
+            } else {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+            }
+
+            if (isProcessingExplicitScreenshotRequest) {
+                Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after successful explicit grant.")
+                isProcessingExplicitScreenshotRequest = false
+            }
+            _isMediaProjectionPermissionGranted.value = true
+            onMediaProjectionPermissionGranted?.invoke()
+            onMediaProjectionPermissionGranted = null
+        } else {
+            Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
+            Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+            if (isProcessingExplicitScreenshotRequest) {
+                Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after explicit denial.")
+                isProcessingExplicitScreenshotRequest = false
+            }
+            _isMediaProjectionPermissionGranted.value = false
+        }
+    }
+
+    private fun handleWebRtcMediaProjectionResult(resultCode: Int, resultData: Intent?) {
+        if (resultCode == Activity.RESULT_OK && resultData != null) {
+            Log.i(TAG, "WebRTC MediaProjection permission granted. Starting keep-alive service.")
+
+            val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                action = ScreenCaptureService.ACTION_KEEP_ALIVE_FOR_WEBRTC
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+
+            onWebRtcMediaProjectionResult?.invoke(resultCode, resultData)
+            onWebRtcMediaProjectionResult = null
+        } else {
+            Log.w(TAG, "WebRTC MediaProjection permission denied.")
+            Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+            onWebRtcMediaProjectionResult = null
+        }
+    }
+
+    private fun setupKeyboardVisibilityListener() {
+        val rootView = findViewById<View>(android.R.id.content)
+        onGlobalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
+            val rect = Rect()
+            rootView.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = rootView.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+            if (keypadHeight > screenHeight * 0.15) {
+                if (!_isKeyboardOpen.value) {
+                    _isKeyboardOpen.value = true
+                    Log.d(TAG, "Keyboard visible")
+                }
+            } else if (_isKeyboardOpen.value) {
+                _isKeyboardOpen.value = false
+                Log.d(TAG, "Keyboard hidden")
+            }
+        }
+        rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
+    }
+
+    private fun registerScreenshotReceivers() {
+        Log.d(TAG, "Registering screenshotRequestHandler for ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT.")
+        val requestFilter = IntentFilter(ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT)
+        BroadcastReceiverCompat.register(this, screenshotRequestHandler, requestFilter)
+
+        Log.d(TAG, "Registering screenshotResultHandler for ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED.")
+        val resultFilter = IntentFilter(ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED)
+        BroadcastReceiverCompat.register(this, screenshotResultHandler, resultFilter)
+    }
+
+    private fun registerPermissionLaunchers() {
+        requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Notification permission denied. Stop via notification will not be available.", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        requestForegroundServicePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                Toast.makeText(this, "Foreground service permission granted.", Toast.LENGTH_SHORT).show()
+                val intent = mediaProjectionManager.createScreenCaptureIntent()
+                mediaProjectionLauncher.launch(intent)
+            } else {
+                Toast.makeText(this, "Foreground service permission denied. The app may not function correctly.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun observeStopNotificationFlow() {
+        val viewModel = photoReasoningViewModel
+        if (viewModel != null) {
+            lifecycleScope.launch {
+                viewModel.showStopNotificationFlow.collect { show ->
+                    Log.d(TAG, "showStopNotificationFlow collected value: $show")
+                    if (show) {
+                        Log.d(TAG, "Calling showStopOperationNotification()")
+                        showStopOperationNotification()
+                    } else {
+                        Log.d(TAG, "Calling cancelStopOperationNotification()")
+                        cancelStopOperationNotification()
+                    }
+                }
+            }
+        } else {
+            Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
+        }
+    }
+
+    private fun handleScreenshotRequest(intent: Intent) {
+        Log.d(TAG, "Received request for screenshot via broadcast.")
+        currentScreenInfoForScreenshot = intent.getStringExtra(EXTRA_SCREEN_INFO)
+        Log.d(TAG, "Stored screenInfo for upcoming screenshot.")
+
+        if (ScreenCaptureService.isRunning()) {
+            Log.d(TAG, "ScreenCaptureService is running. Calling takeAdditionalScreenshot().")
+            takeAdditionalScreenshot()
+        } else {
+            Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
+            isProcessingExplicitScreenshotRequest = true
+            requestMediaProjectionPermission()
+        }
+    }
+
+    private fun handleScreenshotResult(intent: Intent) {
+        val screenshotUriString = intent.getStringExtra(EXTRA_SCREENSHOT_URI)
+        if (screenshotUriString != null) {
+            val screenshotUri = Uri.parse(screenshotUriString)
+            Log.d(TAG, "Received screenshot captured broadcast. URI: $screenshotUri")
+            Log.d(TAG, "Using screenInfo: ${currentScreenInfoForScreenshot?.substring(0, minOf(100, currentScreenInfoForScreenshot?.length ?: 0))}...")
+
+            photoReasoningViewModel?.addScreenshotToConversation(
+                screenshotUri,
+                this,
+                currentScreenInfoForScreenshot
+            )
+            currentScreenInfoForScreenshot = null
+        } else {
+            Log.e(TAG, "Screenshot URI was null in broadcast.")
+        }
+    }
+
+    private fun isMediaProjectionManagerInitialized(caller: String): Boolean {
+        if (!::mediaProjectionManager.isInitialized) {
+            Log.e(TAG, "$caller: mediaProjectionManager not initialized!")
+            return false
+        }
+        return true
     }
 
     fun takeAdditionalScreenshot() {
@@ -253,15 +424,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // START: Added for Accessibility Service Status
     private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
     val isAccessibilityServiceEnabledFlow: StateFlow<Boolean> = _isAccessibilityServiceEnabled.asStateFlow()
-    // END: Added for Accessibility Service Status
 
-    // START: Added for MediaProjection Permission Status
     private val _isMediaProjectionPermissionGranted = MutableStateFlow(false)
     val isMediaProjectionPermissionGrantedFlow: StateFlow<Boolean> = _isMediaProjectionPermissionGranted.asStateFlow()
-    // END: Added for MediaProjection Permission Status
 
     // SharedPreferences for first launch info
     private lateinit var prefs: SharedPreferences
@@ -393,7 +560,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // private val requiredPermissions = ... // Deleted
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
@@ -408,8 +574,6 @@ class MainActivity : ComponentActivity() {
         // API key dialog logic removed from onCreate as requested.
         // It will be triggered when needed (e.g., when the user tries to use an online model).
 
-        // Log.d(TAG, "onCreate: Calling checkAndRequestPermissions.") // Deleted
-        // checkAndRequestPermissions() // Deleted
         Log.d(TAG, "onCreate: Calling setupBillingClient.")
         setupBillingClient()
 
@@ -453,112 +617,9 @@ class MainActivity : ComponentActivity() {
         // Initial check for accessibility service status
         refreshAccessibilityServiceStatus()
 
-            // MediaProjection Initialisierung hier einfügen:
-            // Initialize MediaProjectionManager
-            Log.d(TAG, "onCreate: Initializing MediaProjectionManager")
-            mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        initializeMediaProjection()
 
-            // Initialize MediaProjection launcher
-            Log.d(TAG, "onCreate: Initializing MediaProjection launcher")
-            mediaProjectionLauncher = registerForActivityResult(
-                ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-                if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                    val shouldTakeScreenshotOnThisStart = this@MainActivity.isProcessingExplicitScreenshotRequest
-                    Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
-                    
-                    // Notify ViewModel about the permission grant (for Human Expert WebRTC)
-                    photoReasoningViewModel?.onMediaProjectionPermissionGranted(result.resultCode, result.data!!)
-
-                    val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                        action = ScreenCaptureService.ACTION_START_CAPTURE
-                        putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                        putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
-                        putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, shouldTakeScreenshotOnThisStart)
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) == PackageManager.PERMISSION_GRANTED) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                startForegroundService(serviceIntent)
-                            } else {
-                                startService(serviceIntent)
-                            }
-                        } else {
-                            requestForegroundServicePermissionLauncher.launch(android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
-                        }
-                    } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(serviceIntent)
-                        } else {
-                            startService(serviceIntent)
-                        }
-                    }
-                    // If an explicit request led to this grant, reset the flag.
-                    if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
-                        Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after successful explicit grant.")
-                        this@MainActivity.isProcessingExplicitScreenshotRequest = false
-                    }
-                    _isMediaProjectionPermissionGranted.value = true
-                    onMediaProjectionPermissionGranted?.invoke()
-                    onMediaProjectionPermissionGranted = null
-                } else {
-                    Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
-                    Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-                    // If an explicit request was denied, also reset the flag.
-                    if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
-                        Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after explicit denial.")
-                        this@MainActivity.isProcessingExplicitScreenshotRequest = false
-                    }
-                    _isMediaProjectionPermissionGranted.value = false
-                }
-            }
-
-            // Separate WebRTC MediaProjection launcher - does NOT start ScreenCaptureService
-            webRtcMediaProjectionLauncher = registerForActivityResult(
-                ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-                if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                    Log.i(TAG, "WebRTC MediaProjection permission granted. Starting keep-alive service.")
-                    
-                    // Task 4: Keep Service Alive to satisfy Android 14 MediaProjection requirements
-                    val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                        action = ScreenCaptureService.ACTION_KEEP_ALIVE_FOR_WEBRTC
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
-                    }
-
-                    onWebRtcMediaProjectionResult?.invoke(result.resultCode, result.data!!)
-                    onWebRtcMediaProjectionResult = null
-                } else {
-                    Log.w(TAG, "WebRTC MediaProjection permission denied.")
-                    Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-                    onWebRtcMediaProjectionResult = null
-                }
-            }
-
-        // Keyboard visibility listener
-        val rootView = findViewById<View>(android.R.id.content)
-        onGlobalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
-            val rect = Rect()
-            rootView.getWindowVisibleDisplayFrame(rect)
-            val screenHeight = rootView.rootView.height
-            val keypadHeight = screenHeight - rect.bottom
-            if (keypadHeight > screenHeight * 0.15) { // 0.15 ratio is a common threshold
-                if (!_isKeyboardOpen.value) {
-                    _isKeyboardOpen.value = true
-                    Log.d(TAG, "Keyboard visible")
-                }
-            } else {
-                if (_isKeyboardOpen.value) {
-                    _isKeyboardOpen.value = false
-                    Log.d(TAG, "Keyboard hidden")
-                }
-            }
-        }
-        rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
+        setupKeyboardVisibilityListener()
 
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
@@ -575,7 +636,6 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "setContent: Rendering AppNavigation.")
                         AppNavigation(navController, innerPadding)  // Übergebe innerPadding als Parameter
 
-                        // if (showPermissionRationaleDialog) { ... } // Deleted block
                         if (showFirstLaunchInfoDialog) {
                             Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
                             FirstLaunchInfoDialog(
@@ -594,7 +654,7 @@ class MainActivity : ComponentActivity() {
                                 TAG,
                                 "setContent: Rendering ApiKeyDialog. showApiKeyDialog=$showApiKeyDialog, currentTrialState=$currentTrialState"
                             )
-                            ApiKeyDialog(
+                            ApiKeyDialogSection(
                                 apiKeyManager = apiKeyManager,
                                 isFirstLaunch = apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty(),
                                 initialProvider = apiKeyDialogInitialProvider,
@@ -609,99 +669,34 @@ class MainActivity : ComponentActivity() {
                                 TAG,
                                 "setContent: Handling Trial State Dialogs. Current state: $currentTrialState, showTrialInfoDialog: $showTrialInfoDialog"
                             )
-                            when (currentTrialState) {
-                                TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                                    Log.d(TAG, "setContent: Rendering TrialExpiredDialog.")
-                                    TrialExpiredDialog(
-                                        onPurchaseClick = {
-                                            Log.d(TAG, "TrialExpiredDialog onPurchaseClick called.")
-                                            initiateDonationPurchase()
-                                        },
-                                        onDismiss = {
-                                            Log.d(
-                                                TAG,
-                                                "TrialExpiredDialog onDismiss called (should be persistent)."
-                                            )
-                                        }
-                                    )
-                                }
-
-                                TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
-                                TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-                                    if (showTrialInfoDialog) {
-                                        Log.d(
-                                            TAG,
-                                            "setContent: Rendering InfoDialog for AWAITING/UNAVAILABLE. Message: $trialInfoMessage"
-                                        )
-                                        InfoDialog(message = trialInfoMessage, onDismiss = {
-                                            Log.d(TAG, "InfoDialog onDismiss called.")
-                                            showTrialInfoDialog = false
-                                        })
-                                    } else {
-                                        Log.d(
-                                            TAG,
-                                            "setContent: Not rendering InfoDialog for AWAITING/UNAVAILABLE because showTrialInfoDialog is false."
-                                        )
-                                    }
-                                }
-
-                                TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
-                                TrialManager.TrialState.PURCHASED -> {
-                                    Log.d(
-                                        TAG,
-                                        "setContent: No specific dialog for ACTIVE/PURCHASED states."
-                                    )
-                                }
-                            }
+                            TrialStateDialogs(
+                                trialState = currentTrialState,
+                                showTrialInfoDialog = showTrialInfoDialog,
+                                trialInfoMessage = trialInfoMessage,
+                                onDismissTrialInfo = { showTrialInfoDialog = false },
+                                onPurchaseClick = { initiateDonationPurchase() }
+                            )
                         }
 
-                        // Task 6: Payment Method Dialog
+                        // Payment method dialog
                         if (showPaymentMethodDialog) {
-                            androidx.compose.material3.AlertDialog(
-                                onDismissRequest = { showPaymentMethodDialog = false },
-                                title = { Text("Choose Payment Method") },
-                                text = {
-                                    Column {
-                                        Button(
-                                            onClick = {
-                                                showPaymentMethodDialog = false
-                                                
-                                                // Generate Short UUID
-                                                val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
-                                                
-                                                // Save it to SharedPreferences
-                                                val ctx = this@MainActivity
-                                                ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                                                    .edit()
-                                                    .putString("payment_support_id", shortId)
-                                                    .apply()
-                                                    
-                                                Toast.makeText(ctx, "Your Support ID is: $shortId", Toast.LENGTH_LONG).show()
-
-                                                val url = "https://www.paypal.com/webapps/billing/subscriptions?plan_id=P-5J921557TD348880GNGUCRSI&custom_id=$shortId"
-                                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                                                ctx.startActivity(intent)
-                                            },
-                                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                                        ) {
-                                            Text("PayPal (2,60 €/Month)")
-                                        }
-                                        Button(
-                                            onClick = {
-                                                showPaymentMethodDialog = false
-                                                launchGooglePlayBilling()
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text("Google Play (2,90 €/Month)")
-                                        }
-                                    }
+                            PaymentMethodDialog(
+                                onDismiss = { showPaymentMethodDialog = false },
+                                onPayPalClick = {
+                                    showPaymentMethodDialog = false
+                                    val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
+                                    val ctx = this@MainActivity
+                                    ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putString("payment_support_id", shortId)
+                                        .apply()
+                                    Toast.makeText(ctx, "Your Support ID is: $shortId", Toast.LENGTH_LONG).show()
+                                    val url = "https://www.paypal.com/webapps/billing/subscriptions?plan_id=P-5J921557TD348880GNGUCRSI&custom_id=$shortId"
+                                    ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
                                 },
-                                confirmButton = {},
-                                dismissButton = {
-                                    TextButton(onClick = { showPaymentMethodDialog = false }) {
-                                        Text("Cancel")
-                                    }
+                                onGooglePlayClick = {
+                                    showPaymentMethodDialog = false
+                                    launchGooglePlayBilling()
                                 }
                             )
                         }
@@ -715,53 +710,9 @@ class MainActivity : ComponentActivity() {
 
         NotificationUtil.createNotificationChannel(this) // Create channel
 
-        // Register screenshot request handler
-        Log.d(TAG, "Registering screenshotRequestHandler for ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT.")
-        val requestFilter = IntentFilter(ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT)
-        BroadcastReceiverCompat.register(this, screenshotRequestHandler, requestFilter)
-
-        // Register screenshot result handler
-        Log.d(TAG, "Registering screenshotResultHandler for ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED.")
-        val resultFilter = IntentFilter(ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED)
-        BroadcastReceiverCompat.register(this, screenshotResultHandler, resultFilter)
-
-        requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
-            if (isGranted) {
-                Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Notification permission denied. Stop via notification will not be available.", Toast.LENGTH_LONG).show()
-            }
-        }
-
-        requestForegroundServicePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
-            if (isGranted) {
-                Toast.makeText(this, "Foreground service permission granted.", Toast.LENGTH_SHORT).show()
-                // The user has granted the permission, now we can start the service.
-                // We need to get the result data from the media projection launcher again.
-                // This is not ideal, but it's the only way to do it without major refactoring.
-                val intent = mediaProjectionManager.createScreenCaptureIntent()
-                mediaProjectionLauncher.launch(intent)
-            } else {
-                Toast.makeText(this, "Foreground service permission denied. The app may not function correctly.", Toast.LENGTH_LONG).show()
-            }
-        }
-
-        if (photoReasoningViewModel != null) {
-            lifecycleScope.launch {
-                photoReasoningViewModel!!.showStopNotificationFlow.collect { show ->
-                    Log.d(TAG, "showStopNotificationFlow collected value: $show")
-                    if (show) {
-                        Log.d(TAG, "Calling showStopOperationNotification()")
-                        showStopOperationNotification()
-                    } else {
-                        Log.d(TAG, "Calling cancelStopOperationNotification()")
-                        cancelStopOperationNotification()
-                    }
-                }
-            }
-        } else {
-            Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
-        }
+        registerScreenshotReceivers()
+        registerPermissionLaunchers()
+        observeStopNotificationFlow()
 
     }
 
@@ -1196,7 +1147,6 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onDestroy: Finished.")
     }
 
-    // private fun checkAndRequestPermissions() { ... } // Deleted
 
     companion object {
         private const val TAG = "MainActivity"
@@ -1227,6 +1177,86 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+@Composable
+private fun TrialStateDialogs(
+    trialState: TrialManager.TrialState,
+    showTrialInfoDialog: Boolean,
+    trialInfoMessage: String,
+    onDismissTrialInfo: () -> Unit,
+    onPurchaseClick: () -> Unit
+) {
+    when (trialState) {
+        TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
+            TrialExpiredDialog(
+                onPurchaseClick = onPurchaseClick,
+                onDismiss = {}
+            )
+        }
+
+        TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
+        TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
+            if (showTrialInfoDialog) {
+                InfoDialog(
+                    message = trialInfoMessage,
+                    onDismiss = onDismissTrialInfo
+                )
+            }
+        }
+
+        TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
+        TrialManager.TrialState.PURCHASED -> Unit
+    }
+}
+
+@Composable
+private fun PaymentMethodDialog(
+    onDismiss: () -> Unit,
+    onPayPalClick: () -> Unit,
+    onGooglePlayClick: () -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose Payment Method") },
+        text = {
+            Column {
+                Button(
+                    onClick = onPayPalClick,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Text("PayPal (2,60 €/Month)")
+                }
+                Button(
+                    onClick = onGooglePlayClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Google Play (2,90 €/Month)")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ApiKeyDialogSection(
+    apiKeyManager: ApiKeyManager,
+    isFirstLaunch: Boolean,
+    initialProvider: ApiProvider?,
+    onDismiss: () -> Unit
+) {
+    ApiKeyDialog(
+        apiKeyManager = apiKeyManager,
+        isFirstLaunch = isFirstLaunch,
+        initialProvider = initialProvider,
+        onDismiss = onDismiss
+    )
 }
 
 @Composable
@@ -1273,8 +1303,6 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
     }
 }
 
-// @Composable // Deleted
-// fun PermissionRationaleDialog(onDismiss: () -> Unit) { ... } // Deleted
 
 
 @Composable

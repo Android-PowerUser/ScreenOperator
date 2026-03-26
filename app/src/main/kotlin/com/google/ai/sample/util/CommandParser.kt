@@ -90,16 +90,12 @@ object CommandParser {
      * @param clearBuffer Whether to clear the buffer before parsing (default: false)
      * @return A list of commands found in the text
      */
+    @Synchronized
     fun parseCommands(text: String, clearBuffer: Boolean = false): List<Command> {
         val commands = mutableListOf<Command>()
 
         try {
-            // Clear buffer if requested or if flag is set
-            if (clearBuffer || shouldClearBuffer) {
-                textBuffer = ""
-                shouldClearBuffer = false
-                Log.d(TAG, "Buffer cleared")
-            }
+            resetBufferIfNeeded(clearBuffer)
 
             // Normalize the text (trim whitespace, normalize line breaks)
             val normalizedText = normalizeText(text)
@@ -109,9 +105,6 @@ object CommandParser {
 
             // Debug the buffer
             Log.d(TAG, "Current buffer for command parsing: $textBuffer")
-
-            // Process the buffer line by line
-            val lines = textBuffer.split("\n")
 
             // Process each line and the combined buffer
             processText(textBuffer, commands)
@@ -125,35 +118,45 @@ object CommandParser {
             Log.d(TAG, "Found ${commands.size} commands in text") // This log remains
 
             // Debug each found command
-            commands.forEach { command ->
-                when (command) {
-                    is Command.ClickButton -> Log.d(TAG, "Command details: ClickButton(\"${command.buttonText}\")")
-                    is Command.LongClickButton -> Log.d(TAG, "Command details: LongClickButton(\"${command.buttonText}\")")
-                    is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
-                    is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
-                    is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
-                    is Command.PressBackButton -> Log.d(TAG, "Command details: PressBackButton")
-                    is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")
-                    is Command.ScrollDown -> Log.d(TAG, "Command details: ScrollDown")
-                    is Command.ScrollUp -> Log.d(TAG, "Command details: ScrollUp")
-                    is Command.ScrollLeft -> Log.d(TAG, "Command details: ScrollLeft")
-                    is Command.ScrollRight -> Log.d(TAG, "Command details: ScrollRight")
-                    is Command.ScrollDownFromCoordinates -> Log.d(TAG, "Command details: ScrollDownFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
-                    is Command.UseHighReasoningModel -> Log.d(TAG, "Command details: UseHighReasoningModel")
-                    is Command.UseLowReasoningModel -> Log.d(TAG, "Command details: UseLowReasoningModel")
-                    is Command.ScrollUpFromCoordinates -> Log.d(TAG, "Command details: ScrollUpFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
-                    is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
-                    is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
-                    is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
-                    is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
-                    is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
-                }
-            }
+            commands.forEach(::logCommandDetails)
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing commands: ${e.message}", e)
         }
 
         return commands
+    }
+
+    private fun resetBufferIfNeeded(clearBuffer: Boolean) {
+        if (clearBuffer || shouldClearBuffer) {
+            textBuffer = ""
+            shouldClearBuffer = false
+            Log.d(TAG, "Buffer cleared")
+        }
+    }
+
+    private fun logCommandDetails(command: Command) {
+        when (command) {
+            is Command.ClickButton -> Log.d(TAG, "Command details: ClickButton(\"${command.buttonText}\")")
+            is Command.LongClickButton -> Log.d(TAG, "Command details: LongClickButton(\"${command.buttonText}\")")
+            is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
+            is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
+            is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
+            is Command.PressBackButton -> Log.d(TAG, "Command details: PressBackButton")
+            is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")
+            is Command.ScrollDown -> Log.d(TAG, "Command details: ScrollDown")
+            is Command.ScrollUp -> Log.d(TAG, "Command details: ScrollUp")
+            is Command.ScrollLeft -> Log.d(TAG, "Command details: ScrollLeft")
+            is Command.ScrollRight -> Log.d(TAG, "Command details: ScrollRight")
+            is Command.ScrollDownFromCoordinates -> Log.d(TAG, "Command details: ScrollDownFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+            is Command.UseHighReasoningModel -> Log.d(TAG, "Command details: UseHighReasoningModel")
+            is Command.UseLowReasoningModel -> Log.d(TAG, "Command details: UseLowReasoningModel")
+            is Command.ScrollUpFromCoordinates -> Log.d(TAG, "Command details: ScrollUpFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+            is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+            is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+            is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
+            is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
+            is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
+        }
     }
 
     /**
@@ -241,12 +244,13 @@ object CommandParser {
         // Ensure consistent line breaks
         normalized = normalized.replace(Regex("\\r\\n|\\r"), "\n")
 
-        return normalized.trim() // Added trim() here as well for good measure
+        return normalized.trim()
     }
 
     /**
      * Clear the text buffer
      */
+    @Synchronized
     fun clearBuffer() {
         textBuffer = ""
         shouldClearBuffer = false
@@ -270,6 +274,7 @@ object CommandParser {
     /**
      * Get the current buffer content (for debugging)
      */
+    @Synchronized
     fun getBufferContent(): String {
         return textBuffer
     }
