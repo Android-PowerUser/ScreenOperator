@@ -1,6 +1,6 @@
 package com.google.ai.sample
 
-import com.google.ai.sample.MainActivity // Added import
+import com.google.ai.sample.MainActivity
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
@@ -138,12 +138,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
 
             // serviceInstance is the static reference to the service
-            serviceInstance!!.commandQueue.add(command)
-            Log.d(TAG, "Command $command added to queue. Queue size: ${serviceInstance!!.commandQueue.size}")
+            val instance = serviceInstance
+            if (instance == null) {
+                Log.e(TAG, "Service instance became null before queueing command")
+                return
+            }
+            instance.commandQueue.add(command)
+            Log.d(TAG, "Command $command added to queue. Queue size: ${instance.commandQueue.size}")
 
             // Ensure processCommandQueue is called on the service's handler thread
-            serviceInstance!!.handler.post {
-                serviceInstance!!.processCommandQueue()
+            instance.handler.post {
+                instance.processCommandQueue()
             }
         }
 
@@ -173,6 +178,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
+
+    private fun currentRootNodeOrHandleMissing(
+        operation: String,
+        scheduleNext: Boolean,
+        showUserMessage: Boolean = true
+    ): AccessibilityNodeInfo? {
+        val currentRootNode = rootNode
+        if (currentRootNode == null) {
+            Log.e(TAG, "Root node is null, cannot $operation")
+            if (showUserMessage) {
+                showToast("Error: Root node is not available", true)
+            }
+            if (scheduleNext) {
+                scheduleNextCommandProcessing()
+            }
+        }
+        return currentRootNode
+    }
     
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -607,15 +630,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Refresh the root node
             refreshRootNode()
             
-            // Check if root node is available
-            if (rootNode == null) {
-                Log.e(TAG, "Root node is null, cannot write text")
-                showToast("Error: Root node is not available", true)
-                return
-            }
-            
+            val currentRootNode = currentRootNodeOrHandleMissing("write text", scheduleNext = false) ?: return
             // Find the focused node (which should be an editable text field)
-            val focusedNode = findFocusedEditableNode(rootNode!!)
+            val focusedNode = findFocusedEditableNode(currentRootNode)
             
             if (focusedNode != null) {
                 Log.d(TAG, "Found focused editable node")
@@ -644,7 +661,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 showToast("No focused text field found, trying to find editable fields", true)
                 
                 // Try to find any editable field
-                val editableNode = findFirstEditableNode(rootNode!!)
+                val editableNode = findFirstEditableNode(currentRootNode)
                 
                 if (editableNode != null) {
                     Log.d(TAG, "Found editable node")
@@ -811,16 +828,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Refresh the root node
         refreshRootNode()
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing() // Continue queue if rootNode is null
-            return
-        }
-        
         // Try to find the node with the specified text
-        val node = findNodeByText(rootNode!!, buttonText)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button", scheduleNext = true) ?: return
+        val node = findNodeByText(currentRootNode, buttonText)
         
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
@@ -881,14 +891,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Searching for button to long click with text: \"$buttonText\"", false)
 
         refreshRootNode()
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing()
-            return
-        }
-
-        val node = findNodeByText(rootNode!!, buttonText)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button", scheduleNext = true) ?: return
+        val node = findNodeByText(currentRootNode, buttonText)
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
             showToast("Button found: \"$buttonText\"", false)
@@ -918,14 +922,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and long clicking button with content description: $description")
         showToast("Searching for button to long click with description: \"$description\"", false)
 
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by content description")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing()
-            return
-        }
-
-        val node = findNodeByContentDescription(rootNode!!, description)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by content description", scheduleNext = true) ?: return
+        val node = findNodeByContentDescription(currentRootNode, description)
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
             showToast("Button found with description: \"$description\"", false)
@@ -955,14 +953,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and long clicking button with ID: $id")
         showToast("Searching for button to long click with ID: \"$id\"", false)
 
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by ID")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing()
-            return
-        }
-
-        val node = findNodeById(rootNode!!, id)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by ID", scheduleNext = true) ?: return
+        val node = findNodeById(currentRootNode, id)
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
@@ -993,16 +985,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and clicking button with content description: $description")
         showToast("Searching for button with description: \"$description\"", false)
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by content description")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing() // Continue queue if rootNode is null
-            return
-        }
-        
         // Try to find the node with the specified content description
-        val node = findNodeByContentDescription(rootNode!!, description)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by content description", scheduleNext = true) ?: return
+        val node = findNodeByContentDescription(currentRootNode, description)
         
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
@@ -1042,16 +1027,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and clicking button with ID: $id")
         showToast("Searching for button with ID: \"$id\"", false)
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by ID")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing() // Continue queue if rootNode is null
-            return
-        }
-        
         // Try to find the node with the specified ID
-        val node = findNodeById(rootNode!!, id)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by ID", scheduleNext = true) ?: return
+        val node = findNodeById(currentRootNode, id)
         
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
@@ -1654,18 +1632,18 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         // Refresh the root node to ensure we have the latest information
         refreshRootNode()
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot capture screen information")
-            return "No screen information available (root node is null)"
-        }
-        
         // Build a string with information about all interactive elements
         val screenInfo = StringBuilder()
         screenInfo.append("Screen elements:\n")
         
         // Find all interactive elements
-        val elements = findAllInteractiveElements(rootNode!!)
+        val currentRootNode = currentRootNodeOrHandleMissing(
+            operation = "capture screen information",
+            scheduleNext = false,
+            showUserMessage = false
+        )
+            ?: return "No screen information available (root node is null)"
+        val elements = findAllInteractiveElements(currentRootNode)
         
         // Add information about each element
         elements.forEachIndexed { index, element ->
