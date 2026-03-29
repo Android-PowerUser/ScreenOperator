@@ -13,7 +13,7 @@ internal class PhotoReasoningScreenshotProcessor {
     private var imageLoader: ImageLoader? = null
     private var imageRequestBuilder: ImageRequest.Builder? = null
 
-    fun loadBitmap(context: Context, screenshotUri: Uri): Bitmap? {
+    suspend fun loadBitmap(context: Context, screenshotUri: Uri): Bitmap? {
         val loader = imageLoader ?: ImageLoader.Builder(context).build().also { imageLoader = it }
         val builder = imageRequestBuilder ?: ImageRequest.Builder(context).also { imageRequestBuilder = it }
 
