@@ -19,7 +19,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
@@ -35,7 +34,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.lang.NumberFormatException
-import java.util.LinkedList
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
     private data class ResolvedPoint(val xPx: Float, val yPx: Float)
@@ -48,8 +46,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private enum class ScrollAxis { HORIZONTAL, VERTICAL }
 
-    private val commandQueue = LinkedList<Command>()
-    private val isProcessingQueue = AtomicBoolean(false)
+    private val commandQueue = AccessibilityCommandQueue()
     // private val handler = Handler(Looper.getMainLooper()) // Already exists at the class level
 
     companion object {
@@ -68,30 +65,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
          * Check if the accessibility service is enabled in system settings
          */
         fun isAccessibilityServiceEnabled(context: Context): Boolean {
-            val accessibilityEnabled = try {
-                Settings.Secure.getInt(
-                    context.contentResolver,
-                    Settings.Secure.ACCESSIBILITY_ENABLED
-                )
-            } catch (e: Settings.SettingNotFoundException) {
-                Log.e(TAG, "Error finding accessibility setting: ${e.message}")
-                return false
-            }
-            
-            if (accessibilityEnabled != 1) {
-                Log.d(TAG, "Accessibility is not enabled")
-                return false
-            }
-            
-            val serviceString = "${context.packageName}/${ScreenOperatorAccessibilityService::class.java.canonicalName}"
-            val enabledServices = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: ""
-            
-            val isEnabled = enabledServices.contains(serviceString)
-            Log.d(TAG, "Service $serviceString is ${if (isEnabled) "enabled" else "not enabled"}")
-            return isEnabled
+            return AccessibilityServiceStateChecker.isEnabled(context, TAG)
         }
         
         /**
@@ -109,8 +83,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         fun clearCommandQueue() {
             val instance = serviceInstance
             if (instance != null) {
-                instance.commandQueue.clear()
-                instance.isProcessingQueue.set(false)
+                instance.commandQueue.clearAndUnlock()
                 Log.d(TAG, "Command queue cleared and processing flag reset.")
             } else {
                 Log.w(TAG, "clearCommandQueue: serviceInstance is null, nothing to clear.")
@@ -143,8 +116,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 Log.e(TAG, "Service instance became null before queueing command")
                 return
             }
-            instance.commandQueue.add(command)
-            Log.d(TAG, "Command $command added to queue. Queue size: ${instance.commandQueue.size}")
+            val queueSize = instance.commandQueue.enqueue(command)
+            Log.d(TAG, "Command $command added to queue. Queue size: $queueSize")
 
             // Ensure processCommandQueue is called on the service's handler thread
             instance.handler.post {
@@ -234,7 +207,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
 
         handler.postDelayed({
-            isProcessingQueue.set(false) // Release the lock before the next cycle
+            commandQueue.releaseProcessing() // Release the lock before the next cycle
             processCommandQueue()        // Try to process the next command
         }, nextCommandDelay)
     }
@@ -506,19 +479,19 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
 
     private fun processCommandQueue() {
-        if (!isProcessingQueue.compareAndSet(false, true)) {
+        if (!commandQueue.tryAcquireProcessing()) {
             Log.d(TAG, "Queue is already being processed.")
             return
         }
 
         if (commandQueue.isEmpty()) {
             Log.d(TAG, "Command queue is empty. Stopping processing.")
-            isProcessingQueue.set(false)
+            commandQueue.releaseProcessing()
             return
         }
 
         val command = commandQueue.poll()
-        Log.d(TAG, "Processing command: $command. Queue size after poll: ${commandQueue.size}")
+        Log.d(TAG, "Processing command: $command. Queue size after poll: ${commandQueue.size()}")
 
         if (command != null) {
             val commandWasAsync = executeSingleCommand(command) // executeSingleCommand now returns Boolean
@@ -531,7 +504,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // is responsible for calling scheduleNextCommandProcessing upon completion.
         } else {
             Log.d(TAG, "Polled null command from queue, stopping processing.")
-            isProcessingQueue.set(false)
+            commandQueue.releaseProcessing()
         }
     }
 

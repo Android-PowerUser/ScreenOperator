@@ -58,8 +58,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import com.google.mediapipe.tasks.genai.llminference.ProgressListener
 
 import android.graphics.Bitmap
-import java.io.ByteArrayOutputStream
-import android.util.Base64
 import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.ApiProvider
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
@@ -101,21 +99,6 @@ class PhotoReasoningViewModel(
     private var lastMediaProjectionResultCode: Int = 0
     private var lastMediaProjectionResultData: Intent? = null
     
-
-
-    private fun Bitmap.toBase64(): String {
-        val outputStream = ByteArrayOutputStream()
-        this.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
-        val bytes = outputStream.toByteArray()
-        return Base64.encodeToString(bytes, Base64.NO_WRAP)
-    }
-
-    private fun mainActivityApplicationContextOrNull(): Context? =
-        MainActivity.getInstance()?.applicationContext
-
-    private fun currentApiKeyOrEmpty(provider: ApiProvider): String =
-        MainActivity.getInstance()?.getCurrentApiKey(provider) ?: ""
-
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
     val uiState: StateFlow<PhotoReasoningUiState> =
@@ -211,7 +194,7 @@ class PhotoReasoningViewModel(
     private var currentScreenInfoForPrompt: String? = null
     private var currentImageUrisForChat: List<String>? = null
 
-    private val sseJson = Json { ignoreUnknownKeys = true }
+    private val sseJson = PhotoReasoningSerialization.createStreamingJsonParser()
 
     /**
      * Liest einen OpenAI-kompatiblen SSE-Stream zeilenweise.
@@ -937,7 +920,7 @@ class PhotoReasoningViewModel(
                 appendUserAndPendingModelMessages(userMessage)
                 _uiState.value = PhotoReasoningUiState.Loading
 
-                val imageDataList = selectedImages.map { it.toBase64() }
+                val imageDataList = selectedImages.map { PhotoReasoningSerialization.bitmapToBase64(it) }
                 val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $combinedPromptText"
                 liveApiManager?.sendMessage(prompt, imageDataList.ifEmpty { null })
             } catch (e: Exception) {
@@ -956,7 +939,7 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>?,
         currentModel: ModelOption
     ) {
-        val context = mainActivityApplicationContextOrNull()
+        val context = MainActivityBridge.applicationContextOrNull()
         if (context == null) {
             Log.e(TAG, "Context not available, cannot proceed with reasoning")
             _uiState.value = PhotoReasoningUiState.Error("Application not ready")
@@ -1183,7 +1166,13 @@ private fun reasonWithMistral(
                 if (lastUserMsg.role == "user") {
                     val updatedContent = lastUserMsg.content.toMutableList()
                     for (bitmap in selectedImages)
-                        updatedContent.add(MistralImageContent(imageUrl = MistralImageUrl(url = "data:image/jpeg;base64,${bitmap.toBase64()}")))
+                        updatedContent.add(
+                            MistralImageContent(
+                                imageUrl = MistralImageUrl(
+                                    url = "data:image/jpeg;base64,${PhotoReasoningSerialization.bitmapToBase64(bitmap)}"
+                                )
+                            )
+                        )
                     apiMessages[apiMessages.lastIndex] = lastUserMsg.copy(content = updatedContent)
                 }
             }
@@ -1294,7 +1283,7 @@ private fun reasonWithMistral(
         screenInfoForPrompt: String?,
         imageUrisForChat: List<String>?
     ) {
-        val apiKey = currentApiKeyOrEmpty(ApiProvider.PUTER)
+        val apiKey = MainActivityBridge.currentApiKeyOrEmpty(ApiProvider.PUTER)
         if (apiKey.isEmpty()) {
             _uiState.value = PhotoReasoningUiState.Error("Puter Authentication Token (API Key) is missing")
             return
@@ -1652,7 +1641,7 @@ private fun reasonWithMistral(
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
         Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService (retryCount=$retryCount).")
 
-        val context = mainActivityApplicationContextOrNull()
+        val context = MainActivityBridge.applicationContextOrNull()
         if (context == null) {
             Log.e(TAG, "sendMessageWithRetry: Context is null, cannot delegate AI call.")
             _uiState.value = PhotoReasoningUiState.Error("Application context not available for AI call.")
@@ -1707,7 +1696,7 @@ private fun reasonWithMistral(
             Log.d(TAG, "Collected temporary file paths to send to service: $tempFilePaths")
 
             val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-            val apiKey = currentApiKeyOrEmpty(currentModel.apiProvider)
+            val apiKey = MainActivityBridge.currentApiKeyOrEmpty(currentModel.apiProvider)
             val serviceIntent = createExecuteAiCallIntent(
                 context = context,
                 inputContentJson = inputContentJson,
