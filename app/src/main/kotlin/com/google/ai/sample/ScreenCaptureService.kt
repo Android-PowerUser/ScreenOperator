@@ -2,8 +2,6 @@ package com.google.ai.sample
 
 import android.app.Activity
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -17,7 +15,6 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -51,20 +48,19 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
-import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 import java.io.IOException
-import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class ScreenCaptureService : Service() {
+    private val screenCaptureStorage by lazy { ScreenCaptureStorage(applicationContext, TAG) }
+    private val notificationFactory by lazy {
+        ScreenCaptureNotificationFactory(applicationContext, CHANNEL_ID)
+    }
+
     companion object {
         private const val TAG = "ScreenCaptureService"
         private const val CHANNEL_ID = "ScreenCaptureChannel"
@@ -142,48 +138,6 @@ class ScreenCaptureService : Service() {
         }
         applicationContext.sendBroadcast(intent)
         Log.d(TAG, "Sent broadcast ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED with URI: $screenshotUri")
-    }
-
-    private fun ensureScreenshotDirectory(): File {
-        val picturesDir = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
-        if (!picturesDir.exists()) {
-            picturesDir.mkdirs()
-        }
-        return picturesDir
-    }
-
-    private fun pruneOldScreenshots(picturesDir: File, maxScreenshots: Int) {
-        val screenshotFiles = picturesDir.listFiles { _, name ->
-            name.startsWith("screenshot_") && name.endsWith(".png")
-        }?.toMutableList() ?: mutableListOf()
-
-        screenshotFiles.sortBy { it.name }
-
-        val screenshotsToDelete = screenshotFiles.size - (maxScreenshots - 1)
-        if (screenshotsToDelete <= 0) return
-
-        Log.i(
-            TAG,
-            "Max screenshots reached. Current count: ${screenshotFiles.size}. Attempting to delete $screenshotsToDelete oldest screenshot(s)."
-        )
-
-        for (i in 0 until screenshotsToDelete) {
-            if (i < screenshotFiles.size) {
-                val oldestFile = screenshotFiles[i]
-                if (oldestFile.delete()) {
-                    Log.i(TAG, "Deleted oldest screenshot: ${oldestFile.absolutePath}")
-                } else {
-                    Log.e(TAG, "Failed to delete oldest screenshot: ${oldestFile.absolutePath}")
-                }
-            }
-        }
-    }
-
-    private fun writeBitmapToPngFile(bitmap: Bitmap, file: File) {
-        FileOutputStream(file).use { outputStream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            outputStream.flush()
-        }
     }
 
     override fun onCreate() {
@@ -480,39 +434,16 @@ class ScreenCaptureService : Service() {
     }
 
     private fun createAiOperationNotification(): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID) // Reuse existing channel
-            .setContentTitle("Screen Operator")
-            .setContentText("Processing AI request...")
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Replace with a proper app icon
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(false) // AI operation is not typically as long as screen capture
-            .build()
+        return notificationFactory.createAiOperationNotification()
     }
 
     private fun createNotification(): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Screen Capture Active")
-            .setContentText("Ready to take screenshots")
-            .setSmallIcon(android.R.drawable.ic_menu_camera) // Replace with a proper app icon
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .build()
+        return notificationFactory.createNotification()
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Screen Capture Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Notifications for screen capture service"
-                setShowBadge(false)
-            }
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
-            Log.d(TAG, "Notification channel created")
-        }
+        notificationFactory.createNotificationChannel("Screen Capture Service")
+        Log.d(TAG, "Notification channel created")
     }
 
     private fun startCapture(resultCode: Int, data: Intent, takeScreenshotOnStart: Boolean) {
@@ -681,32 +612,12 @@ class ScreenCaptureService : Service() {
     }
 
     private fun saveScreenshot(bitmap: Bitmap) {
-        try {
-            val picturesDir = ensureScreenshotDirectory()
-            val maxScreenshots = 100
-            pruneOldScreenshots(picturesDir, maxScreenshots)
-
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val file = File(picturesDir, "screenshot_$timestamp.png")
-            writeBitmapToPngFile(bitmap, file)
-
-            Log.i(TAG, "Screenshot saved to: ${file.absolutePath}")
-
-            showLongToast("Screenshot saved to: Android/data/com.google.ai.sample/files/Pictures/Screenshots/")
-
-            val screenshotUri = Uri.fromFile(file)
-            broadcastScreenshotCaptured(screenshotUri)
-
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to save screenshot (I/O)", e)
-            showLongToast("Failed to save screenshot: ${e.message}")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Failed to save screenshot (security)", e)
-            showLongToast("Failed to save screenshot: ${e.message}")
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "Failed to save screenshot", e)
-            showLongToast("Failed to save screenshot: ${e.message}")
-        }
+        screenCaptureStorage.saveScreenshot(
+            bitmap = bitmap,
+            onSaved = { screenshotUri -> broadcastScreenshotCaptured(screenshotUri) },
+            onSuccessMessage = { message -> showLongToast(message) },
+            onErrorMessage = { message -> showLongToast(message) }
+        )
     }
 
     private fun cleanup() {
@@ -744,300 +655,4 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-}
-
-// Data classes for Vercel API
-@Serializable
-data class VercelRequest(
-    val model: String,
-    val messages: List<VercelMessage>,
-    val stream: Boolean = true
-)
-
-@Serializable
-data class VercelStreamChunk(
-    val choices: List<VercelStreamChoice>
-)
-
-@Serializable
-data class VercelStreamChoice(
-    val delta: VercelStreamDelta
-)
-
-@Serializable
-data class VercelStreamDelta(
-    val content: String? = null
-)
-
-@Serializable
-data class VercelMessage(
-    val role: String,
-    val content: String
-)
-
-private suspend fun callVercelApi(
-    context: android.content.Context,
-    modelName: String,
-    apiKey: String,
-    chatHistory: List<ContentDto>,
-    inputContent: ContentDto
-): String {
-    val messages = mutableListOf<VercelMessage>()
-    
-    // Add Chat History
-    chatHistory.forEach { contentDto ->
-        val role = if (contentDto.role == "user") "user" else "assistant"
-        val text = contentDto.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.dtos.TextPartDto>()
-            .joinToString("\n") { it.text }
-        if (text.isNotBlank()) messages.add(VercelMessage(role = role, content = text))
-    }
-
-    // Add current input
-    val inputText = inputContent.parts.filterIsInstance<com.google.ai.sample.feature.multimodal.dtos.TextPartDto>()
-        .joinToString("\n") { it.text }
-    if (inputText.isNotBlank()) messages.add(VercelMessage(role = "user", content = inputText))
-
-    val requestBodyJson = Json.encodeToString(VercelRequest.serializer(), VercelRequest(model = modelName, messages = messages, stream = true))
-    val mediaType = "application/json".toMediaType()
-
-    val httpRequest = Request.Builder()
-        .url("https://v0-screen-operator-clon-pi.vercel.app/api/chat")
-        .post(requestBodyJson.toRequestBody(mediaType))
-        .addHeader("Content-Type", "application/json")
-        .addHeader("x-api-key", apiKey)
-        .build()
-
-    val client = OkHttpClient()
-    val response = client.newCall(httpRequest).execute()
-
-    if (!response.isSuccessful) {
-        val err = response.body?.string()
-        response.close()
-        throw IOException("Vercel API error ${response.code}: $err")
-    }
-
-    val body = response.body ?: throw IOException("Empty response from Vercel")
-    val reader = body.charStream().buffered()
-    val accumulated = StringBuilder()
-    val sseJson = Json { ignoreUnknownKeys = true }
-
-    try {
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            val l = line ?: break
-            if (l.startsWith("data: ")) {
-                val data = l.removePrefix("data: ").trim()
-                if (data == "[DONE]") break
-                if (data.isEmpty()) continue
-                
-                try {
-                    val chunk = sseJson.decodeFromString<VercelStreamChunk>(data)
-                    val delta = chunk.choices.firstOrNull()?.delta?.content
-                    if (!delta.isNullOrEmpty()) {
-                        accumulated.append(delta)
-                        // Broadcast update to ViewModel
-                        val intent = Intent(ScreenCaptureService.ACTION_AI_STREAM_UPDATE).apply {
-                            putExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK, accumulated.toString())
-                        }
-                        androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
-                    }
-                } catch (e: SerializationException) {
-                    // Skip malformed chunks
-                }
-            }
-        }
-    } finally {
-        reader.close()
-        response.close()
-    }
-
-    return accumulated.toString()
-}
-
-// Data classes for Mistral API in Service
-@Serializable
-data class ServiceMistralRequest(
-    val model: String,
-    val messages: List<ServiceMistralMessage>,
-    val max_tokens: Int = 4096,
-    val temperature: Double = 0.7,
-    val top_p: Double = 1.0,
-    val stream: Boolean = false
-)
-
-@Serializable
-data class ServiceMistralMessage(
-    val role: String,
-    val content: List<ServiceMistralContent>
-)
-
-@Serializable
-@OptIn(ExperimentalSerializationApi::class)
-@JsonClassDiscriminator("type")
-sealed class ServiceMistralContent
-
-@Serializable
-@SerialName("text")
-data class ServiceMistralTextContent(@SerialName("text") val text: String) : ServiceMistralContent()
-
-@Serializable
-@SerialName("image_url")
-data class ServiceMistralImageContent(@SerialName("image_url") val imageUrl: ServiceMistralImageUrl) : ServiceMistralContent()
-
-@Serializable
-data class ServiceMistralImageUrl(val url: String)
-
-@Serializable
-data class ServiceMistralResponse(
-    val choices: List<ServiceMistralChoice>
-)
-
-@Serializable
-data class ServiceMistralChoice(
-    val message: ServiceMistralResponseMessage
-)
-
-@Serializable
-data class ServiceMistralResponseMessage(
-    val role: String,
-    val content: String
-)
-
-private suspend fun callMistralApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
-    var responseText: String? = null
-    var errorMessage: String? = null
-
-    val json = Json {
-        serializersModule = SerializersModule {
-            polymorphic(ServiceMistralContent::class) {
-                subclass(ServiceMistralTextContent::class, ServiceMistralTextContent.serializer())
-                subclass(ServiceMistralImageContent::class, ServiceMistralImageContent.serializer())
-            }
-        }
-        ignoreUnknownKeys = true
-    }
-
-    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
-    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
-
-    try {
-        val apiMessages = mutableListOf<ServiceMistralMessage>()
-
-        // Combine history and input, but handle system role if needed
-        (chatHistory + inputContent).forEach { content ->
-            val parts = content.parts.mapNotNull { part ->
-                when (part) {
-                    is TextPart -> if (part.text.isNotBlank()) ServiceMistralTextContent(text = part.text) else null
-                    is ImagePart -> {
-                        if (supportsScreenshot) {
-                            ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}"))
-                        } else null
-                    }
-                    else -> null
-                }
-            }
-            if (parts.isNotEmpty()) {
-                val role = when (content.role) {
-                    "user" -> "user"
-                    "system" -> "system"
-                    else -> "assistant"
-                }
-                apiMessages.add(ServiceMistralMessage(role = role, content = parts))
-            }
-        }
-
-        val requestBody = ServiceMistralRequest(
-            model = modelName,
-            messages = apiMessages
-        )
-
-        val client = OkHttpClient()
-        val mediaType = "application/json".toMediaType()
-        val jsonBody = json.encodeToString(ServiceMistralRequest.serializer(), requestBody)
-
-        val request = Request.Builder()
-            .url("https://api.mistral.ai/v1/chat/completions")
-            .post(jsonBody.toRequestBody(mediaType))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string()
-            if (!response.isSuccessful) {
-                Log.e("ScreenCaptureService", "Mistral API Error ($response.code): $responseBody")
-                errorMessage = "Mistral Error ${response.code}: $responseBody"
-            } else {
-                if (responseBody != null) {
-                    val mistralResponse = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
-                    responseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
-                } else {
-                    errorMessage = "Empty response body from Mistral"
-                }
-            }
-        }
-    } catch (e: IOException) {
-        errorMessage = e.localizedMessage ?: "Mistral API network call failed"
-        Log.e("ScreenCaptureService", "Mistral API network failure", e)
-    } catch (e: SerializationException) {
-        errorMessage = e.localizedMessage ?: "Mistral API response parse failed"
-        Log.e("ScreenCaptureService", "Mistral API parse failure", e)
-    } catch (e: IllegalStateException) {
-        errorMessage = e.localizedMessage ?: "Mistral API call failed"
-        Log.e("ScreenCaptureService", "Mistral API state failure", e)
-    }
-
-    return Pair(responseText, errorMessage)
-}
-
-private suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
-    var responseText: String? = null
-    var errorMessage: String? = null
-    
-    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
-    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
-
-    try {
-        val apiMessages = mutableListOf<com.google.ai.sample.network.PuterMessage>()
-
-        // Combine history and input, but handle system role if needed
-        (chatHistory + inputContent).forEach { content ->
-            val parts = content.parts.mapNotNull { part ->
-                when (part) {
-                    is TextPart -> if (part.text.isNotBlank()) com.google.ai.sample.network.PuterTextContent(text = part.text) else null
-                    is ImagePart -> {
-                        if (supportsScreenshot) {
-                            val base64Uri = com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(part.image)
-                            com.google.ai.sample.network.PuterImageContent(image_url = com.google.ai.sample.network.PuterImageUrl(url = base64Uri))
-                        } else null
-                    }
-                    else -> null
-                }
-            }
-            if (parts.isNotEmpty()) {
-                val role = when (content.role) {
-                    "user" -> "user"
-                    "system" -> "system"
-                    else -> "assistant"
-                }
-                apiMessages.add(com.google.ai.sample.network.PuterMessage(role = role, content = parts))
-            }
-        }
-
-        val requestBody = com.google.ai.sample.network.PuterRequest(
-            model = modelName,
-            messages = apiMessages
-        )
-
-        responseText = com.google.ai.sample.network.PuterApiClient.call(apiKey, requestBody)
-        
-    } catch (e: IOException) {
-        errorMessage = e.localizedMessage ?: "Puter API network call failed"
-        Log.e("ScreenCaptureService", "Puter API network failure", e)
-    } catch (e: IllegalStateException) {
-        errorMessage = e.localizedMessage ?: "Puter API call failed"
-        Log.e("ScreenCaptureService", "Puter API state failure", e)
-    }
-
-    return Pair(responseText, errorMessage)
 }

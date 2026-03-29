@@ -36,16 +36,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.lang.NumberFormatException
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
-    private data class ResolvedPoint(val xPx: Float, val yPx: Float)
-    private data class ResolvedScrollGesture(
-        val xPx: Float,
-        val yPx: Float,
-        val distancePx: Float,
-        val durationMs: Long
-    )
-
-    private enum class ScrollAxis { HORIZONTAL, VERTICAL }
-
     private val commandQueue = AccessibilityCommandQueue()
     // private val handler = Handler(Looper.getMainLooper()) // Already exists at the class level
 
@@ -212,28 +202,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }, nextCommandDelay)
     }
 
-    private fun resolvePoint(x: String, y: String, screenWidth: Int, screenHeight: Int): ResolvedPoint {
-        return ResolvedPoint(
-            xPx = convertCoordinate(x, screenWidth),
-            yPx = convertCoordinate(y, screenHeight)
-        )
-    }
-
-    private fun resolveScrollGesture(
-        x: String,
-        y: String,
-        distance: String,
-        durationMs: Long,
-        axis: ScrollAxis,
-        screenWidth: Int,
-        screenHeight: Int
-    ): ResolvedScrollGesture {
-        val point = resolvePoint(x, y, screenWidth, screenHeight)
-        val distanceBasis = if (axis == ScrollAxis.HORIZONTAL) screenWidth else screenHeight
-        val distancePx = convertCoordinate(distance, distanceBasis)
-        return ResolvedScrollGesture(point.xPx, point.yPx, distancePx, durationMs)
-    }
-
     private fun executeSingleCommand(command: Command): Boolean {
         val displayMetrics = this.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
@@ -258,7 +226,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             is Command.TapCoordinates -> {
-                val point = resolvePoint(command.x, command.y, screenWidth, screenHeight)
+                val point = ScreenCommandGeometryResolver.resolvePoint(command.x, command.y, screenWidth, screenHeight, ::convertCoordinate)
                 Log.d(TAG, "Tapping at coordinates: (${command.x} -> ${point.xPx}, ${command.y} -> ${point.yPx})")
                 this.showToast("Trying to tap coordinates: (${point.xPx}, ${point.yPx})", false)
                 this.tapAtCoordinates(point.xPx, point.yPx)
@@ -354,64 +322,64 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             is Command.ScrollDownFromCoordinates -> {
-                Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val resolved = resolveScrollGesture(
+                executeScrollFromCoordinatesCommand(
+                    commandName = "ScrollDownFromCoordinates",
+                    directionLabel = "down",
                     x = command.x,
                     y = command.y,
                     distance = command.distance,
-                    durationMs = command.duration,
-                    axis = ScrollAxis.VERTICAL,
+                    duration = command.duration,
+                    axis = ScreenCommandGeometryResolver.ScrollAxis.VERTICAL,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight
-                )
-                this.showToast("Trying to scroll down from position (${resolved.xPx}, ${resolved.yPx})", false)
-                this.scrollDown(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
-                true // Asynchronous
+                ) { resolved ->
+                    scrollDown(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
+                }
             }
             is Command.ScrollUpFromCoordinates -> {
-                Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val resolved = resolveScrollGesture(
+                executeScrollFromCoordinatesCommand(
+                    commandName = "ScrollUpFromCoordinates",
+                    directionLabel = "up",
                     x = command.x,
                     y = command.y,
                     distance = command.distance,
-                    durationMs = command.duration,
-                    axis = ScrollAxis.VERTICAL,
+                    duration = command.duration,
+                    axis = ScreenCommandGeometryResolver.ScrollAxis.VERTICAL,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight
-                )
-                this.showToast("Trying to scroll up from position (${resolved.xPx}, ${resolved.yPx})", false)
-                this.scrollUp(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
-                true // Asynchronous
+                ) { resolved ->
+                    scrollUp(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
+                }
             }
             is Command.ScrollLeftFromCoordinates -> {
-                Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val resolved = resolveScrollGesture(
+                executeScrollFromCoordinatesCommand(
+                    commandName = "ScrollLeftFromCoordinates",
+                    directionLabel = "left",
                     x = command.x,
                     y = command.y,
                     distance = command.distance,
-                    durationMs = command.duration,
-                    axis = ScrollAxis.HORIZONTAL,
+                    duration = command.duration,
+                    axis = ScreenCommandGeometryResolver.ScrollAxis.HORIZONTAL,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight
-                )
-                this.showToast("Trying to scroll left from position (${resolved.xPx}, ${resolved.yPx})", false)
-                this.scrollLeft(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
-                true // Asynchronous
+                ) { resolved ->
+                    scrollLeft(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
+                }
             }
             is Command.ScrollRightFromCoordinates -> {
-                Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val resolved = resolveScrollGesture(
+                executeScrollFromCoordinatesCommand(
+                    commandName = "ScrollRightFromCoordinates",
+                    directionLabel = "right",
                     x = command.x,
                     y = command.y,
                     distance = command.distance,
-                    durationMs = command.duration,
-                    axis = ScrollAxis.HORIZONTAL,
+                    duration = command.duration,
+                    axis = ScreenCommandGeometryResolver.ScrollAxis.HORIZONTAL,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight
-                )
-                this.showToast("Trying to scroll right from position (${resolved.xPx}, ${resolved.yPx})", false)
-                this.scrollRight(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
-                true // Asynchronous
+                ) { resolved ->
+                    scrollRight(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
+                }
             }
             is Command.OpenApp -> {
                 executeSyncCommandAction(
@@ -477,6 +445,38 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         action()
         return true
     }
+
+    private fun executeScrollFromCoordinatesCommand(
+        commandName: String,
+        directionLabel: String,
+        x: String,
+        y: String,
+        distance: String,
+        duration: Long,
+        axis: ScreenCommandGeometryResolver.ScrollAxis,
+        screenWidth: Int,
+        screenHeight: Int,
+        execute: (ScreenCommandGeometryResolver.ResolvedScrollGesture) -> Unit
+    ): Boolean {
+        Log.d(
+            TAG,
+            "$commandName: Original inputs x='$x', y='$y', distance='$distance', duration='$duration'"
+        )
+        val resolved = ScreenCommandGeometryResolver.resolveScrollGesture(
+            x = x,
+            y = y,
+            distance = distance,
+            durationMs = duration,
+            axis = axis,
+            screenWidth = screenWidth,
+            screenHeight = screenHeight,
+            coordinateResolver = ::convertCoordinate
+        )
+        showToast("Trying to scroll $directionLabel from position (${resolved.xPx}, ${resolved.yPx})", false)
+        execute(resolved)
+        return true
+    }
+
 
     private fun processCommandQueue() {
         if (!commandQueue.tryAcquireProcessing()) {
@@ -1237,50 +1237,79 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     /**
      * Tap at the specified coordinates
      */
+    private fun dispatchGestureWithCallbacks(
+        gesture: GestureDescription,
+        onCompleted: () -> Unit,
+        onCancelled: () -> Unit,
+        onDispatchFailed: () -> Unit
+    ) {
+        val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                super.onCompleted(gestureDescription)
+                onCompleted()
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                super.onCancelled(gestureDescription)
+                onCancelled()
+            }
+        }, null)
+
+        if (!dispatchResult) {
+            onDispatchFailed()
+        }
+    }
+
+    private fun ensureGestureApiAvailable(actionDescription: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("$actionDescription not available: Gesture API is not available on this Android version", true)
+            scheduleNextCommandProcessing()
+            return false
+        }
+        return true
+    }
+
+    private fun buildTapGesture(x: Float, y: Float, durationMs: Long): GestureDescription {
+        val path = Path().apply {
+            moveTo(x, y)
+        }
+        return GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
+            .build()
+    }
+
     fun tapAtCoordinates(x: Float, y: Float) {
         Log.d(TAG, "Tapping at coordinates: ($x, $y)")
         showToast("Tapping at coordinates: ($x, $y)", false)
         
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Log.e(TAG, "Gesture API is not available on this Android version")
-            showToast("Gesture API is not available on this Android version", true)
-            scheduleNextCommandProcessing() // Continue queue if API not available
+        if (!ensureGestureApiAvailable("Tap")) {
             return
         }
         
         try {
-            // Create a tap gesture
-            val path = Path()
-            path.moveTo(x, y)
+            val gesture = buildTapGesture(x = x, y = y, durationMs = 100)
             
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
-                .build()
-            
-            // Dispatch the gesture
-            val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription) {
-                    super.onCompleted(gestureDescription)
+            dispatchGestureWithCallbacks(
+                gesture = gesture,
+                onCompleted = {
                     Log.d(TAG, "Tap gesture completed")
                     showToast("Tapped coordinates ($x, $y) successfully", false)
                     scheduleNextCommandProcessing()
-                }
-                
-                override fun onCancelled(gestureDescription: GestureDescription) {
-                    super.onCancelled(gestureDescription)
+                },
+                onCancelled = {
                     Log.e(TAG, "Tap gesture cancelled")
                     showToast("Tap at coordinates ($x, $y) cancelled, trying longer duration", true)
                     // Try with longer duration, which will then call scheduleNextCommandProcessing
                     tapAtCoordinatesWithLongerDuration(x, y)
+                },
+                onDispatchFailed = {
+                    Log.e(TAG, "Failed to dispatch tap gesture")
+                    showToast("Error dispatching tap gesture, trying longer duration", true)
+                    // Try with longer duration, which will then call scheduleNextCommandProcessing
+                    tapAtCoordinatesWithLongerDuration(x, y)
                 }
-            }, null)
-            
-            if (!dispatchResult) {
-                Log.e(TAG, "Failed to dispatch tap gesture")
-                showToast("Error dispatching tap gesture, trying longer duration", true)
-                // Try with longer duration, which will then call scheduleNextCommandProcessing
-                tapAtCoordinatesWithLongerDuration(x, y)
-            }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates: ${e.message}")
             showToast("Error tapping at coordinates: ${e.message}", true)
@@ -1295,44 +1324,31 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Tapping at coordinates with longer duration: ($x, $y)")
         showToast("Trying to tap with longer duration at: ($x, $y)", false)
         
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Log.e(TAG, "Gesture API is not available on this Android version")
-            showToast("Gesture API is not available on this Android version", true)
-            scheduleNextCommandProcessing() // Continue queue
+        if (!ensureGestureApiAvailable("Long tap")) {
             return
         }
         
         try {
-            // Create a tap gesture with longer duration
-            val path = Path()
-            path.moveTo(x, y)
+            val gesture = buildTapGesture(x = x, y = y, durationMs = 300)
             
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0, 300)) // 300ms duration
-                .build()
-            
-            // Dispatch the gesture
-            val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription) {
-                    super.onCompleted(gestureDescription)
+            dispatchGestureWithCallbacks(
+                gesture = gesture,
+                onCompleted = {
                     Log.d(TAG, "Long tap gesture completed")
                     showToast("Tapped with longer duration at coordinates ($x, $y) successfully", false)
                     scheduleNextCommandProcessing()
-                }
-                
-                override fun onCancelled(gestureDescription: GestureDescription) {
-                    super.onCancelled(gestureDescription)
+                },
+                onCancelled = {
                     Log.e(TAG, "Long tap gesture cancelled")
                     showToast("Tap with longer duration at coordinates ($x, $y) cancelled", true)
                     scheduleNextCommandProcessing()
+                },
+                onDispatchFailed = {
+                    Log.e(TAG, "Failed to dispatch long tap gesture")
+                    showToast("Error dispatching tap gesture with longer duration", true)
+                    scheduleNextCommandProcessing()
                 }
-            }, null)
-            
-            if (!dispatchResult) {
-                Log.e(TAG, "Failed to dispatch long tap gesture")
-                showToast("Error dispatching tap gesture with longer duration", true)
-                scheduleNextCommandProcessing()
-            }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
             showToast("Error tapping with longer duration at coordinates: ${e.message}", true)
@@ -1931,32 +1947,24 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
             )
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
-            val result = dispatchGesture(
-                gestureBuilder.build(),
-                object : GestureResultCallback() {
-                    override fun onCompleted(gestureDescription: GestureDescription) {
-                        super.onCompleted(gestureDescription)
-                        Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled down from position ($startX, $startY)", false)
-                        scheduleNextCommandProcessing()
-                    }
-                    
-                    override fun onCancelled(gestureDescription: GestureDescription) {
-                        super.onCancelled(gestureDescription)
-                        Log.e(TAG, "scrollDown method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
-                        showToast("Scroll down from position ($startX, $startY) cancelled", true)
-                        scheduleNextCommandProcessing()
-                    }
+            dispatchGestureWithCallbacks(
+                gesture = gestureBuilder.build(),
+                onCompleted = {
+                    Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
+                    showToast("Successfully scrolled down from position ($startX, $startY)", false)
+                    scheduleNextCommandProcessing()
                 },
-                null // handler
+                onCancelled = {
+                    Log.e(TAG, "scrollDown method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY)")
+                    showToast("Scroll down from position ($startX, $startY) cancelled", true)
+                    scheduleNextCommandProcessing()
+                },
+                onDispatchFailed = {
+                    Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture for path from ($startX, $startY) to ($endX, $endY)")
+                    showToast("Error scrolling down from position ($startX, $startY)", true)
+                    scheduleNextCommandProcessing()
+                }
             )
-            
-            if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture for path from ($startX, $startY) to ($endX, $endY)")
-                showToast("Error scrolling down from position ($startX, $startY)", true)
-                scheduleNextCommandProcessing()
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
             showToast("Error scrolling down from position ($x, $y): ${e.message}", true)
