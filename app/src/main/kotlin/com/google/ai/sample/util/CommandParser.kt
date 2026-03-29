@@ -7,6 +7,7 @@ import android.util.Log
  */
 object CommandParser {
     private const val TAG = "CommandParser"
+    private val SINGLE_INSTANCE_COMMAND_TYPES = setOf(CommandTypeEnum.TAKE_SCREENSHOT)
 
     // Enum to represent different command types
     private enum class CommandTypeEnum {
@@ -24,6 +25,12 @@ object CommandParser {
         val regex: Regex,
         val commandBuilder: (MatchResult) -> Command,
         val commandType: CommandTypeEnum // Used for single-instance command check
+    )
+    private data class ProcessedMatch(
+        val startIndex: Int,
+        val endIndex: Int,
+        val command: Command,
+        val commandType: CommandTypeEnum
     )
 
     // Master list of all patterns
@@ -92,8 +99,7 @@ object CommandParser {
      */
     @Synchronized
     fun parseCommands(text: String, clearBuffer: Boolean = false): List<Command> {
-        val commands = mutableListOf<Command>()
-
+        var commands: List<Command> = emptyList()
         try {
             resetBufferIfNeeded(clearBuffer)
 
@@ -107,7 +113,7 @@ object CommandParser {
             Log.d(TAG, "Current buffer for command parsing: $textBuffer")
 
             // Process each line and the combined buffer
-            processText(textBuffer, commands)
+            commands = processTextInternal(textBuffer)
 
             // If we found commands, clear the buffer for next time
             if (commands.isNotEmpty()) {
@@ -163,27 +169,9 @@ object CommandParser {
      * Process text to find commands
      */
     private fun processTextInternal(text: String): List<Command> {
-        data class ProcessedMatch(val startIndex: Int, val endIndex: Int, val command: Command, val type: CommandTypeEnum)
-        val foundRawMatches = mutableListOf<ProcessedMatch>()
+        val foundRawMatches = collectRawMatches(text)
         val finalCommands = mutableListOf<Command>()
         val addedSingleInstanceCommands = mutableSetOf<CommandTypeEnum>()
-
-        for (patternInfo in ALL_PATTERNS) {
-            try {
-                patternInfo.regex.findAll(text).forEach { matchResult ->
-                    try {
-                        val command = patternInfo.commandBuilder(matchResult)
-                        // Store the commandType from the patternInfo that generated this command
-                        foundRawMatches.add(ProcessedMatch(matchResult.range.first, matchResult.range.last, command, patternInfo.commandType))
-                        Log.d(TAG, "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=${command}, Type=${patternInfo.commandType}, Pattern=${patternInfo.id}")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error building command for pattern ${patternInfo.id} with match ${matchResult.value}: ${e.message}", e)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error finding matches for pattern ${patternInfo.id}: ${e.message}", e)
-            }
-        }
 
         // Sort matches by start index
         foundRawMatches.sortBy { it.startIndex }
@@ -191,29 +179,13 @@ object CommandParser {
 
         var currentPosition = 0
         for (processedMatch in foundRawMatches) {
-            val (startIndex, endIndex, command, commandTypeFromMatch) = processedMatch // Destructure
+            val (startIndex, endIndex, command, commandType) = processedMatch
             if (startIndex >= currentPosition) {
-                var canAdd = true
-                // Use commandTypeFromMatch directly here
-                val isSingleInstanceType = when (commandTypeFromMatch) {
-                    CommandTypeEnum.TAKE_SCREENSHOT -> true // Only TakeScreenshot is single-instance
-                    else -> false
-                }
-                if (isSingleInstanceType) {
-                    if (addedSingleInstanceCommands.contains(commandTypeFromMatch)) {
-                        canAdd = false
-                        Log.d(TAG, "Skipping duplicate single-instance command: $command (Type: $commandTypeFromMatch)")
-                    } else {
-                        addedSingleInstanceCommands.add(commandTypeFromMatch)
-                    }
-                }
-
-                if (canAdd) {
-                    // Simplified duplicate check: if it's not a single instance type, allow it.
-                    // More sophisticated duplicate checks for parameterized commands can be added here if needed.
-                    // For now, only single-instance types are strictly controlled for duplication.
-                    // The overlap filter (startIndex >= currentPosition) already prevents identical commands
-                    // from the exact same text span.
+                val isSingleInstanceDuplicate = commandType in SINGLE_INSTANCE_COMMAND_TYPES &&
+                    !addedSingleInstanceCommands.add(commandType)
+                if (isSingleInstanceDuplicate) {
+                    Log.d(TAG, "Skipping duplicate single-instance command: $command (Type: $commandType)")
+                } else {
                     finalCommands.add(command)
                     currentPosition = endIndex + 1
                     Log.d(TAG, "Added command: $command. New currentPosition: $currentPosition")
@@ -226,12 +198,38 @@ object CommandParser {
         return finalCommands
     }
 
-    /**
-     * Process text to find commands
-     */
-    private fun processText(text: String, commands: MutableList<Command>) {
-        val extractedCommands = processTextInternal(text)
-        commands.addAll(extractedCommands)
+    private fun collectRawMatches(text: String): MutableList<ProcessedMatch> {
+        val foundRawMatches = mutableListOf<ProcessedMatch>()
+        for (patternInfo in ALL_PATTERNS) {
+            try {
+                patternInfo.regex.findAll(text).forEach { matchResult ->
+                    try {
+                        val command = patternInfo.commandBuilder(matchResult)
+                        foundRawMatches.add(
+                            ProcessedMatch(
+                                startIndex = matchResult.range.first,
+                                endIndex = matchResult.range.last,
+                                command = command,
+                                commandType = patternInfo.commandType
+                            )
+                        )
+                        Log.d(
+                            TAG,
+                            "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=$command, Type=${patternInfo.commandType}, Pattern=${patternInfo.id}"
+                        )
+                    } catch (e: Exception) {
+                        Log.e(
+                            TAG,
+                            "Error building command for pattern ${patternInfo.id} with match ${matchResult.value}: ${e.message}",
+                            e
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error finding matches for pattern ${patternInfo.id}: ${e.message}", e)
+            }
+        }
+        return foundRawMatches
     }
 
     /**
@@ -278,109 +276,4 @@ object CommandParser {
     fun getBufferContent(): String {
         return textBuffer
     }
-}
-
-/**
- * Sealed class representing different types of commands
- */
-sealed class Command {
-    /**
-     * Command to click a button with the specified text
-     */
-    data class ClickButton(val buttonText: String) : Command()
-
-    /**
-     * Command to long click a button with the specified text
-     */
-    data class LongClickButton(val buttonText: String) : Command()
-
-    /**
-     * Command to tap at the specified coordinates
-     */
-    data class TapCoordinates(val x: String, val y: String) : Command()
-
-    /**
-     * Command to take a screenshot
-     */
-    object TakeScreenshot : Command()
-
-    /**
-     * Command to press the home button
-     */
-    object PressHomeButton : Command()
-
-    /**
-     * Command to press the back button
-     */
-    object PressBackButton : Command()
-
-    /**
-     * Command to show recent apps
-     */
-    object ShowRecentApps : Command()
-
-    /**
-     * Command to scroll down
-     */
-    object ScrollDown : Command()
-
-    /**
-     * Command to scroll up
-     */
-    object ScrollUp : Command()
-
-    /**
-     * Command to scroll left
-     */
-    object ScrollLeft : Command()
-    
-    /**
-     * Command to press the Enter key
-     */
-    object PressEnterKey : Command()
-
-    /**
-     * Command to scroll right
-     */
-    object ScrollRight : Command()
-
-    /**
-     * Command to scroll down from specific coordinates with custom distance and duration
-     */
-    data class ScrollDownFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
-
-    /**
-     * Command to scroll up from specific coordinates with custom distance and duration
-     */
-    data class ScrollUpFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
-
-    /**
-     * Command to scroll left from specific coordinates with custom distance and duration
-     */
-    data class ScrollLeftFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
-
-    /**
-     * Command to scroll right from specific coordinates with custom distance and duration
-     */
-    data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
-
-    /**
-     * Command to open an app by package name
-     */
-    data class OpenApp(val packageName: String) : Command()
-
-    /**
-     * Command to write text into the currently focused text field
-     */
-    data class WriteText(val text: String) : Command()
-
-    /**
-     * Command to switch to high reasoning model (gemini-2.5-pro-preview-03-25)
-     */
-    object UseHighReasoningModel : Command()
-
-    /**
-     * Command to switch to low reasoning model (gemini-2.0-flash-lite)
-     */
-    object UseLowReasoningModel : Command()
 }

@@ -10,7 +10,6 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -32,7 +31,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import android.view.View
-import android.view.ViewTreeObserver
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -102,7 +100,7 @@ class MainActivity : ComponentActivity() {
     // Keyboard Visibility
     private val _isKeyboardOpen = MutableStateFlow(false)
     val isKeyboardOpen: StateFlow<Boolean> = _isKeyboardOpen.asStateFlow()
-    private var onGlobalLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private val keyboardVisibilityObserver = KeyboardVisibilityObserver(TAG)
 
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
     private lateinit var apiKeyManager: ApiKeyManager
@@ -131,6 +129,7 @@ class MainActivity : ComponentActivity() {
     private var isProcessingExplicitScreenshotRequest: Boolean = false
     private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
     private var onWebRtcMediaProjectionResult: ((Int, Intent) -> Unit)? = null
+    private val mediaProjectionServiceStarter by lazy { MediaProjectionServiceStarter(this) }
 
     // Payment dialog state
     private var showPaymentMethodDialog by mutableStateOf(false)
@@ -224,20 +223,12 @@ class MainActivity : ComponentActivity() {
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) == PackageManager.PERMISSION_GRANTED) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
-                    }
+                    mediaProjectionServiceStarter.start(serviceIntent)
                 } else {
                     requestForegroundServicePermissionLauncher.launch(android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
                 }
             } else {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
+                mediaProjectionServiceStarter.start(serviceIntent)
             }
 
             if (isProcessingExplicitScreenshotRequest) {
@@ -265,11 +256,7 @@ class MainActivity : ComponentActivity() {
             val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
                 action = ScreenCaptureService.ACTION_KEEP_ALIVE_FOR_WEBRTC
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
+            mediaProjectionServiceStarter.start(serviceIntent)
 
             onWebRtcMediaProjectionResult?.invoke(resultCode, resultData)
             onWebRtcMediaProjectionResult = null
@@ -282,22 +269,7 @@ class MainActivity : ComponentActivity() {
 
     private fun setupKeyboardVisibilityListener() {
         val rootView = findViewById<View>(android.R.id.content)
-        onGlobalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
-            val rect = Rect()
-            rootView.getWindowVisibleDisplayFrame(rect)
-            val screenHeight = rootView.rootView.height
-            val keypadHeight = screenHeight - rect.bottom
-            if (keypadHeight > screenHeight * 0.15) {
-                if (!_isKeyboardOpen.value) {
-                    _isKeyboardOpen.value = true
-                    Log.d(TAG, "Keyboard visible")
-                }
-            } else if (_isKeyboardOpen.value) {
-                _isKeyboardOpen.value = false
-                Log.d(TAG, "Keyboard hidden")
-            }
-        }
-        rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
+        keyboardVisibilityObserver.start(rootView, _isKeyboardOpen)
     }
 
     private fun registerScreenshotReceivers() {
@@ -1141,10 +1113,8 @@ class MainActivity : ComponentActivity() {
             billingClient.endConnection()
             Log.d(TAG, "onDestroy: BillingClient connection ended.")
         }
-        onGlobalLayoutListener?.let {
-            findViewById<View>(android.R.id.content).viewTreeObserver.removeOnGlobalLayoutListener(it)
-            Log.d(TAG, "onDestroy: Keyboard layout listener removed.")
-        }
+        keyboardVisibilityObserver.stop(findViewById(android.R.id.content))
+        Log.d(TAG, "onDestroy: Keyboard layout listener removed.")
         if (this == instance) {
             instance = null
             Log.d(TAG, "onDestroy: MainActivity instance cleared.")

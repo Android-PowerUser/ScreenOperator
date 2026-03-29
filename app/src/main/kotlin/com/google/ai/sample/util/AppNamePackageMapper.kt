@@ -14,6 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
 class AppNamePackageMapper(private val context: Context) {
     companion object {
         private const val TAG = "AppNamePackageMapper"
+        private const val MATCH_THRESHOLD = 70
+        private val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9]")
     }
     
     // Cache for app name to package name mappings
@@ -39,9 +41,7 @@ class AppNamePackageMapper(private val context: Context) {
             val resolveInfoList = queryLauncherActivities(packageManager)
 
             // Add manual mappings once
-            for ((key, value) in manualMappings) {
-                appNameToPackageCache[key] = value
-            }
+            appNameToPackageCache.putAll(manualMappings)
             
             // Add all apps to the cache
             for (resolveInfo in resolveInfoList) {
@@ -55,12 +55,10 @@ class AppNamePackageMapper(private val context: Context) {
             }
 
             // Add variations to the cache once
-            for ((baseAppName, variations) in appNameVariations) {
-                val variationPackageName = getPackageName(baseAppName)
-                if (variationPackageName != null) {
-                    for (variation in variations) {
-                        appNameToPackageCache[variation] = variationPackageName
-                    }
+            appNameVariations.forEach { (baseAppName, variations) ->
+                val variationPackageName = getPackageName(baseAppName) ?: return@forEach
+                variations.forEach { variation ->
+                    appNameToPackageCache[variation] = variationPackageName
                 }
             }
             
@@ -103,24 +101,17 @@ class AppNamePackageMapper(private val context: Context) {
             val resolveInfoList = queryLauncherActivities(packageManager)
             
             // Find the best match
-            var bestMatch: ResolveInfo? = null
-            var bestMatchScore = 0
-            
-            for (resolveInfo in resolveInfoList) {
-                val currentAppName = resolveInfo.loadLabel(packageManager).toString()
-                val normalizedCurrentAppName = normalizeName(currentAppName)
-                
-                // Calculate match score
-                val score = calculateMatchScore(normalizedAppName, normalizedCurrentAppName)
-                
-                if (score > bestMatchScore) {
-                    bestMatchScore = score
-                    bestMatch = resolveInfo
+            val (bestMatch, bestMatchScore) = resolveInfoList
+                .map { resolveInfo ->
+                    val currentAppName = resolveInfo.loadLabel(packageManager).toString()
+                    val normalizedCurrentAppName = normalizeName(currentAppName)
+                    resolveInfo to StringSimilarity.calculateMatchScore(normalizedAppName, normalizedCurrentAppName)
                 }
-            }
+                .maxByOrNull { it.second }
+                ?: (null to 0)
             
             // If we found a good match, return its package name
-            if (bestMatchScore >= 70 && bestMatch != null) { // 70% match threshold
+            if (bestMatchScore >= MATCH_THRESHOLD && bestMatch != null) {
                 val packageName = bestMatch.activityInfo.packageName
                 Log.d(TAG, "Found package name for app name '$appName': $packageName (match score: $bestMatchScore%)")
                 
@@ -149,7 +140,7 @@ class AppNamePackageMapper(private val context: Context) {
     private fun normalizeName(value: String): String {
         return value.lowercase(Locale.getDefault())
             .trim()
-            .replace(Regex("[^a-z0-9]"), "")
+            .replace(NON_ALPHANUMERIC_REGEX, "")
     }
     
     /**
@@ -167,10 +158,7 @@ class AppNamePackageMapper(private val context: Context) {
         
         // Try to get the app name from the package manager
         try {
-            // Get the package manager
             val packageManager = context.packageManager
-            
-            // Try to get the app info
             val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
             val appName = packageManager.getApplicationLabel(applicationInfo).toString()
             
@@ -178,83 +166,12 @@ class AppNamePackageMapper(private val context: Context) {
             
             // Add to cache
             packageToAppNameCache[packageName] = appName
-            appNameToPackageCache[appName.lowercase(Locale.getDefault())] = packageName
+            appNameToPackageCache[normalizeName(appName)] = packageName
             
             return appName
         } catch (e: Exception) {
             Log.e(TAG, "Error getting app name for package name '$packageName': ${e.message}")
             return packageName
         }
-    }
-    
-    /**
-     * Calculate a match score between two app names
-     * 
-     * @param query The query app name
-     * @param target The target app name
-     * @return A score from 0 to 100 indicating how well the names match
-     */
-    private fun calculateMatchScore(query: String, target: String): Int {
-        // Exact match
-        if (query == target) {
-            return 100
-        }
-        
-        // Target contains query
-        if (target.contains(query)) {
-            return 90
-        }
-        
-        // Query contains target
-        if (query.contains(target)) {
-            return 80
-        }
-        
-        // Calculate Levenshtein distance
-        val distance = levenshteinDistance(query, target)
-        val maxLength = maxOf(query.length, target.length)
-        
-        // Convert distance to similarity percentage
-        val similarity = ((maxLength - distance) / maxLength.toFloat()) * 100
-        
-        return similarity.toInt()
-    }
-    
-    /**
-     * Calculate the Levenshtein distance between two strings
-     * 
-     * @param s1 The first string
-     * @param s2 The second string
-     * @return The Levenshtein distance
-     */
-    private fun levenshteinDistance(s1: String, s2: String): Int {
-        val m = s1.length
-        val n = s2.length
-        
-        // Create a matrix of size (m+1) x (n+1)
-        val dp = Array(m + 1) { IntArray(n + 1) }
-        
-        // Initialize the matrix
-        for (i in 0..m) {
-            dp[i][0] = i
-        }
-        
-        for (j in 0..n) {
-            dp[0][j] = j
-        }
-        
-        // Fill the matrix
-        for (i in 1..m) {
-            for (j in 1..n) {
-                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
-                dp[i][j] = minOf(
-                    dp[i - 1][j] + 1, // deletion
-                    dp[i][j - 1] + 1, // insertion
-                    dp[i - 1][j - 1] + cost // substitution
-                )
-            }
-        }
-        
-        return dp[m][n]
     }
 }

@@ -1,8 +1,6 @@
 package com.google.ai.sample.util
 
 import android.content.Context
-import android.content.SharedPreferences
-import com.google.ai.sample.feature.multimodal.PhotoParticipant
 import com.google.ai.sample.feature.multimodal.PhotoReasoningMessage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -14,32 +12,26 @@ import java.lang.reflect.Type
 object ChatHistoryPreferences {
     private const val PREFS_NAME = "chat_history_prefs"
     private const val KEY_CHAT_MESSAGES = "chat_messages"
-    
-    // Initialize Gson instance
     private val gson = Gson()
+    private val messageListType: Type = object : TypeToken<List<PhotoReasoningMessage>>() {}.type
+
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     
     /**
      * Save chat messages to SharedPreferences
      */
     fun saveChatMessages(context: Context, messages: List<PhotoReasoningMessage>) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        
         val json = gson.toJson(messages)
-        editor.putString(KEY_CHAT_MESSAGES, json)
-        editor.apply()
+        prefs(context).edit().putString(KEY_CHAT_MESSAGES, json).apply()
     }
     
     /**
      * Load chat messages from SharedPreferences
      */
     fun loadChatMessages(context: Context): List<PhotoReasoningMessage> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val json = prefs.getString(KEY_CHAT_MESSAGES, null) ?: return emptyList()
-        
-        val listType: Type = object : TypeToken<List<PhotoReasoningMessage>>() {}.type
+        val json = prefs(context).getString(KEY_CHAT_MESSAGES, null) ?: return emptyList()
         return try {
-            gson.fromJson(json, listType)
+            gson.fromJson(json, messageListType)
         } catch (e: Exception) {
             emptyList()
         }
@@ -49,9 +41,6 @@ object ChatHistoryPreferences {
      * Clear all chat messages from SharedPreferences
      */
     fun clearChatMessages(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        editor.remove(KEY_CHAT_MESSAGES)
-        editor.apply()
+        prefs(context).edit().remove(KEY_CHAT_MESSAGES).apply()
     }
 }
