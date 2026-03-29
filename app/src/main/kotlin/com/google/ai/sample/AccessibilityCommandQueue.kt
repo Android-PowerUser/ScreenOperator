@@ -14,6 +14,7 @@ internal class AccessibilityCommandQueue {
         processing.set(false)
     }
 
+    @Synchronized
     fun enqueue(command: Command): Int {
         queue.add(command)
         return queue.size
