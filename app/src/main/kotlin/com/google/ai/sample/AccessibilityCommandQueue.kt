@@ -8,6 +8,7 @@ internal class AccessibilityCommandQueue {
     private val queue = LinkedList<Command>()
     private val processing = AtomicBoolean(false)
 
+    @Synchronized
     fun clearAndUnlock() {
         queue.clear()
         processing.set(false)
