@@ -22,125 +22,8 @@ class AppNamePackageMapper(private val context: Context) {
     // Cache for package name to app name mappings
     private val packageToAppNameCache = ConcurrentHashMap<String, String>()
     
-    // Common app name variations
-    private val appNameVariations = mapOf(
-        "whatsapp" to listOf("whats app", "whats", "wa"),
-        "facebook" to listOf("fb", "face book"),
-        "instagram" to listOf("insta", "ig"),
-        "youtube" to listOf("yt", "you tube"),
-        "twitter" to listOf("x", "tweet"),
-        "telegram" to listOf("tg"),
-        "tiktok" to listOf("tik tok"),
-        "snapchat" to listOf("snap"),
-        "netflix" to listOf("nflx"),
-        "spotify" to listOf("music"),
-        "chrome" to listOf("google chrome", "browser"),
-        "gmail" to listOf("google mail", "email", "mail"),
-        "maps" to listOf("google maps", "navigation"),
-        "calendar" to listOf("google calendar"),
-        "photos" to listOf("google photos", "gallery"),
-        "drive" to listOf("google drive"),
-        "docs" to listOf("google docs", "documents"),
-        "sheets" to listOf("google sheets", "spreadsheets"),
-        "slides" to listOf("google slides", "presentations"),
-        "keep" to listOf("google keep", "notes"),
-        "amazon" to listOf("amazon shopping", "shop"),
-        "uber" to listOf("uber driver"),
-        "lyft" to listOf("ride"),
-        "doordash" to listOf("food delivery"),
-        "ubereats" to listOf("uber eats", "food"),
-        "grubhub" to listOf("food delivery"),
-        "instacart" to listOf("grocery"),
-        "zoom" to listOf("zoom meeting"),
-        "teams" to listOf("microsoft teams"),
-        "skype" to listOf("microsoft skype"),
-        "outlook" to listOf("microsoft outlook", "email"),
-        "word" to listOf("microsoft word", "documents"),
-        "excel" to listOf("microsoft excel", "spreadsheets"),
-        "powerpoint" to listOf("microsoft powerpoint", "presentations"),
-        "onedrive" to listOf("microsoft onedrive", "cloud"),
-        "onenote" to listOf("microsoft onenote", "notes"),
-        "linkedin" to listOf("linked in"),
-        "pinterest" to listOf("pin"),
-        "reddit" to listOf("reddit app"),
-        "discord" to listOf("chat"),
-        "slack" to listOf("work chat"),
-        "twitch" to listOf("streaming"),
-        "venmo" to listOf("payment"),
-        "paypal" to listOf("payment"),
-        "cashapp" to listOf("cash app", "payment"),
-        "zelle" to listOf("payment"),
-        "robinhood" to listOf("stocks"),
-        "coinbase" to listOf("crypto"),
-        "binance" to listOf("crypto"),
-        "wechat" to listOf("we chat"),
-        "line" to listOf("line messenger"),
-        "viber" to listOf("viber messenger"),
-        "signal" to listOf("signal messenger"),
-        "threema" to listOf("threema messenger"),
-        "settings" to listOf("system settings", "preferences")
-    )
-    
-    // Manual mappings for common apps
-    private val manualMappings = mapOf(
-        "whatsapp" to "com.whatsapp",
-        "facebook" to "com.facebook.katana",
-        "messenger" to "com.facebook.orca",
-        "instagram" to "com.instagram.android",
-        "youtube" to "com.google.android.youtube",
-        "twitter" to "com.twitter.android",
-        "x" to "com.twitter.android",
-        "telegram" to "org.telegram.messenger",
-        "tiktok" to "com.zhiliaoapp.musically",
-        "snapchat" to "com.snapchat.android",
-        "netflix" to "com.netflix.mediaclient",
-        "spotify" to "com.spotify.music",
-        "chrome" to "com.android.chrome",
-        "gmail" to "com.google.android.gm",
-        "maps" to "com.google.android.apps.maps",
-        "calendar" to "com.google.android.calendar",
-        "photos" to "com.google.android.apps.photos",
-        "drive" to "com.google.android.apps.docs",
-        "docs" to "com.google.android.apps.docs.editors.docs",
-        "sheets" to "com.google.android.apps.docs.editors.sheets",
-        "slides" to "com.google.android.apps.docs.editors.slides",
-        "keep" to "com.google.android.keep",
-        "amazon" to "com.amazon.mShop.android.shopping",
-        "uber" to "com.ubercab",
-        "lyft" to "me.lyft.android",
-        "doordash" to "com.dd.doordash",
-        "ubereats" to "com.ubercab.eats",
-        "grubhub" to "com.grubhub.android",
-        "instacart" to "com.instacart.client",
-        "zoom" to "us.zoom.videomeetings",
-        "teams" to "com.microsoft.teams",
-        "skype" to "com.skype.raider",
-        "outlook" to "com.microsoft.office.outlook",
-        "word" to "com.microsoft.office.word",
-        "excel" to "com.microsoft.office.excel",
-        "powerpoint" to "com.microsoft.office.powerpoint",
-        "onedrive" to "com.microsoft.skydrive",
-        "onenote" to "com.microsoft.office.onenote",
-        "linkedin" to "com.linkedin.android",
-        "pinterest" to "com.pinterest",
-        "reddit" to "com.reddit.frontpage",
-        "discord" to "com.discord",
-        "slack" to "com.Slack",
-        "twitch" to "tv.twitch.android.app",
-        "venmo" to "com.venmo",
-        "paypal" to "com.paypal.android.p2pmobile",
-        "cashapp" to "com.squareup.cash",
-        "zelle" to "com.zellepay.zelle",
-        "robinhood" to "com.robinhood.android",
-        "coinbase" to "com.coinbase.android",
-        "binance" to "com.binance.dev",
-        "wechat" to "com.tencent.mm",
-        "line" to "jp.naver.line.android",
-        "viber" to "com.viber.voip",
-        "signal" to "org.thoughtcrime.securesms",
-        "threema" to "ch.threema.app",
-        "settings" to "com.android.settings"
-    )
+    private val appNameVariations = AppMappings.appNameVariations
+    private val manualMappings = AppMappings.manualMappings
     
     /**
      * Initialize the cache with installed apps
@@ -149,37 +32,34 @@ class AppNamePackageMapper(private val context: Context) {
         Log.d(TAG, "Initializing app name to package name cache")
         
         try {
-            // Get the package manager
+            appNameToPackageCache.clear()
+            packageToAppNameCache.clear()
+
             val packageManager = context.packageManager
-            
-            // Create an intent to get all apps with launcher activities
-            val intent = Intent(Intent.ACTION_MAIN)
-            intent.addCategory(Intent.CATEGORY_LAUNCHER)
-            
-            // Query for all apps with launcher activities
-            val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
+            val resolveInfoList = queryLauncherActivities(packageManager)
+
+            // Add manual mappings once
+            for ((key, value) in manualMappings) {
+                appNameToPackageCache[key] = value
+            }
             
             // Add all apps to the cache
             for (resolveInfo in resolveInfoList) {
                 val packageName = resolveInfo.activityInfo.packageName
-                val appName = resolveInfo.loadLabel(packageManager).toString().lowercase(Locale.getDefault())
+                val appLabel = resolveInfo.loadLabel(packageManager).toString()
+                val appName = normalizeName(appLabel)
                 
                 // Add to caches
                 appNameToPackageCache[appName] = packageName
-                packageToAppNameCache[packageName] = resolveInfo.loadLabel(packageManager).toString()
-                
-                // Add manual mappings to the cache
-                for ((key, value) in manualMappings) {
-                    appNameToPackageCache[key] = value
-                }
-                
-                // Add variations to the cache
-                for ((appName, variations) in appNameVariations) {
-                    val packageName = getPackageName(appName)
-                    if (packageName != null) {
-                        for (variation in variations) {
-                            appNameToPackageCache[variation] = packageName
-                        }
+                packageToAppNameCache[packageName] = appLabel
+            }
+
+            // Add variations to the cache once
+            for ((baseAppName, variations) in appNameVariations) {
+                val variationPackageName = getPackageName(baseAppName)
+                if (variationPackageName != null) {
+                    for (variation in variations) {
+                        appNameToPackageCache[variation] = variationPackageName
                     }
                 }
             }
@@ -197,10 +77,7 @@ class AppNamePackageMapper(private val context: Context) {
      * @return The package name, or null if not found
      */
     fun getPackageName(appName: String): String? {
-        // Normalize the app name
-        val normalizedAppName = appName.lowercase(Locale.getDefault())
-            .trim()
-            .replace(Regex("[^a-z0-9]"), "")
+        val normalizedAppName = normalizeName(appName)
         
         // Check if the app name is already a package name
         if (normalizedAppName.contains(".")) {
@@ -222,15 +99,8 @@ class AppNamePackageMapper(private val context: Context) {
         
         // Try to find a match in installed apps
         try {
-            // Get the package manager
             val packageManager = context.packageManager
-            
-            // Create an intent to get all apps with launcher activities
-            val intent = Intent(Intent.ACTION_MAIN)
-            intent.addCategory(Intent.CATEGORY_LAUNCHER)
-            
-            // Query for all apps with launcher activities
-            val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
+            val resolveInfoList = queryLauncherActivities(packageManager)
             
             // Find the best match
             var bestMatch: ResolveInfo? = null
@@ -238,9 +108,7 @@ class AppNamePackageMapper(private val context: Context) {
             
             for (resolveInfo in resolveInfoList) {
                 val currentAppName = resolveInfo.loadLabel(packageManager).toString()
-                val normalizedCurrentAppName = currentAppName.lowercase(Locale.getDefault())
-                    .trim()
-                    .replace(Regex("[^a-z0-9]"), "")
+                val normalizedCurrentAppName = normalizeName(currentAppName)
                 
                 // Calculate match score
                 val score = calculateMatchScore(normalizedAppName, normalizedCurrentAppName)
@@ -252,8 +120,8 @@ class AppNamePackageMapper(private val context: Context) {
             }
             
             // If we found a good match, return its package name
-            if (bestMatchScore >= 70) { // 70% match threshold
-                val packageName = bestMatch!!.activityInfo.packageName
+            if (bestMatchScore >= 70 && bestMatch != null) { // 70% match threshold
+                val packageName = bestMatch.activityInfo.packageName
                 Log.d(TAG, "Found package name for app name '$appName': $packageName (match score: $bestMatchScore%)")
                 
                 // Add to cache
@@ -269,6 +137,19 @@ class AppNamePackageMapper(private val context: Context) {
             Log.e(TAG, "Error getting package name for app name '$appName': ${e.message}")
             return null
         }
+    }
+
+    private fun queryLauncherActivities(packageManager: PackageManager): List<ResolveInfo> {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        return packageManager.queryIntentActivities(intent, 0)
+    }
+
+    private fun normalizeName(value: String): String {
+        return value.lowercase(Locale.getDefault())
+            .trim()
+            .replace(Regex("[^a-z0-9]"), "")
     }
     
     /**

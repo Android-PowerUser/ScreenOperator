@@ -33,15 +33,15 @@ import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
-import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
-import com.google.ai.sample.util.SystemMessageEntry // Added import
-import com.google.ai.sample.util.UserInputPreferences // Added import
-import com.google.ai.sample.feature.multimodal.ModelDownloadManager // Added import
-import com.google.ai.sample.ModelOption // Added import
-import com.google.ai.sample.GenerativeAiViewModelFactory // Added import
-import com.google.ai.sample.InferenceBackend // Added import
-import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
-import com.google.ai.sample.feature.multimodal.dtos.ImagePartDto // Required for path extraction
+import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.SystemMessageEntry
+import com.google.ai.sample.util.UserInputPreferences
+import com.google.ai.sample.feature.multimodal.ModelDownloadManager
+import com.google.ai.sample.ModelOption
+import com.google.ai.sample.GenerativeAiViewModelFactory
+import com.google.ai.sample.InferenceBackend
+import com.google.ai.sample.feature.multimodal.dtos.toDto
+import com.google.ai.sample.feature.multimodal.dtos.TempFilePathCollector
 import kotlinx.coroutines.Dispatchers
 import java.util.ArrayList // Required for StringArrayListExtra
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +68,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -107,6 +109,12 @@ class PhotoReasoningViewModel(
         val bytes = outputStream.toByteArray()
         return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
+
+    private fun mainActivityApplicationContextOrNull(): Context? =
+        MainActivity.getInstance()?.applicationContext
+
+    private fun currentApiKeyOrEmpty(provider: ApiProvider): String =
+        MainActivity.getInstance()?.getCurrentApiKey(provider) ?: ""
 
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
@@ -199,7 +207,6 @@ class PhotoReasoningViewModel(
     // Accumulated full text during streaming for incremental command parsing
     private var streamingAccumulatedText = StringBuilder()
 
-    // Added for retry on quota exceeded
     private var currentRetryAttempt = 0
     private var currentScreenInfoForPrompt: String? = null
     private var currentImageUrisForChat: List<String>? = null
@@ -232,7 +239,7 @@ class PhotoReasoningViewModel(
                             accumulated.append(delta)
                             onChunk(accumulated.toString())
                         }
-                    } catch (e: Exception) {
+                    } catch (e: SerializationException) {
                         // Fehlerhafte Chunk überspringen
                     }
                 }
@@ -513,11 +520,9 @@ class PhotoReasoningViewModel(
         if (_systemMessage.value.isNotBlank()) {
             history.add(content(role = "user") { text(_systemMessage.value) })
         }
-        ctx?.let {
-            val formattedDbEntries = formatDatabaseEntriesAsText(it)
-            if (formattedDbEntries.isNotBlank()) {
-                history.add(content(role = "user") { text(formattedDbEntries) })
-            }
+        val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
+        if (formattedDbEntries.isNotBlank()) {
+            history.add(content(role = "user") { text(formattedDbEntries) })
         }
         return generativeModel.startChat(history = history)
     }
@@ -569,7 +574,7 @@ class PhotoReasoningViewModel(
         stopExecutionFlag.set(false)
 
         val combinedPromptTextBuilder = StringBuilder(userInput)
-        if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) { // Added isNotBlank check
+        if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
             combinedPromptTextBuilder.append("\n\n$screenInfoForPrompt")
         }
         val aiPromptText = combinedPromptTextBuilder.toString()
@@ -667,10 +672,7 @@ class PhotoReasoningViewModel(
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
 
-    // Task 12: Clear any stale error state from previous model interactions
-    if (_uiState.value is PhotoReasoningUiState.Error) {
-        _uiState.value = PhotoReasoningUiState.Initial
-    }
+        clearStaleErrorState()
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
@@ -805,7 +807,23 @@ class PhotoReasoningViewModel(
 
                     // Use generateResponseAsync with ProgressListener for streaming
                     val sb = StringBuilder()
-                    val finalResponse = llmInference!!.generateResponseAsync(fullPrompt) { partialResult, done ->
+                    val inference = llmInference
+                    if (inference == null) {
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Error("Offline model is not initialized.")
+                            _chatState.replaceLastPendingMessage()
+                            _chatState.addMessage(
+                                PhotoReasoningMessage(
+                                    text = "Offline model is not initialized.",
+                                    participant = PhotoParticipant.ERROR
+                                )
+                            )
+                            _chatMessagesFlow.value = _chatState.getAllMessages()
+                            refreshStopButtonState()
+                        }
+                        return@launch
+                    }
+                    val finalResponse = inference.generateResponseAsync(fullPrompt) { partialResult, done ->
                         val token = partialResult ?: ""
                         sb.append(token)
                         viewModelScope.launch(Dispatchers.Main) {
@@ -822,12 +840,6 @@ class PhotoReasoningViewModel(
                         finalizeAiMessage(finalResponse)
                         processCommands(finalResponse)
                         saveChatHistory(context)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Offline inference failed", e)
-                    withContext(Dispatchers.Main) {
-                        saveChatHistory(context)
-                        refreshStopButtonState()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Offline inference failed", e)
@@ -852,116 +864,130 @@ class PhotoReasoningViewModel(
             return
         }
 
-        if (currentModel.apiProvider == ApiProvider.MISTRAL) {
-            reasonWithMistral(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
-            return
-        }
-
-        if (currentModel.apiProvider == ApiProvider.PUTER) {
-            reasonWithPuter(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
-            return
-        }
-
-        if (currentModel.apiProvider == ApiProvider.CEREBRAS) {
-            reasonWithCerebras(userInput, selectedImages, screenInfoForPrompt)
+        if (routeProviderSpecificReasoning(currentModel, userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)) {
             return
         }
 
         if (isLiveMode) {
-            // For live mode, handle differently
-            viewModelScope.launch {
-                try {
-                    // Ensure connection
-                    if (liveApiManager?.connectionState?.value != LiveApiManager.ConnectionState.CONNECTED) {
-                        liveApiManager?.connect()
-                        // Wait for connection
-                        delay(2000)
-                    }
-
-                    // Add user message to chat history
-                    val combinedPromptText = if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
-                        "$userInput\n\n$screenInfoForPrompt"
-                    } else {
-                        userInput
-                    }
-
-                    val userMessage = PhotoReasoningMessage(
-                        text = combinedPromptText,
-                        participant = PhotoParticipant.USER,
-                        imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
-                        isPending = false
-                    )
-                    _chatState.addMessage(userMessage)
-                    _chatMessagesFlow.value = _chatState.getAllMessages()
-
-                    // Add pending AI message
-                    val pendingAiMessage = PhotoReasoningMessage(
-                        text = "",
-                        participant = PhotoParticipant.MODEL,
-                        isPending = true
-                    )
-                    _chatState.addMessage(pendingAiMessage)
-                    _chatMessagesFlow.value = _chatState.getAllMessages()
-
-                    _uiState.value = PhotoReasoningUiState.Loading
-
-                    // Convert images to base64
-                    val imageDataList = selectedImages.map { it.toBase64() }
-
-                    // Send message with images
-                    val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $combinedPromptText"
-                    liveApiManager?.sendMessage(prompt, imageDataList.ifEmpty { null })
-
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in live mode reasoning", e)
-                    _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
-                    _chatState.replaceLastPendingMessage()
-                    _chatState.addMessage(
-                        PhotoReasoningMessage(
-                            text = "Error: ${e.message}",
-                            participant = PhotoParticipant.ERROR
-                        )
-                    )
-                    _chatMessagesFlow.value = _chatState.getAllMessages()
-                    saveChatHistory(getApplication<Application>())
-                }
-            }
+            reasonInLiveMode(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat, currentModel)
         } else {
-            // Regular mode - existing code
-            val context = MainActivity.getInstance()?.applicationContext
-            if (context == null) {
-                Log.e(TAG, "Context not available, cannot proceed with reasoning")
-                _uiState.value = PhotoReasoningUiState.Error("Application not ready")
-                return
-            }
-            
-            // Task 3: Sync model before API call
-            val apiKeyManager = ApiKeyManager.getInstance(context)
-            val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
-            if (currentKey != null && currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
-                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
-                val config = com.google.ai.client.generativeai.type.generationConfig {
-                    temperature = genSettings.temperature
-                    topP = genSettings.topP
-                    topK = genSettings.topK
-                }
-                generativeModel = GenerativeModel(
-                    modelName = currentModel.modelName,
-                    apiKey = currentKey,
-                    generationConfig = config
-                )
-                _modelNameState.value = currentModel.modelName
-            }
-            
-            ensureInitialized(context)
-            currentRetryAttempt = 0
-            performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+            reasonInRegularMode(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat, currentModel)
         }
+    }
+
+    private fun clearStaleErrorState() {
+        if (_uiState.value is PhotoReasoningUiState.Error) {
+            _uiState.value = PhotoReasoningUiState.Initial
+        }
+    }
+
+    private fun routeProviderSpecificReasoning(
+        currentModel: ModelOption,
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String?,
+        imageUrisForChat: List<String>?
+    ): Boolean {
+        return when (currentModel.apiProvider) {
+            ApiProvider.MISTRAL -> {
+                reasonWithMistral(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+                true
+            }
+            ApiProvider.PUTER -> {
+                reasonWithPuter(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+                true
+            }
+            ApiProvider.CEREBRAS -> {
+                reasonWithCerebras(userInput, selectedImages, screenInfoForPrompt)
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun buildPromptWithScreenInfo(userInput: String, screenInfoForPrompt: String?): String {
+        return if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) {
+            "$userInput\n\n$screenInfoForPrompt"
+        } else {
+            userInput
+        }
+    }
+
+    private fun reasonInLiveMode(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String?,
+        imageUrisForChat: List<String>?,
+        currentModel: ModelOption
+    ) {
+        viewModelScope.launch {
+            try {
+                if (liveApiManager?.connectionState?.value != LiveApiManager.ConnectionState.CONNECTED) {
+                    liveApiManager?.connect()
+                    delay(2000)
+                }
+
+                val combinedPromptText = buildPromptWithScreenInfo(userInput, screenInfoForPrompt)
+                val userMessage = PhotoReasoningMessage(
+                    text = combinedPromptText,
+                    participant = PhotoParticipant.USER,
+                    imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
+                    isPending = false
+                )
+                appendUserAndPendingModelMessages(userMessage)
+                _uiState.value = PhotoReasoningUiState.Loading
+
+                val imageDataList = selectedImages.map { it.toBase64() }
+                val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $combinedPromptText"
+                liveApiManager?.sendMessage(prompt, imageDataList.ifEmpty { null })
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in live mode reasoning", e)
+                _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
+                appendErrorMessage("Error: ${e.message}")
+                saveChatHistory(getApplication<Application>())
+            }
+        }
+    }
+
+    private fun reasonInRegularMode(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String?,
+        imageUrisForChat: List<String>?,
+        currentModel: ModelOption
+    ) {
+        val context = mainActivityApplicationContextOrNull()
+        if (context == null) {
+            Log.e(TAG, "Context not available, cannot proceed with reasoning")
+            _uiState.value = PhotoReasoningUiState.Error("Application not ready")
+            return
+        }
+
+        val apiKeyManager = ApiKeyManager.getInstance(context)
+        val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
+        if (currentKey != null && currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
+            val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
+            val config = com.google.ai.client.generativeai.type.generationConfig {
+                temperature = genSettings.temperature
+                topP = genSettings.topP
+                topK = genSettings.topK
+            }
+            generativeModel = GenerativeModel(
+                modelName = currentModel.modelName,
+                apiKey = currentKey,
+                generationConfig = config
+            )
+            _modelNameState.value = currentModel.modelName
+        }
+
+        ensureInitialized(context)
+        currentRetryAttempt = 0
+        performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
     }
 
     private fun reasonWithCerebras(
         userInput: String,
-        selectedImages: List<Bitmap>,
+        @Suppress("UNUSED_PARAMETER") selectedImages: List<Bitmap>,
         screenInfoForPrompt: String? = null
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
@@ -976,9 +1002,13 @@ class PhotoReasoningViewModel(
 
         val combinedPromptText = (userInput + "\n\n" + (screenInfoForPrompt ?: "")).trim()
 
-        _chatState.addMessage(PhotoReasoningMessage(text = combinedPromptText, participant = PhotoParticipant.USER, isPending = false))
-        _chatState.addMessage(PhotoReasoningMessage(text = "", participant = PhotoParticipant.MODEL, isPending = true))
-        _chatMessagesFlow.value = _chatState.getAllMessages()
+        appendUserAndPendingModelMessages(
+            PhotoReasoningMessage(
+                text = combinedPromptText,
+                participant = PhotoParticipant.USER,
+                isPending = false
+            )
+        )
 
         incrementalCommandCount = 0
         streamingAccumulatedText.clear()
@@ -1053,13 +1083,34 @@ class PhotoReasoningViewModel(
                 withContext(Dispatchers.Main) {
                     Log.e(TAG, "Cerebras API call failed", e)
                     _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
-                    _chatState.replaceLastPendingMessage()
-                    _chatState.addMessage(PhotoReasoningMessage(text = "Error: ${e.message}", participant = PhotoParticipant.ERROR))
-                    _chatMessagesFlow.value = _chatState.getAllMessages()
+                    appendErrorMessage("Error: ${e.message}")
                     saveChatHistory(context)
                 }
             }
         }
+    }
+
+    private fun appendUserAndPendingModelMessages(userMessage: PhotoReasoningMessage) {
+        _chatState.addMessage(userMessage)
+        _chatState.addMessage(
+            PhotoReasoningMessage(
+                text = "",
+                participant = PhotoParticipant.MODEL,
+                isPending = true
+            )
+        )
+        _chatMessagesFlow.value = _chatState.getAllMessages()
+    }
+
+    private fun appendErrorMessage(errorText: String) {
+        _chatState.replaceLastPendingMessage()
+        _chatState.addMessage(
+            PhotoReasoningMessage(
+                text = errorText,
+                participant = PhotoParticipant.ERROR
+            )
+        )
+        _chatMessagesFlow.value = _chatState.getAllMessages()
     }
     
 private fun reasonWithMistral(
@@ -1230,9 +1281,7 @@ private fun reasonWithMistral(
             withContext(Dispatchers.Main) {
                 Log.e(TAG, "Mistral API call failed", e)
                 _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
-                _chatState.replaceLastPendingMessage()
-                _chatState.addMessage(PhotoReasoningMessage(text = "Error: ${e.message}", participant = PhotoParticipant.ERROR))
-                _chatMessagesFlow.value = _chatState.getAllMessages()
+                appendErrorMessage("Error: ${e.message}")
                 saveChatHistory(context)
             }
         }
@@ -1245,7 +1294,7 @@ private fun reasonWithMistral(
         screenInfoForPrompt: String?,
         imageUrisForChat: List<String>?
     ) {
-        val apiKey = com.google.ai.sample.MainActivity.getInstance()?.getCurrentApiKey(ApiProvider.PUTER) ?: ""
+        val apiKey = currentApiKeyOrEmpty(ApiProvider.PUTER)
         if (apiKey.isEmpty()) {
             _uiState.value = PhotoReasoningUiState.Error("Puter Authentication Token (API Key) is missing")
             return
@@ -1601,9 +1650,9 @@ private fun reasonWithMistral(
     // This method now delegates the AI call to ScreenCaptureService
     // to ensure it runs with foreground priority and avoids background network restrictions.
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
-        Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService.")
+        Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService (retryCount=$retryCount).")
 
-        val context = MainActivity.getInstance()?.applicationContext
+        val context = mainActivityApplicationContextOrNull()
         if (context == null) {
             Log.e(TAG, "sendMessageWithRetry: Context is null, cannot delegate AI call.")
             _uiState.value = PhotoReasoningUiState.Error("Application context not available for AI call.")
@@ -1654,54 +1703,78 @@ private fun reasonWithMistral(
             val chatHistoryJson = Json.encodeToString(chatHistoryDtos)
 
             // Collect Temporary File Paths
-            val tempFilePaths = ArrayList<String>()
-            inputContentDto.parts.forEach { partDto ->
-                if (partDto is ImagePartDto) {
-                    tempFilePaths.add(partDto.imageFilePath)
-                }
-            }
-            chatHistoryDtos.forEach { contentDto ->
-                contentDto.parts.forEach { partDto ->
-                    if (partDto is ImagePartDto) {
-                        tempFilePaths.add(partDto.imageFilePath)
-                    }
-                }
-            }
+            val tempFilePaths = TempFilePathCollector.collect(inputContentDto, chatHistoryDtos)
             Log.d(TAG, "Collected temporary file paths to send to service: $tempFilePaths")
 
-            val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
-                action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
-                putExtra(ScreenCaptureService.EXTRA_AI_INPUT_CONTENT_JSON, inputContentJson)
-                putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
-                putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
-                val mainActivity = MainActivity.getInstance()
-                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-                val apiKey = com.google.ai.sample.MainActivity.getInstance()?.getCurrentApiKey(currentModel.apiProvider) ?: ""
-                putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
-                // Add the new extra for file paths
-                putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
-                putExtra(ScreenCaptureService.EXTRA_AI_API_PROVIDER, currentModel.apiProvider.name)
-            }
+            val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+            val apiKey = currentApiKeyOrEmpty(currentModel.apiProvider)
+            val serviceIntent = createExecuteAiCallIntent(
+                context = context,
+                inputContentJson = inputContentJson,
+                chatHistoryJson = chatHistoryJson,
+                modelName = generativeModel.modelName,
+                apiKey = apiKey,
+                apiProvider = currentModel.apiProvider,
+                tempFilePaths = tempFilePaths
+            )
             context.startService(serviceIntent)
             Log.d(TAG, "sendMessageWithRetry: Sent intent to ScreenCaptureService to execute AI call.")
             // The UI state (_uiState.value = PhotoReasoningUiState.Loading) and
             // _showStopNotificationFlow.value = true should have been set by the calling method (performReasoning)
             // The receiver will handle setting them to false or success/error state.
 
-        } catch (e: Exception) {
-            Log.e(TAG, "sendMessageWithRetry: Error serializing or starting service for AI call.", e)
-            _uiState.value = PhotoReasoningUiState.Error("Error preparing AI call: ${e.localizedMessage}")
-            _showStopNotificationFlow.value = false
-            // Also update chat with this local error
-            _chatState.replaceLastPendingMessage()
-            _chatState.addMessage(
-                PhotoReasoningMessage(
-                    text = "Error preparing AI call: ${e.localizedMessage}",
-                    participant = PhotoParticipant.ERROR
-                )
+        } catch (e: SerializationException) {
+            handleLocalAiPreparationError(
+                context = context,
+                logMessage = "sendMessageWithRetry: Serialization error while preparing AI call.",
+                error = e
             )
-            _chatMessagesFlow.value = chatMessages
-            saveChatHistory(context)
+        } catch (e: IllegalStateException) {
+            handleLocalAiPreparationError(
+                context = context,
+                logMessage = "sendMessageWithRetry: State error while starting AI service call.",
+                error = e
+            )
+        }
+    }
+
+    private fun handleLocalAiPreparationError(
+        context: Context,
+        logMessage: String,
+        error: Throwable
+    ) {
+        Log.e(TAG, logMessage, error)
+        val uiMessage = "Error preparing AI call: ${error.localizedMessage}"
+        _uiState.value = PhotoReasoningUiState.Error(uiMessage)
+        _showStopNotificationFlow.value = false
+        _chatState.replaceLastPendingMessage()
+        _chatState.addMessage(
+            PhotoReasoningMessage(
+                text = uiMessage,
+                participant = PhotoParticipant.ERROR
+            )
+        )
+        _chatMessagesFlow.value = chatMessages
+        saveChatHistory(context)
+    }
+
+    private fun createExecuteAiCallIntent(
+        context: Context,
+        inputContentJson: String,
+        chatHistoryJson: String,
+        modelName: String,
+        apiKey: String,
+        apiProvider: ApiProvider,
+        tempFilePaths: ArrayList<String>
+    ): Intent {
+        return Intent(context, ScreenCaptureService::class.java).apply {
+            action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
+            putExtra(ScreenCaptureService.EXTRA_AI_INPUT_CONTENT_JSON, inputContentJson)
+            putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
+            putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, modelName)
+            putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
+            putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
+            putExtra(ScreenCaptureService.EXTRA_AI_API_PROVIDER, apiProvider.name)
         }
     }
 
@@ -1754,7 +1827,7 @@ private fun reasonWithMistral(
                dispatchTap(x, y)
             }
 
-            // Task 9: Handle incoming text from Human Operator
+            // Handle incoming text from human operator
             override fun onTextReceived(text: String) {
                 viewModelScope.launch(Dispatchers.Main) {
                     val newMessage = PhotoReasoningMessage(
@@ -1795,7 +1868,7 @@ private fun reasonWithMistral(
                     // Kein weiterer startForegroundService()-Aufruf nötig - verhindert ForegroundServiceDidNotStartInTimeException.
                     val mainActivity = MainActivity.getInstance()
                     if (mainActivity != null) {
-                        mainActivity.requestMediaProjectionForWebRTC { resultCode, resultData ->
+                        mainActivity.requestMediaProjectionForWebRTC { _, resultData ->
                             Log.d(TAG, "WebRTC MediaProjection granted. Service läuft bereits via KEEP_ALIVE. Starte Screen Capture.")
                             replaceAiMessageText("Establishing video connection...", isPending = true)
                             
@@ -2228,6 +2301,7 @@ data class MistralMessage(
 )
 
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 @JsonClassDiscriminator("type")
 sealed class MistralContent
 
@@ -2293,7 +2367,7 @@ data class MistralResponseMessage(
     /**
      * Rebuild the chat history for the AI based on the current messages
      */
-    private fun rebuildChatHistory(context: Context) { // Added context parameter
+    private fun rebuildChatHistory(context: Context) {
         Log.d(TAG, "rebuildChatHistory: Starting. Input _chatState.messages size: ${_chatState.messages.size}")
         // Convert the current chat messages to Content objects for the chat history
         val history = mutableListOf<Content>()
@@ -2498,13 +2572,26 @@ data class MistralResponseMessage(
                 Toast.makeText(context, "Processing screenshot...", Toast.LENGTH_SHORT).show()
                 
                 // Process the screenshot
-                val imageRequest = imageRequestBuilder!!
+                val requestBuilder = imageRequestBuilder
+                if (requestBuilder == null) {
+                    Log.e(TAG, "ImageRequest.Builder is not initialized")
+                    _commandExecutionStatus.value = "Failed to process screenshot: request builder unavailable"
+                    return@launch
+                }
+                val currentImageLoader = imageLoader
+                if (currentImageLoader == null) {
+                    Log.e(TAG, "ImageLoader is not initialized")
+                    _commandExecutionStatus.value = "Failed to process screenshot: image loader unavailable"
+                    return@launch
+                }
+
+                val imageRequest = requestBuilder
                     .data(screenshotUri)
                     .precision(Precision.EXACT)
                     .build()
                 
                 try {
-                    val result = imageLoader!!.execute(imageRequest)
+                    val result = currentImageLoader.execute(imageRequest)
                     if (result is SuccessResult) {
                         Log.d(TAG, "Successfully processed screenshot")
                         val bitmap = (result.drawable as BitmapDrawable).bitmap

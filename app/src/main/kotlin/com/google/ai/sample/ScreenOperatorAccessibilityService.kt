@@ -1,6 +1,6 @@
 package com.google.ai.sample
 
-import com.google.ai.sample.MainActivity // Added import
+import com.google.ai.sample.MainActivity
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
@@ -27,6 +27,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.google.ai.sample.util.AppNamePackageMapper
 import com.google.ai.sample.util.Command
+import com.google.ai.sample.util.CoordinateParser
 import java.io.File
 import java.text.SimpleDateFormat
 import com.google.ai.sample.GenerativeViewModelFactory
@@ -37,6 +38,16 @@ import java.lang.NumberFormatException
 import java.util.LinkedList
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
+    private data class ResolvedPoint(val xPx: Float, val yPx: Float)
+    private data class ResolvedScrollGesture(
+        val xPx: Float,
+        val yPx: Float,
+        val distancePx: Float,
+        val durationMs: Long
+    )
+
+    private enum class ScrollAxis { HORIZONTAL, VERTICAL }
+
     private val commandQueue = LinkedList<Command>()
     private val isProcessingQueue = AtomicBoolean(false)
     // private val handler = Handler(Looper.getMainLooper()) // Already exists at the class level
@@ -127,12 +138,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
 
             // serviceInstance is the static reference to the service
-            serviceInstance!!.commandQueue.add(command)
-            Log.d(TAG, "Command $command added to queue. Queue size: ${serviceInstance!!.commandQueue.size}")
+            val instance = serviceInstance
+            if (instance == null) {
+                Log.e(TAG, "Service instance became null before queueing command")
+                return
+            }
+            instance.commandQueue.add(command)
+            Log.d(TAG, "Command $command added to queue. Queue size: ${instance.commandQueue.size}")
 
             // Ensure processCommandQueue is called on the service's handler thread
-            serviceInstance!!.handler.post {
-                serviceInstance!!.processCommandQueue()
+            instance.handler.post {
+                instance.processCommandQueue()
             }
         }
 
@@ -162,6 +178,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
+
+    private fun currentRootNodeOrHandleMissing(
+        operation: String,
+        scheduleNext: Boolean,
+        showUserMessage: Boolean = true
+    ): AccessibilityNodeInfo? {
+        val currentRootNode = rootNode
+        if (currentRootNode == null) {
+            Log.e(TAG, "Root node is null, cannot $operation")
+            if (showUserMessage) {
+                showToast("Error: Root node is not available", true)
+            }
+            if (scheduleNext) {
+                scheduleNextCommandProcessing()
+            }
+        }
+        return currentRootNode
+    }
     
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -174,7 +208,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         info.notificationTimeout = 100
         info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
                 AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         
         // Apply the configuration
@@ -206,6 +239,28 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }, nextCommandDelay)
     }
 
+    private fun resolvePoint(x: String, y: String, screenWidth: Int, screenHeight: Int): ResolvedPoint {
+        return ResolvedPoint(
+            xPx = convertCoordinate(x, screenWidth),
+            yPx = convertCoordinate(y, screenHeight)
+        )
+    }
+
+    private fun resolveScrollGesture(
+        x: String,
+        y: String,
+        distance: String,
+        durationMs: Long,
+        axis: ScrollAxis,
+        screenWidth: Int,
+        screenHeight: Int
+    ): ResolvedScrollGesture {
+        val point = resolvePoint(x, y, screenWidth, screenHeight)
+        val distanceBasis = if (axis == ScrollAxis.HORIZONTAL) screenWidth else screenHeight
+        val distancePx = convertCoordinate(distance, distanceBasis)
+        return ResolvedScrollGesture(point.xPx, point.yPx, distancePx, durationMs)
+    }
+
     private fun executeSingleCommand(command: Command): Boolean {
         val displayMetrics = this.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
@@ -214,23 +269,26 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Execute the command
         return when (command) {
             is Command.ClickButton -> {
-                Log.d(TAG, "Clicking button with text: ${command.buttonText}")
-                this.showToast("Trying to click button: \"${command.buttonText}\"", false)
-                this.findAndClickButtonByText(command.buttonText)
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Clicking button with text: ${command.buttonText}",
+                    toastMessage = "Trying to click button: \"${command.buttonText}\""
+                ) {
+                    findAndClickButtonByText(command.buttonText)
+                }
             }
             is Command.LongClickButton -> {
-                Log.d(TAG, "Long clicking button with text: ${command.buttonText}")
-                this.showToast("Trying to long click button: \"${command.buttonText}\"", false)
-                this.findAndLongClickButtonByText(command.buttonText)
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Long clicking button with text: ${command.buttonText}",
+                    toastMessage = "Trying to long click button: \"${command.buttonText}\""
+                ) {
+                    findAndLongClickButtonByText(command.buttonText)
+                }
             }
             is Command.TapCoordinates -> {
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
-                this.showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
-                this.tapAtCoordinates(xPx, yPx)
+                val point = resolvePoint(command.x, command.y, screenWidth, screenHeight)
+                Log.d(TAG, "Tapping at coordinates: (${command.x} -> ${point.xPx}, ${command.y} -> ${point.yPx})")
+                this.showToast("Trying to tap coordinates: (${point.xPx}, ${point.yPx})", false)
+                this.tapAtCoordinates(point.xPx, point.yPx)
                 true // Asynchronous
             }
             is Command.TakeScreenshot -> {
@@ -267,114 +325,184 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             is Command.PressHomeButton -> {
-                Log.d(TAG, "Pressing home button")
-                this.showToast("Trying to press Home button", false)
-                this.pressHomeButton()
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Pressing home button",
+                    toastMessage = "Trying to press Home button"
+                ) {
+                    pressHomeButton()
+                }
             }
             is Command.PressBackButton -> {
-                Log.d(TAG, "Pressing back button")
-                this.showToast("Trying to press Back button", false)
-                this.pressBackButton()
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Pressing back button",
+                    toastMessage = "Trying to press Back button"
+                ) {
+                    pressBackButton()
+                }
             }
             is Command.ShowRecentApps -> {
-                Log.d(TAG, "Showing recent apps")
-                this.showToast("Trying to open recent apps overview", false)
-                this.showRecentApps()
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Showing recent apps",
+                    toastMessage = "Trying to open recent apps overview"
+                ) {
+                    showRecentApps()
+                }
             }
             is Command.ScrollDown -> {
-                Log.d(TAG, "Scrolling down")
-                this.showToast("Trying to scroll down", false)
-                this.scrollDown()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling down",
+                    toastMessage = "Trying to scroll down"
+                ) {
+                    scrollDown()
+                }
             }
             is Command.ScrollUp -> {
-                Log.d(TAG, "Scrolling up")
-                this.showToast("Trying to scroll up", false)
-                this.scrollUp()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling up",
+                    toastMessage = "Trying to scroll up"
+                ) {
+                    scrollUp()
+                }
             }
             is Command.ScrollLeft -> {
-                Log.d(TAG, "Scrolling left")
-                this.showToast("Trying to scroll left", false)
-                this.scrollLeft()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling left",
+                    toastMessage = "Trying to scroll left"
+                ) {
+                    scrollLeft()
+                }
             }
             is Command.ScrollRight -> {
-                Log.d(TAG, "Scrolling right")
-                this.showToast("Trying to scroll right", false)
-                this.scrollRight()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Scrolling right",
+                    toastMessage = "Trying to scroll right"
+                ) {
+                    scrollRight()
+                }
             }
             is Command.ScrollDownFromCoordinates -> {
                 Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenHeight)
-                this.showToast("Trying to scroll down from position ($xPx, $yPx)", false)
-                this.scrollDown(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.VERTICAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll down from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollDown(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.ScrollUpFromCoordinates -> {
                 Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenHeight)
-                this.showToast("Trying to scroll up from position ($xPx, $yPx)", false)
-                this.scrollUp(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.VERTICAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll up from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollUp(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.ScrollLeftFromCoordinates -> {
                 Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenWidth)
-                this.showToast("Trying to scroll left from position ($xPx, $yPx)", false)
-                this.scrollLeft(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.HORIZONTAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll left from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollLeft(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.ScrollRightFromCoordinates -> {
                 Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                val xPx = this.convertCoordinate(command.x, screenWidth)
-                val yPx = this.convertCoordinate(command.y, screenHeight)
-                val distancePx = this.convertCoordinate(command.distance, screenWidth)
-                this.showToast("Trying to scroll right from position ($xPx, $yPx)", false)
-                this.scrollRight(xPx, yPx, distancePx, command.duration)
+                val resolved = resolveScrollGesture(
+                    x = command.x,
+                    y = command.y,
+                    distance = command.distance,
+                    durationMs = command.duration,
+                    axis = ScrollAxis.HORIZONTAL,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                this.showToast("Trying to scroll right from position (${resolved.xPx}, ${resolved.yPx})", false)
+                this.scrollRight(resolved.xPx, resolved.yPx, resolved.distancePx, resolved.durationMs)
                 true // Asynchronous
             }
             is Command.OpenApp -> {
-                Log.d(TAG, "Opening app: ${command.packageName}")
-                this.showToast("Trying to open app: ${command.packageName}", false)
-                this.openApp(command.packageName)
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Opening app: ${command.packageName}",
+                    toastMessage = "Trying to open app: ${command.packageName}"
+                ) {
+                    openApp(command.packageName)
+                }
             }
             is Command.WriteText -> {
-                Log.d(TAG, "Writing text: ${command.text}")
-                this.showToast("Trying to write text: \"${command.text}\"", false)
-                this.writeText(command.text)
-                false // Synchronous for now
+                executeSyncCommandAction(
+                    logMessage = "Writing text: ${command.text}",
+                    toastMessage = "Trying to write text: \"${command.text}\""
+                ) {
+                    writeText(command.text)
+                }
             }
             is Command.UseHighReasoningModel -> {
-                Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
-                this.showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
-                GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_PRO)
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)",
+                    toastMessage = "Switching to more powerful model (gemini-2.5-pro-preview-03-25)"
+                ) {
+                    GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_PRO)
+                }
             }
             is Command.UseLowReasoningModel -> {
-                Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
-                this.showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
-                GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_FLASH_LITE)
-                false // Synchronous
+                executeSyncCommandAction(
+                    logMessage = "Switching to low reasoning model (gemini-2.0-flash-lite)",
+                    toastMessage = "Switching to faster model (gemini-2.0-flash-lite)"
+                ) {
+                    GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_FLASH_LITE)
+                }
             }
             is Command.PressEnterKey -> {
-                Log.d(TAG, "Pressing Enter key")
-                this.showToast("Trying to press Enter key", false)
-                this.pressEnterKey()
-                true // Asynchronous
+                executeAsyncCommandAction(
+                    logMessage = "Pressing Enter key",
+                    toastMessage = "Trying to press Enter key"
+                ) {
+                    pressEnterKey()
+                }
             }
         }
+    }
+
+    private fun executeSyncCommandAction(
+        logMessage: String,
+        toastMessage: String,
+        action: () -> Unit
+    ): Boolean {
+        Log.d(TAG, logMessage)
+        showToast(toastMessage, false)
+        action()
+        return false
+    }
+
+    private fun executeAsyncCommandAction(
+        logMessage: String,
+        toastMessage: String,
+        action: () -> Unit
+    ): Boolean {
+        Log.d(TAG, logMessage)
+        showToast(toastMessage, false)
+        action()
+        return true
     }
 
     private fun processCommandQueue() {
@@ -409,12 +537,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private fun convertCoordinate(coordinateString: String, screenSize: Int): Float {
         return try {
-            if (coordinateString.endsWith("%")) {
-                val numericValue = coordinateString.removeSuffix("%").toFloat()
-                (numericValue / 100.0f) * screenSize
-            } else {
-                coordinateString.toFloat()
-            }
+            CoordinateParser.parse(coordinateString, screenSize)
         } catch (e: NumberFormatException) {
             Log.e(TAG, "Error converting coordinate string: '$coordinateString'", e)
             showToast("Error parsing coordinate: '$coordinateString'. Using 0f.", true)
@@ -443,31 +566,29 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         // Process accessibility events
-        event?.let {
-            when (it.eventType) {
-                AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                    Log.d(TAG, "Accessibility event: View clicked")
-                }
-                AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
-                    Log.d(TAG, "Accessibility event: View focused")
-                }
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                    Log.d(TAG, "Accessibility event: Window state changed")
-                }
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                    Log.d(TAG, "Accessibility event: Window content changed")
-                }
-                else -> {
-                    // Handle all other event types
-                    Log.d(TAG, "Accessibility event: Other event type: ${it.eventType}")
-                }
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                Log.d(TAG, "Accessibility event: View clicked")
             }
-            
-            // Refresh the root node when window state or content changes
-            if (it.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                it.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-                refreshRootNode()
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                Log.d(TAG, "Accessibility event: View focused")
             }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                Log.d(TAG, "Accessibility event: Window state changed")
+            }
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                Log.d(TAG, "Accessibility event: Window content changed")
+            }
+            else -> {
+                // Handle all other event types
+                Log.d(TAG, "Accessibility event: Other event type: ${event.eventType}")
+            }
+        }
+
+        // Refresh the root node when window state or content changes
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            refreshRootNode()
         }
     }
     
@@ -506,15 +627,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Refresh the root node
             refreshRootNode()
             
-            // Check if root node is available
-            if (rootNode == null) {
-                Log.e(TAG, "Root node is null, cannot write text")
-                showToast("Error: Root node is not available", true)
-                return
-            }
-            
+            val currentRootNode = currentRootNodeOrHandleMissing("write text", scheduleNext = false) ?: return
             // Find the focused node (which should be an editable text field)
-            val focusedNode = findFocusedEditableNode(rootNode!!)
+            val focusedNode = findFocusedEditableNode(currentRootNode)
             
             if (focusedNode != null) {
                 Log.d(TAG, "Found focused editable node")
@@ -543,7 +658,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 showToast("No focused text field found, trying to find editable fields", true)
                 
                 // Try to find any editable field
-                val editableNode = findFirstEditableNode(rootNode!!)
+                val editableNode = findFirstEditableNode(currentRootNode)
                 
                 if (editableNode != null) {
                     Log.d(TAG, "Found editable node")
@@ -710,16 +825,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Refresh the root node
         refreshRootNode()
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing() // Continue queue if rootNode is null
-            return
-        }
-        
         // Try to find the node with the specified text
-        val node = findNodeByText(rootNode!!, buttonText)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button", scheduleNext = true) ?: return
+        val node = findNodeByText(currentRootNode, buttonText)
         
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
@@ -764,7 +872,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val centerX = rect.centerX()
             val centerY = rect.centerY()
             
-            Log.d(TAG, "Trying to tap at the center of the button: ($centerX, $centerY)")
+            Log.d(TAG, "Trying alternative tap for button \"$buttonText\" at center: ($centerX, $centerY)")
             showToast("Trying to tap coordinates: ($centerX, $centerY)", false)
             
             // Tap at the center of the button
@@ -780,14 +888,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Searching for button to long click with text: \"$buttonText\"", false)
 
         refreshRootNode()
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing()
-            return
-        }
-
-        val node = findNodeByText(rootNode!!, buttonText)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button", scheduleNext = true) ?: return
+        val node = findNodeByText(currentRootNode, buttonText)
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
             showToast("Button found: \"$buttonText\"", false)
@@ -817,14 +919,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and long clicking button with content description: $description")
         showToast("Searching for button to long click with description: \"$description\"", false)
 
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by content description")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing()
-            return
-        }
-
-        val node = findNodeByContentDescription(rootNode!!, description)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by content description", scheduleNext = true) ?: return
+        val node = findNodeByContentDescription(currentRootNode, description)
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
             showToast("Button found with description: \"$description\"", false)
@@ -854,14 +950,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and long clicking button with ID: $id")
         showToast("Searching for button to long click with ID: \"$id\"", false)
 
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by ID")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing()
-            return
-        }
-
-        val node = findNodeById(rootNode!!, id)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by ID", scheduleNext = true) ?: return
+        val node = findNodeById(currentRootNode, id)
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
@@ -892,16 +982,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and clicking button with content description: $description")
         showToast("Searching for button with description: \"$description\"", false)
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by content description")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing() // Continue queue if rootNode is null
-            return
-        }
-        
         // Try to find the node with the specified content description
-        val node = findNodeByContentDescription(rootNode!!, description)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by content description", scheduleNext = true) ?: return
+        val node = findNodeByContentDescription(currentRootNode, description)
         
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
@@ -941,16 +1024,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Finding and clicking button with ID: $id")
         showToast("Searching for button with ID: \"$id\"", false)
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button by ID")
-            showToast("Error: Root node is not available", true)
-            scheduleNextCommandProcessing() // Continue queue if rootNode is null
-            return
-        }
-        
         // Try to find the node with the specified ID
-        val node = findNodeById(rootNode!!, id)
+        val currentRootNode = currentRootNodeOrHandleMissing("find button by ID", scheduleNext = true) ?: return
+        val node = findNodeById(currentRootNode, id)
         
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
@@ -1553,18 +1629,18 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         // Refresh the root node to ensure we have the latest information
         refreshRootNode()
         
-        // Check if root node is available
-        if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot capture screen information")
-            return "No screen information available (root node is null)"
-        }
-        
         // Build a string with information about all interactive elements
         val screenInfo = StringBuilder()
         screenInfo.append("Screen elements:\n")
         
         // Find all interactive elements
-        val elements = findAllInteractiveElements(rootNode!!)
+        val currentRootNode = currentRootNodeOrHandleMissing(
+            operation = "capture screen information",
+            scheduleNext = false,
+            showUserMessage = false
+        )
+            ?: return "No screen information available (root node is null)"
+        val elements = findAllInteractiveElements(currentRootNode)
         
         // Add information about each element
         elements.forEachIndexed { index, element ->
@@ -1630,7 +1706,9 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     .replace("_", " ")
                     .replace(Regex("([a-z])([A-Z])"), "$1 $2")
                     .lowercase(Locale.getDefault())
-                    .capitalize(Locale.getDefault())
+                    .replaceFirstChar { char ->
+                        if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
+                    }
                 
                 // If it contains common button names like "new", "add", etc., return it
                 val commonButtonNames = listOf("new", "add", "edit", "delete", "save", "cancel", "ok", "send")

@@ -50,6 +50,7 @@ class SignalingClient(
         
         val taskData = mutableMapOf<String, Any>(
             "text" to text,
+            "hasScreenshot" to hasScreenshot,
             "status" to "open",
             "timestamp" to System.currentTimeMillis()
         )
