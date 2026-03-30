@@ -1203,28 +1203,28 @@ private fun reasonWithMistral(
                     markKeyCooldown(selectedKey, requestEndMs)
                     blockedKeysThisRound.add(selectedKey)
                     consecutiveFailures++
-                    if (consecutiveFailures >= 5) {
-                        throw IOException("Mistral request failed after 5 attempts: ${e.message}", e)
+                    if (consecutiveFailures >= maxAttempts) {
+                        throw IOException("Mistral request failed after $maxAttempts attempts: ${e.message}", e)
                     }
                     withContext(Dispatchers.Main) {
                         replaceAiMessageText(
-                        if (consecutiveFailures >= maxAttempts) {
-                            throw IOException("Mistral request failed after $maxAttempts attempts: ${e.message}", e)
+                            "Mistral Netzwerkfehler (Versuch $consecutiveFailures/$maxAttempts). Wiederhole...",
+                            isPending = true
                         )
                     }
                 }
-                                "Mistral Netzwerkfehler (Versuch $consecutiveFailures/$maxAttempts). Wiederhole...",
+            }
 
             if (stopExecutionFlag.get()) {
                 throw IOException("Mistral request aborted.")
             }
 
-            val finalResponse = response ?: throw IOException("Mistral request failed after 5 attempts.")
+            val finalResponse = response ?: throw IOException("Mistral request failed after $maxAttempts attempts.")
 
             if (!finalResponse.isSuccessful) {
                 val errBody = finalResponse.body?.string()
                 finalResponse.close()
-            val finalResponse = response ?: throw IOException("Mistral request failed after $maxAttempts attempts.")
+                throw IOException("Mistral Error ${finalResponse.code}: $errBody")
             }
 
             val body = finalResponse.body ?: throw IOException("Empty response body from Mistral")
