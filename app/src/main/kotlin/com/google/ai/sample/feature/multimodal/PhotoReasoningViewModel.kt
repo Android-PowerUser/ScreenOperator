@@ -1130,6 +1130,9 @@ private fun reasonWithMistral(
                 throw IOException("Mistral API key not found.")
             }
 
+            // Validate that we have at least one key before proceeding
+            require(availableKeys.isNotEmpty()) { "No valid Mistral API keys available after filtering" }
+
             fun markKeyCooldown(key: String, referenceTimeMs: Long) {
                 val nextAllowedAt = referenceTimeMs + MISTRAL_MIN_INTERVAL_MS
                 val existing = mistralNextAllowedRequestAtMsByKey[key] ?: 0L
