@@ -1153,7 +1153,8 @@ private fun reasonWithMistral(
             var consecutiveFailures = 0
             var blockedKeysThisRound = mutableSetOf<String>()
 
-            while (response == null && consecutiveFailures < 5) {
+            val maxAttempts = availableKeys.size * 2 + 3 // Allow cycling through all keys at least twice
+            while (response == null && consecutiveFailures < maxAttempts) {
                 if (stopExecutionFlag.get()) break
 
                 val now = System.currentTimeMillis()
@@ -1193,7 +1194,7 @@ private fun reasonWithMistral(
                     consecutiveFailures++
                     withContext(Dispatchers.Main) {
                         replaceAiMessageText(
-                            "Mistral temporär nicht verfügbar (Versuch $consecutiveFailures/5). Wiederhole...",
+                            "Mistral temporär nicht verfügbar (Versuch $consecutiveFailures/$maxAttempts). Wiederhole...",
                             isPending = true
                         )
                     }
@@ -1207,12 +1208,12 @@ private fun reasonWithMistral(
                     }
                     withContext(Dispatchers.Main) {
                         replaceAiMessageText(
-                            "Mistral Netzwerkfehler (Versuch $consecutiveFailures/5). Wiederhole...",
-                            isPending = true
+                        if (consecutiveFailures >= maxAttempts) {
+                            throw IOException("Mistral request failed after $maxAttempts attempts: ${e.message}", e)
                         )
                     }
                 }
-            }
+                                "Mistral Netzwerkfehler (Versuch $consecutiveFailures/$maxAttempts). Wiederhole...",
 
             if (stopExecutionFlag.get()) {
                 throw IOException("Mistral request aborted.")
@@ -1223,7 +1224,7 @@ private fun reasonWithMistral(
             if (!finalResponse.isSuccessful) {
                 val errBody = finalResponse.body?.string()
                 finalResponse.close()
-                throw IOException("Mistral Error ${finalResponse.code}: $errBody")
+            val finalResponse = response ?: throw IOException("Mistral request failed after $maxAttempts attempts.")
             }
 
             val body = finalResponse.body ?: throw IOException("Empty response body from Mistral")
