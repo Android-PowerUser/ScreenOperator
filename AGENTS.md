@@ -12,4 +12,8 @@ MOST IMPORTANT: 1. Follow commands exactly and do NOTHING BUT what is precisely 
 
 7. Do not make compilation errors. Pay attention to imports.
 
-8. This app is production software and not a toy.
+8. If you see potential for refactoring to eliminate avoidable complexity or technical debt without changing behavior, do so immediately.
+
+9. If debug compilation fails in your environment, resolve the issue before reporting it as complete.
+
+10. This app is production software and not a toy.
