@@ -1229,6 +1229,8 @@ private fun reasonWithMistral(
                     lastMistralTokenKey = key
                     lastMistralTokenTimeMs = System.currentTimeMillis()
                     markKeyCooldown(key, lastMistralTokenTimeMs)
+                } ?: run {
+                    Log.w(TAG, "selectedKeyForResponse is null during streaming callback")
                 }
                 withContext(Dispatchers.Main) {
                     replaceAiMessageText(accText, isPending = true)
