@@ -155,24 +155,28 @@ class MainActivity : ComponentActivity() {
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var requestForegroundServicePermissionLauncher: ActivityResultLauncher<String>
+    private val foregroundMediaProjectionPermission = android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
 
     fun requestMediaProjectionPermission(onGranted: (() -> Unit)? = null) {
         Log.d(TAG, "Requesting MediaProjection permission")
         onMediaProjectionPermissionGranted = onGranted
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) != PackageManager.PERMISSION_GRANTED) {
-                requestForegroundServicePermissionLauncher.launch(android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
-            }
-        }
+        requestForegroundMediaProjectionPermissionIfMissing()
 
-        // Ensure mediaProjectionManager is initialized before using it.
-        // This should be guaranteed by its placement in onCreate.
-        if (!isMediaProjectionManagerInitialized("requestMediaProjectionPermission")) {
-            return
+        launchCaptureIntent(mediaProjectionLauncher, "requestMediaProjectionPermission")
+    }
+
+    private fun hasForegroundMediaProjectionPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(this, foregroundMediaProjectionPermission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestForegroundMediaProjectionPermissionIfMissing(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !hasForegroundMediaProjectionPermission()) {
+            requestForegroundServicePermissionLauncher.launch(foregroundMediaProjectionPermission)
+            return true
         }
-        val intent = mediaProjectionManager.createScreenCaptureIntent()
-        mediaProjectionLauncher.launch(intent)
+        return false
     }
 
     /**
@@ -183,11 +187,7 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Requesting MediaProjection permission for WebRTC")
         onWebRtcMediaProjectionResult = onResult
 
-        if (!isMediaProjectionManagerInitialized("requestMediaProjectionForWebRTC")) {
-            return
-        }
-        val intent = mediaProjectionManager.createScreenCaptureIntent()
-        webRtcMediaProjectionLauncher.launch(intent)
+        launchCaptureIntent(webRtcMediaProjectionLauncher, "requestMediaProjectionForWebRTC")
     }
 
     private fun initializeMediaProjection() {
@@ -210,61 +210,63 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMediaProjectionResult(resultCode: Int, resultData: Intent?) {
         if (resultCode == Activity.RESULT_OK && resultData != null) {
-            val shouldTakeScreenshotOnThisStart = isProcessingExplicitScreenshotRequest
-            Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
-
-            photoReasoningViewModel?.onMediaProjectionPermissionGranted(resultCode, resultData)
-
-            val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                action = ScreenCaptureService.ACTION_START_CAPTURE
-                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, resultData)
-                putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, shouldTakeScreenshotOnThisStart)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION) == PackageManager.PERMISSION_GRANTED) {
-                    mediaProjectionServiceStarter.start(serviceIntent)
-                } else {
-                    requestForegroundServicePermissionLauncher.launch(android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION)
-                }
-            } else {
-                mediaProjectionServiceStarter.start(serviceIntent)
-            }
-
-            if (isProcessingExplicitScreenshotRequest) {
-                Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after successful explicit grant.")
-                isProcessingExplicitScreenshotRequest = false
-            }
-            _isMediaProjectionPermissionGranted.value = true
-            onMediaProjectionPermissionGranted?.invoke()
-            onMediaProjectionPermissionGranted = null
+            handleMediaProjectionPermissionGranted(resultCode, resultData)
         } else {
-            Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
-            Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-            if (isProcessingExplicitScreenshotRequest) {
-                Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after explicit denial.")
-                isProcessingExplicitScreenshotRequest = false
-            }
-            _isMediaProjectionPermissionGranted.value = false
+            handleMediaProjectionPermissionDenied()
         }
+    }
+
+    private fun handleMediaProjectionPermissionGranted(resultCode: Int, resultData: Intent) {
+        val shouldTakeScreenshotOnThisStart = isProcessingExplicitScreenshotRequest
+        Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
+
+        photoReasoningViewModel?.onMediaProjectionPermissionGranted(resultCode, resultData)
+
+        val serviceIntent = MainActivityMediaProjectionIntents.startCapture(
+            context = this,
+            resultCode = resultCode,
+            resultData = resultData,
+            takeScreenshotOnStart = shouldTakeScreenshotOnThisStart
+        )
+        if (!requestForegroundMediaProjectionPermissionIfMissing()) {
+            mediaProjectionServiceStarter.start(serviceIntent)
+        }
+
+        resetExplicitScreenshotRequestFlagIfNeeded("successful explicit grant")
+        _isMediaProjectionPermissionGranted.value = true
+        onMediaProjectionPermissionGranted?.invoke()
+        onMediaProjectionPermissionGranted = null
+    }
+
+    private fun handleMediaProjectionPermissionDenied() {
+        Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
+        Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+        resetExplicitScreenshotRequestFlagIfNeeded("explicit denial")
+        _isMediaProjectionPermissionGranted.value = false
     }
 
     private fun handleWebRtcMediaProjectionResult(resultCode: Int, resultData: Intent?) {
         if (resultCode == Activity.RESULT_OK && resultData != null) {
-            Log.i(TAG, "WebRTC MediaProjection permission granted. Starting keep-alive service.")
-
-            val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                action = ScreenCaptureService.ACTION_KEEP_ALIVE_FOR_WEBRTC
-            }
-            mediaProjectionServiceStarter.start(serviceIntent)
-
-            onWebRtcMediaProjectionResult?.invoke(resultCode, resultData)
-            onWebRtcMediaProjectionResult = null
+            handleWebRtcMediaProjectionPermissionGranted(resultCode, resultData)
         } else {
-            Log.w(TAG, "WebRTC MediaProjection permission denied.")
-            Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-            onWebRtcMediaProjectionResult = null
+            handleWebRtcMediaProjectionPermissionDenied()
         }
+    }
+
+    private fun handleWebRtcMediaProjectionPermissionGranted(resultCode: Int, resultData: Intent) {
+        Log.i(TAG, "WebRTC MediaProjection permission granted. Starting keep-alive service.")
+
+        val serviceIntent = MainActivityMediaProjectionIntents.keepAliveForWebRtc(this)
+        mediaProjectionServiceStarter.start(serviceIntent)
+
+        onWebRtcMediaProjectionResult?.invoke(resultCode, resultData)
+        onWebRtcMediaProjectionResult = null
+    }
+
+    private fun handleWebRtcMediaProjectionPermissionDenied() {
+        Log.w(TAG, "WebRTC MediaProjection permission denied.")
+        Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+        onWebRtcMediaProjectionResult = null
     }
 
     private fun setupKeyboardVisibilityListener() {
@@ -294,8 +296,7 @@ class MainActivity : ComponentActivity() {
         requestForegroundServicePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
                 Toast.makeText(this, "Foreground service permission granted.", Toast.LENGTH_SHORT).show()
-                val intent = mediaProjectionManager.createScreenCaptureIntent()
-                mediaProjectionLauncher.launch(intent)
+                launchCaptureIntent(mediaProjectionLauncher, "requestForegroundServicePermissionLauncher")
             } else {
                 Toast.makeText(this, "Foreground service permission denied. The app may not function correctly.", Toast.LENGTH_LONG).show()
             }
@@ -324,23 +325,25 @@ class MainActivity : ComponentActivity() {
 
     private fun handleScreenshotRequest(intent: Intent) {
         Log.d(TAG, "Received request for screenshot via broadcast.")
-        currentScreenInfoForScreenshot = intent.getStringExtra(EXTRA_SCREEN_INFO)
+        currentScreenInfoForScreenshot = MainActivityScreenshotIntents.extractScreenInfo(intent)
         Log.d(TAG, "Stored screenInfo for upcoming screenshot.")
 
-        if (ScreenCaptureService.isRunning()) {
-            Log.d(TAG, "ScreenCaptureService is running. Calling takeAdditionalScreenshot().")
-            takeAdditionalScreenshot()
-        } else {
-            Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
-            isProcessingExplicitScreenshotRequest = true
-            requestMediaProjectionPermission()
+        when (MainActivityScreenshotFlowDecider.decide(ScreenCaptureService.isRunning())) {
+            MainActivityScreenshotFlowDecider.Action.TAKE_ADDITIONAL_SCREENSHOT -> {
+                Log.d(TAG, "ScreenCaptureService is running. Calling takeAdditionalScreenshot().")
+                takeAdditionalScreenshot()
+            }
+            MainActivityScreenshotFlowDecider.Action.REQUEST_PERMISSION -> {
+                Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
+                isProcessingExplicitScreenshotRequest = true
+                requestMediaProjectionPermission()
+            }
         }
     }
 
     private fun handleScreenshotResult(intent: Intent) {
-        val screenshotUriString = intent.getStringExtra(EXTRA_SCREENSHOT_URI)
-        if (screenshotUriString != null) {
-            val screenshotUri = Uri.parse(screenshotUriString)
+        val screenshotUri = MainActivityScreenshotIntents.extractScreenshotUri(intent)
+        if (screenshotUri != null) {
             Log.d(TAG, "Received screenshot captured broadcast. URI: $screenshotUri")
             Log.d(TAG, "Using screenInfo: ${currentScreenInfoForScreenshot?.substring(0, minOf(100, currentScreenInfoForScreenshot?.length ?: 0))}...")
 
@@ -363,12 +366,28 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    private fun launchCaptureIntent(
+        launcher: ActivityResultLauncher<Intent>,
+        caller: String
+    ) {
+        if (!isMediaProjectionManagerInitialized(caller)) {
+            return
+        }
+        val intent = mediaProjectionManager.createScreenCaptureIntent()
+        launcher.launch(intent)
+    }
+
+    private fun resetExplicitScreenshotRequestFlagIfNeeded(reason: String) {
+        if (isProcessingExplicitScreenshotRequest) {
+            Log.d(TAG, "Resetting isProcessingExplicitScreenshotRequest flag after $reason.")
+            isProcessingExplicitScreenshotRequest = false
+        }
+    }
+
     fun takeAdditionalScreenshot() {
         if (ScreenCaptureService.isRunning()) {
             Log.d(TAG, "MainActivity: Instructing ScreenCaptureService to take an additional screenshot.")
-            val intent = Intent(this, ScreenCaptureService::class.java).apply {
-                action = ScreenCaptureService.ACTION_TAKE_SCREENSHOT
-            }
+            val intent = MainActivityMediaProjectionIntents.takeScreenshot(this)
             // Use startService as the service is already foreground if running.
             // If it somehow wasn't foreground but running, this still works.
             startService(intent)
@@ -388,9 +407,7 @@ class MainActivity : ComponentActivity() {
     fun stopScreenCaptureService() {
         if (ScreenCaptureService.isRunning()) { // Check if it's actually running to avoid errors
             Log.d(TAG, "MainActivity: Instructing ScreenCaptureService to stop.")
-            val intent = Intent(this, ScreenCaptureService::class.java).apply {
-                action = ScreenCaptureService.ACTION_STOP_CAPTURE
-            }
+            val intent = MainActivityMediaProjectionIntents.stopCapture(this)
             startService(intent)
         } else {
             Log.d(TAG, "MainActivity: stopScreenCaptureService called, but service was not running.")
@@ -446,22 +463,13 @@ class MainActivity : ComponentActivity() {
         val oldState = currentTrialState
         currentTrialState = newState
         Log.i(TAG, "updateTrialState: Trial state updated from $oldState to $currentTrialState")
-
-        when (currentTrialState) {
-            TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                trialInfoMessage = "Please support the development of the app so that you can continue using it \uD83C\uDF89"
-                showTrialInfoDialog = true
-                Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
-            }
-            TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
-            TrialManager.TrialState.PURCHASED,
-            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
-            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-                trialInfoMessage = ""
-                showTrialInfoDialog = false
-                Log.d(TAG, "updateTrialState: Cleared message, showTrialInfoDialog = false (ACTIVE, PURCHASED, AWAITING, OR UNAVAILABLE)")
-            }
-        }
+        val uiModel = TrialStateUiModelResolver.resolve(currentTrialState)
+        trialInfoMessage = uiModel.infoMessage
+        showTrialInfoDialog = uiModel.shouldShowInfoDialog
+        Log.d(
+            TAG,
+            "updateTrialState: trialInfoMessage='${uiModel.infoMessage}', showTrialInfoDialog=${uiModel.shouldShowInfoDialog}"
+        )
     }
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
@@ -493,11 +501,12 @@ class MainActivity : ComponentActivity() {
 
     internal fun refreshAccessibilityServiceStatus() {
         Log.d(TAG, "refreshAccessibilityServiceStatus called.")
-        val service = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
-        val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-        val isEnabled = enabledServices?.contains(service, ignoreCase = true) == true
+        val isEnabled = AccessibilityServiceStatusResolver.isServiceEnabled(
+            contentResolver = contentResolver,
+            packageName = packageName
+        )
         _isAccessibilityServiceEnabled.value = isEnabled // Update the flow
-        Log.d(TAG, "Accessibility Service $service isEnabled: $isEnabled. Flow updated.")
+        Log.d(TAG, "Accessibility Service isEnabled: $isEnabled. Flow updated.")
         if (!isEnabled) {
             Log.d(TAG, "Accessibility Service not enabled.")
         }
@@ -508,12 +517,12 @@ class MainActivity : ComponentActivity() {
     }
 
     fun updateStatusMessage(message: String, isError: Boolean = false) {
-        Toast.makeText(this, message, if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
-        if (isError) {
-            Log.e(TAG, "updateStatusMessage (Error): $message")
-        } else {
-            Log.d(TAG, "updateStatusMessage (Info): $message")
-        }
+        MainActivityStatusNotifier.showStatusMessage(
+            context = this,
+            tag = TAG,
+            message = message,
+            isError = isError
+        )
     }
 
     fun getPhotoReasoningViewModel(): PhotoReasoningViewModel? {
@@ -718,16 +727,11 @@ class MainActivity : ComponentActivity() {
     }
 
     fun hasShownNotificationRationale(): Boolean {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_NOTIFICATION_RATIONALE_SHOWN, false)
+        return NotificationPermissionPreferences.hasShownNotificationRationale(this)
     }
 
     fun setNotificationRationaleShown(shown: Boolean) {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        with(prefs.edit()) {
-            putBoolean(KEY_NOTIFICATION_RATIONALE_SHOWN, shown)
-            apply()
-        }
+        NotificationPermissionPreferences.setNotificationRationaleShown(this, shown)
     }
 
     @Composable
@@ -785,7 +789,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startTrialServiceIfNeeded() {
         Log.d(TAG, "startTrialServiceIfNeeded called. Current state: $currentTrialState")
-        if (currentTrialState != TrialManager.TrialState.PURCHASED && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+        if (MainActivityBillingStateEvaluator.shouldStartTrialService(currentTrialState)) {
             Log.i(TAG, "Starting TrialTimerService because current state is: $currentTrialState")
             val serviceIntent = Intent(this, TrialTimerService::class.java)
             serviceIntent.action = TrialTimerService.ACTION_START_TIMER
@@ -802,11 +806,11 @@ class MainActivity : ComponentActivity() {
 
     private fun setupBillingClient() {
         Log.d(TAG, "setupBillingClient called.")
-        if (::billingClient.isInitialized && billingClient.isReady) {
+        if (MainActivityBillingClientState.isInitializedAndReady(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.isReady else false)) {
             Log.d(TAG, "setupBillingClient: BillingClient already initialized and ready.")
             return
         }
-        if (::billingClient.isInitialized && billingClient.connectionState == BillingClient.ConnectionState.CONNECTING) {
+        if (MainActivityBillingClientState.isConnecting(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.connectionState else BillingClient.ConnectionState.DISCONNECTED)) {
             Log.d(TAG, "setupBillingClient: BillingClient already connecting.")
             return
         }
@@ -842,7 +846,7 @@ class MainActivity : ComponentActivity() {
 
     private fun queryProductDetails() {
         Log.d(TAG, "queryProductDetails called.")
-        if (!billingClient.isReady) {
+        if (!MainActivityBillingClientState.isInitializedAndReady(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.isReady else false)) {
             Log.w(TAG, "queryProductDetails: BillingClient not ready. Cannot query.")
             return
         }
@@ -884,7 +888,7 @@ class MainActivity : ComponentActivity() {
         if (!billingClient.isReady) {
             Log.e(TAG, "launchGooglePlayBilling: BillingClient not ready. Connection state: ${billingClient.connectionState}")
             updateStatusMessage("Payment service not ready. Please try again later.", true)
-            if (billingClient.connectionState == BillingClient.ConnectionState.CLOSED || billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED){
+            if (MainActivityBillingClientState.shouldReconnect(billingClient.connectionState)) {
                 Log.d(TAG, "launchGooglePlayBilling: BillingClient disconnected, attempting to reconnect.")
                 billingClient.startConnection(object : BillingClientStateListener {
                     override fun onBillingSetupFinished(setupResult: BillingResult) {
@@ -944,7 +948,7 @@ class MainActivity : ComponentActivity() {
         Log.i(TAG, "handlePurchase called for purchase: OrderId: ${purchase.orderId}, Products: ${purchase.products}, State: ${purchase.purchaseState}, Token: ${purchase.purchaseToken}, Ack: ${purchase.isAcknowledged}")
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
             Log.d(TAG, "handlePurchase: Purchase state is PURCHASED.")
-            if (purchase.products.any { it == subscriptionProductId }) {
+            if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, subscriptionProductId)) {
                 Log.d(TAG, "handlePurchase: Purchase contains target product ID: $subscriptionProductId")
                 if (!purchase.isAcknowledged) {
                     Log.i(TAG, "handlePurchase: Purchase not acknowledged. Acknowledging now.")
@@ -986,7 +990,7 @@ class MainActivity : ComponentActivity() {
 
     private fun queryActiveSubscriptions() {
         Log.d(TAG, "queryActiveSubscriptions called.")
-        if (!::billingClient.isInitialized || !billingClient.isReady) {
+        if (!MainActivityBillingClientState.isInitializedAndReady(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.isReady else false)) {
             Log.w(TAG, "queryActiveSubscriptions: BillingClient not initialized or not ready. Cannot query. isInitialized: ${::billingClient.isInitialized}, isReady: ${if(::billingClient.isInitialized) billingClient.isReady else "N/A"}")
             return
         }
@@ -999,7 +1003,7 @@ class MainActivity : ComponentActivity() {
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 purchases.forEach { purchase ->
                     Log.d(TAG, "queryActiveSubscriptions: Checking purchase - Products: ${purchase.products}, State: ${purchase.purchaseState}")
-                    if (purchase.products.any { it == subscriptionProductId } && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
+                    if (MainActivityBillingStateEvaluator.isPurchasedSubscription(purchase, subscriptionProductId)) {
                         Log.i(TAG, "queryActiveSubscriptions: Active subscription found for $subscriptionProductId.")
                         isSubscribedLocally = true
                         if (!purchase.isAcknowledged) {
@@ -1132,7 +1136,6 @@ class MainActivity : ComponentActivity() {
         }
         private const val PREFS_NAME = "AppPrefs"
         private const val PREF_KEY_FIRST_LAUNCH_INFO_SHOWN = "firstLaunchInfoShown"
-        private const val KEY_NOTIFICATION_RATIONALE_SHOWN = "notification_rationale_shown"
 
         // New Broadcast Actions for MediaProjection Screenshot Flow
         const val ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT = "com.google.ai.sample.REQUEST_MEDIAPROJECTION_SCREENSHOT"
@@ -1149,222 +1152,6 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "ACTION_STOP_OPERATION received from notification.")
             photoReasoningViewModel?.onStopClicked() ?: run {
                 Log.w(TAG, "PhotoReasoningViewModel not initialized when trying to handle stop action from notification.")
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrialStateDialogs(
-    trialState: TrialManager.TrialState,
-    showTrialInfoDialog: Boolean,
-    trialInfoMessage: String,
-    onDismissTrialInfo: () -> Unit,
-    onPurchaseClick: () -> Unit
-) {
-    when (trialState) {
-        TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-            TrialExpiredDialog(
-                onPurchaseClick = onPurchaseClick,
-                onDismiss = {}
-            )
-        }
-
-        TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
-        TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-            if (showTrialInfoDialog) {
-                InfoDialog(
-                    message = trialInfoMessage,
-                    onDismiss = onDismissTrialInfo
-                )
-            }
-        }
-
-        TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
-        TrialManager.TrialState.PURCHASED -> Unit
-    }
-}
-
-@Composable
-private fun PaymentMethodDialog(
-    onDismiss: () -> Unit,
-    onPayPalClick: () -> Unit,
-    onGooglePlayClick: () -> Unit
-) {
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Choose Payment Method") },
-        text = {
-            Column {
-                Button(
-                    onClick = onPayPalClick,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                ) {
-                    Text("PayPal (2,60 €/Month)")
-                }
-                Button(
-                    onClick = onGooglePlayClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Google Play (2,90 €/Month)")
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-private fun ApiKeyDialogSection(
-    apiKeyManager: ApiKeyManager,
-    isFirstLaunch: Boolean,
-    initialProvider: ApiProvider?,
-    onDismiss: () -> Unit
-) {
-    ApiKeyDialog(
-        apiKeyManager = apiKeyManager,
-        isFirstLaunch = isFirstLaunch,
-        initialProvider = initialProvider,
-        onDismiss = onDismiss
-    )
-}
-
-@Composable
-fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
-    Log.d("FirstLaunchInfoDialog", "Composing FirstLaunchInfoDialog")
-    Dialog(onDismissRequest = {
-        Log.d("FirstLaunchInfoDialog", "onDismissRequest called")
-        onDismiss()
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Trial Information",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "You can try Screen Operator for 7 days before you have to subscribe to support the development of more features.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                TextButton(
-                    onClick = {
-                        Log.d("FirstLaunchInfoDialog", "OK button clicked")
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("OK")
-                }
-            }
-        }
-    }
-}
-
-
-
-@Composable
-fun TrialExpiredDialog(
-    onPurchaseClick: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onDismiss: () -> Unit
-) {
-    Log.d("TrialExpiredDialog", "Composing TrialExpiredDialog")
-    Dialog(onDismissRequest = {
-        Log.d("TrialExpiredDialog", "onDismissRequest called (persistent dialog - user tried to dismiss)")
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Trial period expired",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Please support the development of the app so that you can continue using it \uD83C\uDF89",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = {
-                        Log.d("TrialExpiredDialog", "Purchase button clicked")
-                        onPurchaseClick()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Subscribe")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun InfoDialog( 
-    message: String,
-    onDismiss: () -> Unit
-) {
-    Log.d("InfoDialog", "Composing InfoDialog with message: $message")
-    Dialog(onDismissRequest = {
-        Log.d("InfoDialog", "onDismissRequest called")
-        onDismiss()
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Information",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                TextButton(onClick = {
-                    Log.d("InfoDialog", "OK button clicked")
-                    onDismiss()
-                }) {
-                    Text("OK")
-                }
             }
         }
     }
