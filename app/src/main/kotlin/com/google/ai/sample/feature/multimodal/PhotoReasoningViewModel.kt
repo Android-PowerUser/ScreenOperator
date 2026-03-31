@@ -71,6 +71,7 @@ import com.google.ai.sample.webrtc.WebRTCSender
 import com.google.ai.sample.webrtc.SignalingClient
 import org.webrtc.IceCandidate
 import kotlin.math.max
+import kotlin.math.roundToLong
 
 class PhotoReasoningViewModel(
     application: Application,
@@ -183,11 +184,11 @@ class PhotoReasoningViewModel(
     // to avoid re-executing already-executed commands
     private var incrementalCommandCount = 0
 
-    // Mistral rate limiting per API key (4 seconds between requests with same key)
+    // Mistral rate limiting per API key (1.5 seconds between requests with same key)
     private val mistralNextAllowedRequestAtMsByKey = mutableMapOf<String, Long>()
     private var lastMistralTokenTimeMs = 0L
     private var lastMistralTokenKey: String? = null
-    private val MISTRAL_MIN_INTERVAL_MS = 4000L
+    private val MISTRAL_MIN_INTERVAL_MS = 1500L
 
     // Accumulated full text during streaming for incremental command parsing
     private var streamingAccumulatedText = StringBuilder()
@@ -1140,9 +1141,29 @@ private fun reasonWithMistral(
                 mistralNextAllowedRequestAtMsByKey[key] = max(existing, nextAllowedAt)
             }
 
+            fun markKeyCooldown(key: String, referenceTimeMs: Long, extraDelayMs: Long) {
+                val normalizedExtraDelay = extraDelayMs.coerceAtLeast(0L)
+                val nextAllowedAt = referenceTimeMs + max(MISTRAL_MIN_INTERVAL_MS, normalizedExtraDelay)
+                val existing = mistralNextAllowedRequestAtMsByKey[key] ?: 0L
+                mistralNextAllowedRequestAtMsByKey[key] = max(existing, nextAllowedAt)
+            }
+
             fun remainingWaitForKeyMs(key: String, nowMs: Long): Long {
                 val nextAllowedAt = mistralNextAllowedRequestAtMsByKey[key] ?: 0L
                 return (nextAllowedAt - nowMs).coerceAtLeast(0L)
+            }
+
+            fun parseRetryAfterMs(headerValue: String?): Long? {
+                if (headerValue.isNullOrBlank()) return null
+                val seconds = headerValue.trim().toDoubleOrNull() ?: return null
+                return (seconds * 1000.0).roundToLong().coerceAtLeast(0L)
+            }
+
+            fun parseRateLimitResetDelayMs(response: okhttp3.Response, nowMs: Long): Long? {
+                val resetHeader = response.header("x-ratelimit-reset") ?: return null
+                val resetEpochSeconds = resetHeader.trim().toLongOrNull() ?: return null
+                val resetMs = resetEpochSeconds * 1000L
+                return (resetMs - nowMs).coerceAtLeast(0L)
             }
 
             fun isRetryableMistralFailure(code: Int): Boolean {
@@ -1176,7 +1197,10 @@ private fun reasonWithMistral(
                 try {
                     val attemptResponse = client.newCall(buildRequest(selectedKey)).execute()
                     val requestEndMs = System.currentTimeMillis()
-                    markKeyCooldown(selectedKey, requestEndMs)
+                    val retryAfterMs = parseRetryAfterMs(attemptResponse.header("Retry-After"))
+                    val resetDelayMs = parseRateLimitResetDelayMs(attemptResponse, requestEndMs)
+                    val serverRequestedDelayMs = max(retryAfterMs ?: 0L, resetDelayMs ?: 0L)
+                    markKeyCooldown(selectedKey, requestEndMs, serverRequestedDelayMs)
 
                     if (attemptResponse.isSuccessful) {
                         response = attemptResponse
@@ -1195,7 +1219,7 @@ private fun reasonWithMistral(
                     consecutiveFailures++
                     withContext(Dispatchers.Main) {
                         replaceAiMessageText(
-                            "Mistral temporär nicht verfügbar (Versuch $consecutiveFailures/$maxAttempts). Wiederhole...",
+                            "Mistral temporär nicht verfügbar (Versuch $consecutiveFailures/$maxAttempts). Warte auf Server-Rate-Limit und wiederhole...",
                             isPending = true
                         )
                     }
