@@ -183,11 +183,11 @@ class PhotoReasoningViewModel(
     // to avoid re-executing already-executed commands
     private var incrementalCommandCount = 0
 
-    // Mistral rate limiting per API key (1.1 seconds between requests with same key)
+    // Mistral rate limiting per API key (1.5 seconds between requests with same key)
     private val mistralNextAllowedRequestAtMsByKey = mutableMapOf<String, Long>()
     private var lastMistralTokenTimeMs = 0L
     private var lastMistralTokenKey: String? = null
-    private val MISTRAL_MIN_INTERVAL_MS = 1100L
+    private val MISTRAL_MIN_INTERVAL_MS = 1500L
 
     // Accumulated full text during streaming for incremental command parsing
     private var streamingAccumulatedText = StringBuilder()
@@ -609,6 +609,7 @@ class PhotoReasoningViewModel(
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
 
         clearStaleErrorState()
+        stopExecutionFlag.set(false)
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
