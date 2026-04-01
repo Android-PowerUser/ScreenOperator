@@ -1026,15 +1026,16 @@ class PhotoReasoningViewModel(
         )
     }
     
-private fun reasonWithMistral(
-    userInput: String,
-    selectedImages: List<Bitmap>,
-    screenInfoForPrompt: String? = null,
-    imageUrisForChat: List<String>? = null
-) {
-    _uiState.value = PhotoReasoningUiState.Loading
-    val context = appContext
-    val apiKeyManager = ApiKeyManager.getInstance(context)
+    private fun reasonWithMistral(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
+    ) {
+        _uiState.value = PhotoReasoningUiState.Loading
+        _showStopNotificationFlow.value = true
+        val context = appContext
+        val apiKeyManager = ApiKeyManager.getInstance(context)
 
     val initialApiKey = apiKeyManager.getCurrentApiKey(ApiProvider.MISTRAL)
     if (initialApiKey.isNullOrEmpty()) {
@@ -1056,7 +1057,8 @@ private fun reasonWithMistral(
 
     resetStreamingCommandState()
 
-    viewModelScope.launch(Dispatchers.IO) {
+    currentReasoningJob?.cancel()
+    currentReasoningJob = viewModelScope.launch(Dispatchers.IO) {
         try {
             val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
             val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
@@ -1300,6 +1302,10 @@ private fun reasonWithMistral(
                 _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
                 appendErrorMessage("Error: ${e.message}")
                 saveChatHistory(context)
+            }
+        } finally {
+            withContext(Dispatchers.Main) {
+                refreshStopButtonState()
             }
         }
     }
