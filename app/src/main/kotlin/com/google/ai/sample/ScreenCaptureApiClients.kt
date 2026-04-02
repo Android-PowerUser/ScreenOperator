@@ -71,7 +71,7 @@ data class ServiceMistralResponseMessage(
     val content: String
 )
 
-internal suspend fun callMistralApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+internal suspend fun callMistralApi(modelName: String, apiKeys: List<String>, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
     var responseText: String? = null
     var errorMessage: String? = null
 
@@ -127,10 +127,10 @@ internal suspend fun callMistralApi(modelName: String, apiKey: String, chatHisto
             .url("https://api.mistral.ai/v1/chat/completions")
             .post(jsonBody.toRequestBody(mediaType))
             .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Authorization", "Bearer ${apiKeys.first()}")
             .build()
 
-        val coordinated = MistralRequestCoordinator.execute(apiKeys = listOf(apiKey), maxAttempts = 4) { key ->
+        val coordinated = MistralRequestCoordinator.execute(apiKeys = apiKeys, maxAttempts = apiKeys.size * 4 + 8) { key ->
             client.newCall(
                 request.newBuilder()
                     .header("Authorization", "Bearer $key")
