@@ -73,7 +73,7 @@ internal object MistralRequestCoordinator {
                 apiKeys
             }
 
-            var selectedKey = apiKeys.first()
+            var selectedKey = keyPool.first()
             var waitMs = Long.MAX_VALUE
             for (candidate in keyPool) {
                 val candidateWait = remainingWaitForKeyMs(candidate, now)
