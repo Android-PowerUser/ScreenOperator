@@ -1300,6 +1300,7 @@ class PhotoReasoningViewModel(
             withContext(Dispatchers.Main) {
                 Log.e(TAG, "Mistral API call failed", e)
                 _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
+                _chatState.replaceLastPendingMessage()
                 appendErrorMessage("Error: ${e.message}")
                 saveChatHistory(context)
             }
