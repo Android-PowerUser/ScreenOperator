@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
+import com.google.ai.sample.network.MistralRequestCoordinator
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -129,7 +130,15 @@ internal suspend fun callMistralApi(modelName: String, apiKey: String, chatHisto
             .addHeader("Authorization", "Bearer $apiKey")
             .build()
 
-        client.newCall(request).execute().use { response ->
+        val coordinated = MistralRequestCoordinator.execute(apiKeys = listOf(apiKey), maxAttempts = 4) { key ->
+            client.newCall(
+                request.newBuilder()
+                    .header("Authorization", "Bearer $key")
+                    .build()
+            ).execute()
+        }
+
+        coordinated.response.use { response ->
             val responseBody = response.body?.string()
             if (!response.isSuccessful) {
                 Log.e("ScreenCaptureService", "Mistral API Error ($response.code): $responseBody")
