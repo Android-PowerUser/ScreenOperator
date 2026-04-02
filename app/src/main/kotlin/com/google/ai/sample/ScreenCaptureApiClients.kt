@@ -71,7 +71,13 @@ data class ServiceMistralResponseMessage(
     val content: String
 )
 
-internal suspend fun callMistralApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+internal suspend fun callMistralApi(
+    modelName: String,
+    apiKey: String,
+    chatHistory: List<Content>,
+    inputContent: Content,
+    availableApiKeys: List<String> = listOf(apiKey)
+): Pair<String?, String?> {
     var responseText: String? = null
     var errorMessage: String? = null
 
@@ -130,7 +136,8 @@ internal suspend fun callMistralApi(modelName: String, apiKey: String, chatHisto
             .addHeader("Authorization", "Bearer $apiKey")
             .build()
 
-        val coordinated = MistralRequestCoordinator.execute(apiKeys = listOf(apiKey), maxAttempts = 4) { key ->
+        val keysForCoordinator = availableApiKeys.filter { it.isNotBlank() }.distinct().ifEmpty { listOf(apiKey) }
+        val coordinated = MistralRequestCoordinator.execute(apiKeys = keysForCoordinator, maxAttempts = maxOf(4, keysForCoordinator.size * 3)) { key ->
             client.newCall(
                 request.newBuilder()
                     .header("Authorization", "Bearer $key")

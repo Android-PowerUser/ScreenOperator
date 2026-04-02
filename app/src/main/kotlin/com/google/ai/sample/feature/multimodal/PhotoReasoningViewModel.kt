@@ -2076,8 +2076,6 @@ private fun processCommands(text: String) {
             refreshStopButtonState()
         }
     }
-}
-
     private fun executeAccessibilityCommand(command: Command, shouldTrackCommand: Boolean) {
         ScreenOperatorAccessibilityService.executeCommand(command)
         if (shouldTrackCommand) {

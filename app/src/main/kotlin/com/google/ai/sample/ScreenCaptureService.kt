@@ -297,7 +297,16 @@ class ScreenCaptureService : Service() {
                             if (apiProvider == ApiProvider.VERCEL) {
                                 responseText = callVercelApi(applicationContext, modelName, apiKey, chatHistoryDtos, inputContentDto)
                             } else if (apiProvider == ApiProvider.MISTRAL) {
-                                val result = callMistralApi(modelName, apiKey, chatHistory, inputContent)
+                                val availableMistralKeys = ApiKeyManager.getInstance(applicationContext)
+                                    .getApiKeys(ApiProvider.MISTRAL)
+                                    .filter { it.isNotBlank() }
+                                val result = callMistralApi(
+                                    modelName = modelName,
+                                    apiKey = apiKey,
+                                    chatHistory = chatHistory,
+                                    inputContent = inputContent,
+                                    availableApiKeys = availableMistralKeys
+                                )
                                 responseText = result.first
                                 errorMessage = result.second
                             } else if (apiProvider == ApiProvider.PUTER) {
