@@ -1034,6 +1034,10 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
+        Log.d(
+            TAG,
+            "reasonWithMistral: start, images=${selectedImages.size}, screenInfo=${!screenInfoForPrompt.isNullOrBlank()}, chatSize=${_chatState.getAllMessages().size}"
+        )
         _uiState.value = PhotoReasoningUiState.Loading
         _showStopNotificationFlow.value = true
         val context = appContext
@@ -1062,6 +1066,7 @@ class PhotoReasoningViewModel(
     currentReasoningJob?.cancel()
     currentReasoningJob = viewModelScope.launch(Dispatchers.IO) {
         try {
+            Log.d(TAG, "reasonWithMistral: launched IO job")
             val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
             val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
 
@@ -1132,6 +1137,7 @@ class PhotoReasoningViewModel(
             val availableKeys = apiKeyManager.getApiKeys(ApiProvider.MISTRAL)
                 .filter { it.isNotBlank() }
                 .distinct()
+            Log.d(TAG, "reasonWithMistral: availableKeys=${availableKeys.size}")
             if (availableKeys.isEmpty()) {
                 throw IOException("Mistral API key not found.")
             }
@@ -1149,6 +1155,7 @@ class PhotoReasoningViewModel(
                 client.newCall(buildRequest(selectedKey)).execute()
             }
             val finalResponse = coordinated.response
+            Log.d(TAG, "reasonWithMistral: coordinated response code=${finalResponse.code}")
 
             if (!finalResponse.isSuccessful) {
                 val errBody = finalResponse.body?.string()
@@ -1163,6 +1170,7 @@ class PhotoReasoningViewModel(
                     processCommandsIncrementally(accText)
                 }
             }
+            Log.d(TAG, "reasonWithMistral: stream parse finished, responseLength=${aiResponseText.length}")
             finalResponse.close()
 
             withContext(Dispatchers.Main) {
@@ -1181,6 +1189,7 @@ class PhotoReasoningViewModel(
             }
         } finally {
             withContext(Dispatchers.Main) {
+                Log.d(TAG, "reasonWithMistral: finally, draining queued auto-screenshot requests")
                 releaseAndDrainMistralAutoScreenshotQueue()
                 refreshStopButtonState()
             }
@@ -2332,9 +2341,10 @@ private fun processCommands(text: String) {
         synchronized(mistralAutoScreenshotQueueLock) {
             if (mistralAutoScreenshotInFlight) {
                 queuedMistralScreenshotRequest = request
-                Log.d(TAG, "Mistral auto screenshot request queued (latest wins).")
+                Log.d(TAG, "Mistral auto screenshot request queued (latest wins). uri=$screenshotUri")
             } else {
                 mistralAutoScreenshotInFlight = true
+                Log.d(TAG, "Mistral auto screenshot request becomes in-flight. uri=$screenshotUri")
                 shouldStartNow = true
             }
         }
@@ -2344,6 +2354,7 @@ private fun processCommands(text: String) {
     }
 
     private fun dispatchMistralAutoScreenshotRequest(request: QueuedMistralScreenshotRequest) {
+        Log.d(TAG, "Dispatching Mistral auto screenshot request. uri=${request.screenshotUri}")
         reason(
             userInput = createGenericScreenshotPrompt(),
             selectedImages = listOf(request.bitmap),
@@ -2357,9 +2368,11 @@ private fun processCommands(text: String) {
             val queued = queuedMistralScreenshotRequest
             if (queued == null) {
                 mistralAutoScreenshotInFlight = false
+                Log.d(TAG, "Mistral auto screenshot queue drained completely. inFlight=false")
                 null
             } else {
                 queuedMistralScreenshotRequest = null
+                Log.d(TAG, "Mistral auto screenshot queue has pending request to drain.")
                 queued
             }
         }

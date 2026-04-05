@@ -1,9 +1,11 @@
 package com.google.ai.sample.network
 
+import android.util.Log
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Response
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 import kotlin.math.roundToLong
 
@@ -13,10 +15,17 @@ internal data class MistralCoordinatedResponse(
 )
 
 internal object MistralRequestCoordinator {
+    private const val TAG = "MistralCoordinator"
     private const val MIN_INTERVAL_MS = 1500L
-    private const val MAX_SERVER_DELAY_MS = 60_000L
+    private const val MAX_SERVER_DELAY_MS = 5_000L
     private val cooldownMutex = Mutex()
     private val nextAllowedRequestAtMsByKey = mutableMapOf<String, Long>()
+    private val requestId = AtomicLong(0L)
+
+    private fun keyFingerprint(key: String): String {
+        if (key.length <= 8) return key
+        return "${key.take(4)}…${key.takeLast(4)}"
+    }
 
     private suspend fun markKeyCooldown(
         key: String,
@@ -71,6 +80,8 @@ internal object MistralRequestCoordinator {
         request: suspend (apiKey: String) -> Response
     ): MistralCoordinatedResponse {
         require(apiKeys.isNotEmpty()) { "No Mistral API keys provided." }
+        val rid = requestId.incrementAndGet()
+        Log.d(TAG, "[$rid] execute start: keys=${apiKeys.size}, maxAttempts=$maxAttempts")
 
         var consecutiveFailures = 0
         var blockedKeysThisRound = mutableSetOf<String>()
@@ -91,6 +102,10 @@ internal object MistralRequestCoordinator {
                     selectedKey = candidate
                 }
             }
+            Log.d(
+                TAG,
+                "[$rid] attempt=${consecutiveFailures + 1}, selectedKey=${keyFingerprint(selectedKey)}, waitMs=$waitMs, blocked=${blockedKeysThisRound.size}"
+            )
             if (waitMs > 0L) {
                 delay(waitMs)
             }
@@ -101,9 +116,14 @@ internal object MistralRequestCoordinator {
                 val retryAfterMs = parseRetryAfterMs(response.header("Retry-After"))
                 val resetDelayMs = parseRateLimitResetDelayMs(response, requestEndMs)
                 val serverRequestedDelayMs = max(retryAfterMs ?: 0L, resetDelayMs ?: 0L)
+                Log.d(
+                    TAG,
+                    "[$rid] response code=${response.code}, retryAfterMs=${retryAfterMs ?: -1}, resetDelayMs=${resetDelayMs ?: -1}, appliedDelayMs=$serverRequestedDelayMs"
+                )
                 markKeyCooldown(selectedKey, requestEndMs, serverRequestedDelayMs)
 
                 if (response.isSuccessful || !isRetryableFailure(response.code)) {
+                    Log.d(TAG, "[$rid] returning response code=${response.code} with key=${keyFingerprint(selectedKey)}")
                     return MistralCoordinatedResponse(response = response, apiKey = selectedKey)
                 }
 
@@ -111,16 +131,26 @@ internal object MistralRequestCoordinator {
                 blockedKeysThisRound.add(selectedKey)
                 consecutiveFailures++
                 val adaptiveDelay = adaptiveRetryDelayMs(consecutiveFailures)
+                Log.w(
+                    TAG,
+                    "[$rid] retryable failure code=${response.code}, consecutiveFailures=$consecutiveFailures, adaptiveDelay=$adaptiveDelay"
+                )
                 markKeyCooldown(selectedKey, requestEndMs, max(serverRequestedDelayMs, adaptiveDelay))
             } catch (e: Exception) {
                 val requestEndMs = System.currentTimeMillis()
                 blockedKeysThisRound.add(selectedKey)
                 consecutiveFailures++
+                Log.e(
+                    TAG,
+                    "[$rid] exception on key=${keyFingerprint(selectedKey)}, consecutiveFailures=$consecutiveFailures: ${e.message}",
+                    e
+                )
                 markKeyCooldown(selectedKey, requestEndMs, adaptiveRetryDelayMs(consecutiveFailures))
                 if (consecutiveFailures >= maxAttempts) throw e
             }
         }
 
+        Log.e(TAG, "[$rid] exhausted attempts ($maxAttempts) without success")
         throw IllegalStateException("Mistral request failed after $maxAttempts attempts.")
     }
 }
