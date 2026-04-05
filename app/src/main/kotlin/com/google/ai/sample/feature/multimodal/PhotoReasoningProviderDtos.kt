@@ -66,11 +66,8 @@ internal data class MistralTextContent(val text: String) : MistralContent()
 @Serializable
 @kotlinx.serialization.SerialName("image_url")
 internal data class MistralImageContent(
-    @kotlinx.serialization.SerialName("image_url") val imageUrl: MistralImageUrl
+    @kotlinx.serialization.SerialName("image_url") val imageUrl: String
 ) : MistralContent()
-
-@Serializable
-internal data class MistralImageUrl(val url: String)
 
 @Serializable
 internal data class MistralResponse(

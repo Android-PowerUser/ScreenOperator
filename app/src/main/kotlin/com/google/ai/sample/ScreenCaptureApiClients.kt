@@ -50,10 +50,7 @@ data class ServiceMistralTextContent(@SerialName("text") val text: String) : Ser
 
 @Serializable
 @SerialName("image_url")
-data class ServiceMistralImageContent(@SerialName("image_url") val imageUrl: ServiceMistralImageUrl) : ServiceMistralContent()
-
-@Serializable
-data class ServiceMistralImageUrl(val url: String)
+data class ServiceMistralImageContent(@SerialName("image_url") val imageUrl: String) : ServiceMistralContent()
 
 @Serializable
 data class ServiceMistralResponse(
@@ -104,7 +101,7 @@ internal suspend fun callMistralApi(
                     is TextPart -> if (part.text.isNotBlank()) ServiceMistralTextContent(text = part.text) else null
                     is ImagePart -> {
                         if (supportsScreenshot) {
-                            ServiceMistralImageContent(imageUrl = ServiceMistralImageUrl(url = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}"))
+                            ServiceMistralImageContent(imageUrl = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}")
                         } else null
                     }
                     else -> null

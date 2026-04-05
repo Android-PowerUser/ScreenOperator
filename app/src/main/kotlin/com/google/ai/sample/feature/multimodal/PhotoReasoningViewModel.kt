@@ -1097,9 +1097,7 @@ class PhotoReasoningViewModel(
                     for (bitmap in selectedImages)
                         updatedContent.add(
                             MistralImageContent(
-                                imageUrl = MistralImageUrl(
-                                    url = "data:image/jpeg;base64,${PhotoReasoningSerialization.bitmapToBase64(bitmap)}"
-                                )
+                                imageUrl = "data:image/jpeg;base64,${PhotoReasoningSerialization.bitmapToBase64(bitmap)}"
                             )
                         )
                     apiMessages[apiMessages.lastIndex] = lastUserMsg.copy(content = updatedContent)
