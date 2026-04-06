@@ -1291,7 +1291,7 @@ class PhotoReasoningViewModel(
                     messages = apiMessages,
                     temperature = genSettings.temperature.toDouble(),
                     top_p = genSettings.topP.toDouble(),
-                    max_tokens = null,
+                    max_tokens = 320000,
                     stream = true
                 )
 
