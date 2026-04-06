@@ -1118,7 +1118,7 @@ class PhotoReasoningViewModel(
                 messages = apiMessages,
                 temperature = genSettings.temperature.toDouble().coerceAtLeast(0.01),
                 top_p = genSettings.topP.toDouble().coerceAtLeast(0.01),
-                max_tokens = 4096,
+                max_tokens = 50000,
                 stream = true
             )
             val jsonBody = jsonSerializer.encodeToString(MistralRequest.serializer(), requestBody)
@@ -1291,7 +1291,7 @@ class PhotoReasoningViewModel(
                     messages = apiMessages,
                     temperature = genSettings.temperature.toDouble(),
                     top_p = genSettings.topP.toDouble(),
-                    max_tokens = 4096,
+                    max_tokens = null,
                     stream = true
                 )
 
