@@ -1142,10 +1142,19 @@ class PhotoReasoningViewModel(
 
             // Validate that we have at least one key before proceeding
             require(availableKeys.isNotEmpty()) { "No valid Mistral API keys available after filtering" }
-            val maxAttempts = availableKeys.size * 4 + 8
+            val mistralMinIntervalMs = when (currentModel) {
+                ModelOption.MISTRAL_MEDIUM_3_1 -> 420L
+                else -> 1500L
+            }
+            val maxAttempts = when (currentModel) {
+                ModelOption.MISTRAL_LARGE_3,
+                ModelOption.MISTRAL_MEDIUM_3_1 -> 3
+                else -> availableKeys.size * 4 + 8
+            }
             val coordinated = MistralRequestCoordinator.execute(
                 apiKeys = availableKeys,
-                maxAttempts = maxAttempts
+                maxAttempts = maxAttempts,
+                minIntervalMs = mistralMinIntervalMs
             ) { selectedKey ->
                 if (stopExecutionFlag.get()) {
                     throw IOException("Mistral request aborted.")

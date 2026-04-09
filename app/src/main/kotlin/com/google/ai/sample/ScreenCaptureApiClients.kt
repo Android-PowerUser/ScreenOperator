@@ -134,7 +134,20 @@ internal suspend fun callMistralApi(
             .build()
 
         val keysForCoordinator = availableApiKeys.filter { it.isNotBlank() }.distinct().ifEmpty { listOf(apiKey) }
-        val coordinated = MistralRequestCoordinator.execute(apiKeys = keysForCoordinator, maxAttempts = maxOf(4, keysForCoordinator.size * 3)) { key ->
+        val minIntervalMs = if (modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName) 420L else 1500L
+        val maxAttempts = if (
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_LARGE_3.modelName ||
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName
+        ) {
+            3
+        } else {
+            maxOf(4, keysForCoordinator.size * 3)
+        }
+        val coordinated = MistralRequestCoordinator.execute(
+            apiKeys = keysForCoordinator,
+            maxAttempts = maxAttempts,
+            minIntervalMs = minIntervalMs
+        ) { key ->
             client.newCall(
                 request.newBuilder()
                     .header("Authorization", "Bearer $key")

@@ -30,9 +30,10 @@ internal object MistralRequestCoordinator {
     private suspend fun markKeyCooldown(
         key: String,
         referenceTimeMs: Long,
+        minIntervalMs: Long,
         extraDelayMs: Long = 0L
     ) {
-        val nextAllowedAt = referenceTimeMs + max(MIN_INTERVAL_MS, extraDelayMs.coerceAtLeast(0L))
+        val nextAllowedAt = referenceTimeMs + max(minIntervalMs.coerceAtLeast(0L), extraDelayMs.coerceAtLeast(0L))
         cooldownMutex.withLock {
             val existing = nextAllowedRequestAtMsByKey[key] ?: 0L
             nextAllowedRequestAtMsByKey[key] = max(existing, nextAllowedAt)
@@ -77,6 +78,7 @@ internal object MistralRequestCoordinator {
     suspend fun execute(
         apiKeys: List<String>,
         maxAttempts: Int = apiKeys.size * 4 + 8,
+        minIntervalMs: Long = MIN_INTERVAL_MS,
         request: suspend (apiKey: String) -> Response
     ): MistralCoordinatedResponse {
         require(apiKeys.isNotEmpty()) { "No Mistral API keys provided." }
@@ -120,7 +122,7 @@ internal object MistralRequestCoordinator {
                     TAG,
                     "[$rid] response code=${response.code}, retryAfterMs=${retryAfterMs ?: -1}, resetDelayMs=${resetDelayMs ?: -1}, appliedDelayMs=$serverRequestedDelayMs"
                 )
-                markKeyCooldown(selectedKey, requestEndMs, serverRequestedDelayMs)
+                markKeyCooldown(selectedKey, requestEndMs, minIntervalMs, serverRequestedDelayMs)
 
                 if (response.isSuccessful || !isRetryableFailure(response.code)) {
                     Log.d(TAG, "[$rid] returning response code=${response.code} with key=${keyFingerprint(selectedKey)}")
@@ -135,7 +137,7 @@ internal object MistralRequestCoordinator {
                     TAG,
                     "[$rid] retryable failure code=${response.code}, consecutiveFailures=$consecutiveFailures, adaptiveDelay=$adaptiveDelay"
                 )
-                markKeyCooldown(selectedKey, requestEndMs, max(serverRequestedDelayMs, adaptiveDelay))
+                markKeyCooldown(selectedKey, requestEndMs, minIntervalMs, max(serverRequestedDelayMs, adaptiveDelay))
             } catch (e: Exception) {
                 val requestEndMs = System.currentTimeMillis()
                 blockedKeysThisRound.add(selectedKey)
@@ -145,7 +147,7 @@ internal object MistralRequestCoordinator {
                     "[$rid] exception on key=${keyFingerprint(selectedKey)}, consecutiveFailures=$consecutiveFailures: ${e.message}",
                     e
                 )
-                markKeyCooldown(selectedKey, requestEndMs, adaptiveRetryDelayMs(consecutiveFailures))
+                markKeyCooldown(selectedKey, requestEndMs, minIntervalMs, adaptiveRetryDelayMs(consecutiveFailures))
                 if (consecutiveFailures >= maxAttempts) throw e
             }
         }
