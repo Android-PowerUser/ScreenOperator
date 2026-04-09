@@ -286,8 +286,8 @@ class PhotoReasoningViewModel(
         // Initialize model if it's the offline one and already downloaded
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
         val context = appContext
-        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
-            if (ModelDownloadManager.isModelDownloaded(context)) {
+        if (currentModel.isOfflineModel) {
+            if (ModelDownloadManager.isModelDownloaded(context, currentModel)) {
                 // Point 7 & 16: Initialize model asynchronously to not block UI
                 viewModelScope.launch(Dispatchers.IO) {
                     withContext(Dispatchers.Main) {
@@ -324,7 +324,8 @@ class PhotoReasoningViewModel(
     private fun initializeOfflineModel(context: Context): String? {
         try {
             if (llmInference == null) {
-                val modelFile = ModelDownloadManager.getModelFile(context)
+                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                val modelFile = ModelDownloadManager.getModelFile(context, currentModel)
                 if (modelFile != null && modelFile.exists()) {
                     // Load backend preference
                     GenerativeAiViewModelFactory.loadBackendPreference(context)
@@ -406,7 +407,7 @@ class PhotoReasoningViewModel(
     }
 
     private fun isOfflineGpuModelLoaded(): Boolean {
-        return com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT &&
+        return com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().isOfflineModel &&
             com.google.ai.sample.GenerativeAiViewModelFactory.getBackend() == InferenceBackend.GPU &&
             llmInference != null
     }
@@ -649,10 +650,10 @@ class PhotoReasoningViewModel(
         }
 
         // Check for offline model (Gemma)
-        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
+        if (currentModel.isOfflineModel) {
             val context = appContext
 
-            if (!ModelDownloadManager.isModelDownloaded(context)) {
+            if (!ModelDownloadManager.isModelDownloaded(context, currentModel)) {
                 _uiState.value = PhotoReasoningUiState.Error("Model not downloaded.")
                 return
             }
@@ -893,7 +894,7 @@ class PhotoReasoningViewModel(
 
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
-        if (currentKey != null && currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
+        if (currentKey != null && !currentModel.isOfflineModel && currentModel != ModelOption.HUMAN_EXPERT) {
             val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
             val config = com.google.ai.client.generativeai.type.generationConfig {
                 temperature = genSettings.temperature
@@ -2251,7 +2252,7 @@ private fun processCommands(text: String) {
         screenInfo: String? = null
     ) {
         if (screenshotUri == Uri.EMPTY) {
-            // This case is for gemma-3n-e4b-it, where we don't have a screenshot.
+            // This case is for offline models, where we don't have a screenshot.
             // We just want to send the screen info.
             val genericAnalysisPrompt = createGenericScreenshotPrompt()
             reason(
