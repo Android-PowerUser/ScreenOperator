@@ -8,9 +8,10 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-// Redirect build output to C: drive (NTFS) to avoid corrupted ExFAT build cache
-if (System.getenv("CI") == null) {
-    layout.buildDirectory = file("C:/GradleBuild/app")
+// Optional override for local build directory (e.g. external storage issues on specific setups).
+// If not provided, Gradle default build directory is used.
+System.getenv("SCREENOPERATOR_BUILD_DIR")?.takeIf { it.isNotBlank() }?.let { customBuildDir ->
+    layout.buildDirectory = file(customBuildDir)
 }
 
 android {

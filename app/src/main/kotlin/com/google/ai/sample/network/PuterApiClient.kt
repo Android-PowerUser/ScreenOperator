@@ -32,6 +32,7 @@ data class PuterMessage(
 )
 
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 @JsonClassDiscriminator("type")
 sealed class PuterContent
 

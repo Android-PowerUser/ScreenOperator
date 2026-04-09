@@ -1,23 +1,19 @@
-AM WICHTIGSTEN: 1. Befolge Befehle genau und tue NICHTS ANDERES als exakt angeordet!!! Nicht mehr und nicht weniger.
+MOST IMPORTANT: 1. Follow commands exactly and do NOTHING BUT what is precisely instructed!!! Nothing more and nothing less.
 
-AM WICHTIGSTEN: 1. Befolge Befehle genau und tue NICHTS ANDERES als exakt angeordet!!! Nicht mehr und nicht weniger.
+2. Write to me in the language in which I give the task.
 
-AM WICHTIGSTEN: 1. Befolge Befehle genau und tue NICHTS ANDERES als exakt angeordet!!! Nicht mehr und nicht weniger.
+3. Before each build, enter critic mode and evaluate the changes as if you were someone else. Check if they meet the requirements, if anything else is affected, and fix any problems. Repeat this until no more critics find any errors.
 
-2. Schreibe mit mir auf Deutsch, übersetzte für dich aber die Anweisung auf Englisch.
+4. Do not build with minor changes.
 
-3. Vor jedem Build gehst du in ein Kritikermodus und bewertest die Änderungen als wärst du eine andere Person und schaust ob es den Anforderungen gerecht wird, nichts anderes beeinflusst wird und behebst entsprechende Probleme. Wiederhole das solange bis keine Kritikerpersönlichkeiten mehr Fehler finden.
+5. Ask questions about things I haven't specified and don't assume anything implicitly.
 
-4. Builde AUSSCHLIESSLICH über die Github CLI in Github Actions und überwache die Ausgabe. Builde niemals lokal. Vergiss nicht das pushen.
+6. Ensure that other functions and properties are not affected or broken.
 
-5. Builde bei kleinen Änderungen nicht.
+7. Do not make compilation errors. Pay attention to imports.
 
-6. Ignoriere "Target content not found" beim Ersetzen nicht.
+8. If you see potential for refactoring to eliminate avoidable complexity or technical debt without changing behavior, do so immediately.
 
-7. Stelle Fragen zu Dingen zu denen ich keine Angaben gemacht habe und nehme nichts implizit an.
+9. If debug compilation fails in your environment, resolve the issue before reporting it as complete.
 
-8.  Achte darauf, dass andere Funktionen und Eigenschaften nicht beeinflusst werden oder gar kaputt gehen.
-
-9. Mache keine Kompilierfehler. Achte auf imports.
-
-10. Bei der App handelt es sich um Produktionssoftware und ist kein Spielzeug.
+10. This app is production software and not a toy.
