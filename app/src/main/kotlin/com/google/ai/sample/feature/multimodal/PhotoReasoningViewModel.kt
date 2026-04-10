@@ -338,19 +338,23 @@ class PhotoReasoningViewModel(
                     if (!isLiteRtAbiSupported()) {
                         return "Gemma 4 offline is only supported on arm64-v8a or x86_64 devices."
                     }
+                    Log.i(
+                        TAG,
+                        "Initializing Gemma 4 LiteRT engine. preferredBackend=$backend, " +
+                            "abis=${Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"}, " +
+                            "modelPath=${modelFile.absolutePath}, modelSizeBytes=${modelFile.length()}"
+                    )
                     ensureLiteRtNativeLoaded()
                     if (liteRtEngine == null) {
-                        val liteRtBackend = Backend.CPU
-                        if (backend == InferenceBackend.GPU) {
-                            Log.w(
-                                TAG,
-                                "Gemma 4 offline currently forces CPU backend to avoid native crashes on GPU initialization."
-                            )
-                        }
+                        val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU else Backend.CPU
                         val engineConfig = EngineConfig(
                             modelPath = modelFile.absolutePath,
                             backend = liteRtBackend,
                             cacheDir = context.cacheDir.absolutePath
+                        )
+                        Log.i(
+                            TAG,
+                            "Creating LiteRT engine with backend=$liteRtBackend cacheDir=${context.cacheDir.absolutePath}"
                         )
                         liteRtEngine = Engine(engineConfig).also { it.initialize() }
                         Log.d(TAG, "Offline model initialized with LiteRT-LM Engine backend=$liteRtBackend")
@@ -381,6 +385,12 @@ class PhotoReasoningViewModel(
             return null // Already initialized or no model file
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize offline model", e)
+            Log.e(
+                TAG,
+                "Offline init context: model=${com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()}, " +
+                    "preferredBackend=${GenerativeAiViewModelFactory.getBackend()}, " +
+                    "abis=${Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"}"
+            )
             val msg = e.message ?: e.toString()
             if (msg.contains("nativeCheckLoaded", ignoreCase = true) ||
                 msg.contains("No implementation found", ignoreCase = true) ||
@@ -462,12 +472,7 @@ class PhotoReasoningViewModel(
     }
 
     private fun isOfflineGpuModelLoaded(): Boolean {
-        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-        if (currentModel == ModelOption.GEMMA_4_E4B_IT) {
-            // Gemma 4 offline currently runs with CPU backend for stability.
-            return false
-        }
-        return currentModel.isOfflineModel &&
+        return com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().isOfflineModel &&
             com.google.ai.sample.GenerativeAiViewModelFactory.getBackend() == InferenceBackend.GPU &&
             (llmInference != null || liteRtEngine != null)
     }
