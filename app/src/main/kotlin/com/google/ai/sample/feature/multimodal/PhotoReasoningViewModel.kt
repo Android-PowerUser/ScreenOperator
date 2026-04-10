@@ -57,6 +57,7 @@ import com.google.ai.sample.ApiProvider
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.NativeLibraryLoader
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -86,6 +87,7 @@ class PhotoReasoningViewModel(
 
     private var llmInference: LlmInference? = null
     private var liteRtEngine: Engine? = null
+    private var liteRtNativeLoaded = false
     private val TAG = "PhotoReasoningViewModel"
     
     // WebRTC & Signaling
@@ -337,6 +339,7 @@ class PhotoReasoningViewModel(
                     if (!isLiteRtAbiSupported()) {
                         return "Gemma 4 offline is only supported on arm64-v8a or x86_64 devices."
                     }
+                    ensureLiteRtNativeLoaded()
                     if (liteRtEngine == null) {
                         val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU else Backend.CPU
                         val engineConfig = EngineConfig(
@@ -386,6 +389,18 @@ class PhotoReasoningViewModel(
                 "Offline model could not be initialized: $msg"
             }
         }
+    }
+
+    private fun ensureLiteRtNativeLoaded() {
+        if (liteRtNativeLoaded) return
+
+        runCatching {
+            NativeLibraryLoader.INSTANCE.load()
+        }.recoverCatching {
+            System.loadLibrary("litertlm_jni")
+        }.getOrThrow()
+
+        liteRtNativeLoaded = true
     }
 
     private fun isLiteRtAbiSupported(): Boolean {
