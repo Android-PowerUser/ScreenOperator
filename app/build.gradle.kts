@@ -111,7 +111,7 @@ dependencies {
     // MediaPipe GenAI for offline inference (LLM)
     implementation("com.google.mediapipe:tasks-genai:0.10.32")
     // LiteRT-LM for newer offline .litertlm models (e.g. Gemma 4 E4B it)
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.9.0-alpha06")
 
     // Camera Core to potentially fix missing JNI lib issue
     implementation("androidx.camera:camera-core:1.4.0")
