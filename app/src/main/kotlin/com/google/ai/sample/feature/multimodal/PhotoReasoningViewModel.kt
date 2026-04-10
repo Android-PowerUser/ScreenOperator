@@ -344,8 +344,8 @@ class PhotoReasoningViewModel(
                             "modelPath=${modelFile.absolutePath}, modelSizeBytes=${modelFile.length()}"
                     )
                     if (liteRtEngine == null) {
-                        val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
-                        val visionBackend = if (currentModel.supportsScreenshot) Backend.CPU() else null
+                        val preferredBackend = if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
+                        val preferredVisionBackend = if (currentModel.supportsScreenshot) Backend.GPU() else null
                         val audioBackend = null
                         val cacheDir =
                             if (modelFile.absolutePath.startsWith("/data/local/tmp")) {
@@ -353,22 +353,14 @@ class PhotoReasoningViewModel(
                             } else {
                                 null
                             }
-                        val engineConfig = EngineConfig(
+                        liteRtEngine = createLiteRtEngineWithFallbacks(
                             modelPath = modelFile.absolutePath,
-                            backend = liteRtBackend,
-                            visionBackend = visionBackend,
+                            preferredBackend = preferredBackend,
+                            preferredVisionBackend = preferredVisionBackend,
                             audioBackend = audioBackend,
-                            maxNumTokens = null,
                             cacheDir = cacheDir
                         )
-                        Log.i(
-                            TAG,
-                            "Creating LiteRT engine with backend=$liteRtBackend, " +
-                                "visionBackend=$visionBackend, audioBackend=$audioBackend, " +
-                                "cacheDir=$cacheDir"
-                        )
-                        liteRtEngine = Engine(engineConfig).also { it.initialize() }
-                        Log.d(TAG, "Offline model initialized with LiteRT-LM Engine backend=$liteRtBackend")
+                        Log.d(TAG, "Offline model initialized with LiteRT-LM Engine")
                     }
                 } else {
                     if (llmInference == null) {
@@ -420,6 +412,63 @@ class PhotoReasoningViewModel(
     private fun isLiteRtAbiSupported(): Boolean {
         val supportedAbis = Build.SUPPORTED_ABIS?.toSet().orEmpty()
         return supportedAbis.contains("arm64-v8a") || supportedAbis.contains("x86_64")
+    }
+
+    private fun createLiteRtEngineWithFallbacks(
+        modelPath: String,
+        preferredBackend: Backend,
+        preferredVisionBackend: Backend?,
+        audioBackend: Backend?,
+        cacheDir: String?
+    ): Engine {
+        val cpuBackend = Backend.CPU()
+        val gpuBackend = Backend.GPU()
+        val attempts = linkedSetOf(
+            preferredBackend to preferredVisionBackend,
+            cpuBackend to preferredVisionBackend,
+            cpuBackend to cpuBackend,
+            gpuBackend to cpuBackend
+        )
+        var lastError: Exception? = null
+        val failureDetails = StringBuilder()
+
+        attempts.forEachIndexed { index, (backendAttempt, visionAttempt) ->
+            try {
+                Log.i(
+                    TAG,
+                    "LiteRT init attempt ${index + 1}/${attempts.size}: " +
+                        "backend=$backendAttempt visionBackend=$visionAttempt audioBackend=$audioBackend cacheDir=$cacheDir"
+                )
+                val config = EngineConfig(
+                    modelPath = modelPath,
+                    backend = backendAttempt,
+                    visionBackend = visionAttempt,
+                    audioBackend = audioBackend,
+                    maxNumTokens = null,
+                    cacheDir = cacheDir
+                )
+                return Engine(config).also { it.initialize() }
+            } catch (e: Exception) {
+                lastError = e
+                val msg = e.message ?: e.toString()
+                failureDetails
+                    .append("Attempt ")
+                    .append(index + 1)
+                    .append(" failed (backend=")
+                    .append(backendAttempt)
+                    .append(", visionBackend=")
+                    .append(visionAttempt)
+                    .append("): ")
+                    .append(msg)
+                    .append('\n')
+                Log.w(TAG, "LiteRT init attempt ${index + 1} failed", e)
+            }
+        }
+
+        throw IllegalStateException(
+            "All LiteRT initialization attempts failed.\n$failureDetails",
+            lastError
+        )
     }
     
     fun reinitializeOfflineModel(context: Context) {
