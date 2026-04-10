@@ -7,6 +7,8 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.google.ai.sample.GenerativeAiViewModelFactory
+import com.google.ai.sample.ModelOption
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,13 +21,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Custom download manager for the Gemma 3n model.
+ * Custom download manager for offline LiteRT models.
  * Uses HttpURLConnection with Range-Request support for resume capability.
  * Point 18: Includes Android notification for download progress.
  */
 object ModelDownloadManager {
     private const val TAG = "ModelDownloadManager"
-    const val MODEL_FILENAME = "gemma-3n-e4b-it-int4.litertlm"
     private const val TEMP_SUFFIX = ".downloading"
     private const val BUFFER_SIZE = 8192
     private const val MAX_RETRIES = 3
@@ -57,25 +58,27 @@ object ModelDownloadManager {
     private var downloadJob: Job? = null
     private var isPaused = false
 
-    fun isModelDownloaded(context: Context): Boolean {
-        val file = getModelFile(context)
+    fun isModelDownloaded(context: Context, model: ModelOption = GenerativeAiViewModelFactory.getCurrentModel()): Boolean {
+        val file = getModelFile(context, model)
         return file != null && file.exists() && file.length() > 0
     }
 
-    fun getModelFile(context: Context): File? {
+    fun getModelFile(context: Context, model: ModelOption = GenerativeAiViewModelFactory.getCurrentModel()): File? {
+        val modelFilename = model.offlineModelFilename ?: return null
         val externalFilesDir = context.getExternalFilesDir(null)
         return if (externalFilesDir != null) {
-            File(externalFilesDir, MODEL_FILENAME)
+            File(externalFilesDir, modelFilename)
         } else {
             Log.e(TAG, "External files directory is not available.")
             null
         }
     }
 
-    private fun getTempFile(context: Context): File? {
+    private fun getTempFile(context: Context, model: ModelOption): File? {
+        val modelFilename = model.offlineModelFilename ?: return null
         val externalFilesDir = context.getExternalFilesDir(null)
         return if (externalFilesDir != null) {
-            File(externalFilesDir, MODEL_FILENAME + TEMP_SUFFIX)
+            File(externalFilesDir, modelFilename + TEMP_SUFFIX)
         } else {
             null
         }
@@ -131,8 +134,8 @@ object ModelDownloadManager {
         notificationManager.cancel(DOWNLOAD_NOTIFICATION_ID)
     }
 
-    fun downloadModel(context: Context, url: String) {
-        if (isModelDownloaded(context)) {
+    fun downloadModel(context: Context, model: ModelOption, url: String) {
+        if (isModelDownloaded(context, model)) {
             Toast.makeText(context, "Model already downloaded.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -144,7 +147,7 @@ object ModelDownloadManager {
 
         isPaused = false
         downloadJob = CoroutineScope(Dispatchers.IO).launch {
-            downloadWithResume(context, url)
+            downloadWithResume(context, model, url)
         }
     }
 
@@ -153,7 +156,7 @@ object ModelDownloadManager {
         isPaused = true
     }
 
-    fun resumeDownload(context: Context, url: String) {
+    fun resumeDownload(context: Context, model: ModelOption, url: String) {
         if (downloadJob?.isActive == true) {
             Log.d(TAG, "Download is still active, not resuming.")
             return
@@ -161,18 +164,18 @@ object ModelDownloadManager {
 
         isPaused = false
         downloadJob = CoroutineScope(Dispatchers.IO).launch {
-            downloadWithResume(context, url)
+            downloadWithResume(context, model, url)
         }
     }
 
-    fun cancelDownload(context: Context) {
+    fun cancelDownload(context: Context, model: ModelOption) {
         Log.d(TAG, "Cancelling download...")
         isPaused = false
         downloadJob?.cancel()
         downloadJob = null
 
         // Delete temp file
-        val tempFile = getTempFile(context)
+        val tempFile = getTempFile(context, model)
         if (tempFile != null && tempFile.exists()) {
             tempFile.delete()
             Log.d(TAG, "Temp file deleted.")
@@ -185,12 +188,12 @@ object ModelDownloadManager {
         }
     }
 
-    private suspend fun downloadWithResume(context: Context, url: String) {
-        val tempFile = getTempFile(context) ?: run {
+    private suspend fun downloadWithResume(context: Context, model: ModelOption, url: String) {
+        val tempFile = getTempFile(context, model) ?: run {
             _downloadState.value = DownloadState.Error("Storage not available.")
             return
         }
-        val finalFile = getModelFile(context) ?: run {
+        val finalFile = getModelFile(context, model) ?: run {
             _downloadState.value = DownloadState.Error("Storage not available.")
             return
         }
@@ -348,4 +351,3 @@ object ModelDownloadManager {
         }
     }
 }
-

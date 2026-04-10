@@ -50,11 +50,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
-import com.google.mediapipe.tasks.genai.llminference.ProgressListener
 
 import android.graphics.Bitmap
 import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.ApiProvider
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -83,6 +85,7 @@ class PhotoReasoningViewModel(
         get() = liveApiManager != null
 
     private var llmInference: LlmInference? = null
+    private var liteRtEngine: Engine? = null
     private val TAG = "PhotoReasoningViewModel"
     
     // WebRTC & Signaling
@@ -286,8 +289,8 @@ class PhotoReasoningViewModel(
         // Initialize model if it's the offline one and already downloaded
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
         val context = appContext
-        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
-            if (ModelDownloadManager.isModelDownloaded(context)) {
+        if (currentModel.isOfflineModel) {
+            if (ModelDownloadManager.isModelDownloaded(context, currentModel)) {
                 // Point 7 & 16: Initialize model asynchronously to not block UI
                 viewModelScope.launch(Dispatchers.IO) {
                     withContext(Dispatchers.Main) {
@@ -323,41 +326,71 @@ class PhotoReasoningViewModel(
      */
     private fun initializeOfflineModel(context: Context): String? {
         try {
-            if (llmInference == null) {
-                val modelFile = ModelDownloadManager.getModelFile(context)
-                if (modelFile != null && modelFile.exists()) {
-                    // Load backend preference
-                    GenerativeAiViewModelFactory.loadBackendPreference(context)
-                    val backend = GenerativeAiViewModelFactory.getBackend()
-                    
-                    val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
-                        .setModelPath(modelFile.absolutePath)
-                        .setMaxTokens(4096)
-                    
-                    // Set preferred backend (CPU or GPU)
-                    if (backend == InferenceBackend.GPU) {
-                        optionsBuilder.setPreferredBackend(LlmInference.Backend.GPU)
-                        Log.d(TAG, "Offline model: using GPU backend")
-                    } else {
-                        optionsBuilder.setPreferredBackend(LlmInference.Backend.CPU)
-                        Log.d(TAG, "Offline model: using CPU backend")
+            val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+            val modelFile = ModelDownloadManager.getModelFile(context, currentModel)
+            if (modelFile != null && modelFile.exists()) {
+                // Load backend preference
+                GenerativeAiViewModelFactory.loadBackendPreference(context)
+                val backend = GenerativeAiViewModelFactory.getBackend()
+
+                if (currentModel == ModelOption.GEMMA_4_E4B_IT) {
+                    if (!isLiteRtAbiSupported()) {
+                        return "Gemma 4 offline is only supported on arm64-v8a or x86_64 devices."
                     }
-                    
-                    llmInference = LlmInference.createFromOptions(context, optionsBuilder.build())
-                    Log.d(TAG, "Offline model initialized with backend=$backend")
-                    return null // Success
+                    if (liteRtEngine == null) {
+                        val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU else Backend.CPU
+                        val engineConfig = EngineConfig(
+                            modelPath = modelFile.absolutePath,
+                            backend = liteRtBackend,
+                            cacheDir = context.cacheDir.absolutePath
+                        )
+                        liteRtEngine = Engine(engineConfig).also { it.initialize() }
+                        Log.d(TAG, "Offline model initialized with LiteRT-LM Engine backend=$backend")
+                    }
+                } else {
+                    if (llmInference == null) {
+                        val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
+                            .setModelPath(modelFile.absolutePath)
+                            .setMaxTokens(4096)
+
+                        // Set preferred backend (CPU or GPU)
+                        if (backend == InferenceBackend.GPU) {
+                            optionsBuilder.setPreferredBackend(LlmInference.Backend.GPU)
+                            Log.d(TAG, "Offline model: using GPU backend")
+                        } else {
+                            optionsBuilder.setPreferredBackend(LlmInference.Backend.CPU)
+                            Log.d(TAG, "Offline model: using CPU backend")
+                        }
+
+                        llmInference = LlmInference.createFromOptions(context, optionsBuilder.build())
+                        Log.d(TAG, "Offline model initialized with backend=$backend")
+                    } else {
+                        Log.d(TAG, "Offline model already initialized with backend=$backend")
+                    }
                 }
+                return null // Success
             }
             return null // Already initialized or no model file
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize offline model", e)
             val msg = e.message ?: e.toString()
+            if (msg.contains("nativeCheckLoaded", ignoreCase = true) ||
+                msg.contains("No implementation found", ignoreCase = true) ||
+                msg.contains("UnsatisfiedLinkError", ignoreCase = true)
+            ) {
+                return "LiteRT native runtime is not available on this device/ABI. Use an arm64-v8a or x86_64 build."
+            }
             return if (msg.contains("memory", ignoreCase = true) || msg.contains("RAM", ignoreCase = true) || msg.contains("OOM", ignoreCase = true) || msg.contains("alloc", ignoreCase = true) || msg.contains("out of", ignoreCase = true)) {
                 "Not enough RAM to load the model on GPU. Try switching to CPU."
             } else {
                 "Offline model could not be initialized: $msg"
             }
         }
+    }
+
+    private fun isLiteRtAbiSupported(): Boolean {
+        val supportedAbis = Build.SUPPORTED_ABIS?.toSet().orEmpty()
+        return supportedAbis.contains("arm64-v8a") || supportedAbis.contains("x86_64")
     }
     
     fun reinitializeOfflineModel(context: Context) {
@@ -371,6 +404,13 @@ class PhotoReasoningViewModel(
                     Log.w(TAG, "Error closing existing LlmInference for reinit", e)
                 }
                 llmInference = null
+                try {
+                    liteRtEngine?.close()
+                    Log.d(TAG, "LiteRT-LM Engine closed for reinit")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing existing LiteRT-LM Engine for reinit", e)
+                }
+                liteRtEngine = null
                 
                 // Force garbage collection and wait for GPU resources to be freed
                 System.gc()
@@ -406,9 +446,9 @@ class PhotoReasoningViewModel(
     }
 
     private fun isOfflineGpuModelLoaded(): Boolean {
-        return com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel() == ModelOption.GEMMA_3N_E4B_IT &&
+        return com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().isOfflineModel &&
             com.google.ai.sample.GenerativeAiViewModelFactory.getBackend() == InferenceBackend.GPU &&
-            llmInference != null
+            (llmInference != null || liteRtEngine != null)
     }
 
     private fun refreshStopButtonState() {
@@ -428,6 +468,8 @@ class PhotoReasoningViewModel(
         try {
             llmInference?.close()
             llmInference = null
+            liteRtEngine?.close()
+            liteRtEngine = null
             System.gc()
             refreshStopButtonState()
             Log.d(TAG, "Offline model explicitly closed to free RAM")
@@ -452,7 +494,14 @@ class PhotoReasoningViewModel(
         } catch (e: Exception) {
             Log.w(TAG, "Error closing LlmInference", e)
         }
+        try {
+            liteRtEngine?.close()
+            Log.d(TAG, "LiteRT-LM Engine closed in onCleared")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing LiteRT-LM Engine", e)
+        }
         llmInference = null
+        liteRtEngine = null
         System.gc() // Help free GPU resources
         
         // WebRTC cleanup
@@ -649,10 +698,10 @@ class PhotoReasoningViewModel(
         }
 
         // Check for offline model (Gemma)
-        if (currentModel == ModelOption.GEMMA_3N_E4B_IT) {
+        if (currentModel.isOfflineModel) {
             val context = appContext
 
-            if (!ModelDownloadManager.isModelDownloaded(context)) {
+            if (!ModelDownloadManager.isModelDownloaded(context, currentModel)) {
                 _uiState.value = PhotoReasoningUiState.Error("Model not downloaded.")
                 return
             }
@@ -707,7 +756,20 @@ class PhotoReasoningViewModel(
                 try {
                     // Initialize model if needed
                     var initError: String? = null
-                    if (llmInference == null) {
+                    val selectedOfflineModel = GenerativeAiViewModelFactory.getCurrentModel()
+                    if (selectedOfflineModel == ModelOption.GEMMA_4_E4B_IT) {
+                        if (liteRtEngine == null) {
+                            withContext(Dispatchers.Main) {
+                                replaceAiMessageText("Initializing offline model...", isPending = true)
+                            }
+                            _isInitializingOfflineModelFlow.value = true
+                            refreshStopButtonState()
+                            initError = withContext(Dispatchers.Default) {
+                                initializeOfflineModel(context)
+                            }
+                            _isInitializingOfflineModelFlow.value = false
+                        }
+                    } else if (llmInference == null) {
                         withContext(Dispatchers.Main) {
                             replaceAiMessageText("Initializing offline model...", isPending = true)
                         }
@@ -720,7 +782,22 @@ class PhotoReasoningViewModel(
                         _isInitializingOfflineModelFlow.value = false
                     }
 
-                    if (llmInference == null) {
+                    if (selectedOfflineModel == ModelOption.GEMMA_4_E4B_IT && liteRtEngine == null) {
+                        val errorMsg = initError ?: "Offline model could not be initialized."
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Error(errorMsg)
+                            _chatState.replaceLastPendingMessage()
+                            _chatState.addMessage(
+                                PhotoReasoningMessage(
+                                    text = "Error: $errorMsg",
+                                    participant = PhotoParticipant.ERROR
+                                )
+                            )
+                            _chatMessagesFlow.value = _chatState.getAllMessages()
+                            refreshStopButtonState()
+                        }
+                        return@launch
+                    } else if (selectedOfflineModel != ModelOption.GEMMA_4_E4B_IT && llmInference == null) {
                         val errorMsg = initError ?: "Offline model could not be initialized."
                         withContext(Dispatchers.Main) {
                             _uiState.value = PhotoReasoningUiState.Error(errorMsg)
@@ -741,35 +818,57 @@ class PhotoReasoningViewModel(
 
                     Log.d(TAG, "Sending streaming prompt to offline model (length: ${fullPrompt.length})")
 
-                    // Use generateResponseAsync with ProgressListener for streaming
-                    val sb = StringBuilder()
-                    val inference = llmInference
-                    if (inference == null) {
-                        withContext(Dispatchers.Main) {
-                            _uiState.value = PhotoReasoningUiState.Error("Offline model is not initialized.")
-                            _chatState.replaceLastPendingMessage()
-                            _chatState.addMessage(
-                                PhotoReasoningMessage(
-                                    text = "Offline model is not initialized.",
-                                    participant = PhotoParticipant.ERROR
+                    val finalResponse = if (selectedOfflineModel == ModelOption.GEMMA_4_E4B_IT) {
+                        val engine = liteRtEngine
+                        if (engine == null) {
+                            withContext(Dispatchers.Main) {
+                                _uiState.value = PhotoReasoningUiState.Error("Offline model is not initialized.")
+                                _chatState.replaceLastPendingMessage()
+                                _chatState.addMessage(
+                                    PhotoReasoningMessage(
+                                        text = "Offline model is not initialized.",
+                                        participant = PhotoParticipant.ERROR
+                                    )
                                 )
-                            )
-                            _chatMessagesFlow.value = _chatState.getAllMessages()
-                            refreshStopButtonState()
-                        }
-                        return@launch
-                    }
-                    val finalResponse = inference.generateResponseAsync(fullPrompt) { partialResult, done ->
-                        val token = partialResult ?: ""
-                        sb.append(token)
-                        viewModelScope.launch(Dispatchers.Main) {
-                            if (!done) {
-                                replaceAiMessageText(sb.toString(), isPending = true)
-                                // Real-time command execution during offline streaming
-                                processCommandsIncrementally(sb.toString())
+                                _chatMessagesFlow.value = _chatState.getAllMessages()
+                                refreshStopButtonState()
                             }
+                            return@launch
                         }
-                    }.get()
+                        engine.createConversation().use { conversation ->
+                            conversation.sendMessage(com.google.ai.edge.litertlm.Message.Companion.of(fullPrompt)).toString()
+                        }
+                    } else {
+                        // Use generateResponseAsync with ProgressListener for streaming
+                        val sb = StringBuilder()
+                        val inference = llmInference
+                        if (inference == null) {
+                            withContext(Dispatchers.Main) {
+                                _uiState.value = PhotoReasoningUiState.Error("Offline model is not initialized.")
+                                _chatState.replaceLastPendingMessage()
+                                _chatState.addMessage(
+                                    PhotoReasoningMessage(
+                                        text = "Offline model is not initialized.",
+                                        participant = PhotoParticipant.ERROR
+                                    )
+                                )
+                                _chatMessagesFlow.value = _chatState.getAllMessages()
+                                refreshStopButtonState()
+                            }
+                            return@launch
+                        }
+                        inference.generateResponseAsync(fullPrompt) { partialResult, done ->
+                            val token = partialResult ?: ""
+                            sb.append(token)
+                            viewModelScope.launch(Dispatchers.Main) {
+                                if (!done) {
+                                    replaceAiMessageText(sb.toString(), isPending = true)
+                                    // Real-time command execution during offline streaming
+                                    processCommandsIncrementally(sb.toString())
+                                }
+                            }
+                        }.get()
+                    }
 
                     withContext(Dispatchers.Main) {
                         _uiState.value = PhotoReasoningUiState.Success(finalResponse)
@@ -893,7 +992,7 @@ class PhotoReasoningViewModel(
 
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
-        if (currentKey != null && currentModel != ModelOption.GEMMA_3N_E4B_IT && currentModel != ModelOption.HUMAN_EXPERT) {
+        if (currentKey != null && !currentModel.isOfflineModel && currentModel != ModelOption.HUMAN_EXPERT) {
             val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
             val config = com.google.ai.client.generativeai.type.generationConfig {
                 temperature = genSettings.temperature
@@ -2251,7 +2350,7 @@ private fun processCommands(text: String) {
         screenInfo: String? = null
     ) {
         if (screenshotUri == Uri.EMPTY) {
-            // This case is for gemma-3n-e4b-it, where we don't have a screenshot.
+            // This case is for offline models, where we don't have a screenshot.
             // We just want to send the screen info.
             val genericAnalysisPrompt = createGenericScreenshotPrompt()
             reason(

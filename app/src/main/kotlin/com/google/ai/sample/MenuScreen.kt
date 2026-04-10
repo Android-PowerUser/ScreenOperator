@@ -210,10 +210,10 @@ fun MenuScreen(
                                         },
                                         onClick = {
                                             expanded = false
-                                            val wasOfflineModel = selectedModel == ModelOption.GEMMA_3N_E4B_IT
+                                            val wasOfflineModel = selectedModel.isOfflineModel
                                             
-                                            if (modelOption == ModelOption.GEMMA_3N_E4B_IT) {
-                                                val isDownloaded = ModelDownloadManager.isModelDownloaded(context)
+                                            if (modelOption.isOfflineModel) {
+                                                val isDownloaded = ModelDownloadManager.isModelDownloaded(context, modelOption)
                                                 if (!isDownloaded) {
                                                     downloadDialogModel = modelOption
                                                     showDownloadDialog = true
@@ -257,7 +257,7 @@ fun MenuScreen(
             }
 
             // CPU/GPU Selection - only visible when offline model is selected
-            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+            if (selectedModel.isOfflineModel) {
                 item {
                     val currentBackend = remember { mutableStateOf(GenerativeAiViewModelFactory.getBackend()) }
                     
@@ -444,10 +444,10 @@ fun MenuScreen(
                                 modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
-                            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+                            if (selectedModel.isOfflineModel) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Note: LlmInference (offline model) may not support all generation parameters.",
+                                    text = "Note: Offline inference may not support all generation parameters.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -487,15 +487,13 @@ fun MenuScreen(
                                         val mainActivity = context as? MainActivity
                                         val activeModel = GenerativeAiViewModelFactory.getCurrentModel()
                                         // Check API Key for online models
-                                        if (activeModel.apiProvider != ApiProvider.GOOGLE || !activeModel.modelName.contains("litert")) { // Simple check, refine if needed. Actually offline model has specific Enum
-                                             if (activeModel != ModelOption.GEMMA_3N_E4B_IT && activeModel != ModelOption.HUMAN_EXPERT) {
-                                                 val apiKey = mainActivity?.getCurrentApiKey(activeModel.apiProvider)
-                                                 if (apiKey.isNullOrEmpty()) {
-                                                     // Show API Key Dialog
-                                                     onApiKeyButtonClicked(activeModel.apiProvider) // Or a specific callback to show dialog
-                                                     return@TextButton
-                                                 }
-                                             }
+                                        if (!activeModel.isOfflineModel && activeModel != ModelOption.HUMAN_EXPERT) {
+                                            val apiKey = mainActivity?.getCurrentApiKey(activeModel.apiProvider)
+                                            if (apiKey.isNullOrEmpty()) {
+                                                // Show API Key Dialog
+                                                onApiKeyButtonClicked(activeModel.apiProvider) // Or a specific callback to show dialog
+                                                return@TextButton
+                                            }
                                         }
 
                                         if (mainActivity != null) { // Ensure mainActivity is not null
@@ -689,12 +687,12 @@ fun MenuScreen(
                 }
                 // Don't dismiss while downloading/paused
             },
-            title = { Text("Download Model (4.92 GB)") },
+            title = { Text("Download Model (${downloadDialogModel?.size ?: "unknown size"})") },
             text = {
                 Column {
                     when (val state = dlState) {
                         is ModelDownloadManager.DownloadState.Idle -> {
-                            Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.")
+                            Text("Should ${downloadDialogModel?.displayName ?: "this model"} be downloaded?\n\n$formattedGbAvailable GB of storage available.")
                         }
                         is ModelDownloadManager.DownloadState.Downloading -> {
                             Text("Downloading...")
@@ -741,8 +739,10 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Idle -> {
                         TextButton(
                             onClick = {
-                                downloadDialogModel?.downloadUrl?.let { url ->
-                                    ModelDownloadManager.downloadModel(context, url)
+                                downloadDialogModel?.let { model ->
+                                    model.downloadUrl?.let { url ->
+                                        ModelDownloadManager.downloadModel(context, model, url)
+                                    }
                                     // Task 2: Request notification permission when download starts
                                     val mainActivity = context as? MainActivity
                                     if (mainActivity != null && !mainActivity.isNotificationPermissionGranted()) {
@@ -758,8 +758,10 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Paused -> {
                         TextButton(
                             onClick = {
-                                downloadDialogModel?.downloadUrl?.let { url ->
-                                    ModelDownloadManager.resumeDownload(context, url)
+                                downloadDialogModel?.let { model ->
+                                    model.downloadUrl?.let { url ->
+                                        ModelDownloadManager.resumeDownload(context, model, url)
+                                    }
                                 }
                             }
                         ) { Text("Resume") }
@@ -777,8 +779,10 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Error -> {
                         TextButton(
                             onClick = {
-                                downloadDialogModel?.downloadUrl?.let { url ->
-                                    ModelDownloadManager.downloadModel(context, url)
+                                downloadDialogModel?.let { model ->
+                                    model.downloadUrl?.let { url ->
+                                        ModelDownloadManager.downloadModel(context, model, url)
+                                    }
                                 }
                             }
                         ) { Text("Retry") }
@@ -794,7 +798,7 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Paused -> {
                         TextButton(
                             onClick = {
-                                ModelDownloadManager.cancelDownload(context)
+                                downloadDialogModel?.let { ModelDownloadManager.cancelDownload(context, it) }
                                 showDownloadDialog = false
                             }
                         ) { Text("Cancel Download") }

@@ -27,7 +27,9 @@ enum class ModelOption(
     val apiProvider: ApiProvider = ApiProvider.GOOGLE,
     val downloadUrl: String? = null,
     val size: String? = null,
-    val supportsScreenshot: Boolean = true
+    val supportsScreenshot: Boolean = true,
+    val isOfflineModel: Boolean = false,
+    val offlineModelFilename: String? = null
 ) {
     PUTER_GLM5("GLM-5 (Puter)", "z-ai/glm-5", ApiProvider.PUTER, supportsScreenshot = false),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
@@ -49,7 +51,17 @@ enum class ModelOption(
         "gemma-3n-e4b-it",
         ApiProvider.GOOGLE,
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
-        "4.92 GB"
+        "4.92 GB",
+        isOfflineModel = true,
+        offlineModelFilename = "gemma-3n-e4b-it-int4.litertlm"
+    ),
+    GEMMA_4_E4B_IT(
+        "Gemma 4 E4B it (offline)",
+        "gemma-4-e4b-it",
+        ApiProvider.GOOGLE,
+        "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm?download=true",
+        isOfflineModel = true,
+        offlineModelFilename = "gemma-4-E4B-it.litertlm"
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
@@ -77,7 +89,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
-        val apiKey = if (currentModel == ModelOption.GEMMA_3N_E4B_IT || currentModel == ModelOption.HUMAN_EXPERT) {
+        val apiKey = if (currentModel.isOfflineModel || currentModel == ModelOption.HUMAN_EXPERT) {
             "offline-no-key-needed" // Dummy key for offline/human expert models
         } else {
             mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""

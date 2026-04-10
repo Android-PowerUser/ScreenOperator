@@ -370,7 +370,7 @@ fun PhotoReasoningScreen(
             )
         }
 
-        val isGemma = modelName == "gemma-3n-e4b-it"
+        val isGemma = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().isOfflineModel
         val isLoading = uiState is PhotoReasoningUiState.Loading
         val showStopButton = isGenerationRunning || isLoading || isOfflineGpuModelLoaded || isGemma
         val stopButtonText = if (isGenerationRunning || isLoading) "Stop" else "Model Unload"
@@ -406,9 +406,9 @@ fun PhotoReasoningScreen(
                                     return@IconButton
                                 }
 
-                                // Check MediaProjection for all models except gemma-3n-e4b-it and human-expert
+                                // Check MediaProjection for all models except offline and human-expert
                                 // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService
-                                if (!isMediaProjectionPermissionGranted && modelName != "gemma-3n-e4b-it" && modelName != "human-expert") {
+                                if (!isMediaProjectionPermissionGranted && !com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().isOfflineModel && modelName != "human-expert") {
                                     mainActivity?.requestMediaProjectionPermission {
                                         // This block will be executed after permission is granted
                                         if (userQuestion.isNotBlank()) {
