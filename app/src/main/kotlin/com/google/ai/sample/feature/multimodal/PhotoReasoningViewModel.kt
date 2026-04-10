@@ -347,14 +347,21 @@ class PhotoReasoningViewModel(
                     ensureLiteRtNativeLoaded()
                     if (liteRtEngine == null) {
                         val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU else Backend.CPU
+                        val visionBackend = Backend.CPU
+                        val audioBackend = Backend.CPU
                         val engineConfig = EngineConfig(
                             modelPath = modelFile.absolutePath,
                             backend = liteRtBackend,
+                            visionBackend = visionBackend,
+                            audioBackend = audioBackend,
+                            maxNumTokens = null,
                             cacheDir = context.cacheDir.absolutePath
                         )
                         Log.i(
                             TAG,
-                            "Creating LiteRT engine with backend=$liteRtBackend cacheDir=${context.cacheDir.absolutePath}"
+                            "Creating LiteRT engine with backend=$liteRtBackend, " +
+                                "visionBackend=$visionBackend, audioBackend=$audioBackend, " +
+                                "cacheDir=${context.cacheDir.absolutePath}"
                         )
                         liteRtEngine = Engine(engineConfig).also { it.initialize() }
                         Log.d(TAG, "Offline model initialized with LiteRT-LM Engine backend=$liteRtBackend")
