@@ -60,6 +60,7 @@ enum class ModelOption(
         "gemma-4-e4b-it",
         ApiProvider.GOOGLE,
         "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm?download=true",
+        supportsScreenshot = false,
         isOfflineModel = true,
         offlineModelFilename = "gemma-4-E4B-it.litertlm"
     ),
