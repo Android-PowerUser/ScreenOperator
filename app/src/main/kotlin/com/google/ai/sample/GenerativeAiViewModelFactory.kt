@@ -31,7 +31,7 @@ enum class ModelOption(
     val isOfflineModel: Boolean = false,
     val offlineModelFilename: String? = null
 ) {
-    PUTER_GLM5("GLM-5 (Puter)", "z-ai/glm-5", ApiProvider.PUTER, supportsScreenshot = false),
+    PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
     MISTRAL_MEDIUM_3_1("Mistral Medium 3.1", "mistral-medium-latest", ApiProvider.MISTRAL),
     GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
