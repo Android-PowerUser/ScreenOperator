@@ -57,7 +57,6 @@ import com.google.ai.sample.ApiProvider
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.NativeLibraryLoader
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -394,11 +393,7 @@ class PhotoReasoningViewModel(
     private fun ensureLiteRtNativeLoaded() {
         if (liteRtNativeLoaded) return
 
-        runCatching {
-            NativeLibraryLoader.INSTANCE.load()
-        }.recoverCatching {
-            System.loadLibrary("litertlm_jni")
-        }.getOrThrow()
+        System.loadLibrary("litertlm_jni")
 
         liteRtNativeLoaded = true
     }
