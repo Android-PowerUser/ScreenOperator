@@ -86,7 +86,6 @@ class PhotoReasoningViewModel(
 
     private var llmInference: LlmInference? = null
     private var liteRtEngine: Engine? = null
-    private var liteRtNativeLoaded = false
     private val TAG = "PhotoReasoningViewModel"
     
     // WebRTC & Signaling
@@ -344,11 +343,10 @@ class PhotoReasoningViewModel(
                             "abis=${Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"}, " +
                             "modelPath=${modelFile.absolutePath}, modelSizeBytes=${modelFile.length()}"
                     )
-                    ensureLiteRtNativeLoaded()
                     if (liteRtEngine == null) {
-                        val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU else Backend.CPU
-                        val visionBackend = Backend.CPU
-                        val audioBackend = Backend.CPU
+                        val liteRtBackend = if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
+                        val visionBackend = if (currentModel.supportsScreenshot) Backend.GPU() else null
+                        val audioBackend = null
                         val engineConfig = EngineConfig(
                             modelPath = modelFile.absolutePath,
                             backend = liteRtBackend,
@@ -411,14 +409,6 @@ class PhotoReasoningViewModel(
                 "Offline model could not be initialized: $msg"
             }
         }
-    }
-
-    private fun ensureLiteRtNativeLoaded() {
-        if (liteRtNativeLoaded) return
-
-        System.loadLibrary("litertlm_jni")
-
-        liteRtNativeLoaded = true
     }
 
     private fun isLiteRtAbiSupported(): Boolean {
