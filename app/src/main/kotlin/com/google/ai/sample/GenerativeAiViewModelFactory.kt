@@ -31,7 +31,8 @@ enum class ModelOption(
     val isOfflineModel: Boolean = false,
     val offlineModelFilename: String? = null,
     val offlineRequiredFilenames: List<String> = emptyList(),
-    val additionalDownloadUrls: List<String> = emptyList()
+    val additionalDownloadUrls: List<String> = emptyList(),
+    val requiresVisionBackend: Boolean = false
 ) {
     PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
@@ -84,7 +85,8 @@ enum class ModelOption(
             "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/sentencepiece.model?download=true",
             "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer.json?download=true",
             "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer_config.json?download=true"
-        )
+        ),
+        requiresVisionBackend = false
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 

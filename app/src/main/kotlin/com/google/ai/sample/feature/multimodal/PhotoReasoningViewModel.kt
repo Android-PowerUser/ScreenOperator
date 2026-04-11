@@ -350,7 +350,11 @@ class PhotoReasoningViewModel(
                     )
                     if (liteRtEngine == null) {
                         val preferredBackend = if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
-                        val preferredVisionBackend = if (currentModel.supportsScreenshot) Backend.GPU() else null
+                        val preferredVisionBackend = if (currentModel.requiresVisionBackend) {
+                            if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
+                        } else {
+                            null
+                        }
                         val audioBackend = null
                         val cacheDir =
                             if (modelFile.absolutePath.startsWith("/data/local/tmp")) {
@@ -405,6 +409,11 @@ class PhotoReasoningViewModel(
                 msg.contains("UnsatisfiedLinkError", ignoreCase = true)
             ) {
                 return "LiteRT native runtime is not available on this device/ABI. Use an arm64-v8a or x86_64 build."
+            }
+            if (msg.contains("litert_compiled_model", ignoreCase = true) ||
+                msg.contains("litert_tensor_buffer", ignoreCase = true)
+            ) {
+                return "Offline model could not be initialized: LiteRT cannot compile this model package on this device. This usually means the file set is incompatible with the selected artifact/backend."
             }
             return if (msg.contains("memory", ignoreCase = true) || msg.contains("RAM", ignoreCase = true) || msg.contains("OOM", ignoreCase = true) || msg.contains("alloc", ignoreCase = true) || msg.contains("out of", ignoreCase = true)) {
                 "Not enough RAM to load the model on GPU. Try switching to CPU."
