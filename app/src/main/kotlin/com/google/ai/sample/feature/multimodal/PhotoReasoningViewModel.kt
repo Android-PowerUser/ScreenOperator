@@ -327,19 +327,24 @@ class PhotoReasoningViewModel(
     private fun initializeOfflineModel(context: Context): String? {
         try {
             val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+            val missingFiles = ModelDownloadManager.getMissingRequiredFiles(context, currentModel)
+            if (missingFiles.isNotEmpty()) {
+                return "Offline model files missing: ${missingFiles.joinToString(", ")}. Please redownload the model package."
+            }
             val modelFile = ModelDownloadManager.getModelFile(context, currentModel)
             if (modelFile != null && modelFile.exists()) {
                 // Load backend preference
                 GenerativeAiViewModelFactory.loadBackendPreference(context)
                 val backend = GenerativeAiViewModelFactory.getBackend()
+                val isLiteRtModel = currentModel.offlineModelFilename?.endsWith(".litertlm", ignoreCase = true) == true
 
-                if (currentModel == ModelOption.GEMMA_4_E4B_IT) {
+                if (isLiteRtModel) {
                     if (!isLiteRtAbiSupported()) {
-                        return "Gemma 4 offline is only supported on arm64-v8a or x86_64 devices."
+                        return "Offline LiteRT models are only supported on arm64-v8a or x86_64 devices."
                     }
                     Log.i(
                         TAG,
-                        "Initializing Gemma 4 LiteRT engine. preferredBackend=$backend, " +
+                        "Initializing LiteRT engine for ${currentModel.displayName}. preferredBackend=$backend, " +
                             "abis=${Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"}, " +
                             "modelPath=${modelFile.absolutePath}, modelSizeBytes=${modelFile.length()}"
                     )
@@ -835,7 +840,8 @@ class PhotoReasoningViewModel(
                     // Initialize model if needed
                     var initError: String? = null
                     val selectedOfflineModel = GenerativeAiViewModelFactory.getCurrentModel()
-                    if (selectedOfflineModel == ModelOption.GEMMA_4_E4B_IT) {
+                    val useLiteRt = selectedOfflineModel.offlineModelFilename?.endsWith(".litertlm", ignoreCase = true) == true
+                    if (useLiteRt) {
                         if (liteRtEngine == null) {
                             withContext(Dispatchers.Main) {
                                 replaceAiMessageText("Initializing offline model...", isPending = true)
@@ -860,7 +866,7 @@ class PhotoReasoningViewModel(
                         _isInitializingOfflineModelFlow.value = false
                     }
 
-                    if (selectedOfflineModel == ModelOption.GEMMA_4_E4B_IT && liteRtEngine == null) {
+                    if (useLiteRt && liteRtEngine == null) {
                         val errorMsg = initError ?: "Offline model could not be initialized."
                         withContext(Dispatchers.Main) {
                             _uiState.value = PhotoReasoningUiState.Error(errorMsg)
@@ -875,7 +881,7 @@ class PhotoReasoningViewModel(
                             refreshStopButtonState()
                         }
                         return@launch
-                    } else if (selectedOfflineModel != ModelOption.GEMMA_4_E4B_IT && llmInference == null) {
+                    } else if (!useLiteRt && llmInference == null) {
                         val errorMsg = initError ?: "Offline model could not be initialized."
                         withContext(Dispatchers.Main) {
                             _uiState.value = PhotoReasoningUiState.Error(errorMsg)
@@ -896,7 +902,7 @@ class PhotoReasoningViewModel(
 
                     Log.d(TAG, "Sending streaming prompt to offline model (length: ${fullPrompt.length})")
 
-                    val finalResponse = if (selectedOfflineModel == ModelOption.GEMMA_4_E4B_IT) {
+                    val finalResponse = if (useLiteRt) {
                         val engine = liteRtEngine
                         if (engine == null) {
                             withContext(Dispatchers.Main) {

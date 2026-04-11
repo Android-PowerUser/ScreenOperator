@@ -29,7 +29,9 @@ enum class ModelOption(
     val size: String? = null,
     val supportsScreenshot: Boolean = true,
     val isOfflineModel: Boolean = false,
-    val offlineModelFilename: String? = null
+    val offlineModelFilename: String? = null,
+    val offlineRequiredFilenames: List<String> = emptyList(),
+    val additionalDownloadUrls: List<String> = emptyList()
 ) {
     PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
@@ -53,15 +55,36 @@ enum class ModelOption(
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
         "4.92 GB",
         isOfflineModel = true,
-        offlineModelFilename = "gemma-3n-e4b-it-int4.litertlm"
+        offlineModelFilename = "gemma-3n-e4b-it-int4.litertlm",
+        offlineRequiredFilenames = listOf("gemma-3n-e4b-it-int4.litertlm")
     ),
     GEMMA_4_E4B_IT(
         "Gemma 4 E4B it (offline)",
         "gemma-4-e4b-it",
         ApiProvider.GOOGLE,
         "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm?download=true",
+        "3.40 GB",
         isOfflineModel = true,
-        offlineModelFilename = "gemma-4-E4B-it.litertlm"
+        offlineModelFilename = "gemma-4-E4B-it.litertlm",
+        offlineRequiredFilenames = listOf("gemma-4-E4B-it.litertlm")
+    ),
+    QWEN3_5_4B_OFFLINE(
+        "Qwen3.5 4B (offline)",
+        "qwen3.5-4b-offline",
+        ApiProvider.GOOGLE,
+        "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/model_quantized.litertlm?download=true",
+        "4.27 GB",
+        isOfflineModel = true,
+        offlineModelFilename = "model_quantized.litertlm",
+        offlineRequiredFilenames = listOf(
+            "model_quantized.litertlm",
+            "sentencepiece.model"
+        ),
+        additionalDownloadUrls = listOf(
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/sentencepiece.model?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer.json?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer_config.json?download=true"
+        )
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
