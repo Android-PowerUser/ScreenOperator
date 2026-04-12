@@ -48,6 +48,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -331,8 +332,8 @@ class PhotoReasoningViewModel(
             if (missingFiles.isNotEmpty()) {
                 return "Offline model files missing: ${missingFiles.joinToString(", ")}. Please redownload the model package."
             }
-            val modelFile = ModelDownloadManager.getModelFile(context, currentModel)
-            if (modelFile != null && modelFile.exists()) {
+            val selectedModelFile = ModelDownloadManager.getModelFile(context, currentModel)
+            if (selectedModelFile != null && selectedModelFile.exists()) {
                 // Load backend preference
                 GenerativeAiViewModelFactory.loadBackendPreference(context)
                 val backend = GenerativeAiViewModelFactory.getBackend()
@@ -342,41 +343,77 @@ class PhotoReasoningViewModel(
                     if (!isLiteRtAbiSupported()) {
                         return "Offline LiteRT models are only supported on arm64-v8a or x86_64 devices."
                     }
+
+                    val externalFilesDir = context.getExternalFilesDir(null)
+                    val candidateNames = linkedSetOf<String>().apply {
+                        add(selectedModelFile.name)
+                        currentModel.offlineModelFilename?.let { add(it) }
+                        addAll(currentModel.offlineAlternateModelFilenames)
+                    }
+                    val candidateFiles = candidateNames
+                        .mapNotNull { name -> externalFilesDir?.let { File(it, name) } }
+                        .filter { it.exists() && it.length() > 0L }
+
                     Log.i(
                         TAG,
                         "Initializing LiteRT engine for ${currentModel.displayName}. preferredBackend=$backend, " +
                             "abis=${Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"}, " +
-                            "modelPath=${modelFile.absolutePath}, modelSizeBytes=${modelFile.length()}"
+                            "candidateFiles=${candidateFiles.joinToString { "${it.name}(${it.length()}B)" }}"
                     )
+
                     if (liteRtEngine == null) {
                         val preferredBackend = if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
-                        val useVisionBackend = currentModel.requiresVisionBackend &&
-                            modelFile.name.contains("multimodal", ignoreCase = true)
-                        val preferredVisionBackend = if (useVisionBackend) {
-                            if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
-                        } else {
-                            null
-                        }
-                        val audioBackend = null
-                        val cacheDir =
-                            if (modelFile.absolutePath.startsWith("/data/local/tmp")) {
-                                context.getExternalFilesDir(null)?.absolutePath
-                            } else {
-                                null
+
+                        val attempts = if (candidateFiles.isNotEmpty()) candidateFiles else listOf(selectedModelFile)
+                        val failureDetails = StringBuilder()
+
+                        attempts.forEachIndexed { index, modelFile ->
+                            try {
+                                val useVisionBackend = currentModel.requiresVisionBackend &&
+                                    modelFile.name.contains("multimodal", ignoreCase = true)
+                                val preferredVisionBackend = if (useVisionBackend) {
+                                    if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
+                                } else {
+                                    null
+                                }
+                                val audioBackend = null
+                                val cacheDir =
+                                    if (modelFile.absolutePath.startsWith("/data/local/tmp")) {
+                                        context.getExternalFilesDir(null)?.absolutePath
+                                    } else {
+                                        null
+                                    }
+
+                                Log.i(
+                                    TAG,
+                                    "LiteRT model file attempt ${index + 1}/${attempts.size}: " +
+                                        "modelFile=${modelFile.absolutePath}, size=${modelFile.length()}, useVision=$useVisionBackend"
+                                )
+
+                                liteRtEngine = createLiteRtEngineWithFallbacks(
+                                    modelPath = modelFile.absolutePath,
+                                    preferredBackend = preferredBackend,
+                                    preferredVisionBackend = preferredVisionBackend,
+                                    audioBackend = audioBackend,
+                                    cacheDir = cacheDir
+                                )
+                                Log.d(TAG, "Offline model initialized with LiteRT-LM Engine using ${modelFile.name}")
+                                return null
+                            } catch (e: Exception) {
+                                val msg = e.message ?: e.toString()
+                                failureDetails.append("${modelFile.name}: $msg\n")
+                                Log.e(TAG, "LiteRT file attempt failed for ${modelFile.name}", e)
                             }
-                        liteRtEngine = createLiteRtEngineWithFallbacks(
-                            modelPath = modelFile.absolutePath,
-                            preferredBackend = preferredBackend,
-                            preferredVisionBackend = preferredVisionBackend,
-                            audioBackend = audioBackend,
-                            cacheDir = cacheDir
+                        }
+
+                        throw IllegalStateException(
+                            "All model-file attempts failed for ${currentModel.displayName}.\n$failureDetails"
                         )
-                        Log.d(TAG, "Offline model initialized with LiteRT-LM Engine")
                     }
                 } else {
                     if (llmInference == null) {
                         val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
-                            .setModelPath(modelFile.absolutePath)
+                            .setModelPath(selectedModelFile.absolutePath)
                             .setMaxTokens(4096)
 
                         // Set preferred backend (CPU or GPU)
