@@ -413,7 +413,7 @@ class PhotoReasoningViewModel(
             if (msg.contains("litert_compiled_model", ignoreCase = true) ||
                 msg.contains("litert_tensor_buffer", ignoreCase = true)
             ) {
-                return "Offline model could not be initialized: LiteRT cannot compile this model package on this device. This usually means the file set is incompatible with the selected artifact/backend."
+                return "Offline model could not be initialized: LiteRT cannot compile this model package on this device. Ensure the full multimodal package files are present and try CPU backend."
             }
             return if (msg.contains("memory", ignoreCase = true) || msg.contains("RAM", ignoreCase = true) || msg.contains("OOM", ignoreCase = true) || msg.contains("alloc", ignoreCase = true) || msg.contains("out of", ignoreCase = true)) {
                 "Not enough RAM to load the model on GPU. Try switching to CPU."

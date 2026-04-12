@@ -73,20 +73,30 @@ enum class ModelOption(
         "Qwen3.5 4B (offline)",
         "qwen3.5-4b-offline",
         ApiProvider.GOOGLE,
-        "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/model_quantized.litertlm?download=true",
-        "4.27 GB",
+        "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/model_multimodal.litertlm?download=true",
+        "6.3 GB",
         isOfflineModel = true,
-        offlineModelFilename = "model_quantized.litertlm",
+        offlineModelFilename = "model_multimodal.litertlm",
         offlineRequiredFilenames = listOf(
-            "model_quantized.litertlm",
-            "sentencepiece.model"
+            "model_multimodal.litertlm",
+            "sentencepiece.model",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "embedder_quantized.tflite",
+            "vision_encoder_quantized.tflite",
+            "vision_adapter_quantized.tflite",
+            "model_multimodal_llm_metadata_multimodal.pb"
         ),
         additionalDownloadUrls = listOf(
             "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/sentencepiece.model?download=true",
             "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer.json?download=true",
-            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer_config.json?download=true"
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer_config.json?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/embedder_quantized.tflite?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/vision_encoder_quantized.tflite?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/vision_adapter_quantized.tflite?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/model_multimodal_llm_metadata_multimodal.pb?download=true"
         ),
-        requiresVisionBackend = false
+        requiresVisionBackend = true
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
