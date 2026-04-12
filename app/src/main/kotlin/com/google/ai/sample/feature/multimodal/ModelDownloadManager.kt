@@ -66,12 +66,12 @@ object ModelDownloadManager {
     )
 
     fun isModelDownloaded(context: Context, model: ModelOption = GenerativeAiViewModelFactory.getCurrentModel()): Boolean {
-        val required = getRequiredFiles(context, model)
-        return required.isNotEmpty() && required.all { it.exists() && it.length() > 0 }
+        val modelFile = getModelFile(context, model)
+        return modelFile != null && modelFile.exists() && modelFile.length() > 0
     }
 
     fun getModelFile(context: Context, model: ModelOption = GenerativeAiViewModelFactory.getCurrentModel()): File? {
-        val modelFilename = model.offlineModelFilename ?: return null
+        val modelFilename = resolveInstalledModelFilename(context, model) ?: model.offlineModelFilename ?: return null
         val externalFilesDir = context.getExternalFilesDir(null)
         return if (externalFilesDir != null) {
             File(externalFilesDir, modelFilename)
@@ -83,7 +83,10 @@ object ModelDownloadManager {
 
     private fun getRequiredFiles(context: Context, model: ModelOption): List<File> {
         val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
-        val requiredNames = if (model.offlineRequiredFilenames.isNotEmpty()) {
+        val activeModelFilename = resolveInstalledModelFilename(context, model)
+        val requiredNames = if (model == ModelOption.QWEN3_5_4B_OFFLINE && activeModelFilename == "model_quantized.litertlm") {
+            listOf("model_quantized.litertlm", "sentencepiece.model")
+        } else if (model.offlineRequiredFilenames.isNotEmpty()) {
             model.offlineRequiredFilenames
         } else {
             listOfNotNull(model.offlineModelFilename)
@@ -91,17 +94,18 @@ object ModelDownloadManager {
         return requiredNames.map { File(externalFilesDir, it) }
     }
 
-    fun getMissingRequiredFiles(context: Context, model: ModelOption): List<String> {
-        val externalFilesDir = context.getExternalFilesDir(null) ?: return model.offlineRequiredFilenames
-        val requiredNames = if (model.offlineRequiredFilenames.isNotEmpty()) {
-            model.offlineRequiredFilenames
-        } else {
-            listOfNotNull(model.offlineModelFilename)
-        }
-        return requiredNames.filter { name ->
+    private fun resolveInstalledModelFilename(context: Context, model: ModelOption): String? {
+        val externalFilesDir = context.getExternalFilesDir(null) ?: return null
+        val candidates = listOfNotNull(model.offlineModelFilename) + model.offlineAlternateModelFilenames
+        return candidates.firstOrNull { name ->
             val f = File(externalFilesDir, name)
-            !f.exists() || f.length() <= 0
+            f.exists() && f.length() > 0
         }
+    }
+
+    fun getMissingRequiredFiles(context: Context, model: ModelOption): List<String> {
+        val requiredFiles = getRequiredFiles(context, model)
+        return requiredFiles.filter { !it.exists() || it.length() <= 0 }.map { it.name }
     }
     
     private fun createNotificationChannel(context: Context) {

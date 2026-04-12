@@ -30,6 +30,7 @@ enum class ModelOption(
     val supportsScreenshot: Boolean = true,
     val isOfflineModel: Boolean = false,
     val offlineModelFilename: String? = null,
+    val offlineAlternateModelFilenames: List<String> = emptyList(),
     val offlineRequiredFilenames: List<String> = emptyList(),
     val additionalDownloadUrls: List<String> = emptyList(),
     val requiresVisionBackend: Boolean = false
@@ -77,6 +78,7 @@ enum class ModelOption(
         "6.3 GB",
         isOfflineModel = true,
         offlineModelFilename = "model_multimodal.litertlm",
+        offlineAlternateModelFilenames = listOf("model_quantized.litertlm"),
         offlineRequiredFilenames = listOf(
             "model_multimodal.litertlm",
             "sentencepiece.model",

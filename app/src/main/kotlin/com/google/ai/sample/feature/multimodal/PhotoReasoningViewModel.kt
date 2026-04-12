@@ -350,7 +350,9 @@ class PhotoReasoningViewModel(
                     )
                     if (liteRtEngine == null) {
                         val preferredBackend = if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
-                        val preferredVisionBackend = if (currentModel.requiresVisionBackend) {
+                        val useVisionBackend = currentModel.requiresVisionBackend &&
+                            modelFile.name.contains("multimodal", ignoreCase = true)
+                        val preferredVisionBackend = if (useVisionBackend) {
                             if (backend == InferenceBackend.GPU) Backend.GPU() else Backend.CPU()
                         } else {
                             null
@@ -413,7 +415,7 @@ class PhotoReasoningViewModel(
             if (msg.contains("litert_compiled_model", ignoreCase = true) ||
                 msg.contains("litert_tensor_buffer", ignoreCase = true)
             ) {
-                return "Offline model could not be initialized: LiteRT cannot compile this model package on this device. Ensure the full multimodal package files are present and try CPU backend."
+                return "Offline model could not be initialized: LiteRT cannot compile this model package on this device. Check model files and try CPU backend."
             }
             return if (msg.contains("memory", ignoreCase = true) || msg.contains("RAM", ignoreCase = true) || msg.contains("OOM", ignoreCase = true) || msg.contains("alloc", ignoreCase = true) || msg.contains("out of", ignoreCase = true)) {
                 "Not enough RAM to load the model on GPU. Try switching to CPU."
