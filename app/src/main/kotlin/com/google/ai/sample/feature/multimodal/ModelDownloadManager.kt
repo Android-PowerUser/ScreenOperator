@@ -84,8 +84,9 @@ object ModelDownloadManager {
     private fun getRequiredFiles(context: Context, model: ModelOption): List<File> {
         val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
         val activeModelFilename = resolveInstalledModelFilename(context, model)
-        val requiredNames = if (model == ModelOption.QWEN3_5_4B_OFFLINE && activeModelFilename == "model_quantized.litertlm") {
-            listOf("model_quantized.litertlm", "sentencepiece.model")
+        val requiredNames = if (model == ModelOption.QWEN3_5_4B_OFFLINE && activeModelFilename != null) {
+            // User requirement: first accept standalone model file and let runtime decide if add-ons are needed.
+            listOf(activeModelFilename)
         } else if (model.offlineRequiredFilenames.isNotEmpty()) {
             model.offlineRequiredFilenames
         } else {
