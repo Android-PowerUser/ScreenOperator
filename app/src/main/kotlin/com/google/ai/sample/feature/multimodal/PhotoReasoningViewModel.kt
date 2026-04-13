@@ -2161,7 +2161,29 @@ class PhotoReasoningViewModel(
         saveChatHistory(context)
     }
 
-    private fun createGenericScreenshotPrompt(): String = ""
+    private fun createGenericScreenshotPrompt(): String {
+        val lastUserMessage = _chatState.getAllMessages()
+            .asReversed()
+            .firstOrNull { it.participant == PhotoParticipant.USER && it.text.isNotBlank() }
+            ?.text
+            ?.trim()
+
+        if (!lastUserMessage.isNullOrBlank()) {
+            return lastUserMessage
+        }
+
+        val persistedInput = _userInput.value.trim()
+        if (persistedInput.isNotBlank()) {
+            return persistedInput
+        }
+
+        val lastKnownInput = currentUserInput.trim()
+        if (lastKnownInput.isNotBlank()) {
+            return lastKnownInput
+        }
+
+        return ""
+    }
 
     /**
      * Update the system message
