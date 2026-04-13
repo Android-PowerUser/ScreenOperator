@@ -56,6 +56,7 @@ enum class ModelOption(
         ApiProvider.GOOGLE,
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
         "4.92 GB",
+        supportsScreenshot = true,
         isOfflineModel = true,
         offlineModelFilename = "gemma-3n-e4b-it-int4.litertlm",
         offlineRequiredFilenames = listOf("gemma-3n-e4b-it-int4.litertlm")

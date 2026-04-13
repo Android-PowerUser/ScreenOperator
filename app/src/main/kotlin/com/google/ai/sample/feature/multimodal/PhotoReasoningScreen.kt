@@ -406,9 +406,10 @@ fun PhotoReasoningScreen(
                                     return@IconButton
                                 }
 
-                                // Check MediaProjection for all models except offline and human-expert
-                                // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService
-                                if (!isMediaProjectionPermissionGranted && !com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().isOfflineModel && modelName != "human-expert") {
+                                // Check MediaProjection only for models that support screenshots and are not human-expert.
+                                // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService.
+                                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                                if (!isMediaProjectionPermissionGranted && currentModel.supportsScreenshot && modelName != "human-expert") {
                                     mainActivity?.requestMediaProjectionPermission {
                                         // This block will be executed after permission is granted
                                         if (userQuestion.isNotBlank()) {
