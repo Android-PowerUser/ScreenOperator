@@ -234,8 +234,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
             is Command.TakeScreenshot -> {
                 val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-                if (currentModel.isOfflineModel) {
-                    Log.d(TAG, "Command.TakeScreenshot: Model is offline, capturing screen info only.")
+                if (!currentModel.supportsScreenshot) {
+                    Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                     this.showToast("Capturing screen info...", false)
                     val screenInfo = captureScreenInformation()
                     val mainActivity = MainActivity.getInstance()
