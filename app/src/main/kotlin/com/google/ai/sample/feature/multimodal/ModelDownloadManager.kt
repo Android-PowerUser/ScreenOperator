@@ -7,6 +7,8 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.google.ai.sample.GenerativeAiViewModelFactory
+import com.google.ai.sample.ModelOption
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,13 +21,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Custom download manager for the Gemma 3n model.
+ * Custom download manager for offline LiteRT models.
  * Uses HttpURLConnection with Range-Request support for resume capability.
  * Point 18: Includes Android notification for download progress.
  */
 object ModelDownloadManager {
     private const val TAG = "ModelDownloadManager"
-    const val MODEL_FILENAME = "gemma-3n-e4b-it-int4.litertlm"
     private const val TEMP_SUFFIX = ".downloading"
     private const val BUFFER_SIZE = 8192
     private const val MAX_RETRIES = 3
@@ -57,28 +58,55 @@ object ModelDownloadManager {
     private var downloadJob: Job? = null
     private var isPaused = false
 
-    fun isModelDownloaded(context: Context): Boolean {
-        val file = getModelFile(context)
-        return file != null && file.exists() && file.length() > 0
+    private data class DownloadTarget(
+        val finalFile: File,
+        val tempFile: File,
+        val url: String,
+        val label: String
+    )
+
+    fun isModelDownloaded(context: Context, model: ModelOption = GenerativeAiViewModelFactory.getCurrentModel()): Boolean {
+        val modelFile = getModelFile(context, model)
+        return modelFile != null && modelFile.exists() && modelFile.length() > 0
     }
 
-    fun getModelFile(context: Context): File? {
+    fun getModelFile(context: Context, model: ModelOption = GenerativeAiViewModelFactory.getCurrentModel()): File? {
+        val modelFilename = resolveInstalledModelFilename(context, model) ?: model.offlineModelFilename ?: return null
         val externalFilesDir = context.getExternalFilesDir(null)
         return if (externalFilesDir != null) {
-            File(externalFilesDir, MODEL_FILENAME)
+            File(externalFilesDir, modelFilename)
         } else {
             Log.e(TAG, "External files directory is not available.")
             null
         }
     }
 
-    private fun getTempFile(context: Context): File? {
-        val externalFilesDir = context.getExternalFilesDir(null)
-        return if (externalFilesDir != null) {
-            File(externalFilesDir, MODEL_FILENAME + TEMP_SUFFIX)
+    private fun getRequiredFiles(context: Context, model: ModelOption): List<File> {
+        val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
+        val activeModelFilename = resolveInstalledModelFilename(context, model)
+        val requiredNames = if (model == ModelOption.QWEN3_5_4B_OFFLINE && activeModelFilename != null) {
+            // User requirement: first accept standalone model file and let runtime decide if add-ons are needed.
+            listOf(activeModelFilename)
+        } else if (model.offlineRequiredFilenames.isNotEmpty()) {
+            model.offlineRequiredFilenames
         } else {
-            null
+            listOfNotNull(model.offlineModelFilename)
         }
+        return requiredNames.map { File(externalFilesDir, it) }
+    }
+
+    private fun resolveInstalledModelFilename(context: Context, model: ModelOption): String? {
+        val externalFilesDir = context.getExternalFilesDir(null) ?: return null
+        val candidates = listOfNotNull(model.offlineModelFilename) + model.offlineAlternateModelFilenames
+        return candidates.firstOrNull { name ->
+            val f = File(externalFilesDir, name)
+            f.exists() && f.length() > 0
+        }
+    }
+
+    fun getMissingRequiredFiles(context: Context, model: ModelOption): List<String> {
+        val requiredFiles = getRequiredFiles(context, model)
+        return requiredFiles.filter { !it.exists() || it.length() <= 0 }.map { it.name }
     }
     
     private fun createNotificationChannel(context: Context) {
@@ -131,8 +159,8 @@ object ModelDownloadManager {
         notificationManager.cancel(DOWNLOAD_NOTIFICATION_ID)
     }
 
-    fun downloadModel(context: Context, url: String) {
-        if (isModelDownloaded(context)) {
+    fun downloadModel(context: Context, model: ModelOption, url: String) {
+        if (isModelDownloaded(context, model)) {
             Toast.makeText(context, "Model already downloaded.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -144,7 +172,7 @@ object ModelDownloadManager {
 
         isPaused = false
         downloadJob = CoroutineScope(Dispatchers.IO).launch {
-            downloadWithResume(context, url)
+            downloadModelPackage(context, model, url)
         }
     }
 
@@ -153,7 +181,7 @@ object ModelDownloadManager {
         isPaused = true
     }
 
-    fun resumeDownload(context: Context, url: String) {
+    fun resumeDownload(context: Context, model: ModelOption, url: String) {
         if (downloadJob?.isActive == true) {
             Log.d(TAG, "Download is still active, not resuming.")
             return
@@ -161,21 +189,26 @@ object ModelDownloadManager {
 
         isPaused = false
         downloadJob = CoroutineScope(Dispatchers.IO).launch {
-            downloadWithResume(context, url)
+            downloadModelPackage(context, model, url)
         }
     }
 
-    fun cancelDownload(context: Context) {
+    fun cancelDownload(context: Context, model: ModelOption) {
         Log.d(TAG, "Cancelling download...")
         isPaused = false
         downloadJob?.cancel()
         downloadJob = null
 
-        // Delete temp file
-        val tempFile = getTempFile(context)
-        if (tempFile != null && tempFile.exists()) {
-            tempFile.delete()
-            Log.d(TAG, "Temp file deleted.")
+        // Delete temp files for full package
+        val externalFilesDir = context.getExternalFilesDir(null)
+        if (externalFilesDir != null) {
+            val targets = buildDownloadTargets(context, model, model.downloadUrl ?: "")
+            targets.forEach { target ->
+                if (target.tempFile.exists()) {
+                    target.tempFile.delete()
+                }
+            }
+            Log.d(TAG, "Temporary package files deleted.")
         }
 
         _downloadState.value = DownloadState.Idle
@@ -185,21 +218,79 @@ object ModelDownloadManager {
         }
     }
 
-    private suspend fun downloadWithResume(context: Context, url: String) {
-        val tempFile = getTempFile(context) ?: run {
+    private suspend fun downloadModelPackage(context: Context, model: ModelOption, primaryUrl: String) {
+        val targets = buildDownloadTargets(context, model, primaryUrl)
+        if (targets.isEmpty()) {
             _downloadState.value = DownloadState.Error("Storage not available.")
             return
         }
-        val finalFile = getModelFile(context) ?: run {
-            _downloadState.value = DownloadState.Error("Storage not available.")
-            return
+
+        for ((index, target) in targets.withIndex()) {
+            if (!coroutineContext.isActive) return
+            Log.i(TAG, "Downloading package file ${index + 1}/${targets.size}: ${target.label}")
+            val error = downloadSingleFileWithResume(context, target, index, targets.size)
+            if (error != null) {
+                _downloadState.value = DownloadState.Error(error)
+                cancelDownloadNotification(context)
+                return
+            }
+        }
+
+        _downloadState.value = DownloadState.Completed
+        showDownloadCompleteNotification(context)
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "Model download complete!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun buildDownloadTargets(context: Context, model: ModelOption, primaryUrl: String): List<DownloadTarget> {
+        val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
+        val primaryFilename = model.offlineModelFilename ?: return emptyList()
+        val urls = listOf(primaryUrl) + model.additionalDownloadUrls
+        val filenames = urls.mapIndexedNotNull { idx, url ->
+            if (idx == 0) primaryFilename else filenameFromUrl(url)
+        }
+        if (urls.size != filenames.size) {
+            Log.e(TAG, "Could not resolve filename for at least one download URL.")
+            return emptyList()
+        }
+        return urls.zip(filenames).map { (url, filename) ->
+            val finalFile = File(externalFilesDir, filename)
+            DownloadTarget(
+                finalFile = finalFile,
+                tempFile = File(externalFilesDir, "$filename$TEMP_SUFFIX"),
+                url = url,
+                label = filename
+            )
+        }
+    }
+
+    private fun filenameFromUrl(url: String): String? {
+        val clean = url.substringBefore('?')
+        val slash = clean.lastIndexOf('/')
+        return if (slash >= 0 && slash + 1 < clean.length) clean.substring(slash + 1) else null
+    }
+
+    private suspend fun downloadSingleFileWithResume(
+        context: Context,
+        target: DownloadTarget,
+        fileIndex: Int,
+        fileCount: Int
+    ): String? {
+        val tempFile = target.tempFile
+        val finalFile = target.finalFile
+        val url = target.url
+
+        if (finalFile.exists() && finalFile.length() > 0L) {
+            Log.d(TAG, "Skipping already downloaded file: ${target.label}")
+            return null
         }
 
         var retryCount = 0
         var bytesDownloaded = if (tempFile.exists()) tempFile.length() else 0L
 
         while (retryCount <= MAX_RETRIES) {
-            if (!coroutineContext.isActive) return // Coroutine was cancelled
+            if (!coroutineContext.isActive) return null // Coroutine was cancelled
 
             var connection: HttpURLConnection? = null
             try {
@@ -237,9 +328,7 @@ object ModelDownloadManager {
                         }
                     }
                     else -> {
-                        _downloadState.value = DownloadState.Error("Server error: $responseCode")
-                        cancelDownloadNotification(context)
-                        return
+                        return "Server error for ${target.label}: $responseCode"
                     }
                 }
 
@@ -261,7 +350,7 @@ object ModelDownloadManager {
                             if (!coroutineContext.isActive) {
                                 Log.d(TAG, "Download cancelled during read.")
                                 cancelDownloadNotification(context)
-                                return
+                                return null
                             }
 
                             if (isPaused) {
@@ -272,7 +361,7 @@ object ModelDownloadManager {
                                 )
                                 // Keep notification showing paused state
                                 showDownloadNotification(context, bytesDownloaded.toFloat() / totalBytes, bytesDownloaded, totalBytes)
-                                return
+                                return null
                             }
 
                             output.write(buffer, 0, bytesRead)
@@ -283,13 +372,14 @@ object ModelDownloadManager {
                             if (now - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL_MS) {
                                 lastProgressUpdate = now
                                 val progress = if (totalBytes > 0) bytesDownloaded.toFloat() / totalBytes else 0f
+                                val aggregateProgress = (fileIndex + progress) / fileCount.toFloat()
                                 _downloadState.value = DownloadState.Downloading(
-                                    progress = progress,
+                                    progress = aggregateProgress,
                                     bytesDownloaded = bytesDownloaded,
                                     totalBytes = totalBytes
                                 )
                                 // Point 18: Update notification with progress
-                                showDownloadNotification(context, progress, bytesDownloaded, totalBytes)
+                                showDownloadNotification(context, aggregateProgress, bytesDownloaded, totalBytes)
                             }
                         }
                     }
@@ -300,30 +390,20 @@ object ModelDownloadManager {
                     finalFile.delete()
                     if (tempFile.renameTo(finalFile)) {
                         Log.i(TAG, "Download complete! File: ${finalFile.absolutePath} (${finalFile.length()} bytes)")
-                        _downloadState.value = DownloadState.Completed
-                        showDownloadCompleteNotification(context)
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Model download complete!", Toast.LENGTH_SHORT).show()
-                        }
                     } else {
-                        _downloadState.value = DownloadState.Error("Failed to save model file.")
-                        cancelDownloadNotification(context)
+                        return "Failed to save ${target.label}."
                     }
                 }
-                return // Success, exit retry loop
+                return null // Success, exit retry loop
 
             } catch (e: IOException) {
                 Log.e(TAG, "Download error (attempt ${retryCount + 1}): ${e.message}")
                 retryCount++
                 if (retryCount > MAX_RETRIES) {
-                    _downloadState.value = DownloadState.Error("Download failed after $MAX_RETRIES retries: ${e.message}")
-                    cancelDownloadNotification(context)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
+                    return "Download failed for ${target.label} after $MAX_RETRIES retries: ${e.message}"
                 } else {
                     _downloadState.value = DownloadState.Downloading(
-                        progress = if (bytesDownloaded > 0) 0f else 0f,
+                        progress = fileIndex.toFloat() / fileCount.toFloat(),
                         bytesDownloaded = bytesDownloaded,
                         totalBytes = -1
                     )
@@ -334,6 +414,8 @@ object ModelDownloadManager {
                 connection?.disconnect()
             }
         }
+
+        return "Download failed for ${target.label}."
     }
 
     /**
@@ -348,4 +430,3 @@ object ModelDownloadManager {
         }
     }
 }
-

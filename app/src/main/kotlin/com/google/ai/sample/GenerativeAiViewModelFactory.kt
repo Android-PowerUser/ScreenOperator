@@ -27,9 +27,15 @@ enum class ModelOption(
     val apiProvider: ApiProvider = ApiProvider.GOOGLE,
     val downloadUrl: String? = null,
     val size: String? = null,
-    val supportsScreenshot: Boolean = true
+    val supportsScreenshot: Boolean = true,
+    val isOfflineModel: Boolean = false,
+    val offlineModelFilename: String? = null,
+    val offlineAlternateModelFilenames: List<String> = emptyList(),
+    val offlineRequiredFilenames: List<String> = emptyList(),
+    val additionalDownloadUrls: List<String> = emptyList(),
+    val requiresVisionBackend: Boolean = false
 ) {
-    PUTER_GLM5("GLM-5 (Puter)", "z-ai/glm-5", ApiProvider.PUTER, supportsScreenshot = false),
+    PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
     MISTRAL_MEDIUM_3_1("Mistral Medium 3.1", "mistral-medium-latest", ApiProvider.MISTRAL),
     GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
@@ -49,7 +55,51 @@ enum class ModelOption(
         "gemma-3n-e4b-it",
         ApiProvider.GOOGLE,
         "https://huggingface.co/na5h13/gemma-3n-E4B-it-litert-lm/resolve/main/gemma-3n-E4B-it-int4.litertlm?download=true",
-        "4.92 GB"
+        "4.92 GB",
+        supportsScreenshot = true,
+        isOfflineModel = true,
+        offlineModelFilename = "gemma-3n-e4b-it-int4.litertlm",
+        offlineRequiredFilenames = listOf("gemma-3n-e4b-it-int4.litertlm")
+    ),
+    GEMMA_4_E4B_IT(
+        "Gemma 4 E4B it (offline)",
+        "gemma-4-e4b-it",
+        ApiProvider.GOOGLE,
+        "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm?download=true",
+        "3.40 GB",
+        isOfflineModel = true,
+        offlineModelFilename = "gemma-4-E4B-it.litertlm",
+        offlineRequiredFilenames = listOf("gemma-4-E4B-it.litertlm")
+    ),
+    QWEN3_5_4B_OFFLINE(
+        "Qwen3.5 4B (offline)",
+        "qwen3.5-4b-offline",
+        ApiProvider.GOOGLE,
+        "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/model_multimodal.litertlm?download=true",
+        "6.3 GB",
+        isOfflineModel = true,
+        offlineModelFilename = "model_multimodal.litertlm",
+        offlineAlternateModelFilenames = listOf("model_quantized.litertlm"),
+        offlineRequiredFilenames = listOf(
+            "model_multimodal.litertlm",
+            "sentencepiece.model",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "embedder_quantized.tflite",
+            "vision_encoder_quantized.tflite",
+            "vision_adapter_quantized.tflite",
+            "model_multimodal_llm_metadata_multimodal.pb"
+        ),
+        additionalDownloadUrls = listOf(
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/sentencepiece.model?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer.json?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/tokenizer_config.json?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/embedder_quantized.tflite?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/vision_encoder_quantized.tflite?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/vision_adapter_quantized.tflite?download=true",
+            "https://huggingface.co/Yoursmiling/Qwen3.5-4B-LiteRT/resolve/main/model_multimodal_llm_metadata_multimodal.pb?download=true"
+        ),
+        requiresVisionBackend = true
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
@@ -77,7 +127,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 
         // Get the API key from MainActivity
         val mainActivity = MainActivity.getInstance()
-        val apiKey = if (currentModel == ModelOption.GEMMA_3N_E4B_IT || currentModel == ModelOption.HUMAN_EXPERT) {
+        val apiKey = if (currentModel.isOfflineModel || currentModel == ModelOption.HUMAN_EXPERT) {
             "offline-no-key-needed" // Dummy key for offline/human expert models
         } else {
             mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""

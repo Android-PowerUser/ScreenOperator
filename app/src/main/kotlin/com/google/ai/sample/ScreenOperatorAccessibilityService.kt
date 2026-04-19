@@ -233,9 +233,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 true // Asynchronous
             }
             is Command.TakeScreenshot -> {
-                val modelName = GenerativeAiViewModelFactory.getCurrentModel().modelName
-                if (modelName == "gemma-3n-e4b-it") {
-                    Log.d(TAG, "Command.TakeScreenshot: Model is gemma-3n-e4b-it, capturing screen info only.")
+                val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+                if (!currentModel.supportsScreenshot) {
+                    Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                     this.showToast("Capturing screen info...", false)
                     val screenInfo = captureScreenInformation()
                     val mainActivity = MainActivity.getInstance()

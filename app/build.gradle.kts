@@ -24,6 +24,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -47,6 +50,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = "1.8"
+        freeCompilerArgs += "-Xskip-metadata-version-check"
     }
     buildFeatures {
         compose = true
@@ -57,6 +61,12 @@ android {
 }
 
 dependencies {
+    constraints {
+        implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.20")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.20")
+        implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.20")
+    }
+
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
@@ -100,6 +110,8 @@ dependencies {
 
     // MediaPipe GenAI for offline inference (LLM)
     implementation("com.google.mediapipe:tasks-genai:0.10.32")
+    // LiteRT-LM for newer offline .litertlm models (e.g. Gemma 4 E4B it)
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.0")
 
     // Camera Core to potentially fix missing JNI lib issue
     implementation("androidx.camera:camera-core:1.4.0")

@@ -15,6 +15,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 
@@ -62,9 +63,13 @@ internal fun PaymentMethodDialog(
             Column {
                 Button(
                     onClick = onPayPalClick,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    // Do not actually disable this button; keep click behavior enabled.
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Color.Gray
+                    )
                 ) {
-                    Text("PayPal (2,60 €/Month)")
+                    Text("PayPal (2,90 €/Month)")
                 }
                 Button(
                     onClick = onGooglePlayClick,

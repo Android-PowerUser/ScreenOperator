@@ -98,6 +98,14 @@ data class MenuItem(
     val descriptionResId: Int
 )
 
+private val STRIKETHROUGH_MODELS = listOf(
+    ModelOption.GEMMA_3_27B_IT,
+    ModelOption.MISTRAL_LARGE_3,
+    ModelOption.GEMINI_FLASH_LIVE_PREVIEW,
+    ModelOption.GEMINI_FLASH_LITE_PREVIEW,
+    ModelOption.QWEN3_5_4B_OFFLINE
+)
+
 @Composable
 fun MenuScreen(
     innerPadding: PaddingValues,
@@ -201,19 +209,41 @@ fun MenuScreen(
                                 expanded = expanded,
                                 onDismissRequest = { expanded = false }
                             ) {
-                                val orderedModels = ModelOption.values().toList()
+                                val allModels = ModelOption.values().toList()
+                                val vercelModels = allModels.filter {
+                                    it.apiProvider == ApiProvider.VERCEL && !STRIKETHROUGH_MODELS.contains(it)
+                                }
+                                val normalModels = allModels.filter {
+                                    it != ModelOption.MISTRAL_MEDIUM_3_1 &&
+                                        it.apiProvider != ApiProvider.VERCEL &&
+                                        !STRIKETHROUGH_MODELS.contains(it)
+                                }
+                                val orderedModels = listOf(ModelOption.MISTRAL_MEDIUM_3_1) +
+                                    normalModels +
+                                    vercelModels +
+                                    STRIKETHROUGH_MODELS
 
                                 orderedModels.forEach { modelOption ->
                                     DropdownMenuItem(
                                         text = {
-                                            Text(modelOption.displayName + (modelOption.size?.let { " - $it" } ?: ""))
+                                            // Do not actually disable these models. They must remain selectable for testing/debug purposes.
+                                            val modelText = modelOption.displayName + (modelOption.size?.let { " - $it" } ?: "")
+                                            if (STRIKETHROUGH_MODELS.contains(modelOption)) {
+                                                Text(
+                                                    text = modelText,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.LineThrough)
+                                                )
+                                            } else {
+                                                // Keep the previous/default dropdown typography for non-strikethrough models.
+                                                Text(text = modelText)
+                                            }
                                         },
                                         onClick = {
                                             expanded = false
-                                            val wasOfflineModel = selectedModel == ModelOption.GEMMA_3N_E4B_IT
+                                            val wasOfflineModel = selectedModel.isOfflineModel
                                             
-                                            if (modelOption == ModelOption.GEMMA_3N_E4B_IT) {
-                                                val isDownloaded = ModelDownloadManager.isModelDownloaded(context)
+                                            if (modelOption.isOfflineModel) {
+                                                val isDownloaded = ModelDownloadManager.isModelDownloaded(context, modelOption)
                                                 if (!isDownloaded) {
                                                     downloadDialogModel = modelOption
                                                     showDownloadDialog = true
@@ -252,12 +282,32 @@ fun MenuScreen(
                                 }
                             }
                         }
+
+                        val modelHint = when (selectedModel) {
+                            ModelOption.GEMMA_3_27B_IT -> "Google doesn't support screenshots in the API for this model."
+                            ModelOption.GPT_OSS_120B -> "This is a pure text model\nCerebras sometimes discontinues free access in the Free Tier, displaying an \"Error 404: gpt-oss-120b does not exist or you do not have access to it\" message, or changes the rate limits."
+                            ModelOption.MISTRAL_LARGE_3 -> "Mistral AI rejects requests containing non-black images with a 429 Error: Rate limit exceeded response"
+                            ModelOption.GEMINI_3_FLASH -> "Google often rejects requests to this model with a 503 Model is exhausted error"
+                            ModelOption.PUTER_GLM5 -> "This model is expensive and uses up the free quota quickly. Consider GPT 5.4 nano"
+                            ModelOption.GPT_5_1_CODEX_MAX,
+                            ModelOption.GPT_5_1_CODEX_MINI,
+                            ModelOption.GPT_5_NANO -> "Vercel requires a credit card"
+                            else -> ""
+                        }
+                        if (modelHint.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = modelHint,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
 
             // CPU/GPU Selection - only visible when offline model is selected
-            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+            if (selectedModel.isOfflineModel) {
                 item {
                     val currentBackend = remember { mutableStateOf(GenerativeAiViewModelFactory.getBackend()) }
                     
@@ -444,10 +494,10 @@ fun MenuScreen(
                                 modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
-                            if (selectedModel == ModelOption.GEMMA_3N_E4B_IT) {
+                            if (selectedModel.isOfflineModel) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Note: LlmInference (offline model) may not support all generation parameters.",
+                                    text = "Note: Offline inference may not support all generation parameters.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -487,15 +537,13 @@ fun MenuScreen(
                                         val mainActivity = context as? MainActivity
                                         val activeModel = GenerativeAiViewModelFactory.getCurrentModel()
                                         // Check API Key for online models
-                                        if (activeModel.apiProvider != ApiProvider.GOOGLE || !activeModel.modelName.contains("litert")) { // Simple check, refine if needed. Actually offline model has specific Enum
-                                             if (activeModel != ModelOption.GEMMA_3N_E4B_IT && activeModel != ModelOption.HUMAN_EXPERT) {
-                                                 val apiKey = mainActivity?.getCurrentApiKey(activeModel.apiProvider)
-                                                 if (apiKey.isNullOrEmpty()) {
-                                                     // Show API Key Dialog
-                                                     onApiKeyButtonClicked(activeModel.apiProvider) // Or a specific callback to show dialog
-                                                     return@TextButton
-                                                 }
-                                             }
+                                        if (!activeModel.isOfflineModel && activeModel != ModelOption.HUMAN_EXPERT) {
+                                            val apiKey = mainActivity?.getCurrentApiKey(activeModel.apiProvider)
+                                            if (apiKey.isNullOrEmpty()) {
+                                                // Show API Key Dialog
+                                                onApiKeyButtonClicked(activeModel.apiProvider) // Or a specific callback to show dialog
+                                                return@TextButton
+                                            }
                                         }
 
                                         if (mainActivity != null) { // Ensure mainActivity is not null
@@ -585,13 +633,7 @@ fun MenuScreen(
                         withStyle(boldStyle) { append("API Keys") }
                         append(" are automatically switched if multiple are inserted and one is exhausted.\n")
 
-                        append("• ")
-                        withStyle(boldStyle) { append("GPT-oss 120b") }
-                        append(" is a pure text model.\n")
-                        append("• ")
-
-                        withStyle(boldStyle) { append("Gemma 27B IT") }
-                        append(" cannot handle screenshots in the API.\n")
+                        append("• Models with a line through them do not work properly.\n")
                         append("• GPT models (")
                         withStyle(boldStyle) { append("Vercel") }
                         append(") have a free budget of \$5 per month and a credit card is necessary.\n")
@@ -599,15 +641,11 @@ fun MenuScreen(
                         append("GPT-5.1 mini Input: \$0.25/M Output: \$2.00/M\n")
                         append("GPT-5 nano Input: \$0.05/M Output: \$0.40/M\n")
                         append("• When a language model repeats a token, Top K and Top P must be lowered.\n")
-                        append("• There are ")
-                        withStyle(boldStyle) { append("rate limits") }
-                        append(" for free use of ")
-                        withStyle(boldStyle) { append("Gemini models") }
-                        append(". The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
+                        append("• Google has recently significantly tightened its rate limits and is fluctuating widely with its free quota. Try it for yourself. More information is available at ")
 
-                        pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
+                        pushStringAnnotation(tag = "URL", annotation = "https://aistudio.google.com/rate-limit")
                         withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
-                            append("https://ai.google.dev/gemini-api/docs/rate-limits")
+                            append("https://aistudio.google.com/rate-limit")
                         }
                         pop()
                     }
@@ -689,12 +727,12 @@ fun MenuScreen(
                 }
                 // Don't dismiss while downloading/paused
             },
-            title = { Text("Download Model (4.92 GB)") },
+            title = { Text("Download Model (${downloadDialogModel?.size ?: "unknown size"})") },
             text = {
                 Column {
                     when (val state = dlState) {
                         is ModelDownloadManager.DownloadState.Idle -> {
-                            Text("Should the Gemma 3n E4B be downloaded?\n\n$formattedGbAvailable GB of storage available.")
+                            Text("Should ${downloadDialogModel?.displayName ?: "this model"} be downloaded?\n\n$formattedGbAvailable GB of storage available.")
                         }
                         is ModelDownloadManager.DownloadState.Downloading -> {
                             Text("Downloading...")
@@ -741,8 +779,10 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Idle -> {
                         TextButton(
                             onClick = {
-                                downloadDialogModel?.downloadUrl?.let { url ->
-                                    ModelDownloadManager.downloadModel(context, url)
+                                downloadDialogModel?.let { model ->
+                                    model.downloadUrl?.let { url ->
+                                        ModelDownloadManager.downloadModel(context, model, url)
+                                    }
                                     // Task 2: Request notification permission when download starts
                                     val mainActivity = context as? MainActivity
                                     if (mainActivity != null && !mainActivity.isNotificationPermissionGranted()) {
@@ -758,8 +798,10 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Paused -> {
                         TextButton(
                             onClick = {
-                                downloadDialogModel?.downloadUrl?.let { url ->
-                                    ModelDownloadManager.resumeDownload(context, url)
+                                downloadDialogModel?.let { model ->
+                                    model.downloadUrl?.let { url ->
+                                        ModelDownloadManager.resumeDownload(context, model, url)
+                                    }
                                 }
                             }
                         ) { Text("Resume") }
@@ -777,8 +819,10 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Error -> {
                         TextButton(
                             onClick = {
-                                downloadDialogModel?.downloadUrl?.let { url ->
-                                    ModelDownloadManager.downloadModel(context, url)
+                                downloadDialogModel?.let { model ->
+                                    model.downloadUrl?.let { url ->
+                                        ModelDownloadManager.downloadModel(context, model, url)
+                                    }
                                 }
                             }
                         ) { Text("Retry") }
@@ -794,7 +838,7 @@ fun MenuScreen(
                     is ModelDownloadManager.DownloadState.Paused -> {
                         TextButton(
                             onClick = {
-                                ModelDownloadManager.cancelDownload(context)
+                                downloadDialogModel?.let { ModelDownloadManager.cancelDownload(context, it) }
                                 showDownloadDialog = false
                             }
                         ) { Text("Cancel Download") }
