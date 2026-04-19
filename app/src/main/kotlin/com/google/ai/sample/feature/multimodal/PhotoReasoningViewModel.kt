@@ -1316,27 +1316,37 @@ class PhotoReasoningViewModel(
             if (systemContent.isNotEmpty())
                 apiMessages.add(MistralMessage(role = "system", content = systemContent))
 
-            _chatState.getAllMessages()
+            val allMessages = _chatState.getAllMessages()
+            val historyMessages = allMessages
                 .filter { !it.isPending && it.participant != PhotoParticipant.ERROR }
-                .forEach { message ->
-                    val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
-                    val contentParts = mutableListOf<MistralContent>()
-                    if (message.text.isNotBlank()) contentParts.add(MistralTextContent(text = message.text))
-                    if (contentParts.isNotEmpty()) apiMessages.add(MistralMessage(role = role, content = contentParts))
-                }
+                .dropLast(1)
 
-            if (selectedImages.isNotEmpty() && apiMessages.isNotEmpty() && currentModel.supportsScreenshot) {
-                val lastUserMsg = apiMessages.last()
-                if (lastUserMsg.role == "user") {
-                    val updatedContent = lastUserMsg.content.toMutableList()
-                    for (bitmap in selectedImages)
-                        updatedContent.add(
-                            MistralImageContent(
-                                imageUrl = "data:image/jpeg;base64,${PhotoReasoningSerialization.bitmapToBase64(bitmap)}"
-                            )
-                        )
-                    apiMessages[apiMessages.lastIndex] = lastUserMsg.copy(content = updatedContent)
+            historyMessages.forEach { message ->
+                val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
+                val contentParts = mutableListOf<MistralContent>()
+                if (message.text.isNotBlank()) {
+                    contentParts.add(MistralTextContent(text = message.text))
                 }
+                if (contentParts.isNotEmpty()) {
+                    apiMessages.add(MistralMessage(role = role, content = contentParts))
+                }
+            }
+
+            val currentContentParts = mutableListOf<MistralContent>()
+            if (combinedPromptText.isNotBlank()) {
+                currentContentParts.add(MistralTextContent(text = combinedPromptText))
+            }
+            if (currentModel.supportsScreenshot) {
+                selectedImages.forEach { bitmap ->
+                    currentContentParts.add(
+                        MistralImageContent(
+                            imageUrl = "data:image/jpeg;base64,${PhotoReasoningSerialization.bitmapToBase64(bitmap)}"
+                        )
+                    )
+                }
+            }
+            if (currentContentParts.isNotEmpty()) {
+                apiMessages.add(MistralMessage(role = "user", content = currentContentParts))
             }
 
             val jsonSerializer = Json {
@@ -2166,32 +2176,6 @@ class PhotoReasoningViewModel(
     }
 
     private fun createGenericScreenshotPrompt(): String {
-        val latestTask = latestUserTaskInput.trim()
-        if (latestTask.isNotBlank()) {
-            return latestTask
-        }
-
-        val lastUserMessage = _chatState.getAllMessages()
-            .asReversed()
-            .firstOrNull { it.participant == PhotoParticipant.USER && it.text.isNotBlank() }
-            ?.text
-            ?.trim()
-
-        if (!lastUserMessage.isNullOrBlank()) {
-            val screenInfoMarker = "\n\nScreen elements:\n"
-            return lastUserMessage.substringBefore(screenInfoMarker).trim()
-        }
-
-        val persistedInput = _userInput.value.trim()
-        if (persistedInput.isNotBlank()) {
-            return persistedInput
-        }
-
-        val lastKnownInput = currentUserInput.trim()
-        if (lastKnownInput.isNotBlank()) {
-            return lastKnownInput
-        }
-
         return ""
     }
 
