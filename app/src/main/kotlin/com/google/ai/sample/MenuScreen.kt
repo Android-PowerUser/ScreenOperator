@@ -227,15 +227,16 @@ fun MenuScreen(
                                     DropdownMenuItem(
                                         text = {
                                             // Do not actually disable these models. They must remain selectable for testing/debug purposes.
-                                            val itemTextStyle = if (STRIKETHROUGH_MODELS.contains(modelOption)) {
-                                                MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.LineThrough)
+                                            val modelText = modelOption.displayName + (modelOption.size?.let { " - $it" } ?: "")
+                                            if (STRIKETHROUGH_MODELS.contains(modelOption)) {
+                                                Text(
+                                                    text = modelText,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.LineThrough)
+                                                )
                                             } else {
-                                                MaterialTheme.typography.bodyLarge
+                                                // Keep the previous/default dropdown typography for non-strikethrough models.
+                                                Text(text = modelText)
                                             }
-                                            Text(
-                                                text = modelOption.displayName + (modelOption.size?.let { " - $it" } ?: ""),
-                                                style = itemTextStyle
-                                            )
                                         },
                                         onClick = {
                                             expanded = false
