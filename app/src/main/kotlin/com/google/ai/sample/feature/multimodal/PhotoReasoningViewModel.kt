@@ -134,7 +134,6 @@ class PhotoReasoningViewModel(
     
     // Keep track of the current user input
     private var currentUserInput: String = ""
-    private var latestUserTaskInput: String = ""
 
     // Observable state for the input field to persist across configuration changes
     private val _userInput = MutableStateFlow("")
@@ -791,10 +790,6 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-        if (userInput.isNotBlank() && screenInfoForPrompt.isNullOrBlank()) {
-            latestUserTaskInput = userInput.trim()
-        }
-
         clearStaleErrorState()
         stopExecutionFlag.set(false)
 
@@ -1191,7 +1186,8 @@ class PhotoReasoningViewModel(
                     }
 
                 // CerebrasRequest braucht stream-Feld — inline als JSON-String um Datenklasse nicht zu ändern
-                val streamingBody = """{"model":"$modelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":0.2,"top_p":1.0,"stream":true}"""
+                val selectedModelName = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().modelName
+                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":0.2,"top_p":1.0,"stream":true}"""
                 val mediaType = "application/json".toMediaType()
                 val client = OkHttpClient()
 
@@ -1859,7 +1855,7 @@ class PhotoReasoningViewModel(
                 context = context,
                 inputContentJson = inputContentJson,
                 chatHistoryJson = chatHistoryJson,
-                modelName = generativeModel.modelName,
+                modelName = currentModel.modelName,
                 apiKey = apiKey,
                 apiProvider = currentModel.apiProvider,
                 tempFilePaths = tempFilePaths
@@ -2166,32 +2162,6 @@ class PhotoReasoningViewModel(
     }
 
     private fun createGenericScreenshotPrompt(): String {
-        val latestTask = latestUserTaskInput.trim()
-        if (latestTask.isNotBlank()) {
-            return latestTask
-        }
-
-        val lastUserMessage = _chatState.getAllMessages()
-            .asReversed()
-            .firstOrNull { it.participant == PhotoParticipant.USER && it.text.isNotBlank() }
-            ?.text
-            ?.trim()
-
-        if (!lastUserMessage.isNullOrBlank()) {
-            val screenInfoMarker = "\n\nScreen elements:\n"
-            return lastUserMessage.substringBefore(screenInfoMarker).trim()
-        }
-
-        val persistedInput = _userInput.value.trim()
-        if (persistedInput.isNotBlank()) {
-            return persistedInput
-        }
-
-        val lastKnownInput = currentUserInput.trim()
-        if (lastKnownInput.isNotBlank()) {
-            return lastKnownInput
-        }
-
         return ""
     }
 

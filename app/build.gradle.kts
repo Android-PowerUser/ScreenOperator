@@ -35,8 +35,15 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            isDebuggable = true
+        }
+        getByName("release") {
+            isDebuggable = false
+        }
         create("samples") {
             initWith(getByName("debug"))
+            isDebuggable = false
         }
     }
 

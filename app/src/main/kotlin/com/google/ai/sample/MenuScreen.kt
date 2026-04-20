@@ -215,10 +215,14 @@ fun MenuScreen(
                                 }
                                 val normalModels = allModels.filter {
                                     it != ModelOption.MISTRAL_MEDIUM_3_1 &&
+                                        it != ModelOption.PUTER_GPT_5_4_NANO &&
                                         it.apiProvider != ApiProvider.VERCEL &&
                                         !STRIKETHROUGH_MODELS.contains(it)
                                 }
-                                val orderedModels = listOf(ModelOption.MISTRAL_MEDIUM_3_1) +
+                                val orderedModels = listOf(
+                                    ModelOption.PUTER_GPT_5_4_NANO,
+                                    ModelOption.MISTRAL_MEDIUM_3_1
+                                ) +
                                     normalModels +
                                     vercelModels +
                                     STRIKETHROUGH_MODELS
@@ -288,7 +292,7 @@ fun MenuScreen(
                             ModelOption.GPT_OSS_120B -> "This is a pure text model\nCerebras sometimes discontinues free access in the Free Tier, displaying an \"Error 404: gpt-oss-120b does not exist or you do not have access to it\" message, or changes the rate limits."
                             ModelOption.MISTRAL_LARGE_3 -> "Mistral AI rejects requests containing non-black images with a 429 Error: Rate limit exceeded response"
                             ModelOption.GEMINI_3_FLASH -> "Google often rejects requests to this model with a 503 Model is exhausted error"
-                            ModelOption.PUTER_GLM5 -> "This model is expensive and uses up the free quota quickly. Consider GPT 5.4 nano"
+                            ModelOption.PUTER_GLM5 -> "This model is expensive and uses up the free quota quickly. Consider GPT-5.4 Nano."
                             ModelOption.GPT_5_1_CODEX_MAX,
                             ModelOption.GPT_5_1_CODEX_MINI,
                             ModelOption.GPT_5_NANO -> "Vercel requires a credit card"
