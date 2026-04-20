@@ -21,12 +21,8 @@
 <data-extraction-rules>
     <cloud-backup>
         <include domain="sharedpref" path="."/>
-        <exclude domain="file" path="no_backup/"/>
-        <exclude domain="database" path="."/>
     </cloud-backup>
     <device-transfer>
         <include domain="sharedpref" path="."/>
-        <exclude domain="file" path="no_backup/"/>
-        <exclude domain="database" path="."/>
     </device-transfer>
 </data-extraction-rules>
