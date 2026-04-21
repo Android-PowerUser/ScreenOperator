@@ -29,7 +29,7 @@ Updates in Github are much faster than on the Play Store and have no restriction
 ## Develop Screen Operator with AI
 
 
-This app urgently needs an update. Google's interfaces (API's) have changed, and it should also use shared parameter model (shared backbone), that can actually see the screen content, not just receive a description. However, I am no longer active as a developer, but that doesn't mean it's over, because this app can be developed entirely by AI and therefore its development can be continued by anyone:
+This app urgently needs an update. Google's interfaces (API's) have changed, and it should also use shared parameter model (shared backbone), that can actually see the screen content, not just receive a description. This app can be developed entirely by AI and therefore its development can be continued by anyone:
 
 To vibe coding for free I use [Codex](https://ChatGPT.com/codex). You can connect it directly to GitHub. You will probably have to fork the project first so that you can edit it. It has a free quota that will be weekly refreshed and you can also easy switch the account to refresh the free quota. It is available in the browser for Android. Select the branch with the latest changes. Always enter tasks, if necessary numbered, and written very precisely and in detail.
 
