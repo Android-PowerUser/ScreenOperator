@@ -381,7 +381,7 @@ fun PhotoReasoningScreen(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.padding(top = 16.dp)) {
                         Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
-                            IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
+                            IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, modifier = Modifier.padding(bottom = 4.dp)) {
                                 Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
                             }
                             IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
