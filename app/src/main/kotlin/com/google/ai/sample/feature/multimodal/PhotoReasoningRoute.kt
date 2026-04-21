@@ -173,14 +173,14 @@ private fun extractVideoFrame(context: android.content.Context, uri: Uri): Bitma
     } catch (e: IllegalArgumentException) {
         android.util.Log.e("PhotoReasoningRoute", "Invalid video URI: $uri", e)
         null
-    } catch (e: RuntimeException) {
-        android.util.Log.e("PhotoReasoningRoute", "Failed to extract video frame: $uri", e)
+private fun extractVideoFrame(context: android.content.Context, uri: Uri): Bitmap? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    } catch (e: Exception) {
         null
     } finally {
-        try {
-            retriever.release()
-        } catch (e: Exception) {
-            android.util.Log.e("PhotoReasoningRoute", "Failed to release MediaMetadataRetriever", e)
-        }
+        retriever.release()
     }
 }
