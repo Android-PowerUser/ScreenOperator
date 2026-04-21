@@ -14,8 +14,8 @@ This Android app operates the screen with commands from vision LLMs.
 Due to a GitHub restriction, you must be logged in to view the nightly download links:
 </br>
 
-[nightly builds](https://github.com/Android-PowerUser/ScreenOperator/actions) from Github actions (You probably must reinstall the app because of different signatures) or install the old </br>
-[Screen Operator v1.2.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2025.8.13/Screen.Operator.v1.2_don_t_work_on_Android_14-.apk) (without log in)
+[nightly builds](https://github.com/Android-PowerUser/ScreenOperator/actions) from Github actions (You probably must reinstall the app because of different signatures) or install the </br>
+[Screen Operator v2.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.04.21/Screen.Operator.v2.apk) (without log in)
 
 Updates in Github are much faster than on the Play Store and have no restrictions.
 </br>
