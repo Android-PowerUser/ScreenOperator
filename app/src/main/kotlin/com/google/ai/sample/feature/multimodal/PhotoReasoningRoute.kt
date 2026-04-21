@@ -1,7 +1,9 @@
 package com.google.ai.sample.feature.multimodal
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.media.MediaMetadataRetriever
 import android.provider.Settings
 import android.net.Uri
 import android.widget.Toast
@@ -30,6 +32,7 @@ import com.google.ai.sample.GenerativeViewModelFactory
 import com.google.ai.sample.MainActivity
 import com.google.ai.sample.ModelOption
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -99,12 +102,13 @@ internal fun PhotoReasoningRoute(
         },
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
-                val bitmaps = selectedItems.mapNotNull {
-                    val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
-                    try {
-                        val result = imageLoader.execute(imageRequest)
-                        if (result is SuccessResult) (result.drawable as BitmapDrawable).bitmap else null
-                    } catch (e: Exception) { null }
+                val bitmaps = selectedItems.mapNotNull { uri ->
+                    uriToBitmap(
+                        uri = uri,
+                        context = context,
+                        imageRequestBuilder = imageRequestBuilder,
+                        imageLoader = imageLoader
+                    )
                 }
                 viewModel.reason(
                     userInput = inputText,
@@ -139,4 +143,36 @@ internal fun PhotoReasoningRoute(
         isOfflineGpuModelLoaded = isOfflineGpuModelLoaded,
         isInitializingOfflineModel = isInitializingOfflineModel
     )
+}
+
+private suspend fun uriToBitmap(
+    uri: Uri,
+    context: android.content.Context,
+    imageRequestBuilder: ImageRequest.Builder,
+    imageLoader: ImageLoader
+): Bitmap? = withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val mimeType = context.contentResolver.getType(uri).orEmpty()
+    if (mimeType.startsWith("video/")) {
+        return@withContext extractVideoFrame(context, uri)
+    }
+
+    val imageRequest = imageRequestBuilder.data(uri).precision(Precision.EXACT).build()
+    return@withContext try {
+        val result = imageLoader.execute(imageRequest)
+        if (result is SuccessResult) (result.drawable as? BitmapDrawable)?.bitmap else null
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun extractVideoFrame(context: android.content.Context, uri: Uri): Bitmap? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.getFrameAtTime(0)
+    } catch (e: Exception) {
+        null
+    } finally {
+        retriever.release()
+    }
 }
