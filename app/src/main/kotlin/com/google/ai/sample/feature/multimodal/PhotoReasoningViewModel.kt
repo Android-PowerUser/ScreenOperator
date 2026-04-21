@@ -134,7 +134,6 @@ class PhotoReasoningViewModel(
     
     // Keep track of the current user input
     private var currentUserInput: String = ""
-    private var latestUserTaskInput: String = ""
 
     // Observable state for the input field to persist across configuration changes
     private val _userInput = MutableStateFlow("")
@@ -791,10 +790,6 @@ class PhotoReasoningViewModel(
         imageUrisForChat: List<String>? = null
     ) {
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-        if (userInput.isNotBlank() && screenInfoForPrompt.isNullOrBlank()) {
-            latestUserTaskInput = userInput.trim()
-        }
-
         clearStaleErrorState()
         stopExecutionFlag.set(false)
 
@@ -2167,12 +2162,6 @@ class PhotoReasoningViewModel(
     }
 
     private fun createGenericScreenshotPrompt(): String {
-        val latestTask = latestUserTaskInput.trim()
-        if (latestTask.isNotBlank()) {
-            latestUserTaskInput = ""
-            return latestTask
-        }
-
         return ""
     }
 
