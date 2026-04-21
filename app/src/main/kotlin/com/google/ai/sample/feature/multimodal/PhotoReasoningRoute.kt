@@ -170,9 +170,17 @@ private fun extractVideoFrame(context: android.content.Context, uri: Uri): Bitma
     return try {
         retriever.setDataSource(context, uri)
         retriever.getFrameAtTime(0)
-    } catch (e: Exception) {
+    } catch (e: IllegalArgumentException) {
+        android.util.Log.e("PhotoReasoningRoute", "Invalid video URI: $uri", e)
+        null
+    } catch (e: RuntimeException) {
+        android.util.Log.e("PhotoReasoningRoute", "Failed to extract video frame: $uri", e)
         null
     } finally {
-        retriever.release()
+        try {
+            retriever.release()
+        } catch (e: Exception) {
+            android.util.Log.e("PhotoReasoningRoute", "Failed to release MediaMetadataRetriever", e)
+        }
     }
 }
