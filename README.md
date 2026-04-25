@@ -35,6 +35,10 @@ To vibe coding for free I use [Codex](https://ChatGPT.com/codex). You can connec
 
 You can build the apk with Github actions: Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android build, and start your chosen branch. After about 5 minutes, your app will be ready!
 
+### Share your database from Screen Operator
+
+In the Discussions sector of GitHub you can share your own database
+
 ### needed updates
 
 Some models no longer work because Google is changing the interfaces (API). You can usually find the current API names at [aistudio.google.com](https://aistudio.google.com), but you might not find them all there.
