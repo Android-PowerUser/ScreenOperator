@@ -35,9 +35,13 @@ To vibe coding for free I use [Codex](https://ChatGPT.com/codex). You can connec
 
 You can build the apk with Github actions: Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android build, and start your chosen branch. After about 5 minutes, your app will be ready!
 
+<br/>
+
 ### Share your database from Screen Operator
 
 In the Discussions sector of GitHub you can share your own database
+
+<br/>
 
 ### needed updates
 
