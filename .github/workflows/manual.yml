@@ -152,19 +152,77 @@ jobs:
       if: env.BUILD_HUMANOPERATOR == 'true'
       run: ./gradlew :humanoperator:assembleRelease
 
+    - name: Decode signing keystore
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      run: |
+        if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+          echo "Missing secret: ANDROID_KEYSTORE_BASE64"
+          exit 1
+        fi
+        echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > signing-keystore.jks
+
+    - name: Verify signing secrets
+      env:
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || { echo "Missing secret: ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+        [ -n "$ANDROID_KEY_ALIAS" ] || { echo "Missing secret: ANDROID_KEY_ALIAS"; exit 1; }
+        [ -n "$ANDROID_KEY_PASSWORD" ] || { echo "Missing secret: ANDROID_KEY_PASSWORD"; exit 1; }
+
+    - name: Sign app APK
+      if: env.BUILD_APP == 'true'
+      env:
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+          --ks signing-keystore.jks \
+          --ks-pass pass:"$ANDROID_KEYSTORE_PASSWORD" \
+          --ks-key-alias "$ANDROID_KEY_ALIAS" \
+          --key-pass pass:"$ANDROID_KEY_PASSWORD" \
+          --out app/build/outputs/apk/release/app-release-signed.apk \
+          app/build/outputs/apk/release/app-release-unsigned.apk
+
+    - name: Verify signed app APK
+      if: env.BUILD_APP == 'true'
+      run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/release/app-release-signed.apk
+
+    - name: Sign humanoperator APK
+      if: env.BUILD_HUMANOPERATOR == 'true'
+      env:
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+          --ks signing-keystore.jks \
+          --ks-pass pass:"$ANDROID_KEYSTORE_PASSWORD" \
+          --ks-key-alias "$ANDROID_KEY_ALIAS" \
+          --key-pass pass:"$ANDROID_KEY_PASSWORD" \
+          --out humanoperator/build/outputs/apk/release/humanoperator-release-signed.apk \
+          humanoperator/build/outputs/apk/release/humanoperator-release-unsigned.apk
+
+    - name: Verify signed humanoperator APK
+      if: env.BUILD_HUMANOPERATOR == 'true'
+      run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify humanoperator/build/outputs/apk/release/humanoperator-release-signed.apk
+
     - name: Upload app APK
       if: env.BUILD_APP == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-unsigned
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
+        name: app-release-signed
+        path: app/build/outputs/apk/release/app-release-signed.apk
 
     - name: Upload humanoperator APK
       if: env.BUILD_HUMANOPERATOR == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: humanoperator-release-unsigned
-        path: humanoperator/build/outputs/apk/release/humanoperator-release-unsigned.apk
+        name: humanoperator-release-signed
+        path: humanoperator/build/outputs/apk/release/humanoperator-release-signed.apk
 
     - name: Build summary
       run: |
