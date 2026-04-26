@@ -379,7 +379,7 @@ fun DatabaseListPopup(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.End 
                                 ) {
-                                    Text("This is also sent to the AI", color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Text("The headings are sent to the AI and the content is included on request", color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                     Button(onClick = onNewClicked, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(start = 8.dp)) {
                                         Text("New")
                                     }
@@ -419,7 +419,7 @@ fun DatabaseListPopup(
                                     } else {
                                         val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
                                         val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
-                                        shareTextFile(context, "system_messages_export.txt", jsonString)
+                                        shareTextFile(context, "Database.txt", jsonString)
                                     }
                                     selectionModeActive = false
                                     selectedEntryTitles = emptySet()
