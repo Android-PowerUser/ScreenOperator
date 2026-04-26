@@ -202,6 +202,7 @@ class PhotoReasoningViewModel(
     private var currentRetryAttempt = 0
     private var currentScreenInfoForPrompt: String? = null
     private var currentImageUrisForChat: List<String>? = null
+    private var pendingRetrievedInfoForNextScreenshot: String? = null
 
     private val sseJson = PhotoReasoningSerialization.createStreamingJsonParser()
     private val openAiStreamParser = PhotoReasoningOpenAiStreamParser(sseJson)
@@ -2264,6 +2265,11 @@ private fun processCommands(text: String) {
             val commandBatch = PhotoReasoningCommandProcessing.parseForFinalExecution(text)
             val commands = commandBatch.commands
             val hasTakeScreenshotCommand = commandBatch.hasTakeScreenshotCommand
+            val commandsToExecute = commands.filterNot { it is Command.Retrieve }
+
+            if (hasTakeScreenshotCommand) {
+                pendingRetrievedInfoForNextScreenshot = buildRetrievedInfoForNextScreenshot(commands)
+            }
 
             if (commands.isNotEmpty()) {
                 if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) return@launch
@@ -2281,7 +2287,7 @@ private fun processCommands(text: String) {
                 )
 
                 // Execute the commands
-                for (command in commands) {
+                for (command in commandsToExecute) {
                     if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) { // Check for cancellation before executing each command
                         Log.d(TAG, "Command execution stopped before executing: $command")
                         _commandExecutionStatus.value = "Command execution stopped."
@@ -2327,6 +2333,60 @@ private fun processCommands(text: String) {
         }
     }
 }
+
+    private data class RetrievalCandidate(
+        val heading: String,
+        val includeUnavailableMessage: Boolean
+    )
+
+    private fun buildRetrievedInfoForNextScreenshot(commands: List<Command>): String? {
+        val requestedCandidates = mutableListOf<RetrievalCandidate>()
+        commands.forEach { command ->
+            when (command) {
+                is Command.Retrieve -> requestedCandidates.add(
+                    RetrievalCandidate(
+                        heading = command.heading.trim(),
+                        includeUnavailableMessage = true
+                    )
+                )
+                is Command.OpenApp -> requestedCandidates.add(
+                    RetrievalCandidate(
+                        heading = command.packageName.trim(),
+                        includeUnavailableMessage = false
+                    )
+                )
+                else -> Unit
+            }
+        }
+
+        if (requestedCandidates.isEmpty()) {
+            return null
+        }
+
+        val parts = mutableListOf<String>()
+        val usedHeadingsInThisBatch = mutableSetOf<String>()
+
+        requestedCandidates.forEach { candidate ->
+            if (candidate.heading.isBlank()) return@forEach
+            val resolved = PhotoReasoningTextPolicies.resolveRetrievalRequest(appContext, candidate.heading)
+            val duplicateInBatch = !usedHeadingsInThisBatch.add(resolved.heading.lowercase())
+            val alreadyInChat = PhotoReasoningTextPolicies.isHeadingAlreadyRetrievedInChat(
+                messages = _chatState.getAllMessages(),
+                heading = resolved.heading
+            )
+            if (!duplicateInBatch && !alreadyInChat) {
+                if (resolved.available || candidate.includeUnavailableMessage) {
+                    parts.add(PhotoReasoningTextPolicies.formatRetrievalResultForPrompt(resolved))
+                }
+            }
+        }
+
+        if (parts.isEmpty()) {
+            return null
+        }
+
+        return parts.joinToString(separator = "\n\n")
+    }
     private fun executeAccessibilityCommand(command: Command, shouldTrackCommand: Boolean) {
         ScreenOperatorAccessibilityService.executeCommand(command)
         if (shouldTrackCommand) {
@@ -2483,6 +2543,8 @@ private fun processCommands(text: String) {
         context: Context,
         screenInfo: String? = null
     ) {
+        val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
+
         if (screenshotUri == Uri.EMPTY) {
             // This case is for offline models, where we don't have a screenshot.
             // We just want to send the screen info.
@@ -2490,7 +2552,7 @@ private fun processCommands(text: String) {
             reason(
                 userInput = genericAnalysisPrompt,
                 selectedImages = emptyList(),
-                screenInfoForPrompt = screenInfo,
+                screenInfoForPrompt = enrichedScreenInfo,
                 imageUrisForChat = emptyList()
             )
             return
@@ -2540,7 +2602,7 @@ private fun processCommands(text: String) {
                             reason(
                                 userInput = createGenericScreenshotPrompt(),
                                 selectedImages = listOf(bitmap),
-                                screenInfoForPrompt = screenInfo,
+                                screenInfoForPrompt = enrichedScreenInfo,
                                 imageUrisForChat = listOf(screenshotUri.toString())
                             )
                         }
@@ -2564,6 +2626,18 @@ private fun processCommands(text: String) {
                 _commandExecutionStatus.value = "Error adding screenshot: ${e.message}"
                 Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun buildEnrichedScreenInfo(screenInfo: String?): String? {
+        val retrievedInfo = pendingRetrievedInfoForNextScreenshot
+        pendingRetrievedInfoForNextScreenshot = null
+
+        return when {
+            !retrievedInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$retrievedInfo\n\n$screenInfo"
+            !retrievedInfo.isNullOrBlank() -> retrievedInfo
+            !screenInfo.isNullOrBlank() -> screenInfo
+            else -> null
         }
     }
 

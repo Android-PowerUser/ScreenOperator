@@ -21,6 +21,7 @@ sealed class Command {
     data class ScrollLeftFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class OpenApp(val packageName: String) : Command()
+    data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
     object UseHighReasoningModel : Command()
     object UseLowReasoningModel : Command()
