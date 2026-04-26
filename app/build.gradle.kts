@@ -1,4 +1,3 @@
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,6 +12,23 @@ plugins {
 System.getenv("SCREENOPERATOR_BUILD_DIR")?.takeIf { it.isNotBlank() }?.let { customBuildDir ->
     layout.buildDirectory = file(customBuildDir)
 }
+
+val releaseSigningEnv = mapOf(
+    "ANDROID_KEYSTORE_PATH" to System.getenv("ANDROID_KEYSTORE_PATH"),
+    "ANDROID_KEY_ALIAS" to System.getenv("ANDROID_KEY_ALIAS"),
+    "ANDROID_KEYSTORE_PASSWORD" to System.getenv("ANDROID_KEYSTORE_PASSWORD"),
+    "ANDROID_KEY_PASSWORD" to System.getenv("ANDROID_KEY_PASSWORD"),
+)
+
+val missingReleaseSigningEnv = releaseSigningEnv
+    .filterValues { it.isNullOrBlank() }
+    .keys
+
+val isReleaseTaskRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("release", ignoreCase = true)
+}
+
+val missingReleaseSigningEnvText = missingReleaseSigningEnv.joinToString(separator = ", ")
 
 android {
     namespace = "com.google.ai.sample"
@@ -34,12 +50,24 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (missingReleaseSigningEnv.isEmpty()) {
+                storeFile = file(releaseSigningEnv.getValue("ANDROID_KEYSTORE_PATH")!!)
+                storePassword = releaseSigningEnv.getValue("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigningEnv.getValue("ANDROID_KEY_ALIAS")
+                keyPassword = releaseSigningEnv.getValue("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             isDebuggable = true
         }
         getByName("release") {
             isDebuggable = false
+            signingConfig = if (missingReleaseSigningEnv.isEmpty()) signingConfigs.getByName("release") else null
         }
         create("samples") {
             initWith(getByName("debug"))
@@ -65,6 +93,13 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
+}
+
+if (isReleaseTaskRequested && missingReleaseSigningEnv.isNotEmpty()) {
+    error(
+        "Release signing env vars missing for module :app: ${missingReleaseSigningEnvText}. " +
+            "Set ANDROID_KEYSTORE_PATH, ANDROID_KEY_ALIAS, ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_PASSWORD."
+    )
 }
 
 dependencies {

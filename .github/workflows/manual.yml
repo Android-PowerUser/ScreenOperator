@@ -144,28 +144,26 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build app module (release)
+    - name: Build app module (debug)
       if: env.BUILD_APP == 'true'
-      run: ./gradlew :app:assembleRelease
+      run: ./gradlew :app:assembleDebug
 
-    - name: Build humanoperator module (release)
+    - name: Build humanoperator module (debug)
       if: env.BUILD_HUMANOPERATOR == 'true'
-      run: ./gradlew :humanoperator:assembleRelease
+      run: ./gradlew :humanoperator:assembleDebug
 
     - name: Upload app APK
       if: env.BUILD_APP == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-unsigned
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
-
+        name: app-debug
+        path: app/build/outputs/apk/debug/app-debug.apk
     - name: Upload humanoperator APK
       if: env.BUILD_HUMANOPERATOR == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: humanoperator-release-unsigned
-        path: humanoperator/build/outputs/apk/release/humanoperator-release-unsigned.apk
-
+        name: humanoperator-debug
+        path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
     - name: Build summary
       run: |
         echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
