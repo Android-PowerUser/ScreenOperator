@@ -65,7 +65,10 @@ android {
         }
         getByName("release") {
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("release")
+            if (missingReleaseSigningEnv.isEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         }
         create("samples") {
             initWith(getByName("debug"))
