@@ -3,7 +3,7 @@ name: Android Build
 on:
   push:
     branches: [ human-operator, main ]
-  workflow_dispatch:  # Ermöglicht manuelle Ausführung des Workflows
+  workflow_call:
 
 jobs:
   detect-changes:
