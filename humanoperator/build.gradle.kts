@@ -4,6 +4,21 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val releaseSigningEnv = mapOf(
+    "ANDROID_KEYSTORE_PATH" to System.getenv("ANDROID_KEYSTORE_PATH"),
+    "ANDROID_KEY_ALIAS" to System.getenv("ANDROID_KEY_ALIAS"),
+    "ANDROID_KEYSTORE_PASSWORD" to System.getenv("ANDROID_KEYSTORE_PASSWORD"),
+    "ANDROID_KEY_PASSWORD" to System.getenv("ANDROID_KEY_PASSWORD"),
+)
+
+val missingReleaseSigningEnv = releaseSigningEnv
+    .filterValues { it.isNullOrBlank() }
+    .keys
+
+val isReleaseTaskRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("release", ignoreCase = true)
+}
+
 android {
     namespace = "com.screenoperator.humanoperator"
     compileSdk = 35
@@ -21,10 +36,22 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (missingReleaseSigningEnv.isEmpty()) {
+                storeFile = file(releaseSigningEnv.getValue("ANDROID_KEYSTORE_PATH")!!)
+                storePassword = releaseSigningEnv.getValue("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigningEnv.getValue("ANDROID_KEY_ALIAS")
+                keyPassword = releaseSigningEnv.getValue("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -41,6 +68,13 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
+}
+
+if (isReleaseTaskRequested && missingReleaseSigningEnv.isNotEmpty()) {
+    error(
+        "Release signing env vars missing for module :humanoperator: ${missingReleaseSigningEnv.joinToString(", ")}. " +
+            "Set ANDROID_KEYSTORE_PATH, ANDROID_KEY_ALIAS, ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_PASSWORD."
+    )
 }
 
 dependencies {
