@@ -156,14 +156,12 @@ jobs:
       if: env.BUILD_APP == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-unsigned
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
     - name: Upload humanoperator APK
       if: env.BUILD_HUMANOPERATOR == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: humanoperator-release-unsigned
         name: humanoperator-debug
         path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
     - name: Build summary
