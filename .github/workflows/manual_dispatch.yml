@@ -1,9 +1,0 @@
-name: Android Build (Manual Dispatch)
-
-on:
-  workflow_dispatch:
-
-jobs:
-  run-manual-workflow:
-    uses: ./.github/workflows/manual.yml
-    secrets: inherit
