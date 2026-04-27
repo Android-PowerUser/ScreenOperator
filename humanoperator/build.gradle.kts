@@ -93,7 +93,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // WebRTC
-    implementation("io.getstream:stream-webrtc-android:1.1.1")
+    implementation("io.getstream:stream-webrtc-android:1.3.10")
 
     // WebSocket for signaling
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
