@@ -1,3 +1,5 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,6 +22,7 @@ val isReleaseTaskRequested = gradle.startParameter.taskNames.any { task ->
 }
 
 val missingReleaseSigningEnvText = missingReleaseSigningEnv.joinToString(separator = ", ")
+val supportedAbis = listOf("arm64-v8a", "x86_64")
 
 android {
     namespace = "com.screenoperator.humanoperator"
@@ -31,6 +34,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        ndk {
+            abiFilters += supportedAbis
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -69,6 +75,92 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+}
+
+fun parseLoadAlignments(readelfOutput: String): List<Long> {
+    val lines = readelfOutput.lineSequence().toList()
+    val alignments = mutableListOf<Long>()
+    for (index in 0 until lines.lastIndex) {
+        if (!lines[index].trimStart().startsWith("LOAD")) continue
+        val alignToken = lines[index + 1].trim().split(Regex("\\s+")).lastOrNull() ?: continue
+        val alignValue = alignToken.removePrefix("0x").toLongOrNull(16) ?: continue
+        alignments += alignValue
+    }
+    return alignments
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val variantName = variant.name
+        val variantNameCap = variantName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        val mergeNativeTaskName = "merge${variantNameCap}NativeLibs"
+        val verifyTaskName = "verify${variantNameCap}Native16KbAlignment"
+
+        val verifyTask = tasks.register(verifyTaskName) {
+            group = "verification"
+            description = "Verifies that all merged native libs for $variantName use at least 16KB PT_LOAD alignment."
+            dependsOn(mergeNativeTaskName)
+
+            doLast {
+                val nativeOutDir = layout.buildDirectory
+                    .dir("intermediates/merged_native_libs/$variantName/$mergeNativeTaskName/out/lib")
+                    .get()
+                    .asFile
+
+                if (!nativeOutDir.exists()) {
+                    throw GradleException("Native lib output directory not found: ${nativeOutDir.absolutePath}")
+                }
+
+                val soFiles = nativeOutDir.walkTopDown().filter { it.isFile && it.extension == "so" }.toList()
+                val filteredSoFiles = soFiles.filter { soFile ->
+                    val abiDir = soFile.parentFile?.name
+                    abiDir in supportedAbis
+                }
+                if (filteredSoFiles.isEmpty()) {
+                    logger.lifecycle("No native .so files found under ${nativeOutDir.absolutePath} for variant $variantName.")
+                    return@doLast
+                }
+
+                val invalidLibraries = mutableListOf<String>()
+                filteredSoFiles.forEach { soFile ->
+                    val stdout = ByteArrayOutputStream()
+                    val execResult = exec {
+                        commandLine("readelf", "-l", soFile.absolutePath)
+                        standardOutput = stdout
+                        isIgnoreExitValue = false
+                    }
+                    if (execResult.exitValue != 0) {
+                        throw GradleException("readelf failed for ${soFile.absolutePath}")
+                    }
+
+                    val alignments = parseLoadAlignments(stdout.toString())
+                    if (alignments.isEmpty() || alignments.any { it < 0x4000L }) {
+                        val relativePath = soFile.relativeTo(nativeOutDir).path
+                        val shownAlignments = if (alignments.isEmpty()) "none" else alignments.joinToString(", ") { "0x${it.toString(16)}" }
+                        invalidLibraries += "$relativePath (PT_LOAD alignments: $shownAlignments)"
+                    }
+                }
+
+                if (invalidLibraries.isNotEmpty()) {
+                    throw GradleException(
+                        "Found native libraries without required 16KB alignment in variant '$variantName':\n" +
+                            invalidLibraries.joinToString("\n")
+                    )
+                }
+            }
+        }
+
+        tasks.configureEach {
+            if (name == "assemble$variantNameCap") {
+                dependsOn(verifyTask)
+            }
+        }
     }
 }
 
