@@ -156,7 +156,7 @@ dependencies {
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.0")
 
     // Camera Core to potentially fix missing JNI lib issue
-    implementation("androidx.camera:camera-core:1.4.0")
+    implementation("androidx.camera:camera-core:1.4.2")
 
     // WebRTC
     implementation("io.getstream:stream-webrtc-android:1.3.10")
