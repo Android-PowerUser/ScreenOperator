@@ -2265,7 +2265,13 @@ private fun processCommands(text: String) {
             val commandBatch = PhotoReasoningCommandProcessing.parseForFinalExecution(text)
             val commands = commandBatch.commands
             val hasTakeScreenshotCommand = commandBatch.hasTakeScreenshotCommand
-            val commandsToExecute = commands.filterNot { it is Command.Retrieve }
+            val commandsToExecute = commands.mapIndexedNotNull { index, command ->
+                when {
+                    command is Command.Retrieve -> null
+                    index < incrementalCommandCount && command !is Command.TakeScreenshot -> null
+                    else -> command
+                }
+            }
 
             if (hasTakeScreenshotCommand) {
                 pendingRetrievedInfoForNextScreenshot = buildRetrievedInfoForNextScreenshot(commands)
