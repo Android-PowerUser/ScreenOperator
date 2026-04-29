@@ -60,4 +60,11 @@ class CommandParserTest {
         assertEquals(1, commands.size)
         assertTrue(commands.first() is Command.PressEnterKey)
     }
+
+    @Test
+    fun parseCommands_extractsRetrieveCommand() {
+        val commands = CommandParser.parseCommands("retrieve(\"Termux\")", clearBuffer = true)
+        assertEquals(1, commands.size)
+        assertTrue(commands.first() is Command.Retrieve)
+    }
 }

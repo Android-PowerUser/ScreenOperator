@@ -349,6 +349,7 @@ fun PhotoReasoningScreen(
                                         is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
                                         is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
                                         is Command.TakeScreenshot -> "Take screenshot"
+                                        is Command.Retrieve -> "Retrieve: \"${command.heading}\""
                                         else -> command::class.simpleName ?: "Unknown Command"
                                     }
                                     Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)

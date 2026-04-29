@@ -389,6 +389,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     openApp(command.packageName)
                 }
             }
+            is Command.Retrieve -> {
+                Log.d(TAG, "Retrieve command is handled in prompt construction: ${command.heading}")
+                false
+            }
             is Command.WriteText -> {
                 executeSyncCommandAction(
                     logMessage = "Writing text: ${command.text}",

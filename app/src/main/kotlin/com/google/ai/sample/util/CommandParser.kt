@@ -16,7 +16,7 @@ object CommandParser {
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
         OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
-        PRESS_ENTER_KEY
+        PRESS_ENTER_KEY, RETRIEVE
     }
 
     // Data class to hold pattern information
@@ -81,7 +81,10 @@ object CommandParser {
             { match -> Command.ScrollRightFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_RIGHT_FROM_COORDINATES),
 
         // Open app patterns
-        PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP)
+        PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP),
+
+        // Retrieve information patterns
+        PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandTypeEnum.RETRIEVE)
     )
 
     // Buffer for storing partial text between calls
@@ -160,6 +163,7 @@ object CommandParser {
             is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
+            is Command.Retrieve -> Log.d(TAG, "Command details: Retrieve(\"${command.heading}\")")
             is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
             is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
         }
