@@ -293,6 +293,7 @@ fun MenuScreen(
                             ModelOption.MISTRAL_LARGE_3 -> "Mistral AI rejects requests containing non-black images with a 429 Error: Rate limit exceeded response"
                             ModelOption.GEMINI_3_FLASH -> "Google often rejects requests to this model with a 503 Model is exhausted error"
                             ModelOption.PUTER_GLM5 -> "This model is expensive and uses up the free quota quickly. Consider GPT-5.4 Nano."
+                            ModelOption.PUTER_QWEN3_5_FLASH -> "$0.07/M input | $0.26/M output"
                             ModelOption.GPT_5_1_CODEX_MAX,
                             ModelOption.GPT_5_1_CODEX_MINI,
                             ModelOption.GPT_5_NANO -> "Vercel requires a credit card"

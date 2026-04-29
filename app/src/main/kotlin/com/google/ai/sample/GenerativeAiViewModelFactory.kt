@@ -37,6 +37,7 @@ enum class ModelOption(
 ) {
     PUTER_GPT_5_4_NANO("GPT-5.4 Nano (Puter)", "openai/gpt-5.4-nano", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
+    PUTER_QWEN3_5_FLASH("Qwen3.5-Flash (Puter)", "qwen/qwen3.5-flash-02-23", ApiProvider.PUTER, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
     MISTRAL_MEDIUM_3_1("Mistral Medium 3.1", "mistral-medium-latest", ApiProvider.MISTRAL),
     GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
