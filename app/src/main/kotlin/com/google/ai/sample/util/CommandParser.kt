@@ -16,7 +16,7 @@ object CommandParser {
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
         OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
-        PRESS_ENTER_KEY, RETRIEVE
+        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND
     }
 
     // Data class to hold pattern information
@@ -44,6 +44,7 @@ object CommandParser {
 
         // Write text patterns
         PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("termux1", Regex("(?i)\\bTermux\\([\"']([^\"']+)[\"']\\)"), { match -> Command.TermuxCommand(match.groupValues[1]) }, CommandTypeEnum.TERMUX_COMMAND),
 
         // Click (long) button patterns
         PatternInfo("clickBtn1", Regex("(?i)\\bclick\\([\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
@@ -166,6 +167,7 @@ object CommandParser {
             is Command.Retrieve -> Log.d(TAG, "Command details: Retrieve(\"${command.heading}\")")
             is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
             is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
+            is Command.TermuxCommand -> Log.d(TAG, "Command details: TermuxCommand(\"${command.command}\")")
         }
     }
 

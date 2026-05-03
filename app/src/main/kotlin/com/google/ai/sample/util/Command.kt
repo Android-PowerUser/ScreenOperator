@@ -23,6 +23,7 @@ sealed class Command {
     data class OpenApp(val packageName: String) : Command()
     data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
+    data class TermuxCommand(val command: String) : Command()
     object UseHighReasoningModel : Command()
     object UseLowReasoningModel : Command()
 }

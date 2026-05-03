@@ -25,8 +25,10 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.google.ai.sample.util.AppNamePackageMapper
+import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CoordinateParser
+import com.google.ai.sample.util.TermuxFeedbackPreferences
 import java.io.File
 import java.text.SimpleDateFormat
 import com.google.ai.sample.GenerativeViewModelFactory
@@ -401,6 +403,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     writeText(command.text)
                 }
             }
+            is Command.TermuxCommand -> {
+                executeSyncCommandAction(
+                    logMessage = "Executing Termux command: ${command.command}",
+                    toastMessage = "Executing Termux command..."
+                ) {
+                    executeTermuxCommand(command.command)
+                }
+            }
             is Command.UseHighReasoningModel -> {
                 executeSyncCommandAction(
                     logMessage = "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)",
@@ -479,6 +489,30 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Trying to scroll $directionLabel from position (${resolved.xPx}, ${resolved.yPx})", false)
         execute(resolved)
         return true
+    }
+
+    private fun executeTermuxCommand(command: String) {
+        val termuxPackage = "com.termux"
+        val pm = packageManager
+        val launchIntent = pm.getLaunchIntentForPackage(termuxPackage)
+        if (launchIntent == null) {
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+            Log.w(TAG, "Termux not found for command execution.")
+            return
+        }
+        val intent = Intent("com.termux.tasker.RUN_COMMAND").apply {
+            `package` = termuxPackage
+            putExtra("com.termux.tasker.extra.COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.tasker.extra.COMMAND_ARGUMENTS", arrayOf("-lc", command))
+            putExtra("com.termux.tasker.extra.BACKGROUND", false)
+            putExtra("com.termux.tasker.extra.SESSION_ACTION", "0")
+        }
+        try {
+            sendBroadcast(intent)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to dispatch Termux command", t)
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+        }
     }
 
 
@@ -1455,6 +1489,7 @@ fun openApp(appNameOrPackage: String) {
         } else {
             // If all methods failed, show an error
             Log.e(TAG, "Failed to open app: $packageName")
+            AppOpenFeedbackPreferences.markAppNotFound(applicationContext)
             showToast("Error opening app: $appName", true)
         }
     } catch (e: Exception) {

@@ -25,10 +25,12 @@ import com.google.ai.sample.ScreenCaptureService
 import com.google.ai.sample.PhotoReasoningApplication
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.ChatHistoryPreferences
+import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntry
+import com.google.ai.sample.util.TermuxFeedbackPreferences
 import com.google.ai.sample.util.UserInputPreferences
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager
 import com.google.ai.sample.ModelOption
@@ -2503,6 +2505,8 @@ private fun processCommands(text: String) {
         // Clear from SharedPreferences if context is provided
         context?.let {
             ChatHistoryPreferences.clearChatMessages(it)
+            AppOpenFeedbackPreferences.consumeAppNotFound(it)
+            TermuxFeedbackPreferences.consumeTermuxNotFound(it)
         }
 
         // WICHTIG: LiveApiManager auch aktualisieren!
@@ -2638,8 +2642,24 @@ private fun processCommands(text: String) {
     private fun buildEnrichedScreenInfo(screenInfo: String?): String? {
         val retrievedInfo = pendingRetrievedInfoForNextScreenshot
         pendingRetrievedInfoForNextScreenshot = null
+        val context = MainActivity.getInstance()
+        val appNotFoundInfo = if (context != null && AppOpenFeedbackPreferences.consumeAppNotFound(context)) {
+            "App not found"
+        } else {
+            null
+        }
+        val termuxNotFoundInfo = if (context != null && TermuxFeedbackPreferences.consumeTermuxNotFound(context)) {
+            "Termux not found"
+        } else {
+            null
+        }
+        val missingInfo = listOfNotNull(appNotFoundInfo, termuxNotFoundInfo).joinToString("\n").ifBlank { null }
 
         return when {
+            !missingInfo.isNullOrBlank() && !retrievedInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$missingInfo\n\n$retrievedInfo\n\n$screenInfo"
+            !missingInfo.isNullOrBlank() && !retrievedInfo.isNullOrBlank() -> "$missingInfo\n\n$retrievedInfo"
+            !missingInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$missingInfo\n\n$screenInfo"
+            !missingInfo.isNullOrBlank() -> missingInfo
             !retrievedInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$retrievedInfo\n\n$screenInfo"
             !retrievedInfo.isNullOrBlank() -> retrievedInfo
             !screenInfo.isNullOrBlank() -> screenInfo
