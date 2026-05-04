@@ -313,6 +313,10 @@ class ScreenCaptureService : Service() {
                                 val result = callPuterApi(modelName, apiKey, chatHistory, inputContent)
                                 responseText = result.first
                                 errorMessage = result.second
+                            } else if (apiProvider == ApiProvider.GROQ) {
+                                val result = callGroqApi(modelName, apiKey, chatHistory, inputContent)
+                                responseText = result.first
+                                errorMessage = result.second
                             } else {
                                 val generativeModel = GenerativeModel(
                                     modelName = modelName,

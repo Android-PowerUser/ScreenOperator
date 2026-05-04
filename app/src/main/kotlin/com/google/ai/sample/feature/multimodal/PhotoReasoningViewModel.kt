@@ -2283,16 +2283,17 @@ private fun processCommands(text: String) {
                 if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) return@launch
                 Log.d(TAG, "Found ${commands.size} commands in response")
 
-                // Update the detected commands
-                _detectedCommands.value = PhotoReasoningCommandStateUpdater.appendCommands(
-                    existing = _detectedCommands.value,
-                    commands = commands
-                )
-
-                // Update status to show commands were detected
-                _commandExecutionStatus.value = PhotoReasoningCommandStateUpdater.buildDetectedStatus(
-                    commandBatch.commandDescriptions
-                )
+                val parsedDuringStreaming = incrementalCommandCount > 0
+                if (!parsedDuringStreaming) {
+                    // Nur bei nicht-streamender Antwort hier anzeigen.
+                    _detectedCommands.value = PhotoReasoningCommandStateUpdater.appendCommands(
+                        existing = _detectedCommands.value,
+                        commands = commands
+                    )
+                    _commandExecutionStatus.value = PhotoReasoningCommandStateUpdater.buildDetectedStatus(
+                        commandBatch.commandDescriptions
+                    )
+                }
 
                 // Execute the commands
                 for (command in commandsToExecute) {

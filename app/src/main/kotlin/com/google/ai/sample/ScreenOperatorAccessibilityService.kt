@@ -500,15 +500,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.w(TAG, "Termux not found for command execution.")
             return
         }
-        val intent = Intent("com.termux.tasker.RUN_COMMAND").apply {
+        val intent = Intent("com.termux.RUN_COMMAND").apply {
             `package` = termuxPackage
-            putExtra("com.termux.tasker.extra.COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-            putExtra("com.termux.tasker.extra.COMMAND_ARGUMENTS", arrayOf("-lc", command))
-            putExtra("com.termux.tasker.extra.BACKGROUND", false)
-            putExtra("com.termux.tasker.extra.SESSION_ACTION", "0")
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", command))
+            putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
         }
         try {
-            sendBroadcast(intent)
+            startService(intent)
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to dispatch Termux command", t)
             TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
@@ -1895,6 +1895,24 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         }
     }
     
+
+    private fun tryPerformScrollableNodeAction(action: Int): Boolean {
+        refreshRootNode()
+        val root = rootNode ?: return false
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            if (node.isScrollable && node.performAction(action)) {
+                return true
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(queue::add)
+            }
+        }
+        return false
+    }
+
     /**
      * Scroll down on the screen using gesture
      */
@@ -1935,7 +1953,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll down gesture cancelled")
-                        showToast("Scroll down cancelled", true)
+                        val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                        showToast(if (fallbackWorked) "Scroll down fallback succeeded" else "Scroll down cancelled", !fallbackWorked)
                         scheduleNextCommandProcessing()
                     }
                 },
@@ -1944,7 +1963,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll down gesture")
-                showToast("Error scrolling down", true)
+                val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                showToast(if (fallbackWorked) "Scroll down fallback succeeded" else "Error scrolling down", !fallbackWorked)
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
@@ -2052,7 +2072,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll up gesture cancelled")
-                        showToast("Scroll up cancelled", true)
+                        val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                        showToast(if (fallbackWorked) "Scroll up fallback succeeded" else "Scroll up cancelled", !fallbackWorked)
                         scheduleNextCommandProcessing()
                     }
                 },
@@ -2061,7 +2082,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll up gesture")
-                showToast("Error scrolling up", true)
+                val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                showToast(if (fallbackWorked) "Scroll up fallback succeeded" else "Error scrolling up", !fallbackWorked)
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
