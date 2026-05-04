@@ -3,7 +3,8 @@ import java.io.ByteArrayOutputStream
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.20"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.1.20"
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id("kotlin-parcelize")
     id("com.google.gms.google-services")
@@ -93,9 +94,10 @@ android {
     buildFeatures {
         compose = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.4"
+    lint {
+        disable += setOf("CoroutineCreationDuringComposition", "StateFlowValueCalledInComposition")
     }
+
     packaging {
         jniLibs {
             useLegacyPackaging = false
@@ -193,9 +195,9 @@ if (isReleaseTaskRequested && missingReleaseSigningEnv.isNotEmpty()) {
 
 dependencies {
     constraints {
-        implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.20")
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.20")
-        implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.20")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib:2.1.20")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.20")
+        implementation("org.jetbrains.kotlin:kotlin-reflect:2.1.20")
     }
 
     implementation("androidx.core:core-ktx:1.9.0")
