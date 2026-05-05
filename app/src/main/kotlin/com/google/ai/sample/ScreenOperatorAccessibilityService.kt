@@ -502,10 +502,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         val intent = Intent("com.termux.RUN_COMMAND").apply {
             `package` = termuxPackage
+            setClassName(termuxPackage, "com.termux.app.RunCommandService")
             putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", command))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
         }
         try {
             startService(intent)
