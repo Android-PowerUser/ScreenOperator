@@ -11,7 +11,7 @@ object CommandParser {
 
     // Enum to represent different command types
     private enum class CommandTypeEnum {
-        CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, PRESS_HOME, PRESS_BACK,
+        CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, WAIT, PRESS_HOME, PRESS_BACK,
         SHOW_RECENT_APPS, SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
@@ -53,8 +53,9 @@ object CommandParser {
         // Tap coordinates patterns
         PatternInfo("tapCoords1", Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
 
-        // Screenshot patterns
+        // Screenshot and wait patterns
         PatternInfo("screenshot1", Regex("(?i)\\btakeScreenshot\\(\\)"), { Command.TakeScreenshot }, CommandTypeEnum.TAKE_SCREENSHOT),
+        PatternInfo("wait1", Regex("(?i)\\bWait\\(\\s*(\\d+)\\s*\\)"), { match -> Command.Wait(match.groupValues[1].toLong()) }, CommandTypeEnum.WAIT),
 
         // Home button patterns
         PatternInfo("home1", Regex("(?i)\\bhome\\(\\)"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
@@ -150,6 +151,7 @@ object CommandParser {
             is Command.LongClickButton -> Log.d(TAG, "Command details: LongClickButton(\"${command.buttonText}\")")
             is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
             is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
+            is Command.Wait -> Log.d(TAG, "Command details: Wait(${command.seconds})")
             is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
             is Command.PressBackButton -> Log.d(TAG, "Command details: PressBackButton")
             is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")

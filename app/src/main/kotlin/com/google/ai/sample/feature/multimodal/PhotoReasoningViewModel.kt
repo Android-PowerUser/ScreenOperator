@@ -735,7 +735,7 @@ class PhotoReasoningViewModel(
             isPending = true
         )
         messages.add(pendingAiMessage)
-        _chatState.setAllMessages(messages)
+        _chatState.setAllMessages(PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(messages))
         _chatMessagesFlow.value = _chatState.getAllMessages()
 
         currentReasoningJob?.cancel() // Cancel any previous reasoning job
@@ -1181,7 +1181,7 @@ class PhotoReasoningViewModel(
                 val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
                 if (formattedDbEntries.isNotBlank())
                     apiMessages.add(CerebrasMessage(role = "user", content = formattedDbEntries))
-                _chatState.getAllMessages()
+                PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                     .filter { !it.isPending && it.participant != PhotoParticipant.ERROR }
                     .forEach { message ->
                         val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
@@ -1315,7 +1315,7 @@ class PhotoReasoningViewModel(
             if (systemContent.isNotEmpty())
                 apiMessages.add(MistralMessage(role = "system", content = systemContent))
 
-            _chatState.getAllMessages()
+            PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                 .filter { !it.isPending && it.participant != PhotoParticipant.ERROR }
                 .forEach { message ->
                     val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
@@ -1466,15 +1466,7 @@ class PhotoReasoningViewModel(
             imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
             isPending = false
         )
-        _chatState.addMessage(userMessage)
-
-        val pendingAiMessage = PhotoReasoningMessage(
-            text = "",
-            participant = PhotoParticipant.MODEL,
-            isPending = true
-        )
-        _chatState.addMessage(pendingAiMessage)
-        _chatMessagesFlow.value = _chatState.getAllMessages()
+        appendUserAndPendingModelMessages(userMessage)
 
         _uiState.value = PhotoReasoningUiState.Loading
 
@@ -1499,7 +1491,7 @@ class PhotoReasoningViewModel(
                 }
 
                 // Add Chat History (exclude the last added user message)
-                val allMessages = _chatState.getAllMessages()
+                val allMessages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                 // exclude the last pending message and the last user message we just added
                 val historyMessages = allMessages.filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.dropLast(1)
                 
@@ -1627,7 +1619,7 @@ class PhotoReasoningViewModel(
                     }
 
                     // Add chat history
-                    val messages = _chatState.getAllMessages()
+                    val messages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                     messages.forEach { msg ->
                         when (msg.participant) {
                             PhotoParticipant.USER -> {
@@ -2431,7 +2423,7 @@ private fun processCommands(text: String) {
     fun loadChatHistory(context: Context) {
         val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
         if (savedMessages.isNotEmpty()) {
-            _chatState.setAllMessages(savedMessages)
+            _chatState.setAllMessages(PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(savedMessages))
             _chatMessagesFlow.value = _chatState.getAllMessages()
             
             if (isLiveMode) {

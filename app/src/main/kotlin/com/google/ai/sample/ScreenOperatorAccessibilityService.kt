@@ -141,6 +141,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     // Handler for delayed operations
     private val handler = Handler(Looper.getMainLooper()) // Instance handler
 
+    private var pendingScreenshotDelayMillis: Long = 0L
+
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
 
@@ -234,38 +236,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 this.tapAtCoordinates(point.xPx, point.yPx)
                 true // Asynchronous
             }
-            is Command.TakeScreenshot -> {
-                val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-                if (!currentModel.supportsScreenshot) {
-                    Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
-                    this.showToast("Capturing screen info...", false)
-                    val screenInfo = captureScreenInformation()
-                    val mainActivity = MainActivity.getInstance()
-                    mainActivity?.getPhotoReasoningViewModel()?.addScreenshotToConversation(
-                        Uri.EMPTY,
-                        applicationContext,
-                        screenInfo
-                    )
-                    false
-                } else {
-                    Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
-                    this.showToast("Preparing screenshot...", false) // Updated toast message
-
-                    val screenInfo = captureScreenInformation() // Capture fresh screen info
-
-                    val intent = Intent(MainActivity.ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT).apply {
-                        putExtra(MainActivity.EXTRA_SCREEN_INFO, screenInfo)
-                        // Set package to ensure only our app's receiver gets it
-                        `package` = applicationContext.packageName
-                    }
-                    applicationContext.sendBroadcast(intent)
-                    Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
-
-                    // The command is considered "handled" once the broadcast is sent.
-                    // MainActivity and ScreenCaptureService will handle the rest asynchronously.
-                    // Return false to allow the command queue to proceed immediately.
-                    false
-                }
+            is Command.TakeScreenshot -> executeTakeScreenshotCommand()
+            is Command.Wait -> {
+                pendingScreenshotDelayMillis = command.seconds
+                    .coerceAtLeast(0L)
+                    .coerceAtMost(Long.MAX_VALUE / 1000L) * 1000L
+                Log.d(TAG, "Command.Wait: Delaying the next takeScreenshot command by ${command.seconds} seconds.")
+                showToast("Delaying next screenshot by ${command.seconds} seconds", false)
+                false
             }
             is Command.PressHomeButton -> {
                 executeSyncCommandAction(
@@ -436,6 +414,51 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
         }
+    }
+
+    private fun executeTakeScreenshotCommand(): Boolean {
+        val delayMillis = pendingScreenshotDelayMillis
+        pendingScreenshotDelayMillis = 0L
+
+        val captureAndRequestScreenshot = {
+            val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+            if (!currentModel.supportsScreenshot) {
+                Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
+                showToast("Capturing screen info...", false)
+                val screenInfo = captureScreenInformation()
+                val mainActivity = MainActivity.getInstance()
+                mainActivity?.getPhotoReasoningViewModel()?.addScreenshotToConversation(
+                    Uri.EMPTY,
+                    applicationContext,
+                    screenInfo
+                )
+            } else {
+                Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
+                showToast("Preparing screenshot...", false)
+
+                val screenInfo = captureScreenInformation()
+
+                val intent = Intent(MainActivity.ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT).apply {
+                    putExtra(MainActivity.EXTRA_SCREEN_INFO, screenInfo)
+                    `package` = applicationContext.packageName
+                }
+                applicationContext.sendBroadcast(intent)
+                Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
+            }
+        }
+
+        if (delayMillis <= 0L) {
+            captureAndRequestScreenshot()
+            return false
+        }
+
+        Log.d(TAG, "Command.TakeScreenshot: Waiting ${delayMillis}ms before capturing screen info and screenshot.")
+        showToast("Waiting ${delayMillis / 1000L} seconds before screenshot...", false)
+        handler.postDelayed({
+            captureAndRequestScreenshot()
+            scheduleNextCommandProcessing()
+        }, delayMillis)
+        return true
     }
 
     private fun executeSyncCommandAction(
