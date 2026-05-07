@@ -39,7 +39,7 @@ You can build the apk with Github actions: Stay in your fork, on your user accou
 
 ### Share your database from Screen Operator
 
-In the Discussions sector of GitHub you can share your own database
+[Here](https://github.com/Android-PowerUser/ScreenOperator/discussions/87) you can share your own database
 
 <br/>
 
