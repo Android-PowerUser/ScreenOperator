@@ -1715,6 +1715,9 @@ class PhotoReasoningViewModel(
 
     fun onStopClicked() {
         _showStopNotificationFlow.value = false
+        // Stop muss auch während Wait(...) sofort wirken:
+        // Wartende Accessibility-Kommandos/Delayed-Screenshot immer abbrechen.
+        ScreenOperatorAccessibilityService.clearCommandQueue()
 
         val generationRunning = isGenerationRunning()
 
@@ -1738,8 +1741,6 @@ class PhotoReasoningViewModel(
         stopExecutionFlag.set(true)
         currentReasoningJob?.cancel()
         commandProcessingJob?.cancel()
-        // NEU:
-        ScreenOperatorAccessibilityService.clearCommandQueue()
 
         val messages = _chatState.getAllMessages().toMutableList()
         val lastMessage = messages.lastOrNull()
