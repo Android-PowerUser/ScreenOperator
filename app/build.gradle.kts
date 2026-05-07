@@ -103,6 +103,10 @@ android {
             useLegacyPackaging = false
         }
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 fun parseLoadAlignments(readelfOutput: String): List<Long> {

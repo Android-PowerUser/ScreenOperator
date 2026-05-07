@@ -67,4 +67,15 @@ class CommandParserTest {
         assertEquals(1, commands.size)
         assertTrue(commands.first() is Command.Retrieve)
     }
+
+    @Test
+    fun parseCommands_extractsWaitCommand() {
+        val commands = CommandParser.parseCommands("Wait(7) takeScreenshot()", clearBuffer = true)
+
+        assertEquals(2, commands.size)
+        val wait = commands.first()
+        assertTrue(wait is Command.Wait)
+        assertEquals(7L, (wait as Command.Wait).seconds)
+        assertTrue(commands[1] is Command.TakeScreenshot)
+    }
 }

@@ -239,12 +239,34 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
 @Serializable
 data class ServiceGroqRequest(
     val model: String,
-    val messages: List<ServiceMistralMessage>,
+    val messages: List<ServiceGroqMessage>,
     val max_tokens: Int = 4096,
     val temperature: Double = 0.7,
     val top_p: Double = 1.0,
     val stream: Boolean = false
 )
+
+@Serializable
+data class ServiceGroqMessage(
+    val role: String,
+    val content: List<ServiceGroqContent>
+)
+
+@Serializable
+@OptIn(ExperimentalSerializationApi::class)
+@JsonClassDiscriminator("type")
+sealed class ServiceGroqContent
+
+@Serializable
+@SerialName("text")
+data class ServiceGroqTextContent(@SerialName("text") val text: String) : ServiceGroqContent()
+
+@Serializable
+@SerialName("image_url")
+data class ServiceGroqImageContent(@SerialName("image_url") val imageUrl: ServiceGroqImageUrl) : ServiceGroqContent()
+
+@Serializable
+data class ServiceGroqImageUrl(val url: String)
 
 internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
     var responseText: String? = null
@@ -254,12 +276,22 @@ internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory:
     val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
 
     try {
-        val apiMessages = mutableListOf<ServiceMistralMessage>()
+        val apiMessages = mutableListOf<ServiceGroqMessage>()
         (chatHistory + inputContent).forEach { content ->
             val parts = content.parts.mapNotNull { part ->
                 when (part) {
-                    is TextPart -> if (part.text.isNotBlank()) ServiceMistralTextContent(text = part.text) else null
-                    is ImagePart -> if (supportsScreenshot) ServiceMistralImageContent(imageUrl = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}") else null
+                    is TextPart -> if (part.text.isNotBlank()) ServiceGroqTextContent(text = part.text) else null
+                    is ImagePart -> {
+                        if (supportsScreenshot) {
+                            ServiceGroqImageContent(
+                                imageUrl = ServiceGroqImageUrl(
+                                    url = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}"
+                                )
+                            )
+                        } else {
+                            null
+                        }
+                    }
                     else -> null
                 }
             }
@@ -269,12 +301,20 @@ internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory:
                     "system" -> "system"
                     else -> "assistant"
                 }
-                apiMessages.add(ServiceMistralMessage(role = role, content = parts))
+                apiMessages.add(ServiceGroqMessage(role = role, content = parts))
             }
         }
 
         val requestBody = ServiceGroqRequest(model = modelName, messages = apiMessages)
-        val json = Json { ignoreUnknownKeys = true; serializersModule = SerializersModule { polymorphic(ServiceMistralContent::class) { subclass(ServiceMistralTextContent::class); subclass(ServiceMistralImageContent::class) } } }
+        val json = Json {
+            ignoreUnknownKeys = true
+            serializersModule = SerializersModule {
+                polymorphic(ServiceGroqContent::class) {
+                    subclass(ServiceGroqTextContent::class)
+                    subclass(ServiceGroqImageContent::class)
+                }
+            }
+        }
         val mediaType = "application/json".toMediaType()
         val client = OkHttpClient()
         val request = Request.Builder()
