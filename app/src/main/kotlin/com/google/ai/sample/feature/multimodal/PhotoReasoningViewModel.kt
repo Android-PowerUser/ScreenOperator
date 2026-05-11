@@ -1126,19 +1126,24 @@ class PhotoReasoningViewModel(
 
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
-        if (currentKey != null && !currentModel.isOfflineModel && currentModel != ModelOption.HUMAN_EXPERT) {
+        if (currentModel != ModelOption.HUMAN_EXPERT) {
             val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
             val config = com.google.ai.client.generativeai.type.generationConfig {
                 temperature = genSettings.temperature
                 topP = genSettings.topP
-                topK = genSettings.topK
+                if (currentModel.supportsTopK) {
+                    topK = genSettings.topK.coerceAtLeast(1)
+                }
             }
-            generativeModel = GenerativeModel(
-                modelName = currentModel.modelName,
-                apiKey = currentKey,
-                generationConfig = config
-            )
-            _modelNameState.value = currentModel.modelName
+            val modelApiKey = if (currentModel.isOfflineModel) "offline-no-key-needed" else (currentKey ?: "")
+            if (currentModel.isOfflineModel || modelApiKey.isNotBlank()) {
+                generativeModel = GenerativeModel(
+                    modelName = currentModel.modelName,
+                    apiKey = modelApiKey,
+                    generationConfig = config
+                )
+                _modelNameState.value = currentModel.modelName
+            }
         }
 
         ensureInitialized(context)
@@ -1190,7 +1195,8 @@ class PhotoReasoningViewModel(
 
                 // CerebrasRequest braucht stream-Feld — inline als JSON-String um Datenklasse nicht zu ändern
                 val selectedModelName = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().modelName
-                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":0.2,"top_p":1.0,"stream":true}"""
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, selectedModelName)
+                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":${genSettings.temperature.toDouble()},"top_p":${genSettings.topP.toDouble()},"stream":true}"""
                 val mediaType = "application/json".toMediaType()
                 val client = OkHttpClient()
 

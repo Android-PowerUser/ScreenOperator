@@ -20,7 +20,10 @@ import java.util.concurrent.TimeUnit
 
 class LiveApiManager(
     private val apiKey: String,
-    private val modelName: String = "gemini-2.5-flash-live-preview"
+    private val modelName: String = "gemini-2.5-flash-live-preview",
+    private val temperature: Double = 0.0,
+    private val topP: Double = 0.0,
+    private val topK: Int = 1
 ) {
     private val TAG = "LiveApiManager"
 
@@ -147,7 +150,9 @@ class LiveApiManager(
             put("setup", JSONObject().apply {
                 put("model", "models/$apiModelName") // z.B. "models/gemini-live-2.5-flash-native-audio"
                 put("generationConfig", JSONObject().apply {
-                    put("temperature", 0.0)
+                    put("temperature", temperature)
+                    put("topP", topP)
+                    put("topK", topK.coerceAtLeast(1))
                     put("maxOutputTokens", 8192)
                     if (apiModelName == "gemini-live-2.5-flash-native-audio") {
                         put("responseModalities", JSONArray()) // Empty array for text-only
