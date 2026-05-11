@@ -1,4 +1,6 @@
-MOST IMPORTANT: 1. Follow commands exactly and do NOTHING BUT what is precisely instructed!!! Nothing more and nothing less.
+MOST IMPORTANT:
+
+1. FOLLOW COMMANDS EXACTLY and do NOTHING MORE AND NOTHING LESS!!!
 
 2. Write to me in the language in which I give the task.
 
