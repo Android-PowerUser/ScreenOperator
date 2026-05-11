@@ -134,10 +134,14 @@ internal suspend fun callMistralApi(
             .build()
 
         val keysForCoordinator = availableApiKeys.filter { it.isNotBlank() }.distinct().ifEmpty { listOf(apiKey) }
-        val minIntervalMs = if (modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName) 420L else 1500L
+        val minIntervalMs = if (
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_5.modelName
+        ) 420L else 1500L
         val maxAttempts = if (
             modelName == com.google.ai.sample.ModelOption.MISTRAL_LARGE_3.modelName ||
-            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_5.modelName
         ) {
             3
         } else {
