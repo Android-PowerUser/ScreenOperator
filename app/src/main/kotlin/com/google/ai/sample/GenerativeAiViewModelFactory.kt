@@ -110,9 +110,16 @@ enum class ModelOption(
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
-    /** Whether this model supports TopK/TopP/Temperature settings */
+    /** Whether this model supports Temperature/TopP settings in UI */
     val supportsGenerationSettings: Boolean
         get() = this != HUMAN_EXPERT
+
+    /** Whether this model supports TopK setting in UI/request payloads. */
+    val supportsTopK: Boolean
+        get() = when (apiProvider) {
+            ApiProvider.MISTRAL, ApiProvider.PUTER -> false
+            else -> this != HUMAN_EXPERT
+        }
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -129,7 +136,9 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         val config = generationConfig {
             temperature = genSettings.temperature
             topP = genSettings.topP
-            topK = genSettings.topK
+            if (currentModel.supportsTopK) {
+                topK = genSettings.topK.coerceAtLeast(1)
+            }
         }
 
         // Get the API key from MainActivity
@@ -149,7 +158,13 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
                     if (currentModel.modelName.contains("live")) {
                         // Live API models
-                        val liveApiManager = LiveApiManager(apiKey, currentModel.modelName)
+                        val liveApiManager = LiveApiManager(
+                            apiKey = apiKey,
+                            modelName = currentModel.modelName,
+                            temperature = genSettings.temperature.toDouble(),
+                            topP = genSettings.topP.toDouble(),
+                            topK = genSettings.topK.coerceAtLeast(1)
+                        )
                         
                         // For Live API, we might not need a GenerativeModel at all
                         // or we use a fallback model for non-live operations

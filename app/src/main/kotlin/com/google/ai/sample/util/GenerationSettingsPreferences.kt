@@ -16,7 +16,7 @@ object GenerationSettingsPreferences {
     data class GenerationSettings(
         val temperature: Float = 0.0f,
         val topP: Float = 0.0f,
-        val topK: Int = 0
+        val topK: Int = 1
     )
 
     private fun key(modelName: String, suffix: String) = "$modelName$suffix"
@@ -36,7 +36,7 @@ object GenerationSettingsPreferences {
         return GenerationSettings(
             temperature = prefs.getFloat(key(modelName, KEY_TEMPERATURE_SUFFIX), 0.0f),
             topP = prefs.getFloat(key(modelName, KEY_TOP_P_SUFFIX), 0.0f),
-            topK = prefs.getInt(key(modelName, KEY_TOP_K_SUFFIX), 0)
+            topK = prefs.getInt(key(modelName, KEY_TOP_K_SUFFIX), 1)
         )
     }
 }

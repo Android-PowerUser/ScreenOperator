@@ -418,7 +418,7 @@ fun MenuScreen(
                     }
                     var tempSlider by remember(selectedModel) { mutableStateOf(genSettings.value.temperature) }
                     var topPSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topP) }
-                    var topKSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topK.toFloat()) }
+                    var topKSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topK.coerceAtLeast(1).toFloat()) }
                     
                     Card(
                         modifier = Modifier
@@ -481,28 +481,30 @@ fun MenuScreen(
                                 modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            if (selectedModel.supportsTopK) {
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                            // TopK Slider (0 - 100)
-                            Text(
-                                text = "Top K: ${Math.round(topKSlider)}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            androidx.compose.material3.Slider(
-                                value = topKSlider,
-                                onValueChange = { newVal ->
-                                    topKSlider = newVal
-                                },
-                                onValueChangeFinished = {
-                                    genSettings.value = genSettings.value.copy(topK = Math.round(topKSlider))
-                                    com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
-                                        context, selectedModel.modelName, genSettings.value
-                                    )
-                                },
-                                valueRange = 0f..100f,
-                                steps = 0,
-                                modifier = Modifier.fillMaxWidth().sliderFriendly()
-                            )
+                                // TopK Slider (1 - 100)
+                                Text(
+                                    text = "Top K: ${Math.round(topKSlider)}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                androidx.compose.material3.Slider(
+                                    value = topKSlider,
+                                    onValueChange = { newVal ->
+                                        topKSlider = newVal
+                                    },
+                                    onValueChangeFinished = {
+                                        genSettings.value = genSettings.value.copy(topK = Math.round(topKSlider))
+                                        com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
+                                            context, selectedModel.modelName, genSettings.value
+                                        )
+                                    },
+                                    valueRange = 1f..100f,
+                                    steps = 98,
+                                    modifier = Modifier.fillMaxWidth().sliderFriendly()
+                                )
+                            }
 
                             if (selectedModel.isOfflineModel) {
                                 Spacer(modifier = Modifier.height(4.dp))
