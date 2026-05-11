@@ -16,4 +16,6 @@ MOST IMPORTANT: 1. Follow commands exactly and do NOTHING BUT what is precisely 
 
 9. If debug compilation fails in your environment, resolve the issue before reporting it as complete.
 
-10. This app is production software and not a toy.
+10. For code changes only, compile only the code and do not perform a full build.
+
+11. This app is production software and not a toy.
