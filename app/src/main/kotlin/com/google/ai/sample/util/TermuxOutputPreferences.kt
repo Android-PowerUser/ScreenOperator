@@ -5,12 +5,18 @@ import android.content.Context
 object TermuxOutputPreferences {
     private const val PREF_NAME = "termux_output_prefs"
     private const val KEY_PENDING_OUTPUT = "pending_output"
+    private const val MAX_BUFFER_CHARS = 16000
 
     fun appendOutput(context: Context, output: String) {
         if (output.isBlank()) return
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val existing = prefs.getString(KEY_PENDING_OUTPUT, "").orEmpty()
-        val merged = if (existing.isBlank()) output else "$existing\n\n$output"
+        val mergedRaw = if (existing.isBlank()) output else "$existing\n\n$output"
+        val merged = if (mergedRaw.length > MAX_BUFFER_CHARS) {
+            mergedRaw.takeLast(MAX_BUFFER_CHARS)
+        } else {
+            mergedRaw
+        }
         prefs.edit().putString(KEY_PENDING_OUTPUT, merged).apply()
     }
 

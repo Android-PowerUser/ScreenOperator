@@ -2659,15 +2659,16 @@ private fun processCommands(text: String) {
         } else {
             null
         }
+        val termuxOutputInfo = TermuxOutputPreferences.consumeOutput(appContext)?.let { "Termux output:\n$it" }
+        if (!termuxOutputInfo.isNullOrBlank()) {
+            Log.i(TAG, "buildEnrichedScreenInfo: Injecting Termux output into next screen-info bubble. chars=${termuxOutputInfo.length}")
+        }
         val missingInfo = listOfNotNull(appNotFoundInfo, termuxNotFoundInfo).joinToString("\n").ifBlank { null }
+        val extraInfo = listOfNotNull(missingInfo, retrievedInfo, termuxOutputInfo).joinToString("\n\n").ifBlank { null }
 
         return when {
-            !missingInfo.isNullOrBlank() && !retrievedInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$missingInfo\n\n$retrievedInfo\n\n$screenInfo"
-            !missingInfo.isNullOrBlank() && !retrievedInfo.isNullOrBlank() -> "$missingInfo\n\n$retrievedInfo"
-            !missingInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$missingInfo\n\n$screenInfo"
-            !missingInfo.isNullOrBlank() -> missingInfo
-            !retrievedInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$retrievedInfo\n\n$screenInfo"
-            !retrievedInfo.isNullOrBlank() -> retrievedInfo
+            !extraInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$extraInfo\n\n$screenInfo"
+            !extraInfo.isNullOrBlank() -> extraInfo
             !screenInfo.isNullOrBlank() -> screenInfo
             else -> null
         }
