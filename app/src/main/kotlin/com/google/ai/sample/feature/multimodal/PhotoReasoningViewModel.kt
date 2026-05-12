@@ -2663,10 +2663,11 @@ private fun processCommands(text: String) {
         }
         val termuxOutputInfo = TermuxOutputPreferences.consumeOutput(appContext)?.let { "Termux output:\n$it" }
         if (!termuxOutputInfo.isNullOrBlank()) {
-            Log.i(TAG, "buildEnrichedScreenInfo: Injecting Termux output into next screen-info bubble. chars=${termuxOutputInfo.length}")
+            Log.i(TAG, "buildEnrichedScreenInfo: Replacing screen-elements bubble with Termux output. chars=${termuxOutputInfo.length}")
+            return termuxOutputInfo
         }
         val missingInfo = listOfNotNull(appNotFoundInfo, termuxNotFoundInfo).joinToString("\n").ifBlank { null }
-        val extraInfo = listOfNotNull(missingInfo, retrievedInfo, termuxOutputInfo).joinToString("\n\n").ifBlank { null }
+        val extraInfo = listOfNotNull(missingInfo, retrievedInfo).joinToString("\n\n").ifBlank { null }
 
         return when {
             !extraInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$extraInfo\n\n$screenInfo"
