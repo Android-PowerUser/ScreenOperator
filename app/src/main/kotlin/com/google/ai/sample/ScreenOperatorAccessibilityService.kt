@@ -632,31 +632,53 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
             val resultBundle = intent.getBundleExtra("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE")
                 ?: intent.getBundleExtra("result")
-            if (resultBundle == null) {
-                Log.w(TAG, "Termux result bundle missing; available extras=${intent.extras?.keySet()?.joinToString()}")
-                unregisterSelf()
-                return
-            }
 
-            val stdout = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT")
-                ?: resultBundle.getString("stdout")
-                ?: ""
-            val stderr = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR")
-                ?: resultBundle.getString("stderr")
-                ?: ""
+            val extras = intent.extras
+            val stdout = sequenceOf(
+                resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
+                resultBundle?.getString("stdout"),
+                extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
+                extras?.getString("stdout")
+            ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+            val stderr = sequenceOf(
+                resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
+                resultBundle?.getString("stderr"),
+                extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
+                extras?.getString("stderr")
+            ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
             val exitCode = when {
-                resultBundle.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") -> {
+                resultBundle?.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") == true -> {
                     resultBundle.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
                 }
-                resultBundle.containsKey("exitCode") -> resultBundle.getInt("exitCode", Int.MIN_VALUE)
+                resultBundle?.containsKey("exitCode") == true -> resultBundle.getInt("exitCode", Int.MIN_VALUE)
+                extras?.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") == true -> {
+                    extras.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
+                }
+                extras?.containsKey("exitCode") == true -> extras.getInt("exitCode", Int.MIN_VALUE)
                 else -> Int.MIN_VALUE
             }
 
-            Log.i(TAG, "Termux result received: exitCode=$exitCode stdoutLen=${stdout.length} stderrLen=${stderr.length} keys=${resultBundle.keySet().joinToString()}")
+            val resultKeys = resultBundle?.keySet()?.joinToString().orEmpty()
+            val extraKeys = extras?.keySet()?.joinToString().orEmpty()
+            Log.i(TAG, "Termux result received: exitCode=$exitCode stdoutLen=${stdout.length} stderrLen=${stderr.length} bundleKeys=$resultKeys extraKeys=$extraKeys")
 
             val hasKnownResult = stdout.isNotBlank() || stderr.isNotBlank() || exitCode != Int.MIN_VALUE
             if (!hasKnownResult) {
-                Log.w(TAG, "Ignoring Termux callback without stdout/stderr/exitCode to avoid polluting pending output.")
+                val rawExtrasDump = extras?.keySet()?.joinToString("\n") { key -> "$key=${extras.get(key)}" }.orEmpty().trim()
+                if (rawExtrasDump.isBlank()) {
+                    Log.w(TAG, "Ignoring Termux callback without stdout/stderr/exitCode and no readable extras.")
+                    unregisterSelf()
+                    return
+                }
+                Log.w(TAG, "Termux callback missing standard stdout/stderr/exitCode fields; falling back to raw extras dump for AI handoff.")
+                TermuxOutputPreferences.appendOutput(appContext, "Termux callback raw extras:\n$rawExtrasDump")
+                mainHandler.post {
+                    MainActivity.getInstance()?.updateStatusMessage("Termux raw result captured", false)
+                }
+                serviceInstance?.handler?.post {
+                    Log.d(TAG, "Termux raw callback captured, scheduling next command processing.")
+                    serviceInstance?.scheduleNextCommandProcessing()
+                }
                 unregisterSelf()
                 return
             }
