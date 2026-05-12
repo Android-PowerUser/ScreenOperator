@@ -30,6 +30,7 @@ import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CoordinateParser
 import com.google.ai.sample.util.TermuxFeedbackPreferences
+import com.google.ai.sample.util.TermuxOutputPreferences
 import java.io.File
 import java.text.SimpleDateFormat
 import com.google.ai.sample.GenerativeViewModelFactory
@@ -621,6 +622,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 return
             }
             val resultBundle = intent.getBundleExtra("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE")
+                ?: intent.getBundleExtra("result")
             if (resultBundle == null) {
                 Log.w(TAG, "Termux result bundle missing; available extras=${intent.extras?.keySet()?.joinToString()}")
                 return
@@ -645,6 +647,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     append(stderr)
                 }
             }
+
+            val aiRelevantOutput = combined.trim()
+            TermuxOutputPreferences.appendOutput(appContext, aiRelevantOutput)
+            Log.i(TAG, "Stored Termux output for next screenshot bubble. chars=${aiRelevantOutput.length}")
 
             mainHandler.post {
                 MainActivity.getInstance()?.updateStatusMessage("Termux stream start", false)
