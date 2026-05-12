@@ -573,7 +573,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
         val callbackReceiver = TermuxResultReceiver(applicationContext)
         try {
-            registerReceiver(callbackReceiver, android.content.IntentFilter(callbackAction), Context.RECEIVER_NOT_EXPORTED)
+            applicationContext.registerReceiver(callbackReceiver, android.content.IntentFilter(callbackAction), Context.RECEIVER_NOT_EXPORTED)
             Log.i(TAG, "Registered Termux result receiver for action=$callbackAction")
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to register Termux result receiver", t)
@@ -617,27 +617,57 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private class TermuxResultReceiver(private val appContext: Context) : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            fun unregisterSelf() {
+                try {
+                    appContext.unregisterReceiver(this)
+                    Log.i(TAG, "Termux result receiver unregistered")
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Failed to unregister Termux result receiver", t)
+                }
+            }
             if (intent == null) {
                 Log.w(TAG, "Termux result receiver invoked with null intent")
+                unregisterSelf()
                 return
             }
             val resultBundle = intent.getBundleExtra("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE")
                 ?: intent.getBundleExtra("result")
             if (resultBundle == null) {
                 Log.w(TAG, "Termux result bundle missing; available extras=${intent.extras?.keySet()?.joinToString()}")
+                unregisterSelf()
                 return
             }
 
-            val stdout = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT", "") ?: ""
-            val stderr = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR", "") ?: ""
-            val exitCode = resultBundle.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
+            val stdout = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT")
+                ?: resultBundle.getString("stdout")
+                ?: ""
+            val stderr = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR")
+                ?: resultBundle.getString("stderr")
+                ?: ""
+            val exitCode = when {
+                resultBundle.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") -> {
+                    resultBundle.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
+                }
+                resultBundle.containsKey("exitCode") -> resultBundle.getInt("exitCode", Int.MIN_VALUE)
+                else -> Int.MIN_VALUE
+            }
 
-            Log.i(TAG, "Termux result received: exitCode=$exitCode stdoutLen=${stdout.length} stderrLen=${stderr.length}")
+            Log.i(TAG, "Termux result received: exitCode=$exitCode stdoutLen=${stdout.length} stderrLen=${stderr.length} keys=${resultBundle.keySet().joinToString()}")
+
+            val hasKnownResult = stdout.isNotBlank() || stderr.isNotBlank() || exitCode != Int.MIN_VALUE
+            if (!hasKnownResult) {
+                Log.w(TAG, "Ignoring Termux callback without stdout/stderr/exitCode to avoid polluting pending output.")
+                unregisterSelf()
+                return
+            }
 
             val combined = buildString {
-                append("Termux finished (exit=")
-                append(exitCode)
-                append(")")
+                append("Termux finished")
+                if (exitCode != Int.MIN_VALUE) {
+                    append(" (exit=")
+                    append(exitCode)
+                    append(")")
+                }
                 if (stdout.isNotBlank()) {
                     append("\nstdout:\n")
                     append(stdout)
@@ -649,8 +679,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
 
             val aiRelevantOutput = combined.trim()
-            TermuxOutputPreferences.appendOutput(appContext, aiRelevantOutput)
-            Log.i(TAG, "Stored Termux output for next screenshot bubble. chars=${aiRelevantOutput.length}")
+            if (aiRelevantOutput.isNotBlank()) {
+                TermuxOutputPreferences.appendOutput(appContext, aiRelevantOutput)
+                Log.i(TAG, "Stored Termux output for next screenshot bubble. chars=${aiRelevantOutput.length}")
+            }
 
             mainHandler.post {
                 MainActivity.getInstance()?.updateStatusMessage("Termux stream start", false)
@@ -663,12 +695,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
 
-            try {
-                appContext.unregisterReceiver(this)
-                Log.i(TAG, "Termux result receiver unregistered")
-            } catch (t: Throwable) {
-                Log.w(TAG, "Failed to unregister Termux result receiver", t)
-            }
+            unregisterSelf()
         }
     }
 
