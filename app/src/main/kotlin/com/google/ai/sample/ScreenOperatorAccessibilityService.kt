@@ -7,6 +7,7 @@ import android.accessibilityservice.GestureDescription
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
@@ -562,6 +563,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             "Resolved Termux RunCommandService=${resolvedService.serviceInfo?.name}, app=${resolvedService.serviceInfo?.packageName}"
         )
 
+        val callbackAction = "com.google.ai.sample.TERMUX_COMMAND_RESULT"
+        val callbackIntent = Intent(callbackAction).apply {
+            `package` = packageName
+        }
+        val callbackFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val pendingResultIntent = PendingIntent.getBroadcast(applicationContext, 7001, callbackIntent, callbackFlags)
+
+        val callbackReceiver = TermuxResultReceiver(applicationContext)
+        try {
+            registerReceiver(callbackReceiver, android.content.IntentFilter(callbackAction), Context.RECEIVER_NOT_EXPORTED)
+            Log.i(TAG, "Registered Termux result receiver for action=$callbackAction")
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to register Termux result receiver", t)
+        }
+
         val intent = Intent("com.termux.RUN_COMMAND").apply {
             `package` = termuxPackage
             setClassName(termuxPackage, runCommandServiceClass)
@@ -571,6 +587,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
             putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
             putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
+            putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingResultIntent)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND_CUSTOM_LOG_LEVEL", 0)
+            putExtra("com.termux.RUN_COMMAND_RETURN_STDOUT", true)
+            putExtra("com.termux.RUN_COMMAND_RETURN_STDERR", true)
         }
 
         Log.i(
@@ -591,6 +611,58 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to dispatch Termux command", t)
             TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+        }
+    }
+
+    private class TermuxResultReceiver(private val appContext: Context) : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent == null) {
+                Log.w(TAG, "Termux result receiver invoked with null intent")
+                return
+            }
+            val resultBundle = intent.getBundleExtra("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE")
+            if (resultBundle == null) {
+                Log.w(TAG, "Termux result bundle missing; available extras=${intent.extras?.keySet()?.joinToString()}")
+                return
+            }
+
+            val stdout = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT", "") ?: ""
+            val stderr = resultBundle.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR", "") ?: ""
+            val exitCode = resultBundle.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
+
+            Log.i(TAG, "Termux result received: exitCode=$exitCode stdoutLen=${stdout.length} stderrLen=${stderr.length}")
+
+            val combined = buildString {
+                append("Termux finished (exit=")
+                append(exitCode)
+                append(")")
+                if (stdout.isNotBlank()) {
+                    append("\nstdout:\n")
+                    append(stdout)
+                }
+                if (stderr.isNotBlank()) {
+                    append("\nstderr:\n")
+                    append(stderr)
+                }
+            }
+
+            mainHandler.post {
+                MainActivity.getInstance()?.updateStatusMessage("Termux stream start", false)
+            }
+            combined.lineSequence().forEachIndexed { idx, line ->
+                val framed = "Termux[$idx]: $line"
+                Log.d(TAG, framed)
+                mainHandler.post {
+                    MainActivity.getInstance()?.updateStatusMessage(framed, false)
+                }
+            }
+
+            try {
+                appContext.unregisterReceiver(this)
+                Log.i(TAG, "Termux result receiver unregistered")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed to unregister Termux result receiver", t)
+            }
         }
     }
 
