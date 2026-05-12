@@ -2559,9 +2559,8 @@ private fun processCommands(text: String) {
         context: Context,
         screenInfo: String? = null
     ) {
-        val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
-
         if (screenshotUri == Uri.EMPTY) {
+            val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
             // This case is for offline models, where we don't have a screenshot.
             // We just want to send the screen info.
             val genericAnalysisPrompt = createGenericScreenshotPrompt()
@@ -2578,6 +2577,9 @@ private fun processCommands(text: String) {
             Log.w(TAG, "addScreenshotToConversation: Debouncing duplicate/rapid call for URI $screenshotUri")
             return // Exit the function early if it's a duplicate call within the window
         }
+
+        val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
+        Log.d(TAG, "addScreenshotToConversation: Using enrichedScreenInfo=${!enrichedScreenInfo.isNullOrBlank()} for URI=$screenshotUri")
 
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
