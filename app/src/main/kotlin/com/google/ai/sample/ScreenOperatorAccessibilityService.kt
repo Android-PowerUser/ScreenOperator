@@ -386,7 +386,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             is Command.TermuxCommand -> {
-                executeSyncCommandAction(
+                executeAsyncCommandAction(
                     logMessage = "Executing Termux command: ${command.command}",
                     toastMessage = "Executing Termux command..."
                 ) {
@@ -695,6 +695,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
 
+            serviceInstance?.handler?.post {
+                Log.d(TAG, "Termux result received, scheduling next command processing.")
+                serviceInstance?.scheduleNextCommandProcessing()
+            }
             unregisterSelf()
         }
     }
