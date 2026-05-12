@@ -529,6 +529,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
 
     private fun executeTermuxCommand(command: String) {
+        Log.i(TAG, "Termux command requested. Raw command length=${command.length}")
+        val trimmedCommand = command.trim()
+        if (trimmedCommand.isEmpty()) {
+            Log.w(TAG, "Skipping Termux command dispatch because command is empty after trim.")
+            return
+        }
+
         val termuxPackage = "com.termux"
         val pm = packageManager
         val launchIntent = pm.getLaunchIntentForPackage(termuxPackage)
@@ -537,17 +544,50 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.w(TAG, "Termux not found for command execution.")
             return
         }
+
+        val runCommandServiceClass = "com.termux.app.RunCommandService"
+        val serviceProbeIntent = Intent("com.termux.RUN_COMMAND").apply {
+            `package` = termuxPackage
+            setClassName(termuxPackage, runCommandServiceClass)
+        }
+        val resolvedService = pm.resolveService(serviceProbeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        if (resolvedService == null) {
+            Log.e(TAG, "Termux RunCommandService not resolvable. package=$termuxPackage class=$runCommandServiceClass")
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+            return
+        }
+
+        Log.i(
+            TAG,
+            "Resolved Termux RunCommandService=${resolvedService.serviceInfo?.name}, app=${resolvedService.serviceInfo?.packageName}"
+        )
+
         val intent = Intent("com.termux.RUN_COMMAND").apply {
             `package` = termuxPackage
-            setClassName(termuxPackage, "com.termux.app.RunCommandService")
+            setClassName(termuxPackage, runCommandServiceClass)
             putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", command))
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", trimmedCommand))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
             putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
+            putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
         }
+
+        Log.i(
+            TAG,
+            "Dispatching Termux RUN_COMMAND with path=${intent.getStringExtra("com.termux.RUN_COMMAND_PATH")}, " +
+                "workdir=${intent.getStringExtra("com.termux.RUN_COMMAND_WORKDIR")}, " +
+                "background=${intent.getBooleanExtra("com.termux.RUN_COMMAND_BACKGROUND", false)}, " +
+                "runner=${intent.getStringExtra("com.termux.RUN_COMMAND_RUNNER")}, " +
+                "argsCount=${intent.getStringArrayExtra("com.termux.RUN_COMMAND_ARGUMENTS")?.size ?: 0}"
+        )
+
         try {
             startService(intent)
+            Log.i(TAG, "Termux command dispatch succeeded.")
+        } catch (se: SecurityException) {
+            Log.e(TAG, "Failed to dispatch Termux command due to security restriction. Check Termux RUN_COMMAND permission grant.", se)
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to dispatch Termux command", t)
             TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
