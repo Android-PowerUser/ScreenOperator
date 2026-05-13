@@ -424,12 +424,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         val delayMillis = pendingScreenshotDelayMillis
         pendingScreenshotDelayMillis = 0L
 
+        fun buildScreenInfoPayload(rawScreenInfo: String?): String? {
+            val termuxOutput = TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
+            if (termuxOutput.isBlank()) {
+                return rawScreenInfo
+            }
+            Log.i(TAG, "executeTakeScreenshotCommand: Overriding Screen elements payload with Termux output. chars=${termuxOutput.length}")
+            return "Termux output:\n$termuxOutput"
+        }
+
         val captureAndRequestScreenshot = {
             val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
             if (!currentModel.supportsScreenshot) {
                 Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                 showToast("Capturing screen info...", false)
-                val screenInfo = captureScreenInformation()
+                val screenInfo = buildScreenInfoPayload(captureScreenInformation())
                 val mainActivity = MainActivity.getInstance()
                 mainActivity?.getPhotoReasoningViewModel()?.addScreenshotToConversation(
                     Uri.EMPTY,
@@ -440,7 +449,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
                 showToast("Preparing screenshot...", false)
 
-                val screenInfo = captureScreenInformation()
+                val screenInfo = buildScreenInfoPayload(captureScreenInformation())
 
                 val intent = Intent(MainActivity.ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT).apply {
                     putExtra(MainActivity.EXTRA_SCREEN_INFO, screenInfo)
