@@ -145,6 +145,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper()) // Instance handler
 
     private var pendingScreenshotDelayMillis: Long = 0L
+    private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
     private var pendingDelayedScreenshotRunnable: Runnable? = null
 
     // App name to package mapper
@@ -418,14 +419,35 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
         }
+            .also { _ ->
+                if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand) {
+                    sawNonTermuxCommandSinceLastScreenshot = true
+                }
+            }
     }
 
     private fun executeTakeScreenshotCommand(): Boolean {
         val delayMillis = pendingScreenshotDelayMillis
         pendingScreenshotDelayMillis = 0L
+        val onlyTermuxContext = !sawNonTermuxCommandSinceLastScreenshot
+
+        if (!isTermuxRunCommandPermissionGranted()) {
+            val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(applicationContext)
+            if (denialCount >= 2) {
+                showToast("Enable Termux permissions in the Android settings", true)
+            }
+            Log.w(TAG, "Blocking screenshot/AI handoff because Termux RUN_COMMAND permission is not granted.")
+            return false
+        } else {
+            TermuxFeedbackPreferences.resetPermissionDenialCount(applicationContext)
+        }
 
         fun buildScreenInfoPayload(rawScreenInfo: String?): String? {
-            val termuxOutput = TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
+            val termuxOutput = if (onlyTermuxContext) {
+                TermuxOutputPreferences.peekOutput(applicationContext)?.trim().orEmpty()
+            } else {
+                TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
+            }
             if (termuxOutput.isBlank()) {
                 return rawScreenInfo
             }
@@ -435,7 +457,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
         val captureAndRequestScreenshot = {
             val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-            if (!currentModel.supportsScreenshot) {
+            if (!currentModel.supportsScreenshot || onlyTermuxContext) {
                 Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                 showToast("Capturing screen info...", false)
                 val screenInfo = buildScreenInfoPayload(captureScreenInformation())
@@ -445,6 +467,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     applicationContext,
                     screenInfo
                 )
+                sawNonTermuxCommandSinceLastScreenshot = false
             } else {
                 Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
                 showToast("Preparing screenshot...", false)
@@ -457,6 +480,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 applicationContext.sendBroadcast(intent)
                 Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
+                sawNonTermuxCommandSinceLastScreenshot = false
             }
         }
 
@@ -475,6 +499,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         pendingDelayedScreenshotRunnable = delayedScreenshotRunnable
         handler.postDelayed(delayedScreenshotRunnable, delayMillis)
         return true
+    }
+
+    private fun isTermuxRunCommandPermissionGranted(): Boolean {
+        return checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED
     }
 
     private fun cancelPendingDelayedScreenshot() {
