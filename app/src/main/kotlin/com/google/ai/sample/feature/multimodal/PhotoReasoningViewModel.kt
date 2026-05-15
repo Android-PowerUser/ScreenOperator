@@ -25,10 +25,13 @@ import com.google.ai.sample.ScreenCaptureService
 import com.google.ai.sample.PhotoReasoningApplication
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.ChatHistoryPreferences
+import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntry
+import com.google.ai.sample.util.TermuxFeedbackPreferences
+import com.google.ai.sample.util.TermuxOutputPreferences
 import com.google.ai.sample.util.UserInputPreferences
 import com.google.ai.sample.feature.multimodal.ModelDownloadManager
 import com.google.ai.sample.ModelOption
@@ -733,7 +736,7 @@ class PhotoReasoningViewModel(
             isPending = true
         )
         messages.add(pendingAiMessage)
-        _chatState.setAllMessages(messages)
+        _chatState.setAllMessages(PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(messages))
         _chatMessagesFlow.value = _chatState.getAllMessages()
 
         currentReasoningJob?.cancel() // Cancel any previous reasoning job
@@ -1124,19 +1127,24 @@ class PhotoReasoningViewModel(
 
         val apiKeyManager = ApiKeyManager.getInstance(context)
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
-        if (currentKey != null && !currentModel.isOfflineModel && currentModel != ModelOption.HUMAN_EXPERT) {
+        if (currentModel != ModelOption.HUMAN_EXPERT) {
             val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, currentModel.modelName)
             val config = com.google.ai.client.generativeai.type.generationConfig {
                 temperature = genSettings.temperature
                 topP = genSettings.topP
-                topK = genSettings.topK
+                if (currentModel.supportsTopK) {
+                    topK = genSettings.topK.coerceAtLeast(1)
+                }
             }
-            generativeModel = GenerativeModel(
-                modelName = currentModel.modelName,
-                apiKey = currentKey,
-                generationConfig = config
-            )
-            _modelNameState.value = currentModel.modelName
+            val modelApiKey = if (currentModel.isOfflineModel) "offline-no-key-needed" else (currentKey ?: "")
+            if (currentModel.isOfflineModel || modelApiKey.isNotBlank()) {
+                generativeModel = GenerativeModel(
+                    modelName = currentModel.modelName,
+                    apiKey = modelApiKey,
+                    generationConfig = config
+                )
+                _modelNameState.value = currentModel.modelName
+            }
         }
 
         ensureInitialized(context)
@@ -1179,7 +1187,7 @@ class PhotoReasoningViewModel(
                 val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
                 if (formattedDbEntries.isNotBlank())
                     apiMessages.add(CerebrasMessage(role = "user", content = formattedDbEntries))
-                _chatState.getAllMessages()
+                PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                     .filter { !it.isPending && it.participant != PhotoParticipant.ERROR }
                     .forEach { message ->
                         val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
@@ -1188,7 +1196,8 @@ class PhotoReasoningViewModel(
 
                 // CerebrasRequest braucht stream-Feld — inline als JSON-String um Datenklasse nicht zu ändern
                 val selectedModelName = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().modelName
-                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":0.2,"top_p":1.0,"stream":true}"""
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, selectedModelName)
+                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":${genSettings.temperature.toDouble()},"top_p":${genSettings.topP.toDouble()},"stream":true}"""
                 val mediaType = "application/json".toMediaType()
                 val client = OkHttpClient()
 
@@ -1313,7 +1322,7 @@ class PhotoReasoningViewModel(
             if (systemContent.isNotEmpty())
                 apiMessages.add(MistralMessage(role = "system", content = systemContent))
 
-            _chatState.getAllMessages()
+            PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                 .filter { !it.isPending && it.participant != PhotoParticipant.ERROR }
                 .forEach { message ->
                     val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
@@ -1375,12 +1384,14 @@ class PhotoReasoningViewModel(
             // Validate that we have at least one key before proceeding
             require(availableKeys.isNotEmpty()) { "No valid Mistral API keys available after filtering" }
             val mistralMinIntervalMs = when (currentModel) {
-                ModelOption.MISTRAL_MEDIUM_3_1 -> 420L
+                ModelOption.MISTRAL_MEDIUM_3_1,
+                ModelOption.MISTRAL_MEDIUM_3_5 -> 420L
                 else -> 1500L
             }
             val maxAttempts = when (currentModel) {
                 ModelOption.MISTRAL_LARGE_3,
-                ModelOption.MISTRAL_MEDIUM_3_1 -> 3
+                ModelOption.MISTRAL_MEDIUM_3_1,
+                ModelOption.MISTRAL_MEDIUM_3_5 -> 3
                 else -> availableKeys.size * 4 + 8
             }
             val coordinated = MistralRequestCoordinator.execute(
@@ -1464,15 +1475,7 @@ class PhotoReasoningViewModel(
             imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
             isPending = false
         )
-        _chatState.addMessage(userMessage)
-
-        val pendingAiMessage = PhotoReasoningMessage(
-            text = "",
-            participant = PhotoParticipant.MODEL,
-            isPending = true
-        )
-        _chatState.addMessage(pendingAiMessage)
-        _chatMessagesFlow.value = _chatState.getAllMessages()
+        appendUserAndPendingModelMessages(userMessage)
 
         _uiState.value = PhotoReasoningUiState.Loading
 
@@ -1497,7 +1500,7 @@ class PhotoReasoningViewModel(
                 }
 
                 // Add Chat History (exclude the last added user message)
-                val allMessages = _chatState.getAllMessages()
+                val allMessages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                 // exclude the last pending message and the last user message we just added
                 val historyMessages = allMessages.filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.dropLast(1)
                 
@@ -1625,7 +1628,7 @@ class PhotoReasoningViewModel(
                     }
 
                     // Add chat history
-                    val messages = _chatState.getAllMessages()
+                    val messages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                     messages.forEach { msg ->
                         when (msg.participant) {
                             PhotoParticipant.USER -> {
@@ -1721,6 +1724,9 @@ class PhotoReasoningViewModel(
 
     fun onStopClicked() {
         _showStopNotificationFlow.value = false
+        // Stop muss auch während Wait(...) sofort wirken:
+        // Wartende Accessibility-Kommandos/Delayed-Screenshot immer abbrechen.
+        ScreenOperatorAccessibilityService.clearCommandQueue()
 
         val generationRunning = isGenerationRunning()
 
@@ -1744,8 +1750,6 @@ class PhotoReasoningViewModel(
         stopExecutionFlag.set(true)
         currentReasoningJob?.cancel()
         commandProcessingJob?.cancel()
-        // NEU:
-        ScreenOperatorAccessibilityService.clearCommandQueue()
 
         val messages = _chatState.getAllMessages().toMutableList()
         val lastMessage = messages.lastOrNull()
@@ -2281,16 +2285,17 @@ private fun processCommands(text: String) {
                 if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) return@launch
                 Log.d(TAG, "Found ${commands.size} commands in response")
 
-                // Update the detected commands
-                _detectedCommands.value = PhotoReasoningCommandStateUpdater.appendCommands(
-                    existing = _detectedCommands.value,
-                    commands = commands
-                )
-
-                // Update status to show commands were detected
-                _commandExecutionStatus.value = PhotoReasoningCommandStateUpdater.buildDetectedStatus(
-                    commandBatch.commandDescriptions
-                )
+                val parsedDuringStreaming = incrementalCommandCount > 0
+                if (!parsedDuringStreaming) {
+                    // Nur bei nicht-streamender Antwort hier anzeigen.
+                    _detectedCommands.value = PhotoReasoningCommandStateUpdater.appendCommands(
+                        existing = _detectedCommands.value,
+                        commands = commands
+                    )
+                    _commandExecutionStatus.value = PhotoReasoningCommandStateUpdater.buildDetectedStatus(
+                        commandBatch.commandDescriptions
+                    )
+                }
 
                 // Execute the commands
                 for (command in commandsToExecute) {
@@ -2428,7 +2433,7 @@ private fun processCommands(text: String) {
     fun loadChatHistory(context: Context) {
         val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
         if (savedMessages.isNotEmpty()) {
-            _chatState.setAllMessages(savedMessages)
+            _chatState.setAllMessages(PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(savedMessages))
             _chatMessagesFlow.value = _chatState.getAllMessages()
             
             if (isLiveMode) {
@@ -2484,6 +2489,12 @@ private fun processCommands(text: String) {
      * Clear the chat history
      */
     fun clearChatHistory(context: Context? = null) {
+        stopExecutionFlag.set(true)
+        currentReasoningJob?.cancel()
+        commandProcessingJob?.cancel()
+        ScreenOperatorAccessibilityService.clearCommandQueue()
+        _showStopNotificationFlow.value = false
+
         // Clear visible messages completely for UI
         _chatState.setAllMessages(emptyList())
 
@@ -2503,6 +2514,8 @@ private fun processCommands(text: String) {
         // Clear from SharedPreferences if context is provided
         context?.let {
             ChatHistoryPreferences.clearChatMessages(it)
+            AppOpenFeedbackPreferences.consumeAppNotFound(it)
+            TermuxFeedbackPreferences.consumeTermuxNotFound(it)
         }
 
         // WICHTIG: LiveApiManager auch aktualisieren!
@@ -2527,14 +2540,11 @@ private fun processCommands(text: String) {
         // Reset retry attempt counter
         currentRetryAttempt = 0
 
-        // Clear any pending jobs
-        currentReasoningJob?.cancel()
-        commandProcessingJob?.cancel()
-
         // Reset UI state
         _uiState.value = PhotoReasoningUiState.Initial
         _commandExecutionStatus.value = ""
         _detectedCommands.value = emptyList()
+        refreshStopButtonState()
     }
     
     /**
@@ -2549,9 +2559,8 @@ private fun processCommands(text: String) {
         context: Context,
         screenInfo: String? = null
     ) {
-        val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
-
         if (screenshotUri == Uri.EMPTY) {
+            val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
             // This case is for offline models, where we don't have a screenshot.
             // We just want to send the screen info.
             val genericAnalysisPrompt = createGenericScreenshotPrompt()
@@ -2568,6 +2577,9 @@ private fun processCommands(text: String) {
             Log.w(TAG, "addScreenshotToConversation: Debouncing duplicate/rapid call for URI $screenshotUri")
             return // Exit the function early if it's a duplicate call within the window
         }
+
+        val enrichedScreenInfo = buildEnrichedScreenInfo(screenInfo)
+        Log.d(TAG, "addScreenshotToConversation: Using enrichedScreenInfo=${!enrichedScreenInfo.isNullOrBlank()} for URI=$screenshotUri")
 
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
@@ -2638,10 +2650,28 @@ private fun processCommands(text: String) {
     private fun buildEnrichedScreenInfo(screenInfo: String?): String? {
         val retrievedInfo = pendingRetrievedInfoForNextScreenshot
         pendingRetrievedInfoForNextScreenshot = null
+        val context = MainActivity.getInstance()
+        val appNotFoundInfo = if (context != null && AppOpenFeedbackPreferences.consumeAppNotFound(context)) {
+            "App not found"
+        } else {
+            null
+        }
+        val termuxNotFoundInfo = if (context != null && TermuxFeedbackPreferences.consumeTermuxNotFound(context)) {
+            "Termux not found"
+        } else {
+            null
+        }
+        val termuxOutputInfo = TermuxOutputPreferences.consumeOutput(appContext)?.let { "Termux output:\n$it" }
+        if (!termuxOutputInfo.isNullOrBlank()) {
+            Log.i(TAG, "buildEnrichedScreenInfo: Replacing screen-elements bubble with Termux output. chars=${termuxOutputInfo.length}")
+            return termuxOutputInfo
+        }
+        val missingInfo = listOfNotNull(appNotFoundInfo, termuxNotFoundInfo).joinToString("\n").ifBlank { null }
+        val extraInfo = listOfNotNull(missingInfo, retrievedInfo).joinToString("\n\n").ifBlank { null }
 
         return when {
-            !retrievedInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$retrievedInfo\n\n$screenInfo"
-            !retrievedInfo.isNullOrBlank() -> retrievedInfo
+            !extraInfo.isNullOrBlank() && !screenInfo.isNullOrBlank() -> "$extraInfo\n\n$screenInfo"
+            !extraInfo.isNullOrBlank() -> extraInfo
             !screenInfo.isNullOrBlank() -> screenInfo
             else -> null
         }

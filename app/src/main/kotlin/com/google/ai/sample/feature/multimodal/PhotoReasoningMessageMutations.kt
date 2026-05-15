@@ -5,14 +5,16 @@ internal object PhotoReasoningMessageMutations {
         chatState: PhotoReasoningChatState,
         userMessage: PhotoReasoningMessage
     ): List<PhotoReasoningMessage> {
-        chatState.addMessage(userMessage)
-        chatState.addMessage(
+        val messages = chatState.getAllMessages().toMutableList()
+        messages.add(userMessage)
+        messages.add(
             PhotoReasoningMessage(
                 text = "",
                 participant = PhotoParticipant.MODEL,
                 isPending = true
             )
         )
+        chatState.setAllMessages(PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(messages))
         return chatState.getAllMessages()
     }
 

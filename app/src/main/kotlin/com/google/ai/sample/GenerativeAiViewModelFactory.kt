@@ -17,6 +17,8 @@ enum class ApiProvider {
     GOOGLE,
     CEREBRAS,
     MISTRAL,
+    GROQ,
+    CLOUDFLARE,
     PUTER,
     HUMAN_EXPERT
 }
@@ -38,8 +40,11 @@ enum class ModelOption(
     PUTER_GPT_5_4_NANO("GPT-5.4 Nano (Puter)", "openai/gpt-5.4-nano", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_QWEN3_5_FLASH("Qwen3.5-Flash (Puter)", "qwen/qwen3.5-flash-02-23", ApiProvider.PUTER, supportsScreenshot = true),
+    GROQ_LLAMA_4_SCOUT_17B("Llama 4 Scout 109B (Groq)", "meta-llama/llama-4-scout-17b-16e-instruct", ApiProvider.GROQ, supportsScreenshot = true),
+    CLOUDFLARE_KIMI_K2_6("Kimi K2.6 (Cloudflare)", "@cf/moonshotai/kimi-k2.6", ApiProvider.CLOUDFLARE, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
     MISTRAL_MEDIUM_3_1("Mistral Medium 3.1", "mistral-medium-latest", ApiProvider.MISTRAL),
+    MISTRAL_MEDIUM_3_5("Mistral Medium 3.5", "mistral-medium-3-5", ApiProvider.MISTRAL),
     GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
     GPT_5_1_CODEX_MINI("GPT-5.1 Codex Mini (Vercel)", "openai/gpt-5.1-codex-mini", ApiProvider.VERCEL),
     GPT_5_NANO("GPT-5 Nano (Vercel)", "openai/gpt-5-nano", ApiProvider.VERCEL),
@@ -105,9 +110,16 @@ enum class ModelOption(
     ),
     HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
 
-    /** Whether this model supports TopK/TopP/Temperature settings */
+    /** Whether this model supports Temperature/TopP settings in UI */
     val supportsGenerationSettings: Boolean
         get() = this != HUMAN_EXPERT
+
+    /** Whether this model supports TopK setting in UI/request payloads. */
+    val supportsTopK: Boolean
+        get() = when (apiProvider) {
+            ApiProvider.MISTRAL, ApiProvider.PUTER -> false
+            else -> this != HUMAN_EXPERT
+        }
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -124,7 +136,9 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         val config = generationConfig {
             temperature = genSettings.temperature
             topP = genSettings.topP
-            topK = genSettings.topK
+            if (currentModel.supportsTopK) {
+                topK = genSettings.topK.coerceAtLeast(1)
+            }
         }
 
         // Get the API key from MainActivity
@@ -144,7 +158,13 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
                     if (currentModel.modelName.contains("live")) {
                         // Live API models
-                        val liveApiManager = LiveApiManager(apiKey, currentModel.modelName)
+                        val liveApiManager = LiveApiManager(
+                            apiKey = apiKey,
+                            modelName = currentModel.modelName,
+                            temperature = genSettings.temperature.toDouble(),
+                            topP = genSettings.topP.toDouble(),
+                            topK = genSettings.topK.coerceAtLeast(1)
+                        )
                         
                         // For Live API, we might not need a GenerativeModel at all
                         // or we use a fallback model for non-live operations

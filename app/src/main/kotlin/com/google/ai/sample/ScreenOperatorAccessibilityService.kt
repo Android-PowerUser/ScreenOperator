@@ -7,6 +7,7 @@ import android.accessibilityservice.GestureDescription
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
@@ -25,8 +26,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.google.ai.sample.util.AppNamePackageMapper
+import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CoordinateParser
+import com.google.ai.sample.util.TermuxFeedbackPreferences
+import com.google.ai.sample.util.TermuxOutputPreferences
 import java.io.File
 import java.text.SimpleDateFormat
 import com.google.ai.sample.GenerativeViewModelFactory
@@ -73,8 +77,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         fun clearCommandQueue() {
             val instance = serviceInstance
             if (instance != null) {
+                instance.cancelPendingDelayedScreenshot()
                 instance.commandQueue.clearAndUnlock()
-                Log.d(TAG, "Command queue cleared and processing flag reset.")
+                Log.d(TAG, "Command queue cleared, delayed screenshot cancelled, and processing flag reset.")
             } else {
                 Log.w(TAG, "clearCommandQueue: serviceInstance is null, nothing to clear.")
             }
@@ -138,6 +143,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     // Handler for delayed operations
     private val handler = Handler(Looper.getMainLooper()) // Instance handler
+
+    private var pendingScreenshotDelayMillis: Long = 0L
+    private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
+    private var pendingDelayedScreenshotRunnable: Runnable? = null
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
@@ -232,38 +241,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 this.tapAtCoordinates(point.xPx, point.yPx)
                 true // Asynchronous
             }
-            is Command.TakeScreenshot -> {
-                val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-                if (!currentModel.supportsScreenshot) {
-                    Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
-                    this.showToast("Capturing screen info...", false)
-                    val screenInfo = captureScreenInformation()
-                    val mainActivity = MainActivity.getInstance()
-                    mainActivity?.getPhotoReasoningViewModel()?.addScreenshotToConversation(
-                        Uri.EMPTY,
-                        applicationContext,
-                        screenInfo
-                    )
-                    false
-                } else {
-                    Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
-                    this.showToast("Preparing screenshot...", false) // Updated toast message
-
-                    val screenInfo = captureScreenInformation() // Capture fresh screen info
-
-                    val intent = Intent(MainActivity.ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT).apply {
-                        putExtra(MainActivity.EXTRA_SCREEN_INFO, screenInfo)
-                        // Set package to ensure only our app's receiver gets it
-                        `package` = applicationContext.packageName
-                    }
-                    applicationContext.sendBroadcast(intent)
-                    Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
-
-                    // The command is considered "handled" once the broadcast is sent.
-                    // MainActivity and ScreenCaptureService will handle the rest asynchronously.
-                    // Return false to allow the command queue to proceed immediately.
-                    false
-                }
+            is Command.TakeScreenshot -> executeTakeScreenshotCommand()
+            is Command.Wait -> {
+                pendingScreenshotDelayMillis = command.seconds
+                    .coerceAtLeast(0L)
+                    .coerceAtMost(Long.MAX_VALUE / 1000L) * 1000L
+                Log.d(TAG, "Command.Wait: Delaying the next takeScreenshot command by ${command.seconds} seconds.")
+                showToast("Delaying next screenshot by ${command.seconds} seconds", false)
+                false
             }
             is Command.PressHomeButton -> {
                 executeSyncCommandAction(
@@ -401,6 +386,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     writeText(command.text)
                 }
             }
+            is Command.TermuxCommand -> {
+                executeAsyncCommandAction(
+                    logMessage = "Executing Termux command: ${command.command}",
+                    toastMessage = "Executing Termux command..."
+                ) {
+                    executeTermuxCommand(command.command)
+                }
+            }
             is Command.UseHighReasoningModel -> {
                 executeSyncCommandAction(
                     logMessage = "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)",
@@ -426,6 +419,99 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
         }
+            .also { _ ->
+                if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand) {
+                    sawNonTermuxCommandSinceLastScreenshot = true
+                }
+            }
+    }
+
+    private fun executeTakeScreenshotCommand(): Boolean {
+        val delayMillis = pendingScreenshotDelayMillis
+        pendingScreenshotDelayMillis = 0L
+        val onlyTermuxContext = !sawNonTermuxCommandSinceLastScreenshot
+
+        if (!isTermuxRunCommandPermissionGranted()) {
+            val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(applicationContext)
+            if (denialCount >= 2) {
+                showToast("Enable Termux permissions in the Android settings", true)
+            }
+            Log.w(TAG, "Blocking screenshot/AI handoff because Termux RUN_COMMAND permission is not granted.")
+            return false
+        } else {
+            TermuxFeedbackPreferences.resetPermissionDenialCount(applicationContext)
+        }
+
+        fun buildScreenInfoPayload(rawScreenInfo: String?): String? {
+            val termuxOutput = if (onlyTermuxContext) {
+                TermuxOutputPreferences.peekOutput(applicationContext)?.trim().orEmpty()
+            } else {
+                TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
+            }
+            if (termuxOutput.isBlank()) {
+                return rawScreenInfo
+            }
+            Log.i(TAG, "executeTakeScreenshotCommand: Overriding Screen elements payload with Termux output. chars=${termuxOutput.length}")
+            return "Termux output:\n$termuxOutput"
+        }
+
+        val captureAndRequestScreenshot = {
+            val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+            if (!currentModel.supportsScreenshot || onlyTermuxContext) {
+                Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
+                showToast("Capturing screen info...", false)
+                val screenInfo = buildScreenInfoPayload(captureScreenInformation())
+                val mainActivity = MainActivity.getInstance()
+                mainActivity?.getPhotoReasoningViewModel()?.addScreenshotToConversation(
+                    Uri.EMPTY,
+                    applicationContext,
+                    screenInfo
+                )
+                sawNonTermuxCommandSinceLastScreenshot = false
+            } else {
+                Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
+                showToast("Preparing screenshot...", false)
+
+                val screenInfo = buildScreenInfoPayload(captureScreenInformation())
+
+                val intent = Intent(MainActivity.ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT).apply {
+                    putExtra(MainActivity.EXTRA_SCREEN_INFO, screenInfo)
+                    `package` = applicationContext.packageName
+                }
+                applicationContext.sendBroadcast(intent)
+                Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
+                sawNonTermuxCommandSinceLastScreenshot = false
+            }
+        }
+
+        if (delayMillis <= 0L) {
+            captureAndRequestScreenshot()
+            return false
+        }
+
+        Log.d(TAG, "Command.TakeScreenshot: Waiting ${delayMillis}ms before capturing screen info and screenshot.")
+        showToast("Waiting ${delayMillis / 1000L} seconds before screenshot...", false)
+        val delayedScreenshotRunnable = Runnable {
+            pendingDelayedScreenshotRunnable = null
+            captureAndRequestScreenshot()
+            scheduleNextCommandProcessing()
+        }
+        pendingDelayedScreenshotRunnable = delayedScreenshotRunnable
+        handler.postDelayed(delayedScreenshotRunnable, delayMillis)
+        return true
+    }
+
+    private fun isTermuxRunCommandPermissionGranted(): Boolean {
+        return checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun cancelPendingDelayedScreenshot() {
+        pendingScreenshotDelayMillis = 0L
+        pendingDelayedScreenshotRunnable?.let { runnable ->
+            handler.removeCallbacks(runnable)
+            Log.d(TAG, "Cancelled pending delayed screenshot.")
+        }
+        pendingDelayedScreenshotRunnable = null
     }
 
     private fun executeSyncCommandAction(
@@ -479,6 +565,201 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Trying to scroll $directionLabel from position (${resolved.xPx}, ${resolved.yPx})", false)
         execute(resolved)
         return true
+    }
+
+    private fun executeTermuxCommand(command: String) {
+        Log.i(TAG, "Termux command requested. Raw command length=${command.length}")
+        val trimmedCommand = command.trim()
+        if (trimmedCommand.isEmpty()) {
+            Log.w(TAG, "Skipping Termux command dispatch because command is empty after trim.")
+            return
+        }
+
+        val termuxPackage = "com.termux"
+        val pm = packageManager
+        val launchIntent = pm.getLaunchIntentForPackage(termuxPackage)
+        if (launchIntent == null) {
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+            Log.w(TAG, "Termux not found for command execution.")
+            return
+        }
+
+        val runCommandServiceClass = "com.termux.app.RunCommandService"
+        val serviceProbeIntent = Intent("com.termux.RUN_COMMAND").apply {
+            `package` = termuxPackage
+            setClassName(termuxPackage, runCommandServiceClass)
+        }
+        val resolvedService = pm.resolveService(serviceProbeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        if (resolvedService == null) {
+            Log.e(TAG, "Termux RunCommandService not resolvable. package=$termuxPackage class=$runCommandServiceClass")
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+            return
+        }
+
+        Log.i(
+            TAG,
+            "Resolved Termux RunCommandService=${resolvedService.serviceInfo?.name}, app=${resolvedService.serviceInfo?.packageName}"
+        )
+
+        val callbackAction = "com.google.ai.sample.TERMUX_COMMAND_RESULT"
+        val callbackIntent = Intent(callbackAction).apply {
+            `package` = packageName
+        }
+        val callbackFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val pendingResultIntent = PendingIntent.getBroadcast(applicationContext, 7001, callbackIntent, callbackFlags)
+
+        val callbackReceiver = TermuxResultReceiver(applicationContext)
+        try {
+            applicationContext.registerReceiver(callbackReceiver, android.content.IntentFilter(callbackAction), Context.RECEIVER_NOT_EXPORTED)
+            Log.i(TAG, "Registered Termux result receiver for action=$callbackAction")
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to register Termux result receiver", t)
+        }
+
+        val intent = Intent("com.termux.RUN_COMMAND").apply {
+            `package` = termuxPackage
+            setClassName(termuxPackage, runCommandServiceClass)
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", trimmedCommand))
+            putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 1)
+            putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
+            putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingResultIntent)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND_CUSTOM_LOG_LEVEL", 0)
+            putExtra("com.termux.RUN_COMMAND_RETURN_STDOUT", true)
+            putExtra("com.termux.RUN_COMMAND_RETURN_STDERR", true)
+        }
+
+        Log.i(
+            TAG,
+            "Dispatching Termux RUN_COMMAND with path=${intent.getStringExtra("com.termux.RUN_COMMAND_PATH")}, " +
+                "workdir=${intent.getStringExtra("com.termux.RUN_COMMAND_WORKDIR")}, " +
+                "background=${intent.getBooleanExtra("com.termux.RUN_COMMAND_BACKGROUND", false)}, " +
+                "runner=${intent.getStringExtra("com.termux.RUN_COMMAND_RUNNER")}, " +
+                "argsCount=${intent.getStringArrayExtra("com.termux.RUN_COMMAND_ARGUMENTS")?.size ?: 0}"
+        )
+
+        try {
+            startService(intent)
+            Log.i(TAG, "Termux command dispatch succeeded.")
+        } catch (se: SecurityException) {
+            Log.e(TAG, "Failed to dispatch Termux command due to security restriction. Check Termux RUN_COMMAND permission grant.", se)
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to dispatch Termux command", t)
+            TermuxFeedbackPreferences.markTermuxNotFound(applicationContext)
+        }
+    }
+
+    private class TermuxResultReceiver(private val appContext: Context) : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            fun unregisterSelf() {
+                try {
+                    appContext.unregisterReceiver(this)
+                    Log.i(TAG, "Termux result receiver unregistered")
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Failed to unregister Termux result receiver", t)
+                }
+            }
+            if (intent == null) {
+                Log.w(TAG, "Termux result receiver invoked with null intent")
+                unregisterSelf()
+                return
+            }
+            val resultBundle = intent.getBundleExtra("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE")
+                ?: intent.getBundleExtra("result")
+
+            val extras = intent.extras
+            val stdout = sequenceOf(
+                resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
+                resultBundle?.getString("stdout"),
+                extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
+                extras?.getString("stdout")
+            ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+            val stderr = sequenceOf(
+                resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
+                resultBundle?.getString("stderr"),
+                extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
+                extras?.getString("stderr")
+            ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+            val exitCode = when {
+                resultBundle?.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") == true -> {
+                    resultBundle.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
+                }
+                resultBundle?.containsKey("exitCode") == true -> resultBundle.getInt("exitCode", Int.MIN_VALUE)
+                extras?.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") == true -> {
+                    extras.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
+                }
+                extras?.containsKey("exitCode") == true -> extras.getInt("exitCode", Int.MIN_VALUE)
+                else -> Int.MIN_VALUE
+            }
+
+            val resultKeys = resultBundle?.keySet()?.joinToString().orEmpty()
+            val extraKeys = extras?.keySet()?.joinToString().orEmpty()
+            Log.i(TAG, "Termux result received: exitCode=$exitCode stdoutLen=${stdout.length} stderrLen=${stderr.length} bundleKeys=$resultKeys extraKeys=$extraKeys")
+
+            val hasKnownResult = stdout.isNotBlank() || stderr.isNotBlank() || exitCode != Int.MIN_VALUE
+            if (!hasKnownResult) {
+                val rawExtrasDump = extras?.keySet()?.joinToString("\n") { key -> "$key=${extras.get(key)}" }.orEmpty().trim()
+                if (rawExtrasDump.isBlank()) {
+                    Log.w(TAG, "Ignoring Termux callback without stdout/stderr/exitCode and no readable extras.")
+                    unregisterSelf()
+                    return
+                }
+                Log.w(TAG, "Termux callback missing standard stdout/stderr/exitCode fields; falling back to raw extras dump for AI handoff.")
+                TermuxOutputPreferences.appendOutput(appContext, "Termux callback raw extras:\n$rawExtrasDump")
+                mainHandler.post {
+                    MainActivity.getInstance()?.updateStatusMessage("Termux raw result captured", false)
+                }
+                serviceInstance?.handler?.post {
+                    Log.d(TAG, "Termux raw callback captured, scheduling next command processing.")
+                    serviceInstance?.scheduleNextCommandProcessing()
+                }
+                unregisterSelf()
+                return
+            }
+
+            val combined = buildString {
+                append("Termux finished")
+                if (exitCode != Int.MIN_VALUE) {
+                    append(" (exit=")
+                    append(exitCode)
+                    append(")")
+                }
+                if (stdout.isNotBlank()) {
+                    append("\nstdout:\n")
+                    append(stdout)
+                }
+                if (stderr.isNotBlank()) {
+                    append("\nstderr:\n")
+                    append(stderr)
+                }
+            }
+
+            val aiRelevantOutput = combined.trim()
+            if (aiRelevantOutput.isNotBlank()) {
+                TermuxOutputPreferences.appendOutput(appContext, aiRelevantOutput)
+                Log.i(TAG, "Stored Termux output for next screenshot bubble. chars=${aiRelevantOutput.length}")
+            }
+
+            mainHandler.post {
+                MainActivity.getInstance()?.updateStatusMessage("Termux stream start", false)
+            }
+            combined.lineSequence().forEachIndexed { idx, line ->
+                val framed = "Termux[$idx]: $line"
+                Log.d(TAG, framed)
+                mainHandler.post {
+                    MainActivity.getInstance()?.updateStatusMessage(framed, false)
+                }
+            }
+
+            serviceInstance?.handler?.post {
+                Log.d(TAG, "Termux result received, scheduling next command processing.")
+                serviceInstance?.scheduleNextCommandProcessing()
+            }
+            unregisterSelf()
+        }
     }
 
 
@@ -1455,6 +1736,7 @@ fun openApp(appNameOrPackage: String) {
         } else {
             // If all methods failed, show an error
             Log.e(TAG, "Failed to open app: $packageName")
+            AppOpenFeedbackPreferences.markAppNotFound(applicationContext)
             showToast("Error opening app: $appName", true)
         }
     } catch (e: Exception) {
@@ -1860,6 +2142,24 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         }
     }
     
+
+    private fun tryPerformScrollableNodeAction(action: Int): Boolean {
+        refreshRootNode()
+        val root = rootNode ?: return false
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            if (node.isScrollable && node.performAction(action)) {
+                return true
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(queue::add)
+            }
+        }
+        return false
+    }
+
     /**
      * Scroll down on the screen using gesture
      */
@@ -1900,7 +2200,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll down gesture cancelled")
-                        showToast("Scroll down cancelled", true)
+                        val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                        showToast(if (fallbackWorked) "Scroll down fallback succeeded" else "Scroll down cancelled", !fallbackWorked)
                         scheduleNextCommandProcessing()
                     }
                 },
@@ -1909,7 +2210,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll down gesture")
-                showToast("Error scrolling down", true)
+                val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                showToast(if (fallbackWorked) "Scroll down fallback succeeded" else "Error scrolling down", !fallbackWorked)
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
@@ -2017,7 +2319,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll up gesture cancelled")
-                        showToast("Scroll up cancelled", true)
+                        val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                        showToast(if (fallbackWorked) "Scroll up fallback succeeded" else "Scroll up cancelled", !fallbackWorked)
                         scheduleNextCommandProcessing()
                     }
                 },
@@ -2026,7 +2329,8 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll up gesture")
-                showToast("Error scrolling up", true)
+                val fallbackWorked = tryPerformScrollableNodeAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                showToast(if (fallbackWorked) "Scroll up fallback succeeded" else "Error scrolling up", !fallbackWorked)
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {

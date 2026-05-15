@@ -6,6 +6,18 @@ on:
   workflow_dispatch:  # Ermöglicht manuelle Ausführung des Workflows
 
 jobs:
+  # Schalter für optionalen Compile-Check in CI.
+  # "false" => Compile-Schritte werden übersprungen, Code bleibt aber im Workflow erhalten.
+  # Auf "true" setzen, falls der dedizierte Compile-Check wieder aktiviert werden soll.
+  compile-check-config:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.flags.outputs.enabled }}
+    steps:
+    - name: Set compile-check flag
+      id: flags
+      run: echo "enabled=false" >> $GITHUB_OUTPUT
+
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -61,7 +73,8 @@ jobs:
         echo "Results: app=$APP_CHANGED, humanoperator=$HUMANOPERATOR_CHANGED, shared=$SHARED_CHANGED"
 
   compile-check:
-    needs: detect-changes
+    needs: [detect-changes, compile-check-config]
+    if: needs.compile-check-config.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -105,7 +118,8 @@ jobs:
       run: ./gradlew :humanoperator:compileDebugKotlin
 
   build:
-    needs: [detect-changes, compile-check]
+    needs: [detect-changes, compile-check, compile-check-config]
+    if: always() && !cancelled() && (needs.compile-check.result == 'success' || needs.compile-check.result == 'skipped')
     runs-on: ubuntu-latest
     env:
       BUILD_APP: ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }}

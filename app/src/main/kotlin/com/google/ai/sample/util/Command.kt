@@ -8,6 +8,7 @@ sealed class Command {
     data class LongClickButton(val buttonText: String) : Command()
     data class TapCoordinates(val x: String, val y: String) : Command()
     object TakeScreenshot : Command()
+    data class Wait(val seconds: Long) : Command()
     object PressHomeButton : Command()
     object PressBackButton : Command()
     object ShowRecentApps : Command()
@@ -23,6 +24,7 @@ sealed class Command {
     data class OpenApp(val packageName: String) : Command()
     data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
+    data class TermuxCommand(val command: String) : Command()
     object UseHighReasoningModel : Command()
     object UseLowReasoningModel : Command()
 }

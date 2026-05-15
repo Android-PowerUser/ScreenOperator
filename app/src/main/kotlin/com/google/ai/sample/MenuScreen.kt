@@ -215,13 +215,15 @@ fun MenuScreen(
                                 }
                                 val normalModels = allModels.filter {
                                     it != ModelOption.MISTRAL_MEDIUM_3_1 &&
+                                        it != ModelOption.MISTRAL_MEDIUM_3_5 &&
                                         it != ModelOption.PUTER_GPT_5_4_NANO &&
                                         it.apiProvider != ApiProvider.VERCEL &&
                                         !STRIKETHROUGH_MODELS.contains(it)
                                 }
                                 val orderedModels = listOf(
                                     ModelOption.PUTER_GPT_5_4_NANO,
-                                    ModelOption.MISTRAL_MEDIUM_3_1
+                                    ModelOption.MISTRAL_MEDIUM_3_1,
+                                    ModelOption.MISTRAL_MEDIUM_3_5
                                 ) +
                                     normalModels +
                                     vercelModels +
@@ -290,10 +292,13 @@ fun MenuScreen(
                         val modelHint = when (selectedModel) {
                             ModelOption.GEMMA_3_27B_IT -> "Google doesn't support screenshots in the API for this model."
                             ModelOption.GPT_OSS_120B -> "This is a pure text model\nCerebras sometimes discontinues free access in the Free Tier, displaying an \"Error 404: gpt-oss-120b does not exist or you do not have access to it\" message, or changes the rate limits."
+                            ModelOption.MISTRAL_MEDIUM_3_5 -> "This is a reasoning model"
                             ModelOption.MISTRAL_LARGE_3 -> "Mistral AI rejects requests containing non-black images with a 429 Error: Rate limit exceeded response"
                             ModelOption.GEMINI_3_FLASH -> "Google often rejects requests to this model with a 503 Model is exhausted error"
                             ModelOption.PUTER_GLM5 -> "This model is expensive and uses up the free quota quickly. Consider GPT-5.4 Nano."
                             ModelOption.PUTER_QWEN3_5_FLASH -> "$0.07/M input | $0.26/M output"
+                            ModelOption.GROQ_LLAMA_4_SCOUT_17B -> "30 requests per Min"
+                            ModelOption.CLOUDFLARE_KIMI_K2_6 -> "Approx. 15 responses per day are free"
                             ModelOption.GPT_5_1_CODEX_MAX,
                             ModelOption.GPT_5_1_CODEX_MINI,
                             ModelOption.GPT_5_NANO -> "Vercel requires a credit card"
@@ -413,7 +418,7 @@ fun MenuScreen(
                     }
                     var tempSlider by remember(selectedModel) { mutableStateOf(genSettings.value.temperature) }
                     var topPSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topP) }
-                    var topKSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topK.toFloat()) }
+                    var topKSlider by remember(selectedModel) { mutableStateOf(genSettings.value.topK.coerceAtLeast(1).toFloat()) }
                     
                     Card(
                         modifier = Modifier
@@ -476,28 +481,30 @@ fun MenuScreen(
                                 modifier = Modifier.fillMaxWidth().sliderFriendly()
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            if (selectedModel.supportsTopK) {
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                            // TopK Slider (0 - 100)
-                            Text(
-                                text = "Top K: ${Math.round(topKSlider)}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            androidx.compose.material3.Slider(
-                                value = topKSlider,
-                                onValueChange = { newVal ->
-                                    topKSlider = newVal
-                                },
-                                onValueChangeFinished = {
-                                    genSettings.value = genSettings.value.copy(topK = Math.round(topKSlider))
-                                    com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
-                                        context, selectedModel.modelName, genSettings.value
-                                    )
-                                },
-                                valueRange = 0f..100f,
-                                steps = 0,
-                                modifier = Modifier.fillMaxWidth().sliderFriendly()
-                            )
+                                // TopK Slider (1 - 100)
+                                Text(
+                                    text = "Top K: ${Math.round(topKSlider)}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                androidx.compose.material3.Slider(
+                                    value = topKSlider,
+                                    onValueChange = { newVal ->
+                                        topKSlider = newVal
+                                    },
+                                    onValueChangeFinished = {
+                                        genSettings.value = genSettings.value.copy(topK = Math.round(topKSlider))
+                                        com.google.ai.sample.util.GenerationSettingsPreferences.saveSettings(
+                                            context, selectedModel.modelName, genSettings.value
+                                        )
+                                    },
+                                    valueRange = 1f..100f,
+                                    steps = 98,
+                                    modifier = Modifier.fillMaxWidth().sliderFriendly()
+                                )
+                            }
 
                             if (selectedModel.isOfflineModel) {
                                 Spacer(modifier = Modifier.height(4.dp))

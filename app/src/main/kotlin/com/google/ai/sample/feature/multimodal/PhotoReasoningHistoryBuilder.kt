@@ -28,7 +28,9 @@ internal object PhotoReasoningHistoryBuilder {
         var currentUserContent = ""
         var currentModelContent = ""
 
-        for (message in messages) {
+        val sanitizedMessages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(messages)
+
+        for (message in sanitizedMessages) {
             when (message.participant) {
                 PhotoParticipant.USER -> {
                     if (currentModelContent.isNotEmpty()) {

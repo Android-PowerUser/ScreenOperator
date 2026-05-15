@@ -49,6 +49,9 @@ fun ApiKeyDialog(
         loadKeysForProvider(ApiProvider.GOOGLE)
         loadKeysForProvider(ApiProvider.CEREBRAS)
         loadKeysForProvider(ApiProvider.MISTRAL)
+        loadKeysForProvider(ApiProvider.GROQ)
+        loadKeysForProvider(ApiProvider.CLOUDFLARE)
+        loadKeysForProvider(ApiProvider.PUTER)
     }
 
     Dialog(onDismissRequest = {
@@ -79,7 +82,7 @@ fun ApiKeyDialog(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE, ApiProvider.MISTRAL, ApiProvider.PUTER).forEach { provider ->
+                    listOf(ApiProvider.VERCEL, ApiProvider.CEREBRAS, ApiProvider.GOOGLE, ApiProvider.MISTRAL, ApiProvider.GROQ, ApiProvider.CLOUDFLARE, ApiProvider.PUTER).forEach { provider ->
                         FilterChip(
                             selected = selectedProvider == provider,
                             onClick = {
@@ -101,6 +104,8 @@ fun ApiKeyDialog(
                             ApiProvider.CEREBRAS -> "https://cloud.cerebras.ai/"
                             ApiProvider.VERCEL -> "https://vercel.com/ai-gateway"
                             ApiProvider.MISTRAL -> "https://console.mistral.ai/home?profile_dialog=api-keys"
+                            ApiProvider.GROQ -> "https://console.groq.com/keys"
+                            ApiProvider.CLOUDFLARE -> "https://dash.cloudflare.com/"
                             ApiProvider.PUTER -> "https://puter.com/dashboard#account"
                             ApiProvider.HUMAN_EXPERT -> return@Button
                         }
@@ -111,6 +116,9 @@ fun ApiKeyDialog(
                             clipboard.setPrimaryClip(clip)
                             Toast.makeText(context, "Link is in the clipboard.", Toast.LENGTH_SHORT).show()
                             Toast.makeText(context, "After the sign up paste the link in the Browser", Toast.LENGTH_LONG).show()
+                        }
+                        if (selectedProvider == ApiProvider.CLOUDFLARE) {
+                            Toast.makeText(context, "After sign up use the search bar to find \"API token\"", Toast.LENGTH_LONG).show()
                         }
 
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))

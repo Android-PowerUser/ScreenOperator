@@ -134,10 +134,14 @@ internal suspend fun callMistralApi(
             .build()
 
         val keysForCoordinator = availableApiKeys.filter { it.isNotBlank() }.distinct().ifEmpty { listOf(apiKey) }
-        val minIntervalMs = if (modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName) 420L else 1500L
+        val minIntervalMs = if (
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_5.modelName
+        ) 420L else 1500L
         val maxAttempts = if (
             modelName == com.google.ai.sample.ModelOption.MISTRAL_LARGE_3.modelName ||
-            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
+            modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_5.modelName
         ) {
             3
         } else {
@@ -230,6 +234,114 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
     } catch (e: IllegalStateException) {
         errorMessage = e.localizedMessage ?: "Puter API call failed"
         Log.e("ScreenCaptureService", "Puter API state failure", e)
+    }
+
+    return Pair(responseText, errorMessage)
+}
+
+
+@Serializable
+data class ServiceGroqRequest(
+    val model: String,
+    val messages: List<ServiceGroqMessage>,
+    val max_tokens: Int = 4096,
+    val temperature: Double = 0.7,
+    val top_p: Double = 1.0,
+    val stream: Boolean = false
+)
+
+@Serializable
+data class ServiceGroqMessage(
+    val role: String,
+    val content: List<ServiceGroqContent>
+)
+
+@Serializable
+@OptIn(ExperimentalSerializationApi::class)
+@JsonClassDiscriminator("type")
+sealed class ServiceGroqContent
+
+@Serializable
+@SerialName("text")
+data class ServiceGroqTextContent(@SerialName("text") val text: String) : ServiceGroqContent()
+
+@Serializable
+@SerialName("image_url")
+data class ServiceGroqImageContent(@SerialName("image_url") val imageUrl: ServiceGroqImageUrl) : ServiceGroqContent()
+
+@Serializable
+data class ServiceGroqImageUrl(val url: String)
+
+internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+    var responseText: String? = null
+    var errorMessage: String? = null
+
+    val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
+    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+
+    try {
+        val apiMessages = mutableListOf<ServiceGroqMessage>()
+        (chatHistory + inputContent).forEach { content ->
+            val parts = content.parts.mapNotNull { part ->
+                when (part) {
+                    is TextPart -> if (part.text.isNotBlank()) ServiceGroqTextContent(text = part.text) else null
+                    is ImagePart -> {
+                        if (supportsScreenshot) {
+                            ServiceGroqImageContent(
+                                imageUrl = ServiceGroqImageUrl(
+                                    url = "data:image/jpeg;base64,${com.google.ai.sample.util.ImageUtils.bitmapToBase64(part.image)}"
+                                )
+                            )
+                        } else {
+                            null
+                        }
+                    }
+                    else -> null
+                }
+            }
+            if (parts.isNotEmpty()) {
+                val role = when (content.role) {
+                    "user" -> "user"
+                    "system" -> "system"
+                    else -> "assistant"
+                }
+                apiMessages.add(ServiceGroqMessage(role = role, content = parts))
+            }
+        }
+
+        val requestBody = ServiceGroqRequest(model = modelName, messages = apiMessages)
+        val json = Json {
+            ignoreUnknownKeys = true
+            serializersModule = SerializersModule {
+                polymorphic(ServiceGroqContent::class) {
+                    subclass(ServiceGroqTextContent::class)
+                    subclass(ServiceGroqImageContent::class)
+                }
+            }
+        }
+        val mediaType = "application/json".toMediaType()
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url("https://api.groq.com/openai/v1/chat/completions")
+            .post(json.encodeToString(ServiceGroqRequest.serializer(), requestBody).toRequestBody(mediaType))
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful) {
+                errorMessage = "Groq Error ${response.code}: $responseBody"
+            } else if (!responseBody.isNullOrBlank()) {
+                val parsed = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
+                responseText = parsed.choices.firstOrNull()?.message?.content ?: "No response from model"
+            } else {
+                errorMessage = "Empty response body from Groq"
+            }
+        }
+    } catch (e: Exception) {
+        errorMessage = e.localizedMessage ?: "Groq API call failed"
+        Log.e("ScreenCaptureService", "Groq API failure", e)
     }
 
     return Pair(responseText, errorMessage)
