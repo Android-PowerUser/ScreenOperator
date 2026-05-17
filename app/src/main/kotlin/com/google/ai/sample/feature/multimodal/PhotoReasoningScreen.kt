@@ -2,8 +2,8 @@ package com.google.ai.sample.feature.multimodal
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.graphics.drawable.BitmapDrawable
 import android.provider.Settings
 import android.widget.Toast 
 import androidx.core.content.ContextCompat
@@ -433,12 +433,17 @@ fun PhotoReasoningScreen(
                                     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                                     if (!hasTermuxRunCommandPermission) {
                                         val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(context)
-                                        if (denialCount >= 2) {
+                                        if (denialCount >= 3) {
                                             Toast.makeText(
                                                 context,
                                                 "Enable Termux permissions in the Android settings",
                                                 Toast.LENGTH_LONG
                                             ).show()
+                                            val appInfoIntent = Intent(
+                                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                Uri.fromParts("package", context.packageName, null)
+                                            )
+                                            context.startActivity(appInfoIntent)
                                         } else {
                                             Toast.makeText(
                                                 context,

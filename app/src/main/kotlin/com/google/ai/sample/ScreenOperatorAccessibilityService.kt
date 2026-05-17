@@ -146,6 +146,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private var pendingScreenshotDelayMillis: Long = 0L
     private var pendingDelayedScreenshotRunnable: Runnable? = null
+    private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
@@ -417,12 +418,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     pressEnterKey()
                 }
             }
+        }.also {
+            if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand) {
+                sawNonTermuxCommandSinceLastScreenshot = true
+            }
         }
     }
 
     private fun executeTakeScreenshotCommand(): Boolean {
         val delayMillis = pendingScreenshotDelayMillis
         pendingScreenshotDelayMillis = 0L
+        val onlyTermuxContext = !sawNonTermuxCommandSinceLastScreenshot
         fun buildScreenInfoPayload(rawScreenInfo: String?): String? {
             val termuxOutput = TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
             if (termuxOutput.isBlank()) {
@@ -434,7 +440,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
         val captureAndRequestScreenshot = {
             val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-            if (!currentModel.supportsScreenshot) {
+            if (!currentModel.supportsScreenshot || onlyTermuxContext) {
                 Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                 showToast("Capturing screen info...", false)
                 val screenInfo = buildScreenInfoPayload(captureScreenInformation())
@@ -444,6 +450,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     applicationContext,
                     screenInfo
                 )
+                sawNonTermuxCommandSinceLastScreenshot = false
             } else {
                 Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
                 showToast("Preparing screenshot...", false)
@@ -456,6 +463,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 applicationContext.sendBroadcast(intent)
                 Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
+                sawNonTermuxCommandSinceLastScreenshot = false
             }
         }
 
@@ -593,8 +601,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", trimmedCommand))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 1)
             putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
             putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingResultIntent)
             putExtra("com.termux.RUN_COMMAND_BACKGROUND_CUSTOM_LOG_LEVEL", 0)
