@@ -602,7 +602,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", trimmedCommand))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
-            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 3)
+            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
             putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
             putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingResultIntent)
             putExtra("com.termux.RUN_COMMAND_BACKGROUND_CUSTOM_LOG_LEVEL", 0)
