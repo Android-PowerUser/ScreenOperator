@@ -179,6 +179,18 @@ fun PhotoReasoningScreen(
     ) { uri ->
         uri?.let { imageUris.add(it) }
     }
+    val termuxPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            TermuxFeedbackPreferences.resetPermissionDenialCount(context)
+            if (userQuestion.isNotBlank()) {
+                onReasonClicked(userQuestion, imageUris.toList())
+                onUserQuestionChanged("")
+                imageUris.clear()
+            }
+        }
+    }
 
     LaunchedEffect(messages.size, commandExecutionStatus, detectedCommands.size) {
         val chatMessageCount = messages.size
@@ -445,11 +457,7 @@ fun PhotoReasoningScreen(
                                             )
                                             context.startActivity(appInfoIntent)
                                         } else {
-                                            Toast.makeText(
-                                                context,
-                                                "Please enable Termux run command permissions",
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                            termuxPermissionLauncher.launch("com.termux.permission.RUN_COMMAND")
                                         }
                                         return@IconButton
                                     }
