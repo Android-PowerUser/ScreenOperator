@@ -27,10 +27,4 @@ object TermuxOutputPreferences {
         }
         return value
     }
-
-    fun peekOutput(context: Context): String? {
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val value = prefs.getString(KEY_PENDING_OUTPUT, "").orEmpty().trim()
-        return value.ifBlank { null }
-    }
 }

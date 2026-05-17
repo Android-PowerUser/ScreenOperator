@@ -6,6 +6,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast 
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -110,6 +111,7 @@ import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.TermuxFeedbackPreferences
 import com.google.ai.sample.util.UriSaver
 import com.google.ai.sample.util.shareTextFile
 import kotlinx.coroutines.Dispatchers
@@ -425,6 +427,28 @@ fun PhotoReasoningScreen(
                                 }
 
                                 if (userQuestion.isNotBlank()) {
+                                    val hasTermuxRunCommandPermission = ContextCompat.checkSelfPermission(
+                                        context,
+                                        "com.termux.permission.RUN_COMMAND"
+                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (!hasTermuxRunCommandPermission) {
+                                        val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(context)
+                                        if (denialCount >= 2) {
+                                            Toast.makeText(
+                                                context,
+                                                "Enable Termux permissions in the Android settings",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                "Please enable Termux run command permissions",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                        return@IconButton
+                                    }
+                                    TermuxFeedbackPreferences.resetPermissionDenialCount(context)
                                     onReasonClicked(userQuestion, imageUris.toList())
                                     onUserQuestionChanged("")
                                     imageUris.clear()
