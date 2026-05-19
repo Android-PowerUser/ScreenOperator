@@ -145,8 +145,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper()) // Instance handler
 
     private var pendingScreenshotDelayMillis: Long = 0L
-    private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
     private var pendingDelayedScreenshotRunnable: Runnable? = null
+    private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
@@ -418,36 +418,19 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     pressEnterKey()
                 }
             }
-        }
-            .also { _ ->
-                if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand) {
-                    sawNonTermuxCommandSinceLastScreenshot = true
-                }
+        }.also {
+            if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand) {
+                sawNonTermuxCommandSinceLastScreenshot = true
             }
+        }
     }
 
     private fun executeTakeScreenshotCommand(): Boolean {
         val delayMillis = pendingScreenshotDelayMillis
         pendingScreenshotDelayMillis = 0L
         val onlyTermuxContext = !sawNonTermuxCommandSinceLastScreenshot
-
-        if (!isTermuxRunCommandPermissionGranted()) {
-            val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(applicationContext)
-            if (denialCount >= 2) {
-                showToast("Enable Termux permissions in the Android settings", true)
-            }
-            Log.w(TAG, "Blocking screenshot/AI handoff because Termux RUN_COMMAND permission is not granted.")
-            return false
-        } else {
-            TermuxFeedbackPreferences.resetPermissionDenialCount(applicationContext)
-        }
-
         fun buildScreenInfoPayload(rawScreenInfo: String?): String? {
-            val termuxOutput = if (onlyTermuxContext) {
-                TermuxOutputPreferences.peekOutput(applicationContext)?.trim().orEmpty()
-            } else {
-                TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
-            }
+            val termuxOutput = TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
             if (termuxOutput.isBlank()) {
                 return rawScreenInfo
             }
@@ -499,10 +482,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         pendingDelayedScreenshotRunnable = delayedScreenshotRunnable
         handler.postDelayed(delayedScreenshotRunnable, delayMillis)
         return true
-    }
-
-    private fun isTermuxRunCommandPermissionGranted(): Boolean {
-        return checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED
     }
 
     private fun cancelPendingDelayedScreenshot() {
@@ -623,7 +602,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", trimmedCommand))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
-            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 1)
+            putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
             putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
             putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingResultIntent)
             putExtra("com.termux.RUN_COMMAND_BACKGROUND_CUSTOM_LOG_LEVEL", 0)

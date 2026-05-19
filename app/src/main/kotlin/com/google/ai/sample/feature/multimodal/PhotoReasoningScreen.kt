@@ -2,10 +2,11 @@ package com.google.ai.sample.feature.multimodal
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.graphics.drawable.BitmapDrawable
 import android.provider.Settings
 import android.widget.Toast 
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -110,6 +111,8 @@ import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.TermuxFeedbackPreferences
+import com.google.ai.sample.util.TermuxOutputPreferences
 import com.google.ai.sample.util.UriSaver
 import com.google.ai.sample.util.shareTextFile
 import kotlinx.coroutines.Dispatchers
@@ -176,6 +179,18 @@ fun PhotoReasoningScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let { imageUris.add(it) }
+    }
+    val termuxPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            TermuxFeedbackPreferences.resetPermissionDenialCount(context)
+            if (userQuestion.isNotBlank()) {
+                onReasonClicked(userQuestion, imageUris.toList())
+                onUserQuestionChanged("")
+                imageUris.clear()
+            }
+        }
     }
 
     LaunchedEffect(messages.size, commandExecutionStatus, detectedCommands.size) {
@@ -386,7 +401,11 @@ fun PhotoReasoningScreen(
                             IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, modifier = Modifier.padding(bottom = 4.dp)) {
                                 Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
                             }
-                            IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
+                            IconButton(onClick = {
+                                ScreenOperatorAccessibilityService.clearCommandQueue()
+                                TermuxOutputPreferences.consumeOutput(context)
+                                onClearChatHistory()
+                            }, modifier = Modifier.padding(top = 4.dp).drawBehind {
                                 drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
                             }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                         }
@@ -425,6 +444,29 @@ fun PhotoReasoningScreen(
                                 }
 
                                 if (userQuestion.isNotBlank()) {
+                                    val hasTermuxRunCommandPermission = ContextCompat.checkSelfPermission(
+                                        context,
+                                        "com.termux.permission.RUN_COMMAND"
+                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (!hasTermuxRunCommandPermission) {
+                                        val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(context)
+                                        if (denialCount >= 3) {
+                                            Toast.makeText(
+                                                context,
+                                                "Enable Termux permissions in the Android settings",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            val appInfoIntent = Intent(
+                                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                Uri.fromParts("package", context.packageName, null)
+                                            )
+                                            context.startActivity(appInfoIntent)
+                                        } else {
+                                            termuxPermissionLauncher.launch("com.termux.permission.RUN_COMMAND")
+                                        }
+                                        return@IconButton
+                                    }
+                                    TermuxFeedbackPreferences.resetPermissionDenialCount(context)
                                     onReasonClicked(userQuestion, imageUris.toList())
                                     onUserQuestionChanged("")
                                     imageUris.clear()
