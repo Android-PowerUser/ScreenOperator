@@ -18,6 +18,6 @@ MOST IMPORTANT:
 
 9. If debug compilation fails in your environment, resolve the issue before reporting it as complete.
 
-10. For code changes only, compile only the code and do not perform a full build.
+10. For code changes only, compile only the code with ./gradlew :app:compileDebugKotlin and omit always the lint check.
 
 11. This app is production software and not a toy.
