@@ -112,6 +112,7 @@ import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
 import com.google.ai.sample.util.TermuxFeedbackPreferences
+import com.google.ai.sample.util.TermuxOutputPreferences
 import com.google.ai.sample.util.UriSaver
 import com.google.ai.sample.util.shareTextFile
 import kotlinx.coroutines.Dispatchers
@@ -400,7 +401,11 @@ fun PhotoReasoningScreen(
                             IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, modifier = Modifier.padding(bottom = 4.dp)) {
                                 Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
                             }
-                            IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
+                            IconButton(onClick = {
+                                ScreenOperatorAccessibilityService.clearCommandQueue()
+                                TermuxOutputPreferences.consumeOutput(context)
+                                onClearChatHistory()
+                            }, modifier = Modifier.padding(top = 4.dp).drawBehind {
                                 drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
                             }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                         }
