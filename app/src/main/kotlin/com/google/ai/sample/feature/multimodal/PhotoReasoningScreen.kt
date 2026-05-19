@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.graphics.drawable.BitmapDrawable
 import android.provider.Settings
+import android.os.Build
+import android.content.pm.PackageManager
+import android.content.pm.PackageInfo
 import android.widget.Toast 
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
@@ -179,6 +182,34 @@ fun PhotoReasoningScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let { imageUris.add(it) }
+    }
+
+    fun hasTermuxRunCommandPermission(): Boolean {
+        val runtimeGranted = ContextCompat.checkSelfPermission(
+            context,
+            "com.termux.permission.RUN_COMMAND"
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!runtimeGranted) return false
+
+        return runCatching {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+            }
+            val permissions = packageInfo.requestedPermissions ?: return@runCatching runtimeGranted
+            val flags = packageInfo.requestedPermissionsFlags ?: return@runCatching runtimeGranted
+            val index = permissions.indexOf("com.termux.permission.RUN_COMMAND")
+            if (index == -1 || index >= flags.size) runtimeGranted
+            else (flags[index] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+        }.getOrElse {
+            Log.w("PhotoReasoningScreen", "Unable to verify requestedPermissionsFlags for Termux permission", it)
+            runtimeGranted
+        }
     }
     val termuxPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -444,10 +475,7 @@ fun PhotoReasoningScreen(
                                 }
 
                                 if (userQuestion.isNotBlank()) {
-                                    val hasTermuxRunCommandPermission = ContextCompat.checkSelfPermission(
-                                        context,
-                                        "com.termux.permission.RUN_COMMAND"
-                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    val hasTermuxRunCommandPermission = hasTermuxRunCommandPermission()
                                     if (!hasTermuxRunCommandPermission) {
                                         val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(context)
                                         if (denialCount >= 3) {
