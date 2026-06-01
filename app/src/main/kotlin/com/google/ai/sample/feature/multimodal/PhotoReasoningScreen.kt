@@ -5,11 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.graphics.drawable.BitmapDrawable
 import android.provider.Settings
-import android.os.Build
-import android.content.pm.PackageManager
-import android.content.pm.PackageInfo
 import android.widget.Toast 
-import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -125,7 +121,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import android.util.Log
 import kotlinx.serialization.SerializationException
 
 @Composable
@@ -163,6 +158,7 @@ fun PhotoReasoningScreen(
     var systemMessageEntries by rememberSaveable { mutableStateOf(emptyList<SystemMessageEntry>()) }
     val focusManager = LocalFocusManager.current
     val messages by chatMessages.collectAsState()
+    var isTermuxPermissionRequestPending by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
@@ -184,43 +180,27 @@ fun PhotoReasoningScreen(
         uri?.let { imageUris.add(it) }
     }
 
-    fun hasTermuxRunCommandPermission(): Boolean {
-        val runtimeGranted = ContextCompat.checkSelfPermission(
-            context,
-            "com.termux.permission.RUN_COMMAND"
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!runtimeGranted) return false
-
-        return runCatching {
-            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(
-                    context.packageName,
-                    PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
-            }
-            val permissions = packageInfo.requestedPermissions ?: return@runCatching runtimeGranted
-            val flags = packageInfo.requestedPermissionsFlags ?: return@runCatching runtimeGranted
-            val index = permissions.indexOf("com.termux.permission.RUN_COMMAND")
-            if (index == -1 || index >= flags.size) runtimeGranted
-            else (flags[index] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
-        }.getOrElse {
-            Log.w("PhotoReasoningScreen", "Unable to verify requestedPermissionsFlags for Termux permission", it)
-            runtimeGranted
+    fun sendCurrentQuestion() {
+        if (userQuestion.isNotBlank()) {
+            onReasonClicked(userQuestion, imageUris.toList())
+            onUserQuestionChanged("")
+            imageUris.clear()
         }
     }
-    val termuxPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            TermuxFeedbackPreferences.resetPermissionDenialCount(context)
-            if (userQuestion.isNotBlank()) {
-                onReasonClicked(userQuestion, imageUris.toList())
-                onUserQuestionChanged("")
-                imageUris.clear()
-            }
+
+    fun handleTermuxRunCommandPermissionDenied() {
+        val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(context)
+        if (denialCount >= 3) {
+            Toast.makeText(
+                context,
+                "Enable Termux permissions in the Android settings",
+                Toast.LENGTH_LONG
+            ).show()
+            val appInfoIntent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null)
+            )
+            context.startActivity(appInfoIntent)
         }
     }
 
@@ -475,38 +455,30 @@ fun PhotoReasoningScreen(
                                 }
 
                                 if (userQuestion.isNotBlank()) {
-                                    val hasTermuxRunCommandPermission = hasTermuxRunCommandPermission()
-                                    if (!hasTermuxRunCommandPermission) {
-                                        val denialCount = TermuxFeedbackPreferences.incrementPermissionDenialCount(context)
-                                        if (denialCount >= 3) {
-                                            Toast.makeText(
-                                                context,
-                                                "Enable Termux permissions in the Android settings",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                            val appInfoIntent = Intent(
-                                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                                Uri.fromParts("package", context.packageName, null)
-                                            )
-                                            context.startActivity(appInfoIntent)
-                                        } else {
-                                            termuxPermissionLauncher.launch("com.termux.permission.RUN_COMMAND")
-                                        }
+                                    if (mainActivity == null) {
+                                        handleTermuxRunCommandPermissionDenied()
                                         return@IconButton
                                     }
-                                    TermuxFeedbackPreferences.resetPermissionDenialCount(context)
-                                    onReasonClicked(userQuestion, imageUris.toList())
-                                    onUserQuestionChanged("")
-                                    imageUris.clear()
+
+                                    isTermuxPermissionRequestPending = true
+                                    mainActivity.requestTermuxRunCommandPermission { isGranted ->
+                                        isTermuxPermissionRequestPending = false
+                                        if (isGranted) {
+                                            TermuxFeedbackPreferences.resetPermissionDenialCount(context)
+                                            sendCurrentQuestion()
+                                        } else {
+                                            handleTermuxRunCommandPermissionDenied()
+                                        }
+                                    }
                                 }
                             },
-                            enabled = isInitialized && userQuestion.isNotBlank(),
+                            enabled = isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending,
                             modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
                                 stringResource(R.string.action_go),
-                                tint = if (isInitialized && userQuestion.isNotBlank())
+                                tint = if (isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending)
                                     MaterialTheme.colorScheme.primary else Color.Gray,
                             )
                         }
