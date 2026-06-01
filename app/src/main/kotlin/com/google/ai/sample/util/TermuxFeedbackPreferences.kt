@@ -25,7 +25,7 @@ object TermuxFeedbackPreferences {
 
     fun incrementPermissionDenialCount(context: Context): Int {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val updated = (prefs.getInt(KEY_TERMUX_PERMISSION_DENIAL_COUNT, 0) + 1).coerceAtMost(3)
+        val updated = (prefs.getInt(KEY_TERMUX_PERMISSION_DENIAL_COUNT, 0) + 1).coerceAtMost(2)
         prefs.edit().putInt(KEY_TERMUX_PERMISSION_DENIAL_COUNT, updated).apply()
         return updated
     }
