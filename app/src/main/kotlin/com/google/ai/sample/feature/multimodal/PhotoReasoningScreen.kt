@@ -204,6 +204,19 @@ fun PhotoReasoningScreen(
         }
     }
 
+    fun requestTermuxPermissionThenSend(mainActivity: MainActivity) {
+        isTermuxPermissionRequestPending = true
+        mainActivity.requestTermuxRunCommandPermission { isGranted ->
+            isTermuxPermissionRequestPending = false
+            if (isGranted) {
+                TermuxFeedbackPreferences.resetPermissionDenialCount(context)
+                sendCurrentQuestion()
+            } else {
+                handleTermuxRunCommandPermissionDenied()
+            }
+        }
+    }
+
     LaunchedEffect(messages.size, commandExecutionStatus, detectedCommands.size) {
         val chatMessageCount = messages.size
         var targetIndex = -1 // Default to no scroll if no items
@@ -438,39 +451,28 @@ fun PhotoReasoningScreen(
                                     return@IconButton
                                 }
 
+                                if (userQuestion.isBlank()) {
+                                    return@IconButton
+                                }
+
+                                if (mainActivity == null) {
+                                    handleTermuxRunCommandPermissionDenied()
+                                    return@IconButton
+                                }
+
                                 // Check MediaProjection only for models that support screenshots and are not human-expert.
                                 // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService.
                                 val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
                                 if (!isMediaProjectionPermissionGranted && currentModel.supportsScreenshot && modelName != "human-expert") {
-                                    mainActivity?.requestMediaProjectionPermission {
-                                        // This block will be executed after permission is granted
-                                        if (userQuestion.isNotBlank()) {
-                                            onReasonClicked(userQuestion, imageUris.toList())
-                                            onUserQuestionChanged("")
-                                            imageUris.clear()
-                                        }
+                                    mainActivity.requestMediaProjectionPermission {
+                                        // Ask for Termux only after screen capture permission is granted.
+                                        requestTermuxPermissionThenSend(mainActivity)
                                     }
                                     Toast.makeText(context, "Requesting screen capture permission...", Toast.LENGTH_SHORT).show()
                                     return@IconButton
                                 }
 
-                                if (userQuestion.isNotBlank()) {
-                                    if (mainActivity == null) {
-                                        handleTermuxRunCommandPermissionDenied()
-                                        return@IconButton
-                                    }
-
-                                    isTermuxPermissionRequestPending = true
-                                    mainActivity.requestTermuxRunCommandPermission { isGranted ->
-                                        isTermuxPermissionRequestPending = false
-                                        if (isGranted) {
-                                            TermuxFeedbackPreferences.resetPermissionDenialCount(context)
-                                            sendCurrentQuestion()
-                                        } else {
-                                            handleTermuxRunCommandPermissionDenied()
-                                        }
-                                    }
-                                }
+                                requestTermuxPermissionThenSend(mainActivity)
                             },
                             enabled = isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending,
                             modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
