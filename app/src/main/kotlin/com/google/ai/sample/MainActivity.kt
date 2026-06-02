@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
@@ -129,6 +130,7 @@ class MainActivity : ComponentActivity() {
     private var isProcessingExplicitScreenshotRequest: Boolean = false
     private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
     private var onWebRtcMediaProjectionResult: ((Int, Intent) -> Unit)? = null
+    private var onTermuxRunCommandPermissionResult: ((Boolean) -> Unit)? = null
     private val mediaProjectionServiceStarter by lazy { MediaProjectionServiceStarter(this) }
 
     // Payment dialog state
@@ -156,6 +158,33 @@ class MainActivity : ComponentActivity() {
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var requestForegroundServicePermissionLauncher: ActivityResultLauncher<String>
     private val foregroundMediaProjectionPermission = android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
+
+
+    fun requestTermuxRunCommandPermission(onResult: (Boolean) -> Unit) {
+        Log.d(TAG, "Requesting Termux RUN_COMMAND permission without pre-check")
+        onTermuxRunCommandPermissionResult = onResult
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(TERMUX_RUN_COMMAND_PERMISSION),
+            REQUEST_CODE_TERMUX_RUN_COMMAND_PERMISSION
+        )
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == REQUEST_CODE_TERMUX_RUN_COMMAND_PERMISSION) {
+            val isGranted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+            Log.d(TAG, "Termux RUN_COMMAND permission result: $isGranted")
+            onTermuxRunCommandPermissionResult?.invoke(isGranted)
+            onTermuxRunCommandPermissionResult = null
+        }
+    }
 
     fun requestMediaProjectionPermission(onGranted: (() -> Unit)? = null) {
         Log.d(TAG, "Requesting MediaProjection permission")
@@ -1136,6 +1165,8 @@ class MainActivity : ComponentActivity() {
         }
         private const val PREFS_NAME = "AppPrefs"
         private const val PREF_KEY_FIRST_LAUNCH_INFO_SHOWN = "firstLaunchInfoShown"
+        private const val TERMUX_RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND"
+        private const val REQUEST_CODE_TERMUX_RUN_COMMAND_PERMISSION = 1001
 
         // New Broadcast Actions for MediaProjection Screenshot Flow
         const val ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT = "com.google.ai.sample.REQUEST_MEDIAPROJECTION_SCREENSHOT"
