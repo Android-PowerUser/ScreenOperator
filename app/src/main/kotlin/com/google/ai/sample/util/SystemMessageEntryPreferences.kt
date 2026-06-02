@@ -19,22 +19,128 @@ object SystemMessageEntryPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
+    private const val OLD_TERMUX_TITLE = "Termux"
+    private const val TERMUX_TITLE = "If \"Termux(\"command\")\" doesn't work"
+    private const val OLD_FIELD_TITLE = "If a field is not spelled out"
+    private const val FIELD_TITLE = "If a field to click is not spelled out"
+
+    private val termuxEntry = SystemMessageEntry(
+        title = TERMUX_TITLE,
+        guide = """1. Open Termux; if that has no effect, it is not installed and you will need to download the GitHub version using a browser.
+
+2. Else go ~/.termux/termux.properties uncomment 
+allow-external-apps = true in Termux
+Confirm Android Termux access permissions request.
+
+3. The "Run commands in Termux environment" permission must be approved in the Screen Operator app info in the Android settings. But this should be already turned on so try Termux("Your command") again."""
+    )
+
+    private val fieldEntry = SystemMessageEntry(
+        title = FIELD_TITLE,
+        guide = "Some fields will not be spelled out, such as \"Nach Apps und Spielen su...\". In such a case, you must always enter the full version: clickOnButton(\"Nach Apps und Spielen suchen\")\""
+    )
+
     private val defaultEntries: List<SystemMessageEntry> = listOf(
-        SystemMessageEntry(
-            title = "Termux",
-            guide = "To write something in Termux you must be sure the ESC HOME banner is away. If not: back() scrollRight(75%, 99%, 50%, 50) tapAtCoordinates(50%, 99%) this in one message. Check if the banner has disappeared also at the bottom. To show the keyboard in Termux if the banner is gone: tapAtCoordinates(50%, 99%) And you must always Enter() twice.\""
-        ),
+        termuxEntry,
         SystemMessageEntry(
             title = "Chromium-based Browser",
             guide = "To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the 'minus' symbol (multiple times). It only works approximately in 10% increments. Press the button that many times in a message to zoom out until 50%. More isn't possible.\""
         ),
-        SystemMessageEntry(
-            title = "Miscellaneous",
-            guide = "Some fields will not be spelled out, such as \"Nach Apps und Spielen su...\". In such a case, you must always enter the full version: clickOnButton(\"Nach Apps und Spielen suchen\")\""
-        ),
+        fieldEntry,
         SystemMessageEntry(
             title = "File operations",
             guide = "As a VLM, Termux is the fastest way to perform file operations. If it's not installed, use existing file manager.\""
+        ),
+        SystemMessageEntry(
+            title = "Root availability",
+            guide = """Anyone with root access also has a root app like Magisk, KernelSU, or something similar. Try opening all these apps simultaneously. If then one is actually running, you'll see there whether root access is active."""
+        ),
+        SystemMessageEntry(
+            title = "Set thumbnail for videos",
+            guide = """Set thumbnails won't work with WMV files.
+Use Termux and retrieve the manual for that and install FFMPEG there if it's not already present. Specify the video, image, and output paths. Use: -map 0 -map 1 -c copy -c:v:1 mjpeg -disposition:v:1 attached_pic 
+
+Alternate way: Open FFMPEG App. (If it's not installed, download the app from GitHub, not the Play Store, because Google restrictions prevent FFMPEG from accessing most files.) 
+Click 2 input files and the second one is for the picture. Write -map 0 -map 1 -c copy -c:v:1 mjpeg -disposition:v:1 attached_pic in the text field on the bottom"""
+        ),
+        SystemMessageEntry(
+            title = "Codex",
+            guide = """Go to https://chatgpt.com/codex/cloud and log in if necessary. Select the repository, and the most up-to-date branch.
+
+First time with Codex: Yes
+
+
+If "Yes": Write Codex a task and click submit. It will take 3 seconds to start. Find the task field and stop it. The environment for the repository is now created. Tap Menu (top left) and Environments, tap the relevant one, click Edit, and set the setup script to manual. In the new text field, enter the following, if you task is to develop an Android app:
+
+#!/bin/bash
+
+# Exit on any error
+set -e
+
+# 1. Set up the Android SDK directory
+echo "Setting up Android SDK directory..."
+
+mkdir -p android_sdk
+
+echo "sdk.dir=android_sdk" > local.properties
+
+# Add android_sdk to .gitignore if it's not already there
+if !  grep -q "android_sdk/" .gitignore;  then
+   echo "android_sdk/" >> .gitignore
+ fi
+
+ # 2. Download and unzip the Android SDK command-line tools
+ echo "Downloading and unzipping Android SDK..."
+ wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+ unzip -q commandlinetools-linux-13114758_latest.zip -d android_sdk
+ rm commandlinetools-linux-13114758_latest.zip
+
+ #3. Restructure cmdline-tools for sdkmanager
+ # FIX: Rename the extracted folder to a temp name FIRST (outside of itself),
+ # then create the required nested structure and move the contents in.
+ # Doing `mv cmdline-tools/* cmdline-tools/latest` would try to move
+ #  `latest` into itself, which fails.
+ echo "Restructuring cmdline-tools..."
+ mv android_sdk/cmdline-tools android_sdk/cmdline-tools-tmp
+ mkdir -p android_sdk/cmdline-tools/latest
+ mv android_sdk/cmdline-tools-tmp/* android_sdk/cmdline-tools/latest/
+ rm -rf android_sdk/cmdline-tools-tmp
+
+ #4. Install required SDK packages
+ echo "Installing SDK packages..."
+ # FIX: Append `||  true` because `yes` receives a SIGPIPE (exit code 141)
+ # once sdkmanager closes its stdin after all licenses are accepted.
+ # With `set -e` active, that would abort the script — but it's harmless here.
+ yes |  android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+
+android_sdk/cmdline-tools/latest/bin/sdkmanager \
+
+"platforms;android-35" \
+
+"build-tools;35.0.0" \
+
+"platform-tools" 
+
+Enable internet access for agents and select "All (unrestricted)" for the domain allowlist and save. Go back (several times) to the Codex input field. 
+
+Then Open your own app, tap on Database, Developing Android apps, set "First time with Codex" to "No" and press "save".
+
+
+If "No": Write Codex the task and click submit. It will take 3 seconds to start. Find the new task field and click on it. You can click on protocol to see what's happening right now.
+
+Use the "Wait(seconds)" function to save tokens. After a longer period of time, the session or container must first be created. This takes approximately 120 seconds. The container is used across multiple tasks.
+If the session is already created and Codex only asked questions, the response takes 40 seconds.
+The task itself takes approximately 70 seconds and the build to test takes 135 seconds.
+
+Proceed normally."""
+        ),
+        SystemMessageEntry(
+            title = "Developing Android apps",
+            guide = """1. Only if it's an app from scratch create a Github repo with Termux if installed else with a browser and log in or sign up if necessary. Ask the user whether the repo should be public or private and the name of the app and the repo.
+
+
+thereafter:
+retrieve("Codex")"""
         )
     )
 
@@ -94,13 +200,54 @@ object SystemMessageEntryPreferences {
     }
 
     private fun ensureDefaultEntriesIfNeeded(context: Context, prefs: SharedPreferences) {
-        val defaultsPopulated = prefs.getBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, false)
-        if (defaultsPopulated) return
+        val currentEntries = runCatching { loadPersistedEntries(prefs) }.getOrElse { error ->
+            Log.e(TAG, "Error loading persisted entries for default synchronization: ${error.message}", error)
+            emptyList()
+        }
 
-        Log.d(TAG, "Default entries not populated. Populating now.")
-        saveEntries(context, defaultEntries)
-        prefs.edit { putBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, true) }
-        Log.d(TAG, "Populated and saved default database entries.")
+        val synchronizedEntries = synchronizeDefaultEntries(currentEntries)
+        if (synchronizedEntries != currentEntries) {
+            Log.d(TAG, "Synchronizing default database entries. Before=${currentEntries.size}, After=${synchronizedEntries.size}.")
+            saveEntries(context, synchronizedEntries)
+        }
+
+        if (!prefs.getBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, false)) {
+            prefs.edit { putBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, true) }
+            Log.d(TAG, "Marked default database entries as populated.")
+        }
+    }
+
+    private fun synchronizeDefaultEntries(entries: List<SystemMessageEntry>): List<SystemMessageEntry> {
+        val synchronizedEntries = entries.toMutableList()
+        upsertRequiredEntry(synchronizedEntries, termuxEntry, listOf(OLD_TERMUX_TITLE))
+        upsertRequiredEntry(synchronizedEntries, fieldEntry, listOf(OLD_FIELD_TITLE, "Miscellaneous"))
+        defaultEntries
+            .filterNot { it.title == termuxEntry.title || it.title == fieldEntry.title }
+            .forEach { upsertRequiredEntry(synchronizedEntries, it) }
+        return synchronizedEntries
+    }
+
+    private fun upsertRequiredEntry(
+        entries: MutableList<SystemMessageEntry>,
+        requiredEntry: SystemMessageEntry,
+        legacyTitles: List<String> = emptyList()
+    ) {
+        val matchingTitles = legacyTitles + requiredEntry.title
+        val firstMatchingIndex = entries.indexOfFirst { entry ->
+            matchingTitles.any { title -> entry.title.equals(title, ignoreCase = true) }
+        }
+
+        if (firstMatchingIndex == -1) {
+            entries.add(requiredEntry)
+            return
+        }
+
+        entries[firstMatchingIndex] = requiredEntry
+        for (index in entries.indices.reversed()) {
+            if (index != firstMatchingIndex && matchingTitles.any { entries[index].title.equals(it, ignoreCase = true) }) {
+                entries.removeAt(index)
+            }
+        }
     }
 
     private fun loadPersistedEntries(prefs: SharedPreferences): List<SystemMessageEntry> {
