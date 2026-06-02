@@ -13,6 +13,7 @@ object SystemMessageEntryPreferences {
     private const val PREFS_NAME = "system_message_entry_prefs"
     private const val KEY_SYSTEM_MESSAGE_ENTRIES = "system_message_entries"
     private const val KEY_DEFAULT_DB_ENTRIES_POPULATED = "default_db_entries_populated"
+    private const val KEY_LEGACY_TERMUX_ENTRY_MIGRATED = "legacy_termux_entry_migrated"
     private val entryListSerializer = ListSerializer(SystemMessageEntry.serializer())
 
     private fun getSharedPreferences(context: Context): SharedPreferences {
@@ -205,21 +206,37 @@ retrieve("Codex")"""
             emptyList()
         }
 
-        val synchronizedEntries = synchronizeDefaultEntries(currentEntries)
+        val shouldMigrateLegacyTermux = shouldMigrateLegacyTermuxEntry(currentEntries, prefs)
+        val synchronizedEntries = synchronizeDefaultEntries(currentEntries, shouldMigrateLegacyTermux)
         if (synchronizedEntries != currentEntries) {
             Log.d(TAG, "Synchronizing default database entries. Before=${currentEntries.size}, After=${synchronizedEntries.size}.")
             saveEntries(context, synchronizedEntries)
         }
 
-        if (!prefs.getBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, false)) {
-            prefs.edit { putBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, true) }
-            Log.d(TAG, "Marked default database entries as populated.")
+        prefs.edit {
+            if (!prefs.getBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, false)) {
+                putBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, true)
+                Log.d(TAG, "Marked default database entries as populated.")
+            }
+            if (!prefs.getBoolean(KEY_LEGACY_TERMUX_ENTRY_MIGRATED, false)) {
+                putBoolean(KEY_LEGACY_TERMUX_ENTRY_MIGRATED, true)
+                Log.d(TAG, "Marked legacy Termux database entry migration as completed.")
+            }
         }
     }
 
-    private fun synchronizeDefaultEntries(entries: List<SystemMessageEntry>): List<SystemMessageEntry> {
+    private fun shouldMigrateLegacyTermuxEntry(entries: List<SystemMessageEntry>, prefs: SharedPreferences): Boolean {
+        if (prefs.getBoolean(KEY_LEGACY_TERMUX_ENTRY_MIGRATED, false)) return false
+        return entries.none { it.title.equals(TERMUX_TITLE, ignoreCase = true) }
+    }
+
+    private fun synchronizeDefaultEntries(
+        entries: List<SystemMessageEntry>,
+        shouldMigrateLegacyTermux: Boolean
+    ): List<SystemMessageEntry> {
         val synchronizedEntries = entries.toMutableList()
-        upsertRequiredEntry(synchronizedEntries, termuxEntry, listOf(OLD_TERMUX_TITLE))
+        val legacyTermuxTitles = if (shouldMigrateLegacyTermux) listOf(OLD_TERMUX_TITLE) else emptyList()
+        upsertRequiredEntry(synchronizedEntries, termuxEntry, legacyTermuxTitles)
         upsertRequiredEntry(synchronizedEntries, fieldEntry, listOf(OLD_FIELD_TITLE, "Miscellaneous"))
         defaultEntries
             .filterNot { it.title == termuxEntry.title || it.title == fieldEntry.title }
