@@ -650,18 +650,22 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 ?: intent.getBundleExtra("result")
 
             val extras = intent.extras
-            val stdout = sequenceOf(
-                resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
-                resultBundle?.getString("stdout"),
-                extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
-                extras?.getString("stdout")
-            ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
-            val stderr = sequenceOf(
-                resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
-                resultBundle?.getString("stderr"),
-                extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
-                extras?.getString("stderr")
-            ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+            val stdout = TermuxOutputPreferences.removeProcessCompletedPrompt(
+                sequenceOf(
+                    resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
+                    resultBundle?.getString("stdout"),
+                    extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDOUT"),
+                    extras?.getString("stdout")
+                ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+            )
+            val stderr = TermuxOutputPreferences.removeProcessCompletedPrompt(
+                sequenceOf(
+                    resultBundle?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
+                    resultBundle?.getString("stderr"),
+                    extras?.getString("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_STDERR"),
+                    extras?.getString("stderr")
+                ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+            )
             val exitCode = when {
                 resultBundle?.containsKey("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE") == true -> {
                     resultBundle.getInt("com.termux.app.extra.TERMUX_SERVICE.EXTRA_PLUGIN_RESULT_BUNDLE_EXIT_CODE", Int.MIN_VALUE)
