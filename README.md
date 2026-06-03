@@ -7,7 +7,7 @@ This Android app operates the screen with commands from vision LLMs.
 
 
 
-<img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20250526-192615_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20250802-231135_Screen%20Operator.png" alt="" width="141"/>
+<img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20260603-084407_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20250802-231135_Screen%20Operator.png" alt="" width="141"/>
 
 ## Download and install
 
