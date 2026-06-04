@@ -3,15 +3,12 @@
 This Android app operates the screen with commands from vision LLMs.
 
 
-#### • The first Android agent app in the world (since June/2025)
-
+### OpenClaw for Android
+It can now execute commands directly in Termux via API. If you had already installed Screen Operator before the update, click "Restore System Message".
 
 
 <img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20260603-084407_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20250802-231135_Screen%20Operator.png" alt="" width="141"/>
 
-### OpenClaw for Android. It can now execute commands directly in Termux via API.
-
-If you had already installed Screen Operator before the update, click "Restore System Message".
 
 ## Download and install
 
@@ -46,6 +43,8 @@ You can build the apk with Github actions: Stay in your fork, on your user accou
 [Here](https://github.com/Android-PowerUser/ScreenOperator/discussions/87) you can share your own database
 
 <br/>
+#### • The first Android agent app in the world (since June/2025)
+
 
 ### needed updates
 
