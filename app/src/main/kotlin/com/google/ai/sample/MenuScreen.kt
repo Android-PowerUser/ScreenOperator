@@ -100,10 +100,10 @@ data class MenuItem(
 
 private val STRIKETHROUGH_MODELS = listOf(
     ModelOption.GEMMA_3_27B_IT,
-    ModelOption.MISTRAL_LARGE_3,
     ModelOption.GEMINI_FLASH_LIVE_PREVIEW,
     ModelOption.GEMINI_FLASH_LITE_PREVIEW,
-    ModelOption.QWEN3_5_4B_OFFLINE
+    ModelOption.QWEN3_5_4B_OFFLINE,
+    ModelOption.CLOUDFLARE_KIMI_K2_6
 )
 
 @Composable
@@ -293,9 +293,8 @@ fun MenuScreen(
                             ModelOption.GEMMA_3_27B_IT -> "Google doesn't support screenshots in the API for this model."
                             ModelOption.GPT_OSS_120B -> "This is a pure text model\nCerebras sometimes discontinues free access in the Free Tier, displaying an \"Error 404: gpt-oss-120b does not exist or you do not have access to it\" message, or changes the rate limits."
                             ModelOption.MISTRAL_MEDIUM_3_5 -> "This is a reasoning model"
-                            ModelOption.MISTRAL_LARGE_3 -> "Mistral AI rejects requests containing non-black images with a 429 Error: Rate limit exceeded response"
                             ModelOption.GEMINI_3_FLASH -> "Google often rejects requests to this model with a 503 Model is exhausted error"
-                            ModelOption.PUTER_GLM5 -> "This model is expensive and uses up the free quota quickly. Consider GPT-5.4 Nano."
+                            ModelOption.PUTER_MIMO_V2_5 -> "$0.14/M input | $0.28/M output"
                             ModelOption.PUTER_QWEN3_5_FLASH -> "$0.07/M input | $0.26/M output"
                             ModelOption.GROQ_LLAMA_4_SCOUT_17B -> "30 requests per Min"
                             ModelOption.CLOUDFLARE_KIMI_K2_6 -> "Approx. 15 responses per day are free"
