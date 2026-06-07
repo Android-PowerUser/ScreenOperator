@@ -29,6 +29,7 @@ import com.google.ai.sample.util.AppNamePackageMapper
 import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CoordinateParser
+import com.google.ai.sample.util.TermuxExecutionModePreferences
 import com.google.ai.sample.util.TermuxFeedbackPreferences
 import com.google.ai.sample.util.TermuxOutputPreferences
 import java.io.File
@@ -595,13 +596,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.e(TAG, "Failed to register Termux result receiver", t)
         }
 
+        val executeInBackground = TermuxExecutionModePreferences.executeInBackground(applicationContext)
         val intent = Intent("com.termux.RUN_COMMAND").apply {
             `package` = termuxPackage
             setClassName(termuxPackage, runCommandServiceClass)
             putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", trimmedCommand))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", executeInBackground)
             putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
             putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
             putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingResultIntent)
