@@ -27,8 +27,8 @@ val missingReleaseSigningEnv = releaseSigningEnv
     .filterValues { it.isNullOrBlank() }
     .keys
 
-val isReleaseTaskRequested = gradle.startParameter.taskNames.any { task ->
-    task.contains("release", ignoreCase = true)
+val isAssembleReleaseRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("assemble", ignoreCase = true) && task.contains("release", ignoreCase = true)
 }
 
 val missingReleaseSigningEnvText = missingReleaseSigningEnv.joinToString(separator = ", ")
@@ -183,14 +183,14 @@ androidComponents {
         }
 
         tasks.configureEach {
-            if (name == "assemble$variantNameCap") {
+            if (name == "assemble$variantNameCap" || name == "bundle$variantNameCap") {
                 dependsOn(verifyTask)
             }
         }
     }
 }
 
-if (isReleaseTaskRequested && missingReleaseSigningEnv.isNotEmpty()) {
+if (isAssembleReleaseRequested && missingReleaseSigningEnv.isNotEmpty()) {
     error(
         "Release signing env vars missing for module :app: ${missingReleaseSigningEnvText}. " +
             "Set ANDROID_KEYSTORE_PATH, ANDROID_KEY_ALIAS, ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_PASSWORD."

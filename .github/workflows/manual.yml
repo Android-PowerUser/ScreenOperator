@@ -136,6 +136,14 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Cache Gradle build cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.gradle/build-cache
+        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**', 'humanoperator/src/**') }}
+        restore-keys: |
+          gradle-build-cache-${{ runner.os }}-
+
     - name: Decode google-services.json (app)
       env:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
@@ -152,8 +160,8 @@ jobs:
     - name: Fix gradle.properties for CI
       run: |
         sed -i '/org.gradle.java.home=/d' gradle.properties
-        sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m/' gradle.properties
-        sed -i 's/kotlin.daemon.jvmargs=.*/kotlin.daemon.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m/' gradle.properties
+        sed -i '/kotlin.daemon.jvmargs=/d' gradle.properties
+        sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m/' gradle.properties
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
@@ -178,10 +186,22 @@ jobs:
       with:
         name: humanoperator-debug
         path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
+
+    - name: Build app release AAB (unsigned)
+      if: env.BUILD_APP == 'true'
+      run: ./gradlew :app:bundleRelease
+
+    - name: Upload app release AAB (unsigned)
+      if: env.BUILD_APP == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release-aab-unsigned
+        path: app/build/outputs/bundle/release/app-release.aab
+
     - name: Build summary
       run: |
         echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "| Module | Built |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| app | ${{ env.BUILD_APP }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| humanoperator | ${{ env.BUILD_HUMANOPERATOR }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Module | Built | Artefakte |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
+        echo "| app | ${{ env.BUILD_APP }} | APK (debug) + AAB (release, unsigned) |" >> $GITHUB_STEP_SUMMARY
+        echo "| humanoperator | ${{ env.BUILD_HUMANOPERATOR }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
