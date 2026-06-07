@@ -38,7 +38,7 @@ enum class ModelOption(
     val requiresVisionBackend: Boolean = false
 ) {
     PUTER_GPT_5_4_NANO("GPT-5.4 Nano (Puter)", "openai/gpt-5.4-nano", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_GLM5("GLM-5V Turbo (Puter)", "openrouter:z-ai/glm-5v-turbo", ApiProvider.PUTER, supportsScreenshot = true),
+    PUTER_MIMO_V2_5("Mimo-V2.5 (Puter)", "xiaomi/mimo-v2.5", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_QWEN3_5_FLASH("Qwen3.5-Flash (Puter)", "qwen/qwen3.5-flash-02-23", ApiProvider.PUTER, supportsScreenshot = true),
     GROQ_LLAMA_4_SCOUT_17B("Llama 4 Scout 109B (Groq)", "meta-llama/llama-4-scout-17b-16e-instruct", ApiProvider.GROQ, supportsScreenshot = true),
     CLOUDFLARE_KIMI_K2_6("Kimi K2.6 (Cloudflare)", "@cf/moonshotai/kimi-k2.6", ApiProvider.CLOUDFLARE, supportsScreenshot = true),
@@ -255,7 +255,10 @@ object GenerativeAiViewModelFactory {
         currentModel = try {
             ModelOption.valueOf(modelNameStr ?: ModelOption.MISTRAL_LARGE_3.name)
         } catch (e: IllegalArgumentException) {
-            ModelOption.MISTRAL_LARGE_3
+            when (modelNameStr) {
+                "PUTER_GLM5" -> ModelOption.PUTER_MIMO_V2_5
+                else -> ModelOption.MISTRAL_LARGE_3
+            }
         }
     }
 }
