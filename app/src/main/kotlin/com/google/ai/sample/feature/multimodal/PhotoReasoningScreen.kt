@@ -110,6 +110,7 @@ import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.TermuxExecutionModePreferences
 import com.google.ai.sample.util.TermuxFeedbackPreferences
 import com.google.ai.sample.util.TermuxOutputPreferences
 import com.google.ai.sample.util.UriSaver
@@ -159,6 +160,9 @@ fun PhotoReasoningScreen(
     val focusManager = LocalFocusManager.current
     val messages by chatMessages.collectAsState()
     var isTermuxPermissionRequestPending by rememberSaveable { mutableStateOf(false) }
+    var executeTermuxInBackground by rememberSaveable {
+        mutableStateOf(TermuxExecutionModePreferences.executeInBackground(context))
+    }
 
     LaunchedEffect(Unit) {
         systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
@@ -440,50 +444,81 @@ fun PhotoReasoningScreen(
                             onValueChange = onUserQuestionChanged,
                             modifier = Modifier.weight(1f).padding(end = 8.dp)
                         )
-                        IconButton(
-                            onClick = {
-                                val mainActivity = context as? MainActivity
-
-                                // Always check accessibility service (needed for both live and regular models)
-                                if (!isAccessibilityServiceEnabled) {
-                                    onEnableAccessibilityService()
-                                    Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
-                                    return@IconButton
-                                }
-
-                                if (userQuestion.isBlank()) {
-                                    return@IconButton
-                                }
-
-                                if (mainActivity == null) {
-                                    handleTermuxRunCommandPermissionDenied()
-                                    return@IconButton
-                                }
-
-                                // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService.
-                                // Termux is still required for every model, including Human Expert, via the shared send path below.
-                                val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-                                val requiresScreenCapturePermission = currentModel.supportsScreenshot && modelName != "human-expert"
-                                if (!isMediaProjectionPermissionGranted && requiresScreenCapturePermission) {
-                                    mainActivity.requestMediaProjectionPermission {
-                                        // Ask for Termux only after screen capture permission is granted.
-                                        requestTermuxPermissionThenSend(mainActivity)
+                        Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                            IconButton(
+                                onClick = {
+                                    val updatedExecuteInBackground = !executeTermuxInBackground
+                                    executeTermuxInBackground = updatedExecuteInBackground
+                                    TermuxExecutionModePreferences.setExecuteInBackground(
+                                        context,
+                                        updatedExecuteInBackground
+                                    )
+                                    val toastMessage = if (updatedExecuteInBackground) {
+                                        "Termux commands are executed in the background"
+                                    } else {
+                                        "Termux commands are executed in the foreground"
                                     }
-                                    Toast.makeText(context, "Requesting screen capture permission...", Toast.LENGTH_SHORT).show()
-                                    return@IconButton
+                                    Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.padding(bottom = 4.dp).drawBehind {
+                                    drawCircle(
+                                        color = Color.Black,
+                                        radius = size.minDimension / 2,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                                    )
                                 }
+                            ) {
+                                Text(
+                                    if (executeTermuxInBackground) "TB" else "TF",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    val mainActivity = context as? MainActivity
 
-                                requestTermuxPermissionThenSend(mainActivity)
-                            },
-                            enabled = isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending,
-                            modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                stringResource(R.string.action_go),
-                                tint = if (isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending)
-                                    MaterialTheme.colorScheme.primary else Color.Gray,
-                            )
+                                    // Always check accessibility service (needed for both live and regular models)
+                                    if (!isAccessibilityServiceEnabled) {
+                                        onEnableAccessibilityService()
+                                        Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                                        return@IconButton
+                                    }
+
+                                    if (userQuestion.isBlank()) {
+                                        return@IconButton
+                                    }
+
+                                    if (mainActivity == null) {
+                                        handleTermuxRunCommandPermissionDenied()
+                                        return@IconButton
+                                    }
+
+                                    // Human Expert uses its own MediaProjection for WebRTC, not ScreenCaptureService.
+                                    // Termux is still required for every model, including Human Expert, via the shared send path below.
+                                    val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                                    val requiresScreenCapturePermission = currentModel.supportsScreenshot && modelName != "human-expert"
+                                    if (!isMediaProjectionPermissionGranted && requiresScreenCapturePermission) {
+                                        mainActivity.requestMediaProjectionPermission {
+                                            // Ask for Termux only after screen capture permission is granted.
+                                            requestTermuxPermissionThenSend(mainActivity)
+                                        }
+                                        Toast.makeText(context, "Requesting screen capture permission...", Toast.LENGTH_SHORT).show()
+                                        return@IconButton
+                                    }
+
+                                    requestTermuxPermissionThenSend(mainActivity)
+                                },
+                                enabled = isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending,
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    stringResource(R.string.action_go),
+                                    tint = if (isInitialized && userQuestion.isNotBlank() && !isTermuxPermissionRequestPending)
+                                        MaterialTheme.colorScheme.primary else Color.Gray,
+                                )
+                            }
                         }
                     } // Closes Row
                     LazyRow(modifier = Modifier.padding(all = 8.dp)) {
