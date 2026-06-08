@@ -392,6 +392,7 @@ fun PhotoReasoningScreen(
                                         is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
                                         is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
                                         is Command.TakeScreenshot -> "Take screenshot"
+                                        is Command.Completed -> "Completed"
                                         is Command.Wait -> "Wait: ${command.seconds} seconds"
                                         is Command.Retrieve -> "Retrieve: \"${command.heading}\""
                                         else -> command::class.simpleName ?: "Unknown Command"

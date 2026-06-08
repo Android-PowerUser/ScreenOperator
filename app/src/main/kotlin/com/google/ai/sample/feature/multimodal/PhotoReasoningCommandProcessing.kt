@@ -6,6 +6,7 @@ import com.google.ai.sample.util.CommandParser
 internal data class ParsedCommandBatch(
     val commands: List<Command>,
     val hasTakeScreenshotCommand: Boolean,
+    val hasCompletedCommand: Boolean,
     val commandDescriptions: String
 )
 
@@ -19,6 +20,7 @@ internal object PhotoReasoningCommandProcessing {
         return ParsedCommandBatch(
             commands = commands,
             hasTakeScreenshotCommand = commands.any { it is Command.TakeScreenshot },
+            hasCompletedCommand = commands.any { it is Command.Completed },
             commandDescriptions = commands.joinToString("; ") { it.toString() }
         )
     }
