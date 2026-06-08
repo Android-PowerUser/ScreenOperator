@@ -2235,11 +2235,16 @@ class PhotoReasoningViewModel(
                 for (command in newCommands) {
                     if (stopExecutionFlag.get()) break
                     
-                    // Skip takeScreenshot during streaming - it will be handled by final processCommands
+                    // Skip commands that are handled only after streaming has finished.
                     if (command is Command.TakeScreenshot) {
                         Log.d(TAG, "Incremental: Skipping takeScreenshot during streaming (will be handled at end)")
                         incrementalCommandCount++
                         continue
+                    }
+                    if (command is Command.Completed) {
+                        Log.d(TAG, "Incremental: completed() received; stopping incremental command execution")
+                        incrementalCommandCount++
+                        break
                     }
                     
                     try {
@@ -2267,17 +2272,29 @@ private fun processCommands(text: String) {
         if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) return@launch // Check for cancellation
         try {
             val commandBatch = PhotoReasoningCommandProcessing.parseForFinalExecution(text)
-            val commands = commandBatch.commands
+            val parsedCommands = commandBatch.commands
+            val hasCompletedCommand = commandBatch.hasCompletedCommand
             val hasTakeScreenshotCommand = commandBatch.hasTakeScreenshotCommand
+            val commandsBeforeCompletion = if (hasCompletedCommand) {
+                parsedCommands.takeWhile { it !is Command.Completed } + Command.Completed
+            } else {
+                parsedCommands
+            }
+            val commands = if (hasCompletedCommand || hasTakeScreenshotCommand) {
+                commandsBeforeCompletion
+            } else {
+                commandsBeforeCompletion + Command.TakeScreenshot
+            }
             val commandsToExecute = commands.mapIndexedNotNull { index, command ->
                 when {
+                    command is Command.Completed -> null
                     command is Command.Retrieve -> null
                     index < incrementalCommandCount && command !is Command.TakeScreenshot -> null
                     else -> command
                 }
             }
 
-            if (hasTakeScreenshotCommand) {
+            if (!hasCompletedCommand) {
                 pendingRetrievedInfoForNextScreenshot = buildRetrievedInfoForNextScreenshot(commands)
             }
 
@@ -2293,7 +2310,7 @@ private fun processCommands(text: String) {
                         commands = commands
                     )
                     _commandExecutionStatus.value = PhotoReasoningCommandStateUpdater.buildDetectedStatus(
-                        commandBatch.commandDescriptions
+                        commands.joinToString("; ") { it.toString() }
                     )
                 }
 
@@ -2324,12 +2341,8 @@ private fun processCommands(text: String) {
                 }
             }
 
-            // Toast anzeigen wenn kein takeScreenshot Command gefunden wurde
-            if (!hasTakeScreenshotCommand && !text.contains("takeScreenshot()", ignoreCase = true)) {
-                val context = MainActivity.getInstance()
-                if (context != null) {
-                    PhotoReasoningCommandUiNotifier.showStoppedByAi(context)
-                }
+            if (hasCompletedCommand) {
+                _commandExecutionStatus.value = "Task marked completed by AI."
             }
 
         } catch (e: Exception) {

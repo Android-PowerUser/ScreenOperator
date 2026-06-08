@@ -78,4 +78,23 @@ class CommandParserTest {
         assertEquals(7L, (wait as Command.Wait).seconds)
         assertTrue(commands[1] is Command.TakeScreenshot)
     }
+
+    @Test
+    fun parseCommands_extractsCompletedCommand() {
+        val commands = CommandParser.parseCommands("completed()", clearBuffer = true)
+
+        assertEquals(1, commands.size)
+        assertTrue(commands.first() is Command.Completed)
+    }
+
+    @Test
+    fun parseCommands_keepsSingleCompletedCommandInstance() {
+        val commands = CommandParser.parseCommands(
+            "completed() completed()",
+            clearBuffer = true
+        )
+
+        assertEquals(1, commands.count { it is Command.Completed })
+    }
+
 }

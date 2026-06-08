@@ -243,6 +243,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 true // Asynchronous
             }
             is Command.TakeScreenshot -> executeTakeScreenshotCommand()
+            is Command.Completed -> {
+                Log.d(TAG, "Command.Completed: No accessibility action required.")
+                true
+            }
             is Command.Wait -> {
                 pendingScreenshotDelayMillis = command.seconds
                     .coerceAtLeast(0L)
@@ -420,7 +424,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
         }.also {
-            if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand) {
+            if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand && command !is Command.Completed) {
                 sawNonTermuxCommandSinceLastScreenshot = true
             }
         }
