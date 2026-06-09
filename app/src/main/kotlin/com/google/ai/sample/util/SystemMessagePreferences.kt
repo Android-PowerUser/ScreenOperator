@@ -35,7 +35,7 @@ Notes:
     
 2. If you have questions, open Screen Operator, ask your question(s), and use "completed()" until you receive an human response.
     
-3. After each message, you will see the screen with additional information about it.""".trimIntent()
+3. After each message, you will see the screen with additional information about it.""".trimIndent()
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /**
