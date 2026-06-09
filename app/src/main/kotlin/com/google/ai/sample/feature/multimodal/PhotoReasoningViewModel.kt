@@ -201,6 +201,7 @@ class PhotoReasoningViewModel(
 
     // Accumulated full text during streaming for incremental command parsing
     private var streamingAccumulatedText = StringBuilder()
+    private var isTaskCompletedByAi = false
 
     private var currentRetryAttempt = 0
     private var currentScreenInfoForPrompt: String? = null
@@ -214,7 +215,7 @@ class PhotoReasoningViewModel(
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ScreenCaptureService.ACTION_AI_STREAM_UPDATE) {
                 val chunk = intent.getStringExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK)
-                if (chunk != null) {
+                if (chunk != null && !isTaskCompletedByAi) {
                     updateAiMessage(chunk, isPending = true)
                     // Real-time command execution during streaming
                     streamingAccumulatedText.append(chunk)
@@ -577,7 +578,7 @@ class PhotoReasoningViewModel(
             lastMessage?.participant == PhotoParticipant.MODEL && lastMessage.isPending
         val hasActiveJob =
             currentReasoningJob?.isActive == true || commandProcessingJob?.isActive == true
-        return hasPendingModelMessage || hasActiveJob
+        return !isTaskCompletedByAi && (hasPendingModelMessage || hasActiveJob)
     }
 
     private fun isOfflineGpuModelLoaded(): Boolean {
@@ -594,6 +595,7 @@ class PhotoReasoningViewModel(
     private fun resetStreamingCommandState() {
         incrementalCommandCount = 0
         streamingAccumulatedText.clear()
+        isTaskCompletedByAi = false
         CommandParser.clearBuffer()
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
@@ -996,7 +998,7 @@ class PhotoReasoningViewModel(
                             val token = partialResult ?: ""
                             sb.append(token)
                             viewModelScope.launch(Dispatchers.Main) {
-                                if (!done) {
+                                if (!done && !isTaskCompletedByAi) {
                                     replaceAiMessageText(sb.toString(), isPending = true)
                                     // Real-time command execution during offline streaming
                                     processCommandsIncrementally(sb.toString())
@@ -1232,8 +1234,10 @@ class PhotoReasoningViewModel(
                 val body = response.body ?: throw IOException("Empty response body from Cerebras")
                 val aiResponseText = openAiStreamParser.parse(body) { accText ->
                     withContext(Dispatchers.Main) {
-                        replaceAiMessageText(accText, isPending = true)
-                        processCommandsIncrementally(accText)
+                        if (!isTaskCompletedByAi) {
+                            replaceAiMessageText(accText, isPending = true)
+                            processCommandsIncrementally(accText)
+                        }
                     }
                 }
                 response.close()
@@ -1416,8 +1420,10 @@ class PhotoReasoningViewModel(
             val body = finalResponse.body ?: throw IOException("Empty response body from Mistral")
             val aiResponseText = openAiStreamParser.parse(body) { accText ->
                 withContext(Dispatchers.Main) {
-                    replaceAiMessageText(accText, isPending = true)
-                    processCommandsIncrementally(accText)
+                    if (!isTaskCompletedByAi) {
+                        replaceAiMessageText(accText, isPending = true)
+                        processCommandsIncrementally(accText)
+                    }
                 }
             }
             Log.d(TAG, "reasonWithMistral: stream parse finished, responseLength=${aiResponseText.length}")
@@ -1575,8 +1581,10 @@ class PhotoReasoningViewModel(
                 val body = httpResponse.body ?: throw java.io.IOException("Empty response from Puter")
                 val aiResponseText = openAiStreamParser.parse(body) { accText ->
                     withContext(Dispatchers.Main) {
-                        replaceAiMessageText(accText, isPending = true)
-                        processCommandsIncrementally(accText)
+                        if (!isTaskCompletedByAi) {
+                            replaceAiMessageText(accText, isPending = true)
+                            processCommandsIncrementally(accText)
+                        }
                     }
                 }
                 httpResponse.close()
@@ -2111,10 +2119,14 @@ class PhotoReasoningViewModel(
 
     private fun finalizeAiMessage(finalText: String) {
         Log.d(TAG, "finalizeAiMessage: Finalizing AI message.")
-        _chatMessagesFlow.value = PhotoReasoningMessageMutations.finalizeAiMessage(
-            chatState = _chatState,
-            finalText = finalText
-        )
+        _chatMessagesFlow.value = if (isTaskCompletedByAi) {
+            updateLastModelMessageAfterAiCompletion(finalText)
+        } else {
+            PhotoReasoningMessageMutations.finalizeAiMessage(
+                chatState = _chatState,
+                finalText = finalText
+            )
+        }
         saveChatHistoryForApplication()
         refreshStopButtonState()
     }
@@ -2243,6 +2255,7 @@ class PhotoReasoningViewModel(
                     }
                     if (command is Command.Completed) {
                         Log.d(TAG, "Incremental: completed() received; stopping incremental command execution")
+                        markTaskCompletedByAi(accumulatedText)
                         incrementalCommandCount++
                         break
                     }
@@ -2261,6 +2274,37 @@ class PhotoReasoningViewModel(
         } catch (e: Exception) {
             Log.e(TAG, "Incremental command parsing error: ${e.message}", e)
         }
+    }
+
+
+    private fun markTaskCompletedByAi(responseText: String) {
+        isTaskCompletedByAi = true
+        _showStopNotificationFlow.value = false
+        _uiState.value = PhotoReasoningUiState.Success(responseText)
+        _chatMessagesFlow.value = updateLastModelMessageAfterAiCompletion(responseText)
+        _commandExecutionStatus.value = "Task marked completed by AI."
+        refreshStopButtonState()
+    }
+
+    private fun updateLastModelMessageAfterAiCompletion(responseText: String): List<PhotoReasoningMessage> {
+        val messages = _chatState.getAllMessages().toMutableList()
+        val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
+        if (lastAiMessageIndex != -1) {
+            messages[lastAiMessageIndex] = messages[lastAiMessageIndex].copy(
+                text = responseText,
+                isPending = false
+            )
+            _chatState.setAllMessages(messages)
+        } else {
+            _chatState.addMessage(
+                PhotoReasoningMessage(
+                    text = responseText,
+                    participant = PhotoParticipant.MODEL,
+                    isPending = false
+                )
+            )
+        }
+        return _chatState.getAllMessages()
     }
 
     /**
@@ -2342,7 +2386,7 @@ private fun processCommands(text: String) {
             }
 
             if (hasCompletedCommand) {
-                _commandExecutionStatus.value = "Task marked completed by AI."
+                markTaskCompletedByAi(text)
             }
 
         } catch (e: Exception) {
