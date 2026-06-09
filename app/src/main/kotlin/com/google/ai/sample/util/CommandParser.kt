@@ -47,7 +47,7 @@ object CommandParser {
 
         // Write text patterns
         PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
-        PatternInfo("termux1", Regex("(?i)\\bTermux\\([\"']([^\"']+)[\"']\\)"), { match -> Command.TermuxCommand(match.groupValues[1]) }, CommandTypeEnum.TERMUX_COMMAND),
+        PatternInfo("termux1", Regex("""(?i)\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)"""), { match -> Command.TermuxCommand(match.groupValues[2]) }, CommandTypeEnum.TERMUX_COMMAND),
 
         // Click (long) button patterns
         PatternInfo("clickBtn1", Regex("(?i)\\bclick\\([\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
