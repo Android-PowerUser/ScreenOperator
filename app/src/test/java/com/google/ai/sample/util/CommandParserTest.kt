@@ -97,4 +97,30 @@ class CommandParserTest {
         assertEquals(1, commands.count { it is Command.Completed })
     }
 
+    @Test
+    fun parseCommands_extractsTermuxCommandWithNestedSingleQuotes() {
+        val commands = CommandParser.parseCommands(
+            """Termux("su -c 'ifconfig'")""",
+            clearBuffer = true
+        )
+
+        assertEquals(1, commands.size)
+        val command = commands.first()
+        assertTrue(command is Command.TermuxCommand)
+        assertEquals("su -c 'ifconfig'", (command as Command.TermuxCommand).command)
+    }
+
+    @Test
+    fun parseCommands_extractsTermuxCommandWithNestedDoubleQuotes() {
+        val commands = CommandParser.parseCommands(
+            """Termux('su -c "ifconfig"')""",
+            clearBuffer = true
+        )
+
+        assertEquals(1, commands.size)
+        val command = commands.first()
+        assertTrue(command is Command.TermuxCommand)
+        assertEquals("su -c \"ifconfig\"", (command as Command.TermuxCommand).command)
+    }
+
 }
