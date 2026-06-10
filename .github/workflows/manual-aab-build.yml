@@ -21,7 +21,7 @@ jobs:
     - name: Cache Gradle build cache
       uses: actions/cache@v4
       with:
-        path: ~/.gradle/build-cache
+        path: ~/.gradle/cache
         key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**') }}
         restore-keys: |
           gradle-build-cache-${{ runner.os }}-
@@ -103,7 +103,7 @@ jobs:
       with:
         name: ${{ steps.build_info.outputs.artifact_name }}
         path: app/build/outputs/bundle/release/app-release.aab
-        retention-days: 90
+        retention-days: 180
 
     - name: Build summary
       run: |
