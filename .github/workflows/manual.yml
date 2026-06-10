@@ -134,6 +134,7 @@ jobs:
       with:
         java-version: '17'
 
+        distribution: 'temurin'
     - name: Cache Gradle packages
       uses: actions/cache@v4
       with:
