@@ -72,6 +72,17 @@ jobs:
           exit 1
         fi
 
+    - name: Verify zipalign
+      run: |
+        echo "### Zipalign Verification" >> $GITHUB_STEP_SUMMARY
+        if $ANDROID_HOME/build-tools/*/zipalign -c 4 app/build/outputs/bundle/release/app-release.aab; then
+          echo "✅ AAB is properly aligned (4-byte alignment verified)" | tee -a $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ AAB zipalign verification failed" | tee -a $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+
     - name: Get build information
       id: build_info
       run: |
@@ -96,5 +107,6 @@ jobs:
         echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| Build Type | Release (Signed) |" >> $GITHUB_STEP_SUMMARY
         echo "| 16KB Alignment | ✅ Verified |" >> $GITHUB_STEP_SUMMARY
+        echo "| Zipalign | ✅ Verified |" >> $GITHUB_STEP_SUMMARY
         echo "| Commit | ${{ steps.build_info.outputs.commit_short }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Build Date | ${{ steps.build_info.outputs.build_date }} |" >> $GITHUB_STEP_SUMMARY
