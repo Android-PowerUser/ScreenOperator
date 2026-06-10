@@ -188,16 +188,16 @@ jobs:
         path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
 
     - name: Build app release AAB (unsigned)
-      if: env.BUILD_APP == 'true'
-      run: ./gradlew :app:bundleRelease
-
-    - name: Upload app release AAB (unsigned)
-      if: env.BUILD_APP == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release-aab-unsigned
-        path: app/build/outputs/bundle/release/app-release.aab
-
+    # - name: Build app release AAB (unsigned)
+    #   if: env.BUILD_APP == 'true'
+    #   run: ./gradlew :app:bundleRelease
+    #
+    # - name: Upload app release AAB (unsigned)
+    #   if: env.BUILD_APP == 'true'
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: app-release-aab-unsigned
+    #     path: app/build/outputs/bundle/release/app-release.aab
     - name: Build summary
       run: |
         echo "### Build Summary" >> $GITHUB_STEP_SUMMARY

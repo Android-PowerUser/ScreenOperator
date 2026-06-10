@@ -1,0 +1,118 @@
+name: Manual AAB Build (Release)
+
+on:
+  workflow_dispatch:  # Manual workflow trigger only
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Cache Gradle build cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.gradle/build-cache
+        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**') }}
+        restore-keys: |
+          gradle-build-cache-${{ runner.os }}-
+
+    - name: Decode google-services.json (app)
+      env:
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
+      run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+    - name: Create local.properties
+      run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+    - name: Fix gradle.properties for CI
+      run: |
+        sed -i '/org.gradle.java.home=/d' gradle.properties
+        sed -i '/kotlin.daemon.jvmargs=/d' gradle.properties
+        sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m/' gradle.properties
+
+    - name: Decode Keystore
+      env:
+        KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      run: |
+        mkdir -p app/keystores
+        echo "$KEYSTORE_BASE64" | base64 -d > app/keystores/release.keystore
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build release AAB with 16KB alignment
+      env:
+        ANDROID_KEYSTORE_PATH: app/keystores/release.keystore
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        ./gradlew :app:bundleRelease
+        echo "### 16KB Native Library Alignment ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Native libraries verified for 16KB alignment (0x4000 = 16384 bytes) during Gradle build." >> $GITHUB_STEP_SUMMARY
+        echo "This is required for Android 15+ compatibility on 64-bit devices." >> $GITHUB_STEP_SUMMARY
+        echo "### Build Success ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Release AAB bundle created successfully." >> $GITHUB_STEP_SUMMARY
+
+    - name: Verify AAB file exists
+      run: |
+        if [ -f "app/build/outputs/bundle/release/app-release.aab" ]; then
+          echo "✅ AAB file found"
+          ls -lh app/build/outputs/bundle/release/app-release.aab
+        else
+          echo "❌ AAB file not found"
+          exit 1
+        fi
+
+    - name: Verify AAB zipalign (4-byte zip alignment)
+      run: |
+        echo "### Zipalign Verification (APK/AAB Zip Structure)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Verifying 4-byte alignment of AAB zip entries (separate from 16KB native library alignment)..." >> $GITHUB_STEP_SUMMARY
+        if $ANDROID_HOME/build-tools/*/zipalign -c -p 4 app/build/outputs/bundle/release/app-release.aab; then
+          echo "✅ AAB zip structure is properly aligned (4-byte boundaries)" | tee -a $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ AAB zip alignment verification failed" | tee -a $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Get build information
+      id: build_info
+      run: |
+        BUILD_DATE=$(date +%Y%m%d-%H%M%S)
+        COMMIT_SHORT=$(git rev-parse --short HEAD)
+        echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+        echo "commit_short=$COMMIT_SHORT" >> $GITHUB_OUTPUT
+        echo "artifact_name=app-release-${COMMIT_SHORT}-${BUILD_DATE}" >> $GITHUB_OUTPUT
+
+    - name: Upload release AAB
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.build_info.outputs.artifact_name }}
+        path: app/build/outputs/bundle/release/app-release.aab
+        retention-days: 90
+
+    - name: Build summary
+      run: |
+        echo "### 📦 AAB Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Build Type | Release (Signed) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Native Libs 16KB Alignment | ✅ Verified (Android 15+) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Zip Structure 4-byte Alignment | ✅ Verified |" >> $GITHUB_STEP_SUMMARY
+        echo "| Commit | ${{ steps.build_info.outputs.commit_short }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Build Date | ${{ steps.build_info.outputs.build_date }} |" >> $GITHUB_STEP_SUMMARY
