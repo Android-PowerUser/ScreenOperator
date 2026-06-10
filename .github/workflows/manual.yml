@@ -1,14 +1,11 @@
-name: Android Build
+name: Android Build APK
 
 on:
   push:
     branches: [ human-operator, main ]
-  workflow_dispatch:  # Ermöglicht manuelle Ausführung des Workflows
+  workflow_dispatch:
 
 jobs:
-  # Schalter für optionalen Compile-Check in CI.
-  # "false" => Compile-Schritte werden übersprungen, Code bleibt aber im Workflow erhalten.
-  # Auf "true" setzen, falls der dedizierte Compile-Check wieder aktiviert werden soll.
   compile-check-config:
     runs-on: ubuntu-latest
     outputs:
@@ -28,15 +25,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 2  # Letzten 2 Commits holen für Diff
+        fetch-depth: 2
 
     - name: Detect changed files
       id: changes
       run: |
-        # Geänderte Dateien im letzten Commit ermitteln (gilt für push UND workflow_dispatch)
         CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
-        
-        # Falls kein vorheriger Commit existiert (erster Commit), alles bauen
+
         if [ -z "$CHANGED_FILES" ]; then
           echo "app=true" >> $GITHUB_OUTPUT
           echo "humanoperator=true" >> $GITHUB_OUTPUT
@@ -44,32 +39,29 @@ jobs:
           echo "No previous commit found - building all modules"
           exit 0
         fi
-        
+
         echo "Changed files:"
         echo "$CHANGED_FILES"
-        
-        # Prüfen ob shared/root files geändert wurden (build.gradle, settings.gradle, etc.)
+
         SHARED_CHANGED=false
         if echo "$CHANGED_FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradle\.properties|gradle/|buildSrc/)'; then
           SHARED_CHANGED=true
         fi
-        
-        # Prüfen ob app/ Dateien geändert wurden
+
         APP_CHANGED=false
         if echo "$CHANGED_FILES" | grep -q '^app/'; then
           APP_CHANGED=true
         fi
-        
-        # Prüfen ob humanoperator/ Dateien geändert wurden
+
         HUMANOPERATOR_CHANGED=false
         if echo "$CHANGED_FILES" | grep -q '^humanoperator/'; then
           HUMANOPERATOR_CHANGED=true
         fi
-        
+
         echo "app=$APP_CHANGED" >> $GITHUB_OUTPUT
         echo "humanoperator=$HUMANOPERATOR_CHANGED" >> $GITHUB_OUTPUT
         echo "shared=$SHARED_CHANGED" >> $GITHUB_OUTPUT
-        
+
         echo "Results: app=$APP_CHANGED, humanoperator=$HUMANOPERATOR_CHANGED, shared=$SHARED_CHANGED"
 
   compile-check:
@@ -117,7 +109,7 @@ jobs:
       if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       run: ./gradlew :humanoperator:compileDebugKotlin
 
-  build:
+  build-apk:
     needs: [detect-changes, compile-check, compile-check-config]
     if: always() && !cancelled() && (needs.compile-check.result == 'success' || needs.compile-check.result == 'skipped')
     runs-on: ubuntu-latest
@@ -133,18 +125,16 @@ jobs:
       uses: actions/setup-java@v4
       with:
         java-version: '17'
-
         distribution: 'temurin'
-    - name: Cache Gradle packages
+        cache: gradle
+
+    - name: Cache Gradle build cache
       uses: actions/cache@v4
       with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        path: ~/.gradle/build-cache
+        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**', 'humanoperator/src/**') }}
         restore-keys: |
-          ${{ runner.os }}-gradle-
-        cache: gradle
+          gradle-build-cache-${{ runner.os }}-
 
     - name: Decode google-services.json (app)
       env:
@@ -182,6 +172,7 @@ jobs:
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
+
     - name: Upload humanoperator APK
       if: env.BUILD_HUMANOPERATOR == 'true'
       uses: actions/upload-artifact@v4
@@ -189,19 +180,10 @@ jobs:
         name: humanoperator-debug
         path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
 
-    #   if: env.BUILD_APP == 'true'
-    #   run: ./gradlew :app:bundleRelease
-    #
-    # - name: Upload app release AAB (unsigned)
-    #   if: env.BUILD_APP == 'true'
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: app-release-aab-unsigned
-    #     path: app/build/outputs/bundle/release/app-release.aab
     - name: Build summary
       run: |
-        echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "### APK Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "| Module | Built | Artefakte |" >> $GITHUB_STEP_SUMMARY
         echo "|--------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| app | ${{ env.BUILD_APP }} | APK (debug) + AAB (release, unsigned) |" >> $GITHUB_STEP_SUMMARY
+        echo "| app | ${{ env.BUILD_APP }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
         echo "| humanoperator | ${{ env.BUILD_HUMANOPERATOR }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
