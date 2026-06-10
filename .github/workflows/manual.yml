@@ -126,7 +126,6 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
     - name: Decode google-services.json (app)
       env:
