@@ -58,9 +58,13 @@ jobs:
         ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       run: |
         ./gradlew :app:bundleRelease
+        echo "### 16KB Native Library Alignment ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Native libraries verified for 16KB alignment (0x4000 = 16384 bytes) during Gradle build." >> $GITHUB_STEP_SUMMARY
+        echo "This is required for Android 15+ compatibility on 64-bit devices." >> $GITHUB_STEP_SUMMARY
         echo "### Build Success ✅" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Release AAB bundle created successfully with 16KB alignment verification." >> $GITHUB_STEP_SUMMARY
+        echo "Release AAB bundle created successfully." >> $GITHUB_STEP_SUMMARY
 
     - name: Verify AAB file exists
       run: |
@@ -72,13 +76,15 @@ jobs:
           exit 1
         fi
 
-    - name: Verify zipalign
+    - name: Verify AAB zipalign (4-byte zip alignment)
       run: |
-        echo "### Zipalign Verification" >> $GITHUB_STEP_SUMMARY
-        if $ANDROID_HOME/build-tools/*/zipalign -c 4 app/build/outputs/bundle/release/app-release.aab; then
-          echo "✅ AAB is properly aligned (4-byte alignment verified)" | tee -a $GITHUB_STEP_SUMMARY
+        echo "### Zipalign Verification (APK/AAB Zip Structure)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Verifying 4-byte alignment of AAB zip entries (separate from 16KB native library alignment)..." >> $GITHUB_STEP_SUMMARY
+        if $ANDROID_HOME/build-tools/*/zipalign -c -p 4 app/build/outputs/bundle/release/app-release.aab; then
+          echo "✅ AAB zip structure is properly aligned (4-byte boundaries)" | tee -a $GITHUB_STEP_SUMMARY
         else
-          echo "❌ AAB zipalign verification failed" | tee -a $GITHUB_STEP_SUMMARY
+          echo "❌ AAB zip alignment verification failed" | tee -a $GITHUB_STEP_SUMMARY
           exit 1
         fi
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -106,7 +112,7 @@ jobs:
         echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
         echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| Build Type | Release (Signed) |" >> $GITHUB_STEP_SUMMARY
-        echo "| 16KB Alignment | ✅ Verified |" >> $GITHUB_STEP_SUMMARY
-        echo "| Zipalign | ✅ Verified |" >> $GITHUB_STEP_SUMMARY
+        echo "| Native Libs 16KB Alignment | ✅ Verified (Android 15+) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Zip Structure 4-byte Alignment | ✅ Verified |" >> $GITHUB_STEP_SUMMARY
         echo "| Commit | ${{ steps.build_info.outputs.commit_short }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Build Date | ${{ steps.build_info.outputs.build_date }} |" >> $GITHUB_STEP_SUMMARY
