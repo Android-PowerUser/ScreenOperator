@@ -21,7 +21,7 @@ data class PuterRequest(
     val messages: List<PuterMessage>,
     val temperature: Double = 0.7,
     val top_p: Double = 1.0,
-    val max_tokens: Int = 4095,
+    val max_tokens: Int = 4096,
     val stream: Boolean = false
 )
 
