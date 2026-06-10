@@ -187,7 +187,6 @@ jobs:
         name: humanoperator-debug
         path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
 
-    - name: Build app release AAB (unsigned)
     # - name: Build app release AAB (unsigned)
     #   if: env.BUILD_APP == 'true'
     #   run: ./gradlew :app:bundleRelease
