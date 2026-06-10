@@ -136,14 +136,6 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Cache Gradle build cache
-      uses: actions/cache@v4
-      with:
-        path: ~/.gradle/caches
-        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**', 'humanoperator/src/**') }}
-        restore-keys: |
-          gradle-build-cache-${{ runner.os }}-
-
     - name: Decode google-services.json (app)
       env:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
@@ -187,7 +179,6 @@ jobs:
         name: humanoperator-debug
         path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
 
-    # - name: Build app release AAB (unsigned)
     #   if: env.BUILD_APP == 'true'
     #   run: ./gradlew :app:bundleRelease
     #
