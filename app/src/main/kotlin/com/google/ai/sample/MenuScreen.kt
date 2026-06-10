@@ -298,6 +298,7 @@ fun MenuScreen(
                             ModelOption.PUTER_QWEN3_5_FLASH -> "$0.07/M input | $0.26/M output"
                             ModelOption.GROQ_LLAMA_4_SCOUT_17B -> "30 requests per Min"
                             ModelOption.PUTER_AUTOGLM_PHONE_MULTILINGUAL -> "$0/M input | $0/M output"
+                            ModelOption.PUTER_MINIMAX_M3 -> "$0.3/M input | $1.2/M output"
                             ModelOption.CLOUDFLARE_KIMI_K2_6 -> "Approx. 15 responses per day are free"
                             ModelOption.GPT_5_1_CODEX_MAX,
                             ModelOption.GPT_5_1_CODEX_MINI,
