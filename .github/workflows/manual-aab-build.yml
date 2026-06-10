@@ -21,7 +21,7 @@ jobs:
     - name: Cache Gradle build cache
       uses: actions/cache@v4
       with:
-        path: ~/.gradle/cache
+        path: ~/.gradle/caches
         key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**') }}
         restore-keys: |
           gradle-build-cache-${{ runner.os }}-
