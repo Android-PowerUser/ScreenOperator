@@ -22,6 +22,10 @@ class SignalingClient(
     private val database: FirebaseDatabase = FirebaseDatabase.getInstance()
     private val tasksRef: DatabaseReference = database.getReference("tasks")
     
+    init {
+        database.goOnline()
+    }
+    
     private var currentTaskId: String? = null
     
     // Listeners
@@ -70,6 +74,10 @@ class SignalingClient(
             }
     }
 
+    /**
+     * Listens for task status changes. Firebase maintains the connection automatically,
+     * but we ensure the database stays online to prevent disconnections during long waits.
+     */
     private fun listenForTaskStatus(taskId: String) {
         taskStatusListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {

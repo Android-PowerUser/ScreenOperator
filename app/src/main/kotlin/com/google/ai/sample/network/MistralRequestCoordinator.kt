@@ -1,6 +1,7 @@
 package com.google.ai.sample.network
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -18,6 +19,7 @@ internal object MistralRequestCoordinator {
     private const val TAG = "MistralCoordinator"
     private const val MIN_INTERVAL_MS = 1500L
     private const val MAX_SERVER_DELAY_MS = 5_000L
+    private const val CANCEL_CHECK_INTERVAL_MS = 100L
     private val cooldownMutex = Mutex()
     private val nextAllowedRequestAtMsByKey = mutableMapOf<String, Long>()
     private val requestId = AtomicLong(0L)
@@ -75,10 +77,26 @@ internal object MistralRequestCoordinator {
 
     private fun isRetryableFailure(code: Int): Boolean = code == 429 || code >= 500
 
+    private suspend fun delayUntilReady(waitMs: Long, shouldCancel: () -> Boolean) {
+        var remainingMs = waitMs
+        while (remainingMs > 0L) {
+            if (shouldCancel()) {
+                throw CancellationException("Mistral request cancelled by user")
+            }
+            val nextDelayMs = remainingMs.coerceAtMost(CANCEL_CHECK_INTERVAL_MS)
+            delay(nextDelayMs)
+            remainingMs -= nextDelayMs
+        }
+        if (shouldCancel()) {
+            throw CancellationException("Mistral request cancelled by user")
+        }
+    }
+
     suspend fun execute(
         apiKeys: List<String>,
         maxAttempts: Int = apiKeys.size * 4 + 8,
         minIntervalMs: Long = MIN_INTERVAL_MS,
+        shouldCancel: () -> Boolean = { false },
         request: suspend (apiKey: String) -> Response
     ): MistralCoordinatedResponse {
         require(apiKeys.isNotEmpty()) { "No Mistral API keys provided." }
@@ -108,12 +126,17 @@ internal object MistralRequestCoordinator {
                 TAG,
                 "[$rid] attempt=${consecutiveFailures + 1}, selectedKey=${keyFingerprint(selectedKey)}, waitMs=$waitMs, blocked=${blockedKeysThisRound.size}"
             )
-            if (waitMs > 0L) {
-                delay(waitMs)
-            }
+            delayUntilReady(waitMs, shouldCancel)
 
             try {
+                if (shouldCancel()) {
+                    throw CancellationException("Mistral request cancelled by user")
+                }
                 val response = request(selectedKey)
+                if (shouldCancel()) {
+                    response.close()
+                    throw CancellationException("Mistral request cancelled by user")
+                }
                 val requestEndMs = System.currentTimeMillis()
                 val retryAfterMs = parseRetryAfterMs(response.header("Retry-After"))
                 val resetDelayMs = parseRateLimitResetDelayMs(response, requestEndMs)
@@ -138,7 +161,13 @@ internal object MistralRequestCoordinator {
                     "[$rid] retryable failure code=${response.code}, consecutiveFailures=$consecutiveFailures, adaptiveDelay=$adaptiveDelay"
                 )
                 markKeyCooldown(selectedKey, requestEndMs, minIntervalMs, max(serverRequestedDelayMs, adaptiveDelay))
+            } catch (e: CancellationException) {
+                Log.d(TAG, "[$rid] cancelled by user")
+                throw e
             } catch (e: Exception) {
+                if (shouldCancel()) {
+                    throw CancellationException("Mistral request cancelled by user").also { it.initCause(e) }
+                }
                 val requestEndMs = System.currentTimeMillis()
                 blockedKeysThisRound.add(selectedKey)
                 consecutiveFailures++

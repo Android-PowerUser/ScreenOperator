@@ -295,8 +295,11 @@ fun MenuScreen(
                             ModelOption.MISTRAL_MEDIUM_3_5 -> "This is a reasoning model"
                             ModelOption.GEMINI_3_FLASH -> "Google often rejects requests to this model with a 503 Model is exhausted error"
                             ModelOption.PUTER_MIMO_V2_5 -> "$0.14/M input | $0.28/M output"
+                            ModelOption.PUTER_GPT_5_4_NANO -> "$0.2/M input | $1.25/M output"
                             ModelOption.PUTER_QWEN3_5_FLASH -> "$0.07/M input | $0.26/M output"
                             ModelOption.GROQ_LLAMA_4_SCOUT_17B -> "30 requests per Min"
+                            ModelOption.PUTER_AUTOGLM_PHONE_MULTILINGUAL -> "free"
+                            ModelOption.PUTER_MINIMAX_M3 -> "$0.3/M input | $1.2/M output"
                             ModelOption.CLOUDFLARE_KIMI_K2_6 -> "Approx. 15 responses per day are free"
                             ModelOption.GPT_5_1_CODEX_MAX,
                             ModelOption.GPT_5_1_CODEX_MINI,
