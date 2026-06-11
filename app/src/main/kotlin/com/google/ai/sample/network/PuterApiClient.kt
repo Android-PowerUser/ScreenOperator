@@ -71,9 +71,9 @@ data class PuterResponseMessage(
 object PuterApiClient {
     val client by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(100, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(2, TimeUnit.MINUTES)
+            .readTimeout(15, TimeUnit.MINUTES)
+            .writeTimeout(2, TimeUnit.MINUTES)
             .build()
     }
 
