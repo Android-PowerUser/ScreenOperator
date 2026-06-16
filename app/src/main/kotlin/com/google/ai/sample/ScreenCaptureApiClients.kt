@@ -253,7 +253,7 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
 
         // Set max_tokens to 65536 for Qwen models to comply with Puter API requirements
         val maxTokens = if (modelName.contains("qwen", ignoreCase = true)) {
-            65536
+            65535
         } else {
             null
         }

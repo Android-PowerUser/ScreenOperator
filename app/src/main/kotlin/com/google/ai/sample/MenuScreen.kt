@@ -108,6 +108,7 @@ private val STRIKETHROUGH_MODELS = listOf(
 
 @Composable
 fun MenuScreen(
+    onWebViewClicked: () -> Unit = { },
     innerPadding: PaddingValues,
     onItemClicked: (String) -> Unit = { },
     onApiKeyButtonClicked: (ApiProvider?) -> Unit = { },
@@ -138,6 +139,34 @@ fun MenuScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             // API Key Management Button
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "WebView Mode",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = onWebViewClicked,
+                            enabled = true,
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Text(text = "Load WebView")
+                        }
+                    }
+                }
+            }
+            
             item {
                 Card(
                     modifier = Modifier

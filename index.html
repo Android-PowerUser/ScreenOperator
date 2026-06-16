@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Operator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            /* Light mode colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --border-color: #dadce0;
+            --button-primary: #1a73e8;
+            --button-primary-hover: #1557b0;
+            --slider-bg: #e0e0e0;
+            --slider-thumb: #6200ee;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            :root {
+                /* Dark mode colors */
+                --bg-primary: #121212;
+                --bg-secondary: #202124;
+                --bg-card: #292a2d;
+                --text-primary: #e0e0e0;
+                --text-secondary: #b0b0b0;
+                --border-color: #5f6368;
+                --button-primary: #8ab4f8;
+                --button-primary-hover: #7c3aed;
+                --slider-bg: #424242;
+                --slider-thumb: #6200ee;
+            }
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 16px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .screen {
+            display: none;
+        }
+        
+        .screen.active {
+            display: block;
+        }
+        
+        .card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .card-description {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        
+        .button {
+            background-color: var(--button-primary);
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .button:hover {
+            background-color: var(--button-primary-hover);
+        }
+        
+        .button:disabled {
+            background-color: #424242;
+            color: #757575;
+            cursor: not-allowed;
+        }
+        
+        .button-outlined {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--button-primary);
+        }
+        
+        .button-outlined:hover {
+            background-color: rgba(98, 0, 238, 0.1);
+        }
+        
+        .button-text {
+            background: none;
+            border: none;
+            color: var(--button-primary);
+            cursor: pointer;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .button-text:hover {
+            background-color: rgba(26, 115, 232, 0.08);
+        }
+        
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: var(--bg-card);
+            min-width: 250px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            z-index: 1;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+        }
+        
+        .dropdown-content.show {
+            display: block;
+        }
+        
+        .dropdown-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.2s;
+            color: var(--text-primary);
+        }
+        
+        .dropdown-item:hover {
+            background-color: var(--bg-secondary);
+        }
+        
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+        
+        .slider-container {
+            margin: 16px 0;
+        }
+        
+        .slider-label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .slider {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--slider-bg);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--slider-thumb);
+            cursor: pointer;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--slider-thumb);
+            cursor: pointer;
+            border: none;
+        }
+        
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .hint-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            line-height: 1.4;
+        .text-area {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
+        .text-button {
+            border-radius: 4px;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: inherit;
+            resize: vertical;
+            font-size: 14px;
+            font-weight: 500;
+        .text-area:focus {
+            outline: 2px solid var(--button-primary);
+        .text-button:hover {
+            text-decoration: underline;
+        .text-area::placeholder {
+            color: var(--text-secondary);
+        }
+        
+        .pro-button {
+        
+        .support-button {
+            background: linear-gradient(135deg, #6200ee, #b388ff);
+            font-size: 16px;
+            padding: 12px 24px;
+        }
+        
+        .thank-you {
+            text-align: center;
+            color: #ffeb3b;
+            font-size: 16px;
+            font-weight: 500;
+            padding: 16px;
+        }
+        
+        .back-button {
+            background: none;
+            border: none;
+            color: var(--button-primary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .back-button:hover {
+            opacity: 0.7;
+        }
+        
+        /* Photo Reasoning Screen Styles */
+        .photo-reasoning-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+            padding: 16px;
+        }
+        
+        .photo-reasoning-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-left: 8px;
+            color: var(--text-primary);
+        }
+        
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            margin-bottom: 16px;
+            min-height: 300px;
+            background-color: var(--bg-secondary);
+            border-radius: 12px;
+        }
+        
+        .message {
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        
+        .message.user {
+            background-color: var(--button-primary);
+            color: #ffffff;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.assistant {
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .input-area {
+            position: sticky;
+            bottom: 0;
+            background-color: var(--bg-primary);
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .text-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+        }
+        
+        .text-input:focus {
+            outline: none;
+            border-color: var(--button-primary);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .action-button {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .welcome-message {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 40px 20px;
+        }
+        
+        .welcome-message h2 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        
+        .photo-reasoning-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 32px);
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 8px;
+            }
+            
+            .card {
+                padding: 12px;
+            }
+            
+            .row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .button {
+                width: 100%;
+            }
+            
+            .action-button {
+                min-width: 100%;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Menu Screen -->
+        <div id="menu-screen" class="screen active">
+            <!-- System Message -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 12px;">System Message</div>
+                <textarea class="text-area" id="system-message" placeholder="Enter system instructions for the AI..."></textarea>
+            </div>
+            
+            <!-- API Key Management -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">API Key Management</span>
+                    <button class="button-text" onclick="alert('API Key Management would open here')">Manage</button>
+                </div>
+            </div>
+            
+            <!-- Model Selection -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 12px;">Model Selection</div>
+                <div class="dropdown">
+                    <button class="button-outlined" onclick="toggleDropdown()" style="width: 100%; text-align: left;">
+                        <span id="current-model">Gemini 2.0 Flash</span>
+                    </button>
+                    <div class="dropdown-content" id="modelDropdown">
+                        <div class="dropdown-item" onclick="selectModel('Gemini 2.0 Flash')">Gemini 2.0 Flash</div>
+                        <div class="dropdown-item" onclick="selectModel('Gemini 1.5 Pro')">Gemini 1.5 Pro</div>
+                        <div class="dropdown-item" onclick="selectModel('Gemini 1.5 Flash')">Gemini 1.5 Flash</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Generation Settings -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 12px;">Generation Settings</div>
+                
+                <div class="slider-container">
+                    <div class="row">
+                        <div class="slider-label">Temperature</div>
+                        <span id="temp-value">1.00</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.01" value="1.00" class="slider" oninput="updateSlider('temp', this.value)">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="row">
+                        <div class="slider-label">Top P</div>
+                        <span id="topp-value">0.95</span>
+                    </div>
+                    <input type="range" min="0" max="1" step="0.01" value="0.95" class="slider" oninput="updateSlider('topp', this.value)">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="row">
+                        <div class="slider-label">Top K</div>
+                        <span id="topk-value">40</span>
+                    </div>
+                    <input type="range" min="1" max="100" step="1" value="40" class="slider" oninput="updateSlider('topk', this.value)">
+                </div>
+            </div>
+            
+            <!-- Main Feature -->
+            <div class="card">
+                <div class="card-title">Operate with AI</div>
+                <div class="card-description">An AI assistant uses screen reasoning and operates with taps</div>
+                <button class="text-button" onclick="navigateToPhotoReasoning()">Try</button>
+            </div>
+            
+            <!-- Support -->
+                <button class="button-text" onclick="navigateToPhotoReasoning()">Try</button>
+                <div class="card-description" style="line-height: 1.6;">
+                    • <strong>Preview Models</strong> could be deactivated by Google without being handed over to the final release.<br>
+                    • <strong>API Keys</strong> are automatically switched if multiple are inserted and one is exhausted.<br>
+                    • Models with a line through them do not work properly.
+                </div>
+                    <strong>Note:</strong> This is a web demo. In the actual Android app, you can take screenshots and interact with your screen using AI.
+        <!-- Photo Reasoning Screen -->
+        <div id="photo-reasoning-screen" class="screen">
+            <div class="photo-reasoning-container">
+                <div class="photo-reasoning-header">
+                    <button class="back-button" onclick="navigateBack()">←</button>
+                    <span class="photo-reasoning-title">Operate with AI</span>
+                </div>
+                
+                <div class="chat-area" id="chat-area">
+                    <span class="photo-reasoning-title">AI Screen Operator</span>
+                        <h2>Welcome to Screen Operator</h2>
+                        <p>Start a conversation with the AI assistant. You can send messages, take screenshots, or enable accessibility features.</p>
+                    </div>
+                </div>
+                
+                <div class="input-area">
+                    <div class="input-container">
+                        <input type="text" class="text-input" id="message-input" placeholder="Type your message...">
+                        <button class="button" onclick="sendMessage()">Send</button>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="button action-button" onclick="takeScreenshot()">Take Screenshot</button>
+                        <button class="button action-button" onclick="enableAccessibility()">Enable Accessibility</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+                    <div class="action-buttons" style="display: none;">
+    <script>
+        // Screen Navigation
+        function navigateToPhotoReasoning() {
+            document.getElementById('menu-screen').classList.remove('active');
+            document.getElementById('photo-reasoning-screen').classList.add('active');
+        }
+        
+        function navigateBack() {
+            document.getElementById('photo-reasoning-screen').classList.remove('active');
+            document.getElementById('menu-screen').classList.add('active');
+        }
+        
+        // Model Selection
+        function toggleDropdown() {
+            document.getElementById("modelDropdown").classList.toggle("show");
+        }
+        
+        function selectModel(modelName) {
+            document.getElementById("current-model").textContent = modelName;
+            toggleDropdown();
+        }
+        
+        // Slider Updates
+        function updateSlider(type, value) {
+            if (type === 'temp') {
+                document.getElementById('temp-value').textContent = parseFloat(value).toFixed(2);
+            } else if (type === 'topp') {
+                document.getElementById('topp-value').textContent = parseFloat(value).toFixed(2);
+            } else if (type === 'topk') {
+                document.getElementById('topk-value').textContent = Math.round(value);
+            }
+        }
+        
+        // Photo Reasoning Functions
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (message) {
+                addMessageToChat('user', message);
+                input.value = '';
+                
+                // Simulate AI response
+                setTimeout(() => {
+                    addMessageToChat('assistant', 'This is a demonstration. In the actual app, the AI would respond based on your input and screen context.');
+                }, 1000);
+            }
+        }
+        
+        function addMessageToChat(sender, text) {
+            const chatArea = document.getElementById('chat-area');
+            
+            // Remove welcome message if it exists
+            const welcomeMsg = chatArea.querySelector('.welcome-message');
+            if (welcomeMsg) {
+                welcomeMsg.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = text;
+            chatArea.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function takeScreenshot() {
+            addMessageToChat('assistant', 'Screenshot functionality would capture the current screen in the actual app.');
+        }
+        
+        function enableAccessibility() {
+            addMessageToChat('assistant', 'Accessibility service would be enabled in the actual app to allow AI to interact with the screen.');
+        }
+        
+        // Enter key support for message input
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageInput = document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendMessage();
+                    }
+                });
+            }
+        });
+        
+        // Close dropdown when clicking outside
+        window.onclick = function(event) {
+            if (!event.target.matches('.button')) {
+                var dropdowns = document.getElementsByClassName("dropdown-content");
+                for (var i = 0; i < dropdowns.length; i++) {
+                    var openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

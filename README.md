@@ -60,7 +60,7 @@ Free models accessible via an API can be found [here](https://github.com/cheahjs
 ### Video
 [First attempt ever is recorded](https://m.youtube.com/watch?v=o095RSFXJuc)
 
-<br/>
+<br/> 
 
 #### Note
 
