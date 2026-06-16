@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Operator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            padding: 16px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        
+        .card-description {
+            font-size: 14px;
+            color: #b0b0b0;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        
+        .button {
+            background-color: #6200ee;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .button:hover {
+            background-color: #7c3aed;
+        }
+        
+        .button:disabled {
+            background-color: #424242;
+            color: #757575;
+            cursor: not-allowed;
+        }
+        
+        .button-outlined {
+            background-color: transparent;
+            border: 1px solid #6200ee;
+            color: #6200ee;
+        }
+        
+        .button-outlined:hover {
+            background-color: rgba(98, 0, 238, 0.1);
+        }
+        
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #2a2a2a;
+            min-width: 250px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            z-index: 1;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .dropdown-content.show {
+            display: block;
+        }
+        
+        .dropdown-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid #3a3a3a;
+            transition: background-color 0.2s;
+        }
+        
+        .dropdown-item:hover {
+            background-color: #3a3a3a;
+        }
+        
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+        
+        .slider-container {
+            margin: 16px 0;
+        }
+        
+        .slider-label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: #e0e0e0;
+        }
+        
+        .slider {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: #424242;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #6200ee;
+            cursor: pointer;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #6200ee;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .hint-text {
+            font-size: 13px;
+            color: #9e9e9e;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+        
+        .text-button {
+            background: none;
+            border: none;
+            color: #6200ee;
+            cursor: pointer;
+            padding: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .text-button:hover {
+            text-decoration: underline;
+        }
+        
+        .support-button {
+            background: linear-gradient(135deg, #6200ee, #b388ff);
+            font-size: 16px;
+            padding: 12px 24px;
+        }
+        
+        .thank-you {
+            text-align: center;
+            color: #ffeb3b;
+            font-size: 16px;
+            font-weight: 500;
+            padding: 16px;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 8px;
+            }
+            
+            .card {
+                padding: 12px;
+            }
+            
+            .row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- API Key Management -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">API Key Management</span>
+                <button class="button" onclick="alert('API Key Management would open here')">Change API Key</button>
+            </div>
+        </div>
+        
+        <!-- Model Selection -->
+        <div class="card">
+            <div class="card-title" style="margin-bottom: 12px;">Model Selection</div>
+            <div class="card-description">Current model: <span id="current-model">Gemini 2.0 Flash</span></div>
+            <div class="dropdown">
+                <button class="button" onclick="toggleDropdown()">Change Model</button>
+                <div class="dropdown-content" id="modelDropdown">
+                    <div class="dropdown-item" onclick="selectModel('Gemini 2.0 Flash')">Gemini 2.0 Flash</div>
+                    <div class="dropdown-item" onclick="selectModel('GPT-4o')">GPT-4o</div>
+                    <div class="dropdown-item" onclick="selectModel('Claude 3.5 Sonnet')">Claude 3.5 Sonnet</div>
+                    <div class="dropdown-item" onclick="selectModel('Gemma 3 27B')">Gemma 3 27B (Offline)</div>
+                </div>
+            </div>
+            <div class="hint-text" id="model-hint"></div>
+        </div>
+        
+        <!-- Generation Settings -->
+        <div class="card" id="generation-settings">
+            <div class="card-title" style="margin-bottom: 12px;">Generation Settings</div>
+            
+            <div class="slider-container">
+                <div class="slider-label">Temperature: <span id="temp-value">1.00</span></div>
+                <input type="range" min="0" max="2" step="0.01" value="1.00" class="slider" id="temperature" oninput="updateSlider('temp', this.value)">
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label">Top P: <span id="topp-value">0.95</span></div>
+                <input type="range" min="0" max="1" step="0.01" value="0.95" class="slider" id="topP" oninput="updateSlider('topp', this.value)">
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label">Top K: <span id="topk-value">40</span></div>
+                <input type="range" min="1" max="100" step="1" value="40" class="slider" id="topK" oninput="updateSlider('topk', this.value)">
+            </div>
+        </div>
+        
+        <!-- Main Feature -->
+        <div class="card">
+            <div class="card-title">Operate with AI</div>
+            <div class="card-description">An AI assistant uses screen reasoning and operates with taps</div>
+            <button class="text-button" onclick="alert('Would navigate to photo reasoning screen')">Try</button>
+        </div>
+        
+        <!-- Support -->
+        <div class="card">
+            <div class="row" id="support-section">
+                <span class="card-title">Support Improvements 🎉</span>
+                <button class="button support-button" onclick="alert('Would open payment options')">Pro (2,90 €/Month)</button>
+            </div>
+        </div>
+        
+        <!-- Info -->
+        <div class="card">
+            <div class="card-description" style="line-height: 1.6;">
+                • <strong>Preview Models</strong> could be deactivated by Google without being handed over to the final release.<br>
+                • <strong>API Keys</strong> are automatically switched if multiple are inserted and one is exhausted.<br>
+                • Models with a line through them do not work properly.
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function toggleDropdown() {
+            document.getElementById("modelDropdown").classList.toggle("show");
+        }
+        
+        function selectModel(modelName) {
+            document.getElementById("current-model").textContent = modelName;
+            toggleDropdown();
+        }
+        
+        function updateSlider(type, value) {
+            if (type === 'temp') {
+                document.getElementById('temp-value').textContent = parseFloat(value).toFixed(2);
+            } else if (type === 'topp') {
+                document.getElementById('topp-value').textContent = parseFloat(value).toFixed(2);
+            } else if (type === 'topk') {
+                document.getElementById('topk-value').textContent = Math.round(value);
+            }
+        }
+        
+        // Close dropdown when clicking outside
+        window.onclick = function(event) {
+            if (!event.target.matches('.button')) {
+                var dropdowns = document.getElementsByClassName("dropdown-content");
+                for (var i = 0; i < dropdowns.length; i++) {
+                    var openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
