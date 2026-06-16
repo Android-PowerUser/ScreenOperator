@@ -14,13 +14,13 @@
         :root {
             /* Light mode colors */
             --bg-primary: #ffffff;
-            --bg-secondary: #f5f5f5;
+            --bg-secondary: #f8f9fa;
             --bg-card: #ffffff;
             --text-primary: #000000;
             --text-secondary: #666666;
-            --border-color: #e0e0e0;
-            --button-primary: #6200ee;
-            --button-primary-hover: #7c3aed;
+            --border-color: #dadce0;
+            --button-primary: #1a73e8;
+            --button-primary-hover: #1557b0;
             --slider-bg: #e0e0e0;
             --slider-thumb: #6200ee;
         }
@@ -29,12 +29,12 @@
             :root {
                 /* Dark mode colors */
                 --bg-primary: #121212;
-                --bg-secondary: #1e1e1e;
-                --bg-card: #1e1e1e;
+                --bg-secondary: #202124;
+                --bg-card: #292a2d;
                 --text-primary: #e0e0e0;
                 --text-secondary: #b0b0b0;
-                --border-color: #3a3a3a;
-                --button-primary: #6200ee;
+                --border-color: #5f6368;
+                --button-primary: #8ab4f8;
                 --button-primary-hover: #7c3aed;
                 --slider-bg: #424242;
                 --slider-thumb: #6200ee;
@@ -94,10 +94,10 @@
             background-color: var(--button-primary);
             color: #ffffff;
             border: none;
-            border-radius: 8px;
-            padding: 10px 20px;
+            border-radius: 4px;
+            padding: 8px 16px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
             transition: background-color 0.2s;
         }
@@ -114,7 +114,7 @@
         
         .button-outlined {
             background-color: transparent;
-            border: 1px solid var(--button-primary);
+            border: 1px solid var(--border-color);
             color: var(--button-primary);
         }
         
@@ -122,9 +122,24 @@
             background-color: rgba(98, 0, 238, 0.1);
         }
         
+        .button-text {
+            background: none;
+            border: none;
+            color: var(--button-primary);
+            cursor: pointer;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .button-text:hover {
+            background-color: rgba(26, 115, 232, 0.08);
+        }
+        
         .dropdown {
             position: relative;
             display: inline-block;
+            width: 100%;
         }
         
         .dropdown-content {
@@ -210,21 +225,28 @@
             color: var(--text-secondary);
             margin-top: 8px;
             line-height: 1.4;
-        }
-        
+        .text-area {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
         .text-button {
-            background: none;
-            border: none;
-            color: var(--button-primary);
+            border-radius: 4px;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
             cursor: pointer;
-            padding: 8px;
+            font-family: inherit;
+            resize: vertical;
             font-size: 14px;
             font-weight: 500;
-        }
-        
+        .text-area:focus {
+            outline: 2px solid var(--button-primary);
         .text-button:hover {
             text-decoration: underline;
+        .text-area::placeholder {
+            color: var(--text-secondary);
         }
+        
+        .pro-button {
         
         .support-button {
             background: linear-gradient(135deg, #6200ee, #b388ff);
@@ -389,47 +411,61 @@
     <div class="container">
         <!-- Menu Screen -->
         <div id="menu-screen" class="screen active">
+            <!-- System Message -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 12px;">System Message</div>
+                <textarea class="text-area" id="system-message" placeholder="Enter system instructions for the AI..."></textarea>
+            </div>
+            
             <!-- API Key Management -->
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">API Key Management</span>
-                    <button class="button" onclick="alert('API Key Management would open here')">Change API Key</button>
+                    <button class="button-text" onclick="alert('API Key Management would open here')">Manage</button>
                 </div>
             </div>
             
             <!-- Model Selection -->
             <div class="card">
                 <div class="card-title" style="margin-bottom: 12px;">Model Selection</div>
-                <div class="card-description">Current model: <span id="current-model">Gemini 2.0 Flash</span></div>
                 <div class="dropdown">
-                    <button class="button" onclick="toggleDropdown()">Change Model</button>
+                    <button class="button-outlined" onclick="toggleDropdown()" style="width: 100%; text-align: left;">
+                        <span id="current-model">Gemini 2.0 Flash</span>
+                    </button>
                     <div class="dropdown-content" id="modelDropdown">
                         <div class="dropdown-item" onclick="selectModel('Gemini 2.0 Flash')">Gemini 2.0 Flash</div>
-                        <div class="dropdown-item" onclick="selectModel('GPT-4o')">GPT-4o</div>
-                        <div class="dropdown-item" onclick="selectModel('Claude 3.5 Sonnet')">Claude 3.5 Sonnet</div>
-                        <div class="dropdown-item" onclick="selectModel('Gemma 3 27B')">Gemma 3 27B (Offline)</div>
+                        <div class="dropdown-item" onclick="selectModel('Gemini 1.5 Pro')">Gemini 1.5 Pro</div>
+                        <div class="dropdown-item" onclick="selectModel('Gemini 1.5 Flash')">Gemini 1.5 Flash</div>
                     </div>
                 </div>
-                <div class="hint-text" id="model-hint"></div>
             </div>
             
             <!-- Generation Settings -->
-            <div class="card" id="generation-settings">
+            <div class="card">
                 <div class="card-title" style="margin-bottom: 12px;">Generation Settings</div>
                 
                 <div class="slider-container">
-                    <div class="slider-label">Temperature: <span id="temp-value">1.00</span></div>
-                    <input type="range" min="0" max="2" step="0.01" value="1.00" class="slider" id="temperature" oninput="updateSlider('temp', this.value)">
+                    <div class="row">
+                        <div class="slider-label">Temperature</div>
+                        <span id="temp-value">1.00</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.01" value="1.00" class="slider" oninput="updateSlider('temp', this.value)">
                 </div>
                 
                 <div class="slider-container">
-                    <div class="slider-label">Top P: <span id="topp-value">0.95</span></div>
-                    <input type="range" min="0" max="1" step="0.01" value="0.95" class="slider" id="topP" oninput="updateSlider('topp', this.value)">
+                    <div class="row">
+                        <div class="slider-label">Top P</div>
+                        <span id="topp-value">0.95</span>
+                    </div>
+                    <input type="range" min="0" max="1" step="0.01" value="0.95" class="slider" oninput="updateSlider('topp', this.value)">
                 </div>
                 
                 <div class="slider-container">
-                    <div class="slider-label">Top K: <span id="topk-value">40</span></div>
-                    <input type="range" min="1" max="100" step="1" value="40" class="slider" id="topK" oninput="updateSlider('topk', this.value)">
+                    <div class="row">
+                        <div class="slider-label">Top K</div>
+                        <span id="topk-value">40</span>
+                    </div>
+                    <input type="range" min="1" max="100" step="1" value="40" class="slider" oninput="updateSlider('topk', this.value)">
                 </div>
             </div>
             
@@ -441,23 +477,13 @@
             </div>
             
             <!-- Support -->
-            <div class="card">
-                <div class="row" id="support-section">
-                    <span class="card-title">Support Improvements 🎉</span>
-                    <button class="button support-button" onclick="alert('Would open payment options')">Pro (2,90 €/Month)</button>
-                </div>
-            </div>
-            
-            <!-- Info -->
-            <div class="card">
+                <button class="button-text" onclick="navigateToPhotoReasoning()">Try</button>
                 <div class="card-description" style="line-height: 1.6;">
                     • <strong>Preview Models</strong> could be deactivated by Google without being handed over to the final release.<br>
                     • <strong>API Keys</strong> are automatically switched if multiple are inserted and one is exhausted.<br>
                     • Models with a line through them do not work properly.
                 </div>
-            </div>
-        </div>
-        
+                    <strong>Note:</strong> This is a web demo. In the actual Android app, you can take screenshots and interact with your screen using AI.
         <!-- Photo Reasoning Screen -->
         <div id="photo-reasoning-screen" class="screen">
             <div class="photo-reasoning-container">
@@ -467,7 +493,7 @@
                 </div>
                 
                 <div class="chat-area" id="chat-area">
-                    <div class="welcome-message">
+                    <span class="photo-reasoning-title">AI Screen Operator</span>
                         <h2>Welcome to Screen Operator</h2>
                         <p>Start a conversation with the AI assistant. You can send messages, take screenshots, or enable accessibility features.</p>
                     </div>
@@ -486,7 +512,7 @@
             </div>
         </div>
     </div>
-    
+                    <div class="action-buttons" style="display: none;">
     <script>
         // Screen Navigation
         function navigateToPhotoReasoning() {
