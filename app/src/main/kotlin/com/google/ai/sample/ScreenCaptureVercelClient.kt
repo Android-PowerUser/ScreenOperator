@@ -3,6 +3,8 @@ package com.google.ai.sample
 import android.content.Intent
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
+import com.google.ai.sample.network.AiCallCancellationHandle
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
@@ -48,10 +50,11 @@ internal suspend fun callVercelApi(
     modelName: String,
     apiKey: String,
     chatHistory: List<ContentDto>,
-    inputContent: ContentDto
+    inputContent: ContentDto,
+    cancellationHandle: AiCallCancellationHandle? = null
 ): String {
     val messages = mutableListOf<VercelMessage>()
-    
+
     // Add Chat History
     chatHistory.forEach { contentDto ->
         val role = if (contentDto.role == "user") "user" else "assistant"
@@ -76,48 +79,76 @@ internal suspend fun callVercelApi(
         .build()
 
     val client = OkHttpClient()
-    val response = client.newCall(httpRequest).execute()
-
-    if (!response.isSuccessful) {
-        val err = response.body?.string()
-        response.close()
-        throw IOException("Vercel API error ${response.code}: $err")
-    }
-
-    val body = response.body ?: throw IOException("Empty response from Vercel")
-    val reader = body.charStream().buffered()
-    val accumulated = StringBuilder()
-    val sseJson = Json { ignoreUnknownKeys = true }
-
+    val call = client.newCall(httpRequest)
+    cancellationHandle?.register(call)
     try {
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            val l = line ?: break
-            if (l.startsWith("data: ")) {
-                val data = l.removePrefix("data: ").trim()
-                if (data == "[DONE]") break
-                if (data.isEmpty()) continue
-                
-                try {
-                    val chunk = sseJson.decodeFromString<VercelStreamChunk>(data)
-                    val delta = chunk.choices.firstOrNull()?.delta?.content
-                    if (!delta.isNullOrEmpty()) {
-                        accumulated.append(delta)
-                        // Broadcast update to ViewModel
-                        val intent = Intent(ScreenCaptureService.ACTION_AI_STREAM_UPDATE).apply {
-                            putExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK, accumulated.toString())
+        val response = try {
+            call.execute()
+        } catch (e: IOException) {
+            if (call.isCanceled() || cancellationHandle?.isCancellationRequested == true) {
+                throw CancellationException("Vercel API call cancelled by user").also { it.initCause(e) }
+            }
+            throw e
+        }
+        if (cancellationHandle?.isCancellationRequested == true) {
+            response.close()
+            throw CancellationException("Vercel API call cancelled by user")
+        }
+
+        if (!response.isSuccessful) {
+            val err = response.body?.string()
+            response.close()
+            throw IOException("Vercel API error ${response.code}: $err")
+        }
+
+        val body = response.body ?: run {
+            response.close()
+            throw IOException("Empty response from Vercel")
+        }
+        val reader = body.charStream().buffered()
+        val accumulated = StringBuilder()
+        val sseJson = Json { ignoreUnknownKeys = true }
+
+        try {
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                if (cancellationHandle?.isCancellationRequested == true) {
+                    throw CancellationException("Vercel API call cancelled by user")
+                }
+                val l = line ?: break
+                if (l.startsWith("data: ")) {
+                    val data = l.removePrefix("data: ").trim()
+                    if (data == "[DONE]") break
+                    if (data.isEmpty()) continue
+
+                    try {
+                        val chunk = sseJson.decodeFromString<VercelStreamChunk>(data)
+                        val delta = chunk.choices.firstOrNull()?.delta?.content
+                        if (!delta.isNullOrEmpty()) {
+                            accumulated.append(delta)
+                            // Broadcast update to ViewModel
+                            val intent = Intent(ScreenCaptureService.ACTION_AI_STREAM_UPDATE).apply {
+                                putExtra(ScreenCaptureService.EXTRA_AI_STREAM_CHUNK, accumulated.toString())
+                            }
+                            LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
                         }
-                        LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
+                    } catch (e: SerializationException) {
+                        // Skip malformed chunks
                     }
-                } catch (e: SerializationException) {
-                    // Skip malformed chunks
                 }
             }
+        } finally {
+            reader.close()
+            response.close()
         }
-    } finally {
-        reader.close()
-        response.close()
-    }
 
-    return accumulated.toString()
+        return accumulated.toString()
+    } catch (e: IOException) {
+        if (cancellationHandle?.isCancellationRequested == true) {
+            throw CancellationException("Vercel API call cancelled by user").also { it.initCause(e) }
+        }
+        throw e
+    } finally {
+        cancellationHandle?.clearCurrentCall()
+    }
 }

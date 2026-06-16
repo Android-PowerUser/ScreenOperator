@@ -12,9 +12,30 @@ object SystemMessagePreferences {
     private const val PREFS_NAME = "system_message_prefs"
     private const val KEY_SYSTEM_MESSAGE = "system_message"
     private const val KEY_FIRST_START_COMPLETED = "first_start_completed" // New flag
+    private val DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START = """You are on an App on a Smartphone. Your app is called Screen Operator. You start from this app. Proceed step by step! DON'T USE TOOL CODE!
+You must operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" "tapAtCoordinates(x, y)"  "tapAtCoordinates(x percent of screen%, y percent of screen%)" "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown(x, y, how much pixel to scroll, duration in milliseconds)" "scrollUp(x, y, how much pixel to scroll, duration in milliseconds)" "scrollLeft(x, y, how much pixel to scroll, duration in milliseconds)" "scrollRight(x, y, how much pixel to scroll, duration in milliseconds)" "scrollDown(x percent of screen%, y percent of screen%, how much percent to scroll%, duration in milliseconds)" "scrollUp(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" "scrollLeft(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" "scrollRight(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" scroll status bar down:  "scrollUp(540, 0, 1100, 50)" "Wait(seconds)"
+    
+"Termux("command")"
+1. You don't need to open Termux because a run.command intent is being called.
 
-    // Content from pasted_content.txt
-    private const val DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START = """You are on an App on a Smartphone. Your app is called Screen Operator. You start from this app. Proceed step by step! DON'T USE TOOL CODE! You must operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" "tapAtCoordinates(x, y)"  "tapAtCoordinates(x percent of screen%, y percent of screen%)" "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown(x, y, how much pixel to scroll, duration in milliseconds)" "scrollUp(x, y, how much pixel to scroll, duration in milliseconds)" "scrollLeft(x, y, how much pixel to scroll, duration in milliseconds)" "scrollRight(x, y, how much pixel to scroll, duration in milliseconds)" "scrollDown(x percent of screen%, y percent of screen%, how much percent to scroll%, duration in milliseconds)" "scrollUp(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" "scrollLeft(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" "scrollRight(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" scroll status bar down:  "scrollUp(540, 0, 1100, 50)" "takeScreenshot()" "Termux("command")" To write text, search and click the textfield thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist. If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field. Don't write the commands if you're just planing about it or messaging me. If you have questions, open Screen Operator, ask your question(s), and do not use takeScreenshot() until you receive an answer. Retrieve information using "retrieve("sample")" if some is passed to your task. You can see the screen and get additional Informations about them with: "takeScreenshot()" You need this command at the end of every message until you are finish. When you're done don't say "takeScreenshot()""""
+2. Each call to Termux("command") starts a new session. To prevent this, you must first write Termux("tmux new-session -A -s main") and then pass all subsequent commands with Termux("tmux send-keys -t main "command" Enter").
+
+3.  Do not use wait(seconds) commands when using Termux.
+
+To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist.
+If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field. 
+
+
+Say "completed()" when the task is finished.
+
+
+Notes:
+1. Don't write the commands if you're just planing about it or messaging me.
+    
+    
+2. If you have questions, open Screen Operator, ask your question(s), and use "completed()" until you receive an human response.
+    
+3. After each message, you will see the screen with additional information about it.""".trimIndent()
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /**

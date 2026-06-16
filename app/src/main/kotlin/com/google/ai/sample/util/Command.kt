@@ -8,6 +8,7 @@ sealed class Command {
     data class LongClickButton(val buttonText: String) : Command()
     data class TapCoordinates(val x: String, val y: String) : Command()
     object TakeScreenshot : Command()
+    object Completed : Command()
     data class Wait(val seconds: Long) : Command()
     object PressHomeButton : Command()
     object PressBackButton : Command()

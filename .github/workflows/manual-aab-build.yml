@@ -1,4 +1,4 @@
-name: Android Build APK
+name: Android Build AAB
 
 on:
   push:
@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_changed: ${{ steps.changes.outputs.app }}
-      humanoperator_changed: ${{ steps.changes.outputs.humanoperator }}
       shared_changed: ${{ steps.changes.outputs.shared }}
     steps:
     - name: Checkout code
@@ -34,7 +33,6 @@ jobs:
 
         if [ -z "$CHANGED_FILES" ]; then
           echo "app=true" >> $GITHUB_OUTPUT
-          echo "humanoperator=true" >> $GITHUB_OUTPUT
           echo "shared=true" >> $GITHUB_OUTPUT
           echo "No previous commit found - building all modules"
           exit 0
@@ -53,16 +51,10 @@ jobs:
           APP_CHANGED=true
         fi
 
-        HUMANOPERATOR_CHANGED=false
-        if echo "$CHANGED_FILES" | grep -q '^humanoperator/'; then
-          HUMANOPERATOR_CHANGED=true
-        fi
-
         echo "app=$APP_CHANGED" >> $GITHUB_OUTPUT
-        echo "humanoperator=$HUMANOPERATOR_CHANGED" >> $GITHUB_OUTPUT
         echo "shared=$SHARED_CHANGED" >> $GITHUB_OUTPUT
 
-        echo "Results: app=$APP_CHANGED, humanoperator=$HUMANOPERATOR_CHANGED, shared=$SHARED_CHANGED"
+        echo "Results: app=$APP_CHANGED, shared=$SHARED_CHANGED"
 
   compile-check:
     needs: [detect-changes, compile-check-config]
@@ -84,11 +76,6 @@ jobs:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
       run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
 
-    - name: Decode google-services.json (humanoperator)
-      env:
-        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_HUMANOPERATOR }}
-      run: printf '%s' "$GOOGLE_SERVICES_JSON" > humanoperator/google-services.json
-
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
@@ -103,16 +90,14 @@ jobs:
 
     - name: Compile Kotlin (app)
       if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      run: ./gradlew :app:compileDebugKotlin
+      run: ./gradlew :app:compileReleaseKotlin
 
-    - name: Compile Kotlin (humanoperator)
-      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      run: ./gradlew :humanoperator:compileDebugKotlin
-
-  build-apk:
+  build-aab:
     needs: [detect-changes, compile-check, compile-check-config]
     if: always() && !cancelled() && (needs.compile-check.result == 'success' || needs.compile-check.result == 'skipped')
     runs-on: ubuntu-latest
+    env:
+      BUILD_APP: ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }}
 
     steps:
     - name: Checkout code
@@ -123,16 +108,20 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        cache: gradle
+
+    - name: Cache Gradle build cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.gradle/build-cache
+        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**') }}
+        restore-keys: |
+          gradle-build-cache-${{ runner.os }}-
 
     - name: Decode google-services.json (app)
       env:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
       run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-
-    - name: Decode google-services.json (humanoperator)
-      env:
-        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_HUMANOPERATOR }}
-      run: printf '%s' "$GOOGLE_SERVICES_JSON" > humanoperator/google-services.json
 
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -146,32 +135,20 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build app module (debug)
-      if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      run: ./gradlew :app:assembleDebug
+    - name: Build app release AAB (unsigned)
+      if: env.BUILD_APP == 'true'
+      run: ./gradlew :app:bundleRelease
 
-    - name: Build humanoperator module (debug)
-      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      run: ./gradlew :humanoperator:assembleDebug
-
-    - name: Upload app APK
-      if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
+    - name: Upload app release AAB (unsigned)
+      if: env.BUILD_APP == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
-
-    - name: Upload humanoperator APK
-      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: humanoperator-debug
-        path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
+        name: app-release-aab-unsigned
+        path: app/build/outputs/bundle/release/app-release.aab
 
     - name: Build summary
       run: |
-        echo "### APK Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "### AAB Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "| Module | Built | Artefakte |" >> $GITHUB_STEP_SUMMARY
         echo "|--------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| app | ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
-        echo "| humanoperator | ${{ needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
+        echo "| app | ${{ env.BUILD_APP }} | AAB (release, unsigned) |" >> $GITHUB_STEP_SUMMARY

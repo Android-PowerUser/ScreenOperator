@@ -15,7 +15,9 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
+import com.google.ai.sample.network.AiCallCancellationHandle
 import com.google.ai.sample.network.MistralRequestCoordinator
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -73,7 +75,8 @@ internal suspend fun callMistralApi(
     apiKey: String,
     chatHistory: List<Content>,
     inputContent: Content,
-    availableApiKeys: List<String> = listOf(apiKey)
+    availableApiKeys: List<String> = listOf(apiKey),
+    cancellationHandle: AiCallCancellationHandle? = null
 ): Pair<String?, String?> {
     var responseText: String? = null
     var errorMessage: String? = null
@@ -147,35 +150,62 @@ internal suspend fun callMistralApi(
         } else {
             maxOf(4, keysForCoordinator.size * 3)
         }
-        val coordinated = MistralRequestCoordinator.execute(
-            apiKeys = keysForCoordinator,
-            maxAttempts = maxAttempts,
-            minIntervalMs = minIntervalMs
-        ) { key ->
-            client.newCall(
-                request.newBuilder()
-                    .header("Authorization", "Bearer $key")
-                    .build()
-            ).execute()
-        }
-
-        coordinated.response.use { response ->
-            val responseBody = response.body?.string()
-            if (!response.isSuccessful) {
-                Log.e("ScreenCaptureService", "Mistral API Error ($response.code): $responseBody")
-                errorMessage = "Mistral Error ${response.code}: $responseBody"
-            } else {
-                if (responseBody != null) {
-                    val mistralResponse = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
-                    responseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
-                } else {
-                    errorMessage = "Empty response body from Mistral"
+        try {
+            val coordinated = MistralRequestCoordinator.execute(
+                apiKeys = keysForCoordinator,
+                maxAttempts = maxAttempts,
+                minIntervalMs = minIntervalMs,
+                shouldCancel = { cancellationHandle?.isCancellationRequested == true }
+            ) { key ->
+                val call = client.newCall(
+                    request.newBuilder()
+                        .header("Authorization", "Bearer $key")
+                        .build()
+                )
+                cancellationHandle?.register(call)
+                try {
+                    call.execute()
+                } catch (e: IOException) {
+                    if (call.isCanceled() || cancellationHandle?.isCancellationRequested == true) {
+                        throw CancellationException("Mistral API call cancelled by user").also { it.initCause(e) }
+                    }
+                    throw e
                 }
             }
+
+            coordinated.response.use { response ->
+                val responseBody = response.body?.string()
+                if (cancellationHandle?.isCancellationRequested == true) {
+                    throw CancellationException("Mistral API call cancelled by user")
+                }
+                if (!response.isSuccessful) {
+                    Log.e("ScreenCaptureService", "Mistral API Error ($response.code): $responseBody")
+                    errorMessage = "Mistral Error ${response.code}: $responseBody"
+                } else {
+                    if (responseBody != null) {
+                        val mistralResponse = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
+                        responseText = mistralResponse.choices.firstOrNull()?.message?.content ?: "No response from model"
+                    } else {
+                        errorMessage = "Empty response body from Mistral"
+                    }
+                }
+            }
+        } finally {
+            cancellationHandle?.clearCurrentCall()
+        }
+    } catch (e: CancellationException) {
+        if (cancellationHandle?.isCancellationRequested == true) {
+            Log.d("ScreenCaptureService", "Mistral API call cancelled by user", e)
+        } else {
+            throw e
         }
     } catch (e: IOException) {
-        errorMessage = e.localizedMessage ?: "Mistral API network call failed"
-        Log.e("ScreenCaptureService", "Mistral API network failure", e)
+        if (cancellationHandle?.isCancellationRequested == true) {
+            Log.d("ScreenCaptureService", "Mistral API network call cancelled by user", e)
+        } else {
+            errorMessage = e.localizedMessage ?: "Mistral API network call failed"
+            Log.e("ScreenCaptureService", "Mistral API network failure", e)
+        }
     } catch (e: SerializationException) {
         errorMessage = e.localizedMessage ?: "Mistral API response parse failed"
         Log.e("ScreenCaptureService", "Mistral API parse failure", e)
@@ -187,7 +217,7 @@ internal suspend fun callMistralApi(
     return Pair(responseText, errorMessage)
 }
 
-internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content, cancellationHandle: AiCallCancellationHandle? = null): Pair<String?, String?> {
     var responseText: String? = null
     var errorMessage: String? = null
     
@@ -221,16 +251,34 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
             }
         }
 
+        // Set max_tokens to 65536 for Qwen models to comply with Puter API requirements
+        val maxTokens = if (modelName.contains("qwen", ignoreCase = true)) {
+            65536
+        } else {
+            null
+        }
+
         val requestBody = com.google.ai.sample.network.PuterRequest(
             model = modelName,
-            messages = apiMessages
+            messages = apiMessages,
+            max_tokens = maxTokens
         )
 
-        responseText = com.google.ai.sample.network.PuterApiClient.call(apiKey, requestBody)
+        responseText = com.google.ai.sample.network.PuterApiClient.call(apiKey, requestBody, cancellationHandle)
         
+    } catch (e: CancellationException) {
+        if (cancellationHandle?.isCancellationRequested == true) {
+            Log.d("ScreenCaptureService", "Puter API call cancelled by user", e)
+        } else {
+            throw e
+        }
     } catch (e: IOException) {
-        errorMessage = e.localizedMessage ?: "Puter API network call failed"
-        Log.e("ScreenCaptureService", "Puter API network failure", e)
+        if (cancellationHandle?.isCancellationRequested == true) {
+            Log.d("ScreenCaptureService", "Puter API network call cancelled by user", e)
+        } else {
+            errorMessage = e.localizedMessage ?: "Puter API network call failed"
+            Log.e("ScreenCaptureService", "Puter API network failure", e)
+        }
     } catch (e: IllegalStateException) {
         errorMessage = e.localizedMessage ?: "Puter API call failed"
         Log.e("ScreenCaptureService", "Puter API state failure", e)
@@ -272,7 +320,7 @@ data class ServiceGroqImageContent(@SerialName("image_url") val imageUrl: Servic
 @Serializable
 data class ServiceGroqImageUrl(val url: String)
 
-internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content): Pair<String?, String?> {
+internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory: List<Content>, inputContent: Content, cancellationHandle: AiCallCancellationHandle? = null): Pair<String?, String?> {
     var responseText: String? = null
     var errorMessage: String? = null
 
@@ -328,20 +376,51 @@ internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory:
             .addHeader("Authorization", "Bearer $apiKey")
             .build()
 
-        client.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string()
-            if (!response.isSuccessful) {
-                errorMessage = "Groq Error ${response.code}: $responseBody"
-            } else if (!responseBody.isNullOrBlank()) {
-                val parsed = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
-                responseText = parsed.choices.firstOrNull()?.message?.content ?: "No response from model"
-            } else {
-                errorMessage = "Empty response body from Groq"
+        val call = client.newCall(request)
+        cancellationHandle?.register(call)
+        try {
+            val response = try {
+                call.execute()
+            } catch (e: IOException) {
+                if (call.isCanceled() || cancellationHandle?.isCancellationRequested == true) {
+                    throw CancellationException("Groq API call cancelled by user").also { it.initCause(e) }
+                }
+                throw e
             }
+            if (cancellationHandle?.isCancellationRequested == true) {
+                response.close()
+                throw CancellationException("Groq API call cancelled by user")
+            }
+            response.use { response ->
+                val responseBody = response.body?.string()
+                if (cancellationHandle?.isCancellationRequested == true) {
+                    throw CancellationException("Groq API call cancelled by user")
+                }
+                if (!response.isSuccessful) {
+                    errorMessage = "Groq Error ${response.code}: $responseBody"
+                } else if (!responseBody.isNullOrBlank()) {
+                    val parsed = json.decodeFromString(ServiceMistralResponse.serializer(), responseBody)
+                    responseText = parsed.choices.firstOrNull()?.message?.content ?: "No response from model"
+                } else {
+                    errorMessage = "Empty response body from Groq"
+                }
+            }
+        } finally {
+            cancellationHandle?.clearCurrentCall()
+        }
+    } catch (e: CancellationException) {
+        if (cancellationHandle?.isCancellationRequested == true) {
+            Log.d("ScreenCaptureService", "Groq API call cancelled by user", e)
+        } else {
+            throw e
         }
     } catch (e: Exception) {
-        errorMessage = e.localizedMessage ?: "Groq API call failed"
-        Log.e("ScreenCaptureService", "Groq API failure", e)
+        if (cancellationHandle?.isCancellationRequested == true && e is IOException) {
+            Log.d("ScreenCaptureService", "Groq API network call cancelled by user", e)
+        } else {
+            errorMessage = e.localizedMessage ?: "Groq API call failed"
+            Log.e("ScreenCaptureService", "Groq API failure", e)
+        }
     }
 
     return Pair(responseText, errorMessage)

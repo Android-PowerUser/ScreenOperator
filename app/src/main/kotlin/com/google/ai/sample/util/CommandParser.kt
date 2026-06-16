@@ -7,11 +7,14 @@ import android.util.Log
  */
 object CommandParser {
     private const val TAG = "CommandParser"
-    private val SINGLE_INSTANCE_COMMAND_TYPES = setOf(CommandTypeEnum.TAKE_SCREENSHOT)
+    private val SINGLE_INSTANCE_COMMAND_TYPES = setOf(
+        CommandTypeEnum.TAKE_SCREENSHOT,
+        CommandTypeEnum.COMPLETED
+    )
 
     // Enum to represent different command types
     private enum class CommandTypeEnum {
-        CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, WAIT, PRESS_HOME, PRESS_BACK,
+        CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, COMPLETED, WAIT, PRESS_HOME, PRESS_BACK,
         SHOW_RECENT_APPS, SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
@@ -44,7 +47,7 @@ object CommandParser {
 
         // Write text patterns
         PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
-        PatternInfo("termux1", Regex("(?i)\\bTermux\\([\"']([^\"']+)[\"']\\)"), { match -> Command.TermuxCommand(match.groupValues[1]) }, CommandTypeEnum.TERMUX_COMMAND),
+        PatternInfo("termux1", Regex("""(?i)\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)"""), { match -> Command.TermuxCommand(match.groupValues[2]) }, CommandTypeEnum.TERMUX_COMMAND),
 
         // Click (long) button patterns
         PatternInfo("clickBtn1", Regex("(?i)\\bclick\\([\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
@@ -53,8 +56,9 @@ object CommandParser {
         // Tap coordinates patterns
         PatternInfo("tapCoords1", Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
 
-        // Screenshot and wait patterns
+        // Screenshot, completion and wait patterns
         PatternInfo("screenshot1", Regex("(?i)\\btakeScreenshot\\(\\)"), { Command.TakeScreenshot }, CommandTypeEnum.TAKE_SCREENSHOT),
+        PatternInfo("completed1", Regex("(?i)\\bcompleted\\(\\)"), { Command.Completed }, CommandTypeEnum.COMPLETED),
         PatternInfo("wait1", Regex("(?i)\\bWait\\(\\s*(\\d+)\\s*\\)"), { match -> Command.Wait(match.groupValues[1].toLong()) }, CommandTypeEnum.WAIT),
 
         // Home button patterns
@@ -151,6 +155,7 @@ object CommandParser {
             is Command.LongClickButton -> Log.d(TAG, "Command details: LongClickButton(\"${command.buttonText}\")")
             is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
             is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
+            is Command.Completed -> Log.d(TAG, "Command details: Completed")
             is Command.Wait -> Log.d(TAG, "Command details: Wait(${command.seconds})")
             is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
             is Command.PressBackButton -> Log.d(TAG, "Command details: PressBackButton")

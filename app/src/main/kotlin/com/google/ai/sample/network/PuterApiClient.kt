@@ -19,9 +19,9 @@ import kotlinx.coroutines.CancellationException
 data class PuterRequest(
     val model: String,
     val messages: List<PuterMessage>,
+    val max_tokens: Int? = null,
     val temperature: Double = 0.7,
     val top_p: Double = 1.0,
-    val max_tokens: Int = 4096,
     val stream: Boolean = false
 )
 
@@ -72,9 +72,9 @@ data class PuterResponseMessage(
 object PuterApiClient {
     val client by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(100, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(2, TimeUnit.MINUTES)
+            .readTimeout(15, TimeUnit.MINUTES)
+            .writeTimeout(2, TimeUnit.MINUTES)
             .build()
     }
 
@@ -89,7 +89,7 @@ object PuterApiClient {
         return "data:image/jpeg;base64,$base64"
     }
 
-    suspend fun call(apiKey: String, requestBody: PuterRequest): String {
+    internal suspend fun call(apiKey: String, requestBody: PuterRequest, cancellationHandle: AiCallCancellationHandle? = null): String {
         val mediaType = "application/json".toMediaType()
         val jsonBody = jsonConfig.encodeToString(PuterRequest.serializer(), requestBody)
 
@@ -100,17 +100,38 @@ object PuterApiClient {
             .addHeader("Authorization", "Bearer $apiKey")
             .build()
 
-        return client.newCall(request).execute().use { response ->
-            val responseBodyString = response.body?.string()
-            if (!response.isSuccessful) {
-                throw IOException("Puter API Error (${response.code}): $responseBodyString")
+        val call = client.newCall(request)
+        cancellationHandle?.register(call)
+        try {
+            val response = try {
+                call.execute()
+            } catch (e: IOException) {
+                if (call.isCanceled() || cancellationHandle?.isCancellationRequested == true) {
+                    throw CancellationException("Puter API call cancelled by user").also { it.initCause(e) }
+                }
+                throw e
             }
-            if (responseBodyString == null) {
-                throw IOException("Empty response body from Puter")
+            if (cancellationHandle?.isCancellationRequested == true) {
+                response.close()
+                throw CancellationException("Puter API call cancelled by user")
             }
-            
-            val puterResponse = jsonConfig.decodeFromString(PuterResponse.serializer(), responseBodyString)
-            puterResponse.choices.firstOrNull()?.message?.content ?: throw IOException("No response from model")
+            return response.use { response ->
+                val responseBodyString = response.body?.string()
+                if (cancellationHandle?.isCancellationRequested == true) {
+                    throw CancellationException("Puter API call cancelled by user")
+                }
+                if (!response.isSuccessful) {
+                    throw IOException("Puter API Error (${response.code}): $responseBodyString")
+                }
+                if (responseBodyString == null) {
+                    throw IOException("Empty response body from Puter")
+                }
+
+                val puterResponse = jsonConfig.decodeFromString(PuterResponse.serializer(), responseBodyString)
+                puterResponse.choices.firstOrNull()?.message?.content ?: throw IOException("No response from model")
+            }
+        } finally {
+            cancellationHandle?.clearCurrentCall()
         }
     }
 }

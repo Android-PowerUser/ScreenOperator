@@ -31,10 +31,12 @@ import com.google.ai.client.generativeai.type.BlobPart
 import com.google.ai.client.generativeai.type.TextPart
 import com.google.ai.sample.feature.multimodal.dtos.ContentDto
 import com.google.ai.sample.feature.multimodal.dtos.toSdk
+import com.google.ai.sample.network.AiCallCancellationHandle
 import com.google.ai.sample.service.AiCallRequestExtras
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
@@ -76,6 +78,7 @@ class ScreenCaptureService : Service() {
 
         // For triggering AI call execution in the service
         const val ACTION_EXECUTE_AI_CALL = "com.google.ai.sample.EXECUTE_AI_CALL"
+        const val ACTION_CANCEL_AI_CALL = "com.google.ai.sample.CANCEL_AI_CALL"
         const val EXTRA_AI_INPUT_CONTENT_JSON = "com.google.ai.sample.EXTRA_AI_INPUT_CONTENT_JSON"
         const val EXTRA_AI_CHAT_HISTORY_JSON = "com.google.ai.sample.EXTRA_AI_CHAT_HISTORY_JSON"
         const val EXTRA_AI_MODEL_NAME = "com.google.ai.sample.EXTRA_AI_MODEL_NAME" // For service to create model
@@ -102,6 +105,7 @@ class ScreenCaptureService : Service() {
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val aiCallCancellationHandle = AiCallCancellationHandle()
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -201,6 +205,10 @@ class ScreenCaptureService : Service() {
                 Log.d(TAG, "Received ACTION_STOP_CAPTURE. Cleaning up.")
                 cleanup()
             }
+            ACTION_CANCEL_AI_CALL -> {
+                Log.d(TAG, "Received ACTION_CANCEL_AI_CALL. Cancelling active AI network call.")
+                aiCallCancellationHandle.cancel()
+            }
             ACTION_EXECUTE_AI_CALL -> {
                 Log.d(TAG, "ACTION_EXECUTE_AI_CALL: Ensuring foreground state for AI processing.")
                 val aiNotification = createAiOperationNotification()
@@ -244,6 +252,7 @@ class ScreenCaptureService : Service() {
                     return START_STICKY // Or START_NOT_STICKY if this is a fatal error for this call
                 }
 
+                aiCallCancellationHandle.reset()
                 serviceScope.launch {
                     var responseText: String? = null
                     var errorMessage: String? = null
@@ -295,7 +304,7 @@ class ScreenCaptureService : Service() {
                         }
                         try {
                             if (apiProvider == ApiProvider.VERCEL) {
-                                responseText = callVercelApi(applicationContext, modelName, apiKey, chatHistoryDtos, inputContentDto)
+                                responseText = callVercelApi(applicationContext, modelName, apiKey, chatHistoryDtos, inputContentDto, aiCallCancellationHandle)
                             } else if (apiProvider == ApiProvider.MISTRAL) {
                                 val availableMistralKeys = ApiKeyManager.getInstance(applicationContext)
                                     .getApiKeys(ApiProvider.MISTRAL)
@@ -305,16 +314,17 @@ class ScreenCaptureService : Service() {
                                     apiKey = apiKey,
                                     chatHistory = chatHistory,
                                     inputContent = inputContent,
-                                    availableApiKeys = availableMistralKeys
+                                    availableApiKeys = availableMistralKeys,
+                                    cancellationHandle = aiCallCancellationHandle
                                 )
                                 responseText = result.first
                                 errorMessage = result.second
                             } else if (apiProvider == ApiProvider.PUTER) {
-                                val result = callPuterApi(modelName, apiKey, chatHistory, inputContent)
+                                val result = callPuterApi(modelName, apiKey, chatHistory, inputContent, aiCallCancellationHandle)
                                 responseText = result.first
                                 errorMessage = result.second
                             } else if (apiProvider == ApiProvider.GROQ) {
-                                val result = callGroqApi(modelName, apiKey, chatHistory, inputContent)
+                                val result = callGroqApi(modelName, apiKey, chatHistory, inputContent, aiCallCancellationHandle)
                                 responseText = result.first
                                 errorMessage = result.second
                             } else {
@@ -334,6 +344,12 @@ class ScreenCaptureService : Service() {
                                     }
                                 }
                                 responseText = fullResponse.toString()
+                            }
+                        } catch (e: CancellationException) {
+                            if (aiCallCancellationHandle.isCancellationRequested) {
+                                Log.d(TAG, "AI call cancelled by user", e)
+                            } else {
+                                throw e
                             }
                         } catch (e: MissingFieldException) {
                             Log.e(TAG, "Serialization error, potentially a 503 error.", e)
@@ -356,6 +372,12 @@ class ScreenCaptureService : Service() {
                             }
                         }
 
+                    } catch (e: CancellationException) {
+                        if (aiCallCancellationHandle.isCancellationRequested) {
+                            Log.d(TAG, "AI call cancelled by user", e)
+                        } else {
+                            throw e
+                        }
                     } catch (e: Exception) {
                         // Catching general exceptions from model/chat operations or serialization
                         Log.e(TAG, "Outer error during AI call execution", e)
@@ -384,7 +406,7 @@ class ScreenCaptureService : Service() {
                             }
                         }
 
-                        if (errorMessage != null || responseText != null) {
+                        if (!aiCallCancellationHandle.isCancellationRequested && (errorMessage != null || responseText != null)) {
                             LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(resultIntent)
                             Log.d(TAG, "Local broadcast sent for AI_CALL_RESULT. Error: $errorMessage, Response: ${responseText != null}")
                         }
