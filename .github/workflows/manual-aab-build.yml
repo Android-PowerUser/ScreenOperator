@@ -2,7 +2,7 @@ name: Android Build AAB
 
 on:
   push:
-    branches: [ human-operator, main ]
+    branches: [ human-operator ]
   workflow_dispatch:
 
 jobs:
