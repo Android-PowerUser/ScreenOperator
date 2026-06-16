@@ -251,9 +251,17 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
             }
         }
 
+        // Set max_tokens to 65536 for Qwen models to comply with Puter API requirements
+        val maxTokens = if (modelName.contains("qwen", ignoreCase = true)) {
+            65536
+        } else {
+            null
+        }
+
         val requestBody = com.google.ai.sample.network.PuterRequest(
             model = modelName,
-            messages = apiMessages
+            messages = apiMessages,
+            max_tokens = maxTokens
         )
 
         responseText = com.google.ai.sample.network.PuterApiClient.call(apiKey, requestBody, cancellationHandle)

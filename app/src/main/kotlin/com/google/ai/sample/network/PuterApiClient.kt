@@ -19,6 +19,7 @@ import kotlinx.coroutines.CancellationException
 data class PuterRequest(
     val model: String,
     val messages: List<PuterMessage>,
+    val max_tokens: Int? = null,
     val temperature: Double = 0.7,
     val top_p: Double = 1.0,
     val stream: Boolean = false
