@@ -11,11 +11,42 @@
             box-sizing: border-box;
         }
         
+        :root {
+            /* Light mode colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --bg-card: #ffffff;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --border-color: #e0e0e0;
+            --button-primary: #6200ee;
+            --button-primary-hover: #7c3aed;
+            --slider-bg: #e0e0e0;
+            --slider-thumb: #6200ee;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            :root {
+                /* Dark mode colors */
+                --bg-primary: #121212;
+                --bg-secondary: #1e1e1e;
+                --bg-card: #1e1e1e;
+                --text-primary: #e0e0e0;
+                --text-secondary: #b0b0b0;
+                --border-color: #3a3a3a;
+                --button-primary: #6200ee;
+                --button-primary-hover: #7c3aed;
+                --slider-bg: #424242;
+                --slider-thumb: #6200ee;
+            }
+        }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
             padding: 16px;
+            min-height: 100vh;
         }
         
         .container {
@@ -23,12 +54,20 @@
             margin: 0 auto;
         }
         
+        .screen {
+            display: none;
+        }
+        
+        .screen.active {
+            display: block;
+        }
+        
         .card {
-            background-color: #1e1e1e;
+            background-color: var(--bg-card);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
         }
         
         .card-header {
@@ -41,18 +80,18 @@
         .card-title {
             font-size: 18px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--text-primary);
         }
         
         .card-description {
             font-size: 14px;
-            color: #b0b0b0;
+            color: var(--text-secondary);
             margin-bottom: 12px;
             line-height: 1.5;
         }
         
         .button {
-            background-color: #6200ee;
+            background-color: var(--button-primary);
             color: #ffffff;
             border: none;
             border-radius: 8px;
@@ -64,7 +103,7 @@
         }
         
         .button:hover {
-            background-color: #7c3aed;
+            background-color: var(--button-primary-hover);
         }
         
         .button:disabled {
@@ -75,8 +114,8 @@
         
         .button-outlined {
             background-color: transparent;
-            border: 1px solid #6200ee;
-            color: #6200ee;
+            border: 1px solid var(--button-primary);
+            color: var(--button-primary);
         }
         
         .button-outlined:hover {
@@ -91,13 +130,14 @@
         .dropdown-content {
             display: none;
             position: absolute;
-            background-color: #2a2a2a;
+            background-color: var(--bg-card);
             min-width: 250px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             border-radius: 8px;
             z-index: 1;
             max-height: 400px;
             overflow-y: auto;
+            border: 1px solid var(--border-color);
         }
         
         .dropdown-content.show {
@@ -107,12 +147,13 @@
         .dropdown-item {
             padding: 12px 16px;
             cursor: pointer;
-            border-bottom: 1px solid #3a3a3a;
+            border-bottom: 1px solid var(--border-color);
             transition: background-color 0.2s;
+            color: var(--text-primary);
         }
         
         .dropdown-item:hover {
-            background-color: #3a3a3a;
+            background-color: var(--bg-secondary);
         }
         
         .dropdown-item:last-child {
@@ -126,14 +167,14 @@
         .slider-label {
             font-size: 14px;
             margin-bottom: 8px;
-            color: #e0e0e0;
+            color: var(--text-primary);
         }
         
         .slider {
             width: 100%;
             height: 4px;
             border-radius: 2px;
-            background: #424242;
+            background: var(--slider-bg);
             outline: none;
             -webkit-appearance: none;
         }
@@ -144,7 +185,7 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #6200ee;
+            background: var(--slider-thumb);
             cursor: pointer;
         }
         
@@ -152,7 +193,7 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #6200ee;
+            background: var(--slider-thumb);
             cursor: pointer;
             border: none;
         }
@@ -166,7 +207,7 @@
         
         .hint-text {
             font-size: 13px;
-            color: #9e9e9e;
+            color: var(--text-secondary);
             margin-top: 8px;
             line-height: 1.4;
         }
@@ -174,7 +215,7 @@
         .text-button {
             background: none;
             border: none;
-            color: #6200ee;
+            color: var(--button-primary);
             cursor: pointer;
             padding: 8px;
             font-size: 14px;
@@ -199,6 +240,123 @@
             padding: 16px;
         }
         
+        .back-button {
+            background: none;
+            border: none;
+            color: var(--button-primary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .back-button:hover {
+            opacity: 0.7;
+        }
+        
+        /* Photo Reasoning Screen Styles */
+        .photo-reasoning-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+            padding: 16px;
+        }
+        
+        .photo-reasoning-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-left: 8px;
+            color: var(--text-primary);
+        }
+        
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            margin-bottom: 16px;
+            min-height: 300px;
+            background-color: var(--bg-secondary);
+            border-radius: 12px;
+        }
+        
+        .message {
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        
+        .message.user {
+            background-color: var(--button-primary);
+            color: #ffffff;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.assistant {
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .input-area {
+            position: sticky;
+            bottom: 0;
+            background-color: var(--bg-primary);
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .text-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+        }
+        
+        .text-input:focus {
+            outline: none;
+            border-color: var(--button-primary);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .action-button {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .welcome-message {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 40px 20px;
+        }
+        
+        .welcome-message h2 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        
+        .photo-reasoning-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 32px);
+        }
+        
         @media (max-width: 600px) {
             body {
                 padding: 8px;
@@ -216,81 +374,132 @@
             .button {
                 width: 100%;
             }
+            
+            .action-button {
+                min-width: 100%;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- API Key Management -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title">API Key Management</span>
-                <button class="button" onclick="alert('API Key Management would open here')">Change API Key</button>
-            </div>
-        </div>
-        
-        <!-- Model Selection -->
-        <div class="card">
-            <div class="card-title" style="margin-bottom: 12px;">Model Selection</div>
-            <div class="card-description">Current model: <span id="current-model">Gemini 2.0 Flash</span></div>
-            <div class="dropdown">
-                <button class="button" onclick="toggleDropdown()">Change Model</button>
-                <div class="dropdown-content" id="modelDropdown">
-                    <div class="dropdown-item" onclick="selectModel('Gemini 2.0 Flash')">Gemini 2.0 Flash</div>
-                    <div class="dropdown-item" onclick="selectModel('GPT-4o')">GPT-4o</div>
-                    <div class="dropdown-item" onclick="selectModel('Claude 3.5 Sonnet')">Claude 3.5 Sonnet</div>
-                    <div class="dropdown-item" onclick="selectModel('Gemma 3 27B')">Gemma 3 27B (Offline)</div>
+        <!-- Menu Screen -->
+        <div id="menu-screen" class="screen active">
+            <!-- API Key Management -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">API Key Management</span>
+                    <button class="button" onclick="alert('API Key Management would open here')">Change API Key</button>
                 </div>
             </div>
-            <div class="hint-text" id="model-hint"></div>
-        </div>
-        
-        <!-- Generation Settings -->
-        <div class="card" id="generation-settings">
-            <div class="card-title" style="margin-bottom: 12px;">Generation Settings</div>
             
-            <div class="slider-container">
-                <div class="slider-label">Temperature: <span id="temp-value">1.00</span></div>
-                <input type="range" min="0" max="2" step="0.01" value="1.00" class="slider" id="temperature" oninput="updateSlider('temp', this.value)">
+            <!-- Model Selection -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 12px;">Model Selection</div>
+                <div class="card-description">Current model: <span id="current-model">Gemini 2.0 Flash</span></div>
+                <div class="dropdown">
+                    <button class="button" onclick="toggleDropdown()">Change Model</button>
+                    <div class="dropdown-content" id="modelDropdown">
+                        <div class="dropdown-item" onclick="selectModel('Gemini 2.0 Flash')">Gemini 2.0 Flash</div>
+                        <div class="dropdown-item" onclick="selectModel('GPT-4o')">GPT-4o</div>
+                        <div class="dropdown-item" onclick="selectModel('Claude 3.5 Sonnet')">Claude 3.5 Sonnet</div>
+                        <div class="dropdown-item" onclick="selectModel('Gemma 3 27B')">Gemma 3 27B (Offline)</div>
+                    </div>
+                </div>
+                <div class="hint-text" id="model-hint"></div>
             </div>
             
-            <div class="slider-container">
-                <div class="slider-label">Top P: <span id="topp-value">0.95</span></div>
-                <input type="range" min="0" max="1" step="0.01" value="0.95" class="slider" id="topP" oninput="updateSlider('topp', this.value)">
+            <!-- Generation Settings -->
+            <div class="card" id="generation-settings">
+                <div class="card-title" style="margin-bottom: 12px;">Generation Settings</div>
+                
+                <div class="slider-container">
+                    <div class="slider-label">Temperature: <span id="temp-value">1.00</span></div>
+                    <input type="range" min="0" max="2" step="0.01" value="1.00" class="slider" id="temperature" oninput="updateSlider('temp', this.value)">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="slider-label">Top P: <span id="topp-value">0.95</span></div>
+                    <input type="range" min="0" max="1" step="0.01" value="0.95" class="slider" id="topP" oninput="updateSlider('topp', this.value)">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="slider-label">Top K: <span id="topk-value">40</span></div>
+                    <input type="range" min="1" max="100" step="1" value="40" class="slider" id="topK" oninput="updateSlider('topk', this.value)">
+                </div>
             </div>
             
-            <div class="slider-container">
-                <div class="slider-label">Top K: <span id="topk-value">40</span></div>
-                <input type="range" min="1" max="100" step="1" value="40" class="slider" id="topK" oninput="updateSlider('topk', this.value)">
+            <!-- Main Feature -->
+            <div class="card">
+                <div class="card-title">Operate with AI</div>
+                <div class="card-description">An AI assistant uses screen reasoning and operates with taps</div>
+                <button class="text-button" onclick="navigateToPhotoReasoning()">Try</button>
+            </div>
+            
+            <!-- Support -->
+            <div class="card">
+                <div class="row" id="support-section">
+                    <span class="card-title">Support Improvements 🎉</span>
+                    <button class="button support-button" onclick="alert('Would open payment options')">Pro (2,90 €/Month)</button>
+                </div>
+            </div>
+            
+            <!-- Info -->
+            <div class="card">
+                <div class="card-description" style="line-height: 1.6;">
+                    • <strong>Preview Models</strong> could be deactivated by Google without being handed over to the final release.<br>
+                    • <strong>API Keys</strong> are automatically switched if multiple are inserted and one is exhausted.<br>
+                    • Models with a line through them do not work properly.
+                </div>
             </div>
         </div>
         
-        <!-- Main Feature -->
-        <div class="card">
-            <div class="card-title">Operate with AI</div>
-            <div class="card-description">An AI assistant uses screen reasoning and operates with taps</div>
-            <button class="text-button" onclick="alert('Would navigate to photo reasoning screen')">Try</button>
-        </div>
-        
-        <!-- Support -->
-        <div class="card">
-            <div class="row" id="support-section">
-                <span class="card-title">Support Improvements 🎉</span>
-                <button class="button support-button" onclick="alert('Would open payment options')">Pro (2,90 €/Month)</button>
-            </div>
-        </div>
-        
-        <!-- Info -->
-        <div class="card">
-            <div class="card-description" style="line-height: 1.6;">
-                • <strong>Preview Models</strong> could be deactivated by Google without being handed over to the final release.<br>
-                • <strong>API Keys</strong> are automatically switched if multiple are inserted and one is exhausted.<br>
-                • Models with a line through them do not work properly.
+        <!-- Photo Reasoning Screen -->
+        <div id="photo-reasoning-screen" class="screen">
+            <div class="photo-reasoning-container">
+                <div class="photo-reasoning-header">
+                    <button class="back-button" onclick="navigateBack()">←</button>
+                    <span class="photo-reasoning-title">Operate with AI</span>
+                </div>
+                
+                <div class="chat-area" id="chat-area">
+                    <div class="welcome-message">
+                        <h2>Welcome to Screen Operator</h2>
+                        <p>Start a conversation with the AI assistant. You can send messages, take screenshots, or enable accessibility features.</p>
+                    </div>
+                </div>
+                
+                <div class="input-area">
+                    <div class="input-container">
+                        <input type="text" class="text-input" id="message-input" placeholder="Type your message...">
+                        <button class="button" onclick="sendMessage()">Send</button>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="button action-button" onclick="takeScreenshot()">Take Screenshot</button>
+                        <button class="button action-button" onclick="enableAccessibility()">Enable Accessibility</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
     
     <script>
+        // Screen Navigation
+        function navigateToPhotoReasoning() {
+            document.getElementById('menu-screen').classList.remove('active');
+            document.getElementById('photo-reasoning-screen').classList.add('active');
+        }
+        
+        function navigateBack() {
+            document.getElementById('photo-reasoning-screen').classList.remove('active');
+            document.getElementById('menu-screen').classList.add('active');
+        }
+        
+        // Model Selection
         function toggleDropdown() {
             document.getElementById("modelDropdown").classList.toggle("show");
         }
@@ -300,6 +509,7 @@
             toggleDropdown();
         }
         
+        // Slider Updates
         function updateSlider(type, value) {
             if (type === 'temp') {
                 document.getElementById('temp-value').textContent = parseFloat(value).toFixed(2);
@@ -309,6 +519,60 @@
                 document.getElementById('topk-value').textContent = Math.round(value);
             }
         }
+        
+        // Photo Reasoning Functions
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (message) {
+                addMessageToChat('user', message);
+                input.value = '';
+                
+                // Simulate AI response
+                setTimeout(() => {
+                    addMessageToChat('assistant', 'This is a demonstration. In the actual app, the AI would respond based on your input and screen context.');
+                }, 1000);
+            }
+        }
+        
+        function addMessageToChat(sender, text) {
+            const chatArea = document.getElementById('chat-area');
+            
+            // Remove welcome message if it exists
+            const welcomeMsg = chatArea.querySelector('.welcome-message');
+            if (welcomeMsg) {
+                welcomeMsg.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = text;
+            chatArea.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function takeScreenshot() {
+            addMessageToChat('assistant', 'Screenshot functionality would capture the current screen in the actual app.');
+        }
+        
+        function enableAccessibility() {
+            addMessageToChat('assistant', 'Accessibility service would be enabled in the actual app to allow AI to interact with the screen.');
+        }
+        
+        // Enter key support for message input
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageInput = document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendMessage();
+                    }
+                });
+            }
+        });
         
         // Close dropdown when clicking outside
         window.onclick = function(event) {
