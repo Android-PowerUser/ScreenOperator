@@ -42,6 +42,7 @@ enum class ModelOption(
     PUTER_QWEN3_5_FLASH("Qwen3.5-Flash (Puter)", "qwen/qwen3.5-flash-02-23", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_AUTOGLM_PHONE_MULTILINGUAL("AutoGLM Phone Multilingual 9B (Puter)", "z-ai/autoglm-phone-multilingual", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_MINIMAX_M3("MiniMax M3 (Puter)", "minimax/minimax-m3", ApiProvider.PUTER, supportsScreenshot = true),
+    PUTER_QWEN2_5_VL_72B("Qwen2.5 VL 72B (Puter)", "qwen/qwen2.5-vl-72b-instruct", ApiProvider.PUTER, supportsScreenshot = true),
     GROQ_LLAMA_4_SCOUT_17B("Llama 4 Scout 109B (Groq)", "meta-llama/llama-4-scout-17b-16e-instruct", ApiProvider.GROQ, supportsScreenshot = true),
     CLOUDFLARE_KIMI_K2_6("Kimi K2.6 (Cloudflare)", "@cf/moonshotai/kimi-k2.6", ApiProvider.CLOUDFLARE, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
