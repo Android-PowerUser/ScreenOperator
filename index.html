@@ -276,13 +276,6 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
   </div>
 
-  <!-- Add Model (WebView Update Feature) -->
-  <div class="card">
-    <div class="title-md" style="margin-bottom:8px">Add Custom Model</div>
-    <div class="body-sm" style="margin-bottom:10px">Add new models without updating the app. Models added here are registered in the app.</div>
-    <button class="btn btn-solid" onclick="openAddModelPopup()">Add Model</button>
-  </div>
-
   <!-- Info -->
   <div class="card">
     <div class="body-sm" style="color:var(--text-primary);line-height:1.7">
@@ -413,51 +406,6 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   </div>
 </div>
 
-<!-- Add Custom Model Popup -->
-<div id="popup-add-model" class="overlay" onclick="overlayClose(event,'popup-add-model')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-add-model')">✕</button>
-    <div class="popup-title">Add Custom Model</div>
-    <div class="body-sm" style="margin-bottom:14px">New models are registered in the app and available immediately. They persist across sessions.</div>
-    <div class="form-group">
-      <label class="form-label">Display Name</label>
-      <input type="text" id="am-display" class="text-input" placeholder="e.g. GPT-5 Turbo (Puter)">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Model Name (API identifier)</label>
-      <input type="text" id="am-model" class="text-input" placeholder="e.g. openai/gpt-5-turbo">
-    </div>
-    <div class="form-group">
-      <label class="form-label">API Provider</label>
-      <select id="am-provider" class="text-input">
-        <option value="PUTER">Puter</option>
-        <option value="GOOGLE">Google</option>
-        <option value="MISTRAL">Mistral</option>
-        <option value="CEREBRAS">Cerebras</option>
-        <option value="GROQ">Groq</option>
-        <option value="VERCEL">Vercel</option>
-        <option value="CLOUDFLARE">Cloudflare</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Hint / Pricing (optional)</label>
-      <input type="text" id="am-hint" class="text-input" placeholder="e.g. $0.1/M input | $0.5/M output">
-    </div>
-    <div class="row" style="gap:10px;margin-bottom:4px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="am-screenshot" checked> Supports screenshots
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="am-topk"> Supports Top K
-      </label>
-    </div>
-    <div id="am-error" style="color:var(--error);font-size:12px;margin-top:4px;display:none"></div>
-    <div class="popup-actions">
-      <button class="btn btn-text" onclick="closePopup('popup-add-model')">Cancel</button>
-      <button class="btn btn-solid" onclick="addCustomModel()">Add Model</button>
-    </div>
-  </div>
-</div>
 
 <script>
 /* ════════════════════════════════════════════════════════
@@ -525,9 +473,6 @@ const Bridge = {
   isGenerationRunning:()=> inAndroid ? Android.isGenerationRunning() : false,
   isOfflineModelLoaded:()=> inAndroid ? Android.isOfflineModelLoaded() : false,
 
-  /* Custom models */
-  addCustomModel:(json)=>{ if(inAndroid) Android.addCustomModel(json); },
-
   /* Backend */
   getBackendPreference:()=> inAndroid ? Android.getBackendPreference() : (LS.getItem('backend')||'GPU'),
   setBackendPreference:(b)=>{ inAndroid ? Android.setBackendPreference(b) : LS.setItem('backend',b); },
@@ -538,7 +483,7 @@ const Bridge = {
 };
 
 /* ════════════════════════════════════════════════════════
-   MODEL DEFINITIONS  (extensible via addCustomModel / HTML update)
+   MODEL DEFINITIONS
 ════════════════════════════════════════════════════════ */
 const PROVIDERS = {
   PUTER:    { name:'Puter',     keyUrl:'https://puter.com/dashboard#account',       keyLabel:'Get Auth Token for Puter' },
@@ -583,12 +528,6 @@ let MODELS = [
   { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:true,  hint:'6.3 GB download required.',     strike:true },
   { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'Approx. 15 responses per day are free.', strike:true },
 ];
-
-/* Load any custom models saved previously */
-try {
-  const custom = JSON.parse(LS.getItem('customModels')||'[]');
-  MODELS = MODELS.concat(custom);
-} catch(e){}
 
 /* ════════════════════════════════════════════════════════
    DEFAULT SYSTEM MESSAGE
@@ -686,9 +625,8 @@ window.onGenerationStateChanged = function(running, isOfflineLoaded) {
 };
 
 window.onModelRegistered = function(modelId, displayName) {
-  // Called by Android after addCustomModel() completes
   if (!MODELS.find(m=>m.id===modelId)) {
-    // Already added client-side in addCustomModel(), no-op here
+    MODELS.push({ id: modelId, displayName: displayName || modelId, modelName: modelId, apiProvider: 'GOOGLE', supportsScreenshot: true, supportsTopK: true, isOffline: false, hint: '', strike: false });
   }
   buildModelDropdown();
 };
@@ -1076,49 +1014,6 @@ function importDatabase(event) {
   };
   reader.readAsText(file);
   event.target.value = '';
-}
-
-/* ════════════════════════════════════════════════════════
-   ADD CUSTOM MODEL
-════════════════════════════════════════════════════════ */
-function openAddModelPopup() {
-  ['am-display','am-model','am-hint'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('am-provider').value='PUTER';
-  document.getElementById('am-screenshot').checked=true;
-  document.getElementById('am-topk').checked=false;
-  document.getElementById('am-error').style.display='none';
-  openPopup('popup-add-model');
-}
-function addCustomModel() {
-  const displayName = document.getElementById('am-display').value.trim();
-  const modelName   = document.getElementById('am-model').value.trim();
-  const apiProvider = document.getElementById('am-provider').value;
-  const hint        = document.getElementById('am-hint').value.trim();
-  const supportsScreenshot = document.getElementById('am-screenshot').checked;
-  const supportsTopK = document.getElementById('am-topk').checked;
-  const err = document.getElementById('am-error');
-
-  if (!displayName || !modelName) { err.textContent='Display Name and Model Name are required.'; err.style.display='block'; return; }
-
-  const id = 'CUSTOM_'+modelName.replace(/[^a-zA-Z0-9]/g,'_').toUpperCase();
-  if (MODELS.find(m=>m.id===id)) { err.textContent='A model with this identifier already exists.'; err.style.display='block'; return; }
-
-  const newModel = { id, displayName, modelName, apiProvider, supportsScreenshot, supportsTopK, isOffline:false, hint, strike:false, isCustom:true };
-  MODELS.push(newModel);
-
-  // Persist locally
-  try {
-    const custom = JSON.parse(LS.getItem('customModels')||'[]');
-    custom.push(newModel);
-    LS.setItem('customModels', JSON.stringify(custom));
-  } catch(e){}
-
-  // Register in Android app
-  Bridge.addCustomModel(JSON.stringify(newModel));
-
-  buildModelDropdown();
-  closePopup('popup-add-model');
-  err.style.display='none';
 }
 
 /* ════════════════════════════════════════════════════════
