@@ -637,90 +637,45 @@ class MainActivity : ComponentActivity() {
         setupKeyboardVisibilityListener()
 
         Log.d(TAG, "onCreate: Calling setContent.")
-        setContent {
-            Log.d(TAG, "setContent: Composable content rendering. Current trial state: $currentTrialState")
-            navController = rememberNavController()
-            GenerativeAISample {
-                Scaffold(
-                    topBar = { }
-                ) { innerPadding ->
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),  // Entferne globalen .padding(innerPadding) – handle es pro Screen
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        Log.d(TAG, "setContent: Rendering AppNavigation.")
-                        AppNavigation(navController, innerPadding)  // Übergebe innerPadding als Parameter
-
-                        if (showFirstLaunchInfoDialog) {
-                            Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
-                            FirstLaunchInfoDialog(
-                                onDismiss = {
-                                    showFirstLaunchInfoDialog = false
-                                    prefs.edit()
-                                        .putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                                    Log.d(
-                                        TAG,
-                                        "FirstLaunchInfoDialog dismissed and preference set."
-                                    )
-                                }
-                            )
-                        } else if (showApiKeyDialog && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
-                            Log.d(
-                                TAG,
-                                "setContent: Rendering ApiKeyDialog. showApiKeyDialog=$showApiKeyDialog, currentTrialState=$currentTrialState"
-                            )
-                            ApiKeyDialogSection(
-                                apiKeyManager = apiKeyManager,
-                                isFirstLaunch = apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty(),
-                                initialProvider = apiKeyDialogInitialProvider,
-                                onDismiss = {
-                                    Log.d(TAG, "ApiKeyDialog onDismiss called.")
-                                    showApiKeyDialog = false
-                                    apiKeyDialogInitialProvider = null
-                                }
-                            )
-                        } else {
-                            Log.d(
-                                TAG,
-                                "setContent: Handling Trial State Dialogs. Current state: $currentTrialState, showTrialInfoDialog: $showTrialInfoDialog"
-                            )
-                            TrialStateDialogs(
-                                trialState = currentTrialState,
-                                showTrialInfoDialog = showTrialInfoDialog,
-                                trialInfoMessage = trialInfoMessage,
-                                onDismissTrialInfo = { showTrialInfoDialog = false },
-                                onPurchaseClick = { initiateDonationPurchase() }
-                            )
-                        }
-
-                        // Payment method dialog
-                        if (showPaymentMethodDialog) {
-                            PaymentMethodDialog(
-                                onDismiss = { showPaymentMethodDialog = false },
-                                onPayPalClick = {
-                                    showPaymentMethodDialog = false
-                                    val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
-                                    val ctx = this@MainActivity
-                                    ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                                        .edit()
-                                        .putString("payment_support_id", shortId)
-                                        .apply()
-                                    Toast.makeText(ctx, "Your Support ID is: $shortId", Toast.LENGTH_LONG).show()
-                                    val url = "https://www.paypal.com/webapps/billing/subscriptions?plan_id=P-5J921557TD348880GNGUCRSI&custom_id=$shortId"
-                                    ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-                                },
-                                onGooglePlayClick = {
-                                    showPaymentMethodDialog = false
-                                    launchGooglePlayBilling()
-                                }
-                            )
-                        }
-
-
-                    }
-                }
+        Log.d(TAG, "onCreate: Creating secure WebView configuration")
+        val browserView = WebView(this)
+        browserView.settings.javaScriptEnabled = true
+        browserView.settings.domStorageEnabled = true
+        browserView.settings.databaseEnabled = false
+        browserView.settings.allowFileAccess = false
+        browserView.settings.allowContentAccess = false
+        browserView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        browserView.settings.setSupportZoom(true)
+        browserView.settings.builtInZoomControls = true
+        browserView.settings.displayZoomControls = false
+        browserView.settings.useWideViewPort = true
+        browserView.settings.loadWithOverviewMode = true
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            browserView.settings.safeBrowsingEnabled = true
+        }
+        
+        browserView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                return false
+            }
+            
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                Log.d(TAG, "WebView page loaded: $url")
+            }
+            
+            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                super.onReceivedError(view, errorCode, description, failingUrl)
+                Log.e(TAG, "WebView error: $description")
             }
         }
+        
+        Log.d(TAG, "onCreate: Loading HTML from GitHub")
+        browserView.loadUrl("https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html")
+        
+        Log.d(TAG, "onCreate: Setting WebView as content")
+        setContentView(browserView)
         Log.d(TAG, "onCreate: setContent finished.")
 
         NotificationUtil.createNotificationChannel(this) // Create channel
