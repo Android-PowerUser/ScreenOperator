@@ -590,12 +590,13 @@ class MainActivity : ComponentActivity() {
                 val request = Request.Builder().url(htmlUrl).build()
                 val response = client.newCall(request).execute()
                 val responseCode = response.code
+                val response = client.newCall(request).execute()
+                val responseCode = response.code
+                val isSuccessful = response.isSuccessful
                 val body = response.body?.string()
-                response.use { 
-                    // Response will auto-close after this block
-                }
+                response.close()
 
-                if (response.isSuccessful && !body.isNullOrBlank()) {
+                if (isSuccessful && !body.isNullOrBlank()) {
                     Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen (${body.length} Zeichen).")
                     withContext(Dispatchers.Main) {
                         webViewHtmlContent = body
