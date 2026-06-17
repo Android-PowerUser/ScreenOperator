@@ -36,7 +36,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.webkit.JavascriptInterface
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -74,10 +73,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -104,6 +99,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class MainActivity : ComponentActivity() {
 
@@ -113,7 +113,7 @@ class MainActivity : ComponentActivity() {
     private val keyboardVisibilityObserver = KeyboardVisibilityObserver(TAG)
 
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
-    internal lateinit var apiKeyManager: ApiKeyManager
+    private lateinit var apiKeyManager: ApiKeyManager
     private var showApiKeyDialog by mutableStateOf(false)
     private var apiKeyDialogInitialProvider by mutableStateOf<ApiProvider?>(null)
 
@@ -128,7 +128,6 @@ class MainActivity : ComponentActivity() {
 
     private var permissionRequestCount by mutableStateOf(0)
     private var webViewHtmlContent by mutableStateOf<String?>(null)
-    private var webViewInstance: WebView? = null
 
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
@@ -583,7 +582,6 @@ class MainActivity : ComponentActivity() {
     }
 
 
-
     private fun loadWebViewContent() {
         val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
         lifecycleScope.launch(Dispatchers.IO) {
@@ -592,27 +590,23 @@ class MainActivity : ComponentActivity() {
                 val request = Request.Builder().url(htmlUrl).build()
                 val response = client.newCall(request).execute()
                 val responseCode = response.code
-                val isSuccessful = response.isSuccessful
                 val body = response.body?.string()
                 response.close()
 
-                if (isSuccessful && !body.isNullOrBlank()) {
-                    Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen (${body.length} Zeichen).")
+                if (response.isSuccessful && !body.isNullOrBlank()) {
+                    Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen ({} Zeichen).".format(body.length))
                     withContext(Dispatchers.Main) {
-                        if (isDestroyed || isFinishing) {
-                            Log.w(TAG, "loadWebViewContent: Activity destroyed, skipping state update")
-                            return@withContext
-                        }
                         webViewHtmlContent = body
                     }
                 } else {
-                    Log.e(TAG, "loadWebViewContent: Laden fehlgeschlagen. responseCode=$responseCode")
+                    Log.e(TAG, "loadWebViewContent: Laden fehlgeschlagen. responseCode={}".format(responseCode))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "loadWebViewContent: Exception beim Laden des HTML-Inhalts", e)
             }
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
         super.onCreate(savedInstanceState)
@@ -624,7 +618,7 @@ class MainActivity : ComponentActivity() {
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
         // Initialize ViewModel early so WebView mode can use it without PhotoReasoningRoute
-        val vm = androidx.lifecycle.ViewModelProvider<PhotoReasoningViewModel>(this, GenerativeAiViewModelFactory)[PhotoReasoningViewModel::class.java]
+        val vm = androidx.lifecycle.ViewModelProvider(this as androidx.lifecycle.ViewModelStoreOwner, GenerativeViewModelFactory as androidx.lifecycle.ViewModelProvider.Factory)[PhotoReasoningViewModel::class.java]
         photoReasoningViewModel = vm
         Log.d(TAG, "onCreate: PhotoReasoningViewModel initialized early for WebView mode.")
         // API key dialog logic removed from onCreate as requested.
@@ -684,7 +678,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             GenerativeAISample {
                 Scaffold { innerPadding ->
-                    navController = rememberNavController()
                     val htmlContent = webViewHtmlContent
                     if (htmlContent != null) {
                         Log.d(TAG, "setContent: Remote content available, showing WebView.")
@@ -715,14 +708,12 @@ class MainActivity : ComponentActivity() {
 
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
-                                            Log.d(TAG, "WebView page rendered: $url")
-                                            // Start observing ViewModel flows for JS callbacks
-                                            observeViewModelForWebView()
+                                            Log.d(TAG, "WebView page rendered: {}".format(url))
                                         }
 
                                         override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                                             super.onReceivedError(view, errorCode, description, failingUrl)
-                                            Log.e(TAG, "WebView error: $description")
+                                            Log.e(TAG, "WebView error: {}".format(description))
                                         }
                                     }
 
@@ -730,8 +721,6 @@ class MainActivity : ComponentActivity() {
                                     // statt loadUrl() direkt auf raw.githubusercontent.com aufzurufen.
                                     // Sonst liefert GitHub "Content-Type: text/plain" und der Inhalt wird
                                     // nur als Rohtext angezeigt statt als HTML interpretiert.
-                                    this@MainActivity.webViewInstance = this
-                                    addJavascriptInterface(WebViewBridge(this@MainActivity), "Android")
                                     loadDataWithBaseURL(
                                         "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
                                         htmlContent,
@@ -744,6 +733,7 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
+                        navController = rememberNavController()
                         AppNavigation(navController = navController, innerPadding = innerPadding)
 
                         TrialStateDialogs(
@@ -1230,83 +1220,6 @@ class MainActivity : ComponentActivity() {
         }
         Log.d(TAG, "onDestroy: Finished.")
     }
-
-
-    // ── WebView Bridge delegate methods ──────────────────────────────────────
-
-    fun sendMessageFromWebView(text: String) {
-        val vm = photoReasoningViewModel ?: run {
-            android.util.Log.w(TAG, "sendMessageFromWebView: ViewModel not ready")
-            return
-        }
-        vm.reason(userInput = text, selectedImages = emptyList())
-    }
-
-    fun initiateDonationFromWebView() {
-        initiateDonationPurchase()
-    }
-
-    fun onModelChangedFromWebView() {
-        android.util.Log.d(TAG, "onModelChangedFromWebView: model changed via WebView bridge")
-    }
-
-    fun setTermuxBackgroundFromWebView(background: Boolean) {
-        android.util.Log.d(TAG, "setTermuxBackgroundFromWebView: $background")
-    }
-
-    private var webViewObserversStarted = false
-    private fun observeViewModelForWebView() {
-        if (webViewObserversStarted) return
-        webViewObserversStarted = true
-        val vm = photoReasoningViewModel ?: return
-        val wv = webViewInstance ?: return
-        lifecycleScope.launch {
-            vm.uiState.collect { state ->
-                val js = when (state) {
-                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Loading ->
-                        "window.onAiMessage && window.onAiMessage('', true)"
-                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Success -> {
-                        val escaped = escapeForJs(state.outputText)
-                        "window.onAiMessage && window.onAiMessage('$escaped', false)"
-                    }
-                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Error -> {
-                        val escaped = escapeForJs("[Error] " + state.errorMessage)
-                        "window.onAiMessage && window.onAiMessage('$escaped', false)"
-                    }
-                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Stopped ->
-                        "window.onAiMessage && window.onAiMessage('', false)"
-                    else -> null
-                }
-                if (js != null) wv.post { wv.evaluateJavascript(js, null) }
-            }
-        }
-        lifecycleScope.launch {
-            kotlinx.coroutines.flow.combine(
-                vm.isGenerationRunningFlow,
-                vm.isOfflineGpuModelLoadedFlow
-            ) { running, offline -> Pair(running, offline) }.collect { (running, offline) ->
-                val js = "window.onGenerationStateChanged && window.onGenerationStateChanged($running, $offline)"
-                wv.post { wv.evaluateJavascript(js, null) }
-            }
-        }
-        lifecycleScope.launch {
-            vm.commandExecutionStatus.collect { status ->
-                if (status.isNotBlank()) {
-                    val escaped = escapeForJs(status)
-                    val js = "window.onCommandStatus && window.onCommandStatus('$escaped')"
-                    wv.post { wv.evaluateJavascript(js, null) }
-                }
-            }
-        }
-    }
-
-    private fun escapeForJs(s: String): String =
-        s.replace("\\", "\\\\")
-         .replace("'", "\\'")
-         .replace("\"", "\\\"")
-         .replace("\n", "\\n")
-         .replace("\r", "\\r")
-         .replace("<", "\\u003C")
 
 
     companion object {
