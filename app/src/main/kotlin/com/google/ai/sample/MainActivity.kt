@@ -621,7 +621,7 @@ class MainActivity : ComponentActivity() {
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
         // Initialize ViewModel early so WebView mode can use it without PhotoReasoningRoute
-        val vm = ViewModelProvider(this as ViewModelStoreOwner, GenerativeViewModelFactory).get(PhotoReasoningViewModel::class.java)
+        val vm: PhotoReasoningViewModel = ViewModelProvider(this as ViewModelStoreOwner, GenerativeViewModelFactory).get(PhotoReasoningViewModel::class.java)
         photoReasoningViewModel = vm
         Log.d(TAG, "onCreate: PhotoReasoningViewModel initialized early for WebView mode.")
         // API key dialog logic removed from onCreate as requested.
