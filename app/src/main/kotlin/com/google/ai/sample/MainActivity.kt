@@ -36,6 +36,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.webkit.JavascriptInterface
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -73,6 +74,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -122,6 +127,7 @@ class MainActivity : ComponentActivity() {
     private var trialInfoMessage by mutableStateOf("")
 
     private var permissionRequestCount by mutableStateOf(0)
+    private var webViewHtmlContent by mutableStateOf<String?>(null)
 
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
@@ -576,6 +582,31 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun loadWebViewContent() {
+        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient()
+                val request = Request.Builder().url(htmlUrl).build()
+                val response = client.newCall(request).execute()
+                val responseCode = response.code
+                val body = response.body?.string()
+                response.close()
+
+                if (response.isSuccessful && !body.isNullOrBlank()) {
+                    Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen (${body.length} Zeichen).")
+                    withContext(Dispatchers.Main) {
+                        webViewHtmlContent = body
+                    }
+                } else {
+                    Log.e(TAG, "loadWebViewContent: Laden fehlgeschlagen. responseCode=$responseCode")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "loadWebViewContent: Exception beim Laden des HTML-Inhalts", e)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
         super.onCreate(savedInstanceState)
@@ -636,46 +667,118 @@ class MainActivity : ComponentActivity() {
 
         setupKeyboardVisibilityListener()
 
+        Log.d(TAG, "onCreate: Starting fetch of remote WebView HTML content.")
+        loadWebViewContent()
+
         Log.d(TAG, "onCreate: Calling setContent.")
-        Log.d(TAG, "onCreate: Creating secure WebView configuration")
-        val browserView = WebView(this)
-        browserView.settings.javaScriptEnabled = true
-        browserView.settings.domStorageEnabled = true
-        browserView.settings.databaseEnabled = false
-        browserView.settings.allowFileAccess = false
-        browserView.settings.allowContentAccess = false
-        browserView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        browserView.settings.setSupportZoom(true)
-        browserView.settings.builtInZoomControls = true
-        browserView.settings.displayZoomControls = false
-        browserView.settings.useWideViewPort = true
-        browserView.settings.loadWithOverviewMode = true
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            browserView.settings.safeBrowsingEnabled = true
+        setContent {
+            GenerativeAISample {
+                Scaffold { innerPadding ->
+                    val htmlContent = webViewHtmlContent
+                    if (htmlContent != null) {
+                        Log.d(TAG, "setContent: Remote content available, showing WebView.")
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.databaseEnabled = false
+                                    settings.allowFileAccess = false
+                                    settings.allowContentAccess = false
+                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                    settings.setSupportZoom(true)
+                                    settings.builtInZoomControls = true
+                                    settings.displayZoomControls = false
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
+
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        settings.safeBrowsingEnabled = true
+                                    }
+
+                                    webViewClient = object : WebViewClient() {
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
+
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                            Log.d(TAG, "WebView page rendered: $url")
+                                        }
+
+                                        override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                                            super.onReceivedError(view, errorCode, description, failingUrl)
+                                            Log.e(TAG, "WebView error: $description")
+                                        }
+                                    }
+
+                                    // Wichtig: per loadDataWithBaseURL mit explizitem "text/html" laden,
+                                    // statt loadUrl() direkt auf raw.githubusercontent.com aufzurufen.
+                                    // Sonst liefert GitHub "Content-Type: text/plain" und der Inhalt wird
+                                    // nur als Rohtext angezeigt statt als HTML interpretiert.
+                                    loadDataWithBaseURL(
+                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
+                                        htmlContent,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
+                                }
+                            }
+                        )
+                    } else {
+                        Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
+                        navController = rememberNavController()
+                        AppNavigation(navController = navController, innerPadding = innerPadding)
+
+                        TrialStateDialogs(
+                            trialState = currentTrialState,
+                            showTrialInfoDialog = showTrialInfoDialog,
+                            trialInfoMessage = trialInfoMessage,
+                            onDismissTrialInfo = {
+                                showTrialInfoDialog = false
+                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                            },
+                            onPurchaseClick = { initiateDonationPurchase() }
+                        )
+
+                        if (showFirstLaunchInfoDialog) {
+                            FirstLaunchInfoDialog(onDismiss = {
+                                showFirstLaunchInfoDialog = false
+                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                            })
+                        }
+
+                        if (showApiKeyDialog) {
+                            ApiKeyDialogSection(
+                                apiKeyManager = apiKeyManager,
+                                isFirstLaunch = false,
+                                initialProvider = apiKeyDialogInitialProvider,
+                                onDismiss = {
+                                    showApiKeyDialog = false
+                                    apiKeyDialogInitialProvider = null
+                                }
+                            )
+                        }
+
+                        if (showPaymentMethodDialog) {
+                            PaymentMethodDialog(
+                                onDismiss = { showPaymentMethodDialog = false },
+                                onPayPalClick = {
+                                    showPaymentMethodDialog = false
+                                    Toast.makeText(this@MainActivity, "PayPal ist in dieser Fallback-UI noch nicht verfügbar.", Toast.LENGTH_LONG).show()
+                                },
+                                onGooglePlayClick = {
+                                    showPaymentMethodDialog = false
+                                    launchGooglePlayBilling()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
-        
-        browserView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                return false
-            }
-            
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                Log.d(TAG, "WebView page loaded: $url")
-            }
-            
-            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                super.onReceivedError(view, errorCode, description, failingUrl)
-                Log.e(TAG, "WebView error: $description")
-            }
-        }
-        
-        Log.d(TAG, "onCreate: Loading HTML from GitHub")
-        browserView.loadUrl("https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html")
-        
-        Log.d(TAG, "onCreate: Setting WebView as content")
-        setContentView(browserView)
         Log.d(TAG, "onCreate: setContent finished.")
 
         NotificationUtil.createNotificationChannel(this) // Create channel
