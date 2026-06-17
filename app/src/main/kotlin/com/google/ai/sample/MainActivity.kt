@@ -32,6 +32,10 @@ import java.util.Date
 import java.util.Locale
 import android.view.View
 import android.widget.Toast
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebSettings
+import android.webkit.JavascriptInterface
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
