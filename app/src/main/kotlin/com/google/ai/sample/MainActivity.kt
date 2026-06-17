@@ -591,7 +591,9 @@ class MainActivity : ComponentActivity() {
                 val response = client.newCall(request).execute()
                 val responseCode = response.code
                 val body = response.body?.string()
-                response.close()
+                response.use { 
+                    // Response will auto-close after this block
+                }
 
                 if (response.isSuccessful && !body.isNullOrBlank()) {
                     Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen (${body.length} Zeichen).")
