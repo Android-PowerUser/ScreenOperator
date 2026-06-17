@@ -581,29 +581,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-
     private fun loadWebViewContent() {
         val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
-        lifecycleScope.launch(Dispatchers.IO) {
-    private fun loadWebViewContent() {
-        val htmlUrl = ""
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val client = OkHttpClient()
                 val request = Request.Builder().url(htmlUrl).build()
                 val response = client.newCall(request).execute()
                 val responseCode = response.code
-                val isSuccessful = response.isSuccessful
                 val body = response.body?.string()
                 response.close()
 
-                if (isSuccessful && !body.isNullOrBlank()) {
+                if (response.isSuccessful && !body.isNullOrBlank()) {
                     Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen (${body.length} Zeichen).")
                     withContext(Dispatchers.Main) {
-                        if (isDestroyed || isFinishing) {
-                            Log.w(TAG, "loadWebViewContent: Activity destroyed, skipping state update")
-                            return@withContext
-                        }
                         webViewHtmlContent = body
                     }
                 } else {
@@ -682,7 +673,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             GenerativeAISample {
                 Scaffold { innerPadding ->
-                    navController = rememberNavController()
                     val htmlContent = webViewHtmlContent
                     if (htmlContent != null) {
                         Log.d(TAG, "setContent: Remote content available, showing WebView.")
@@ -738,6 +728,7 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
+                        navController = rememberNavController()
                         AppNavigation(navController = navController, innerPadding = innerPadding)
 
                         TrialStateDialogs(
