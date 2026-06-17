@@ -1303,6 +1303,7 @@ class MainActivity : ComponentActivity() {
     private fun escapeForJs(s: String): String =
         s.replace("\\", "\\\\")
          .replace("'", "\\'")
+         .replace("\"", "\\\"")
          .replace("\n", "\\n")
          .replace("\r", "\\r")
          .replace("<", "\\u003C")
