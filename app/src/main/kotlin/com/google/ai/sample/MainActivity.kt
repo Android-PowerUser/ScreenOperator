@@ -873,20 +873,8 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-                Log.d(TAG, "AppNavigation: Composing 'menu' screen. showWebView=$showWebView")
-                
-                // If WebView should be shown and is loaded, show it instead of menu
-                if (showWebView && isWebViewLoaded) {
-                    WebViewScreen(innerPadding)
-                    return@composable
-                }
-                
     private fun queryProductDetails() {
         Log.d(TAG, "queryProductDetails called.")
-                    onWebViewClicked = {
-                        Log.d(TAG, "WebView button clicked. Setting showWebView = true")
-                        showWebView = true
-                    },
         if (!MainActivityBillingClientState.isInitializedAndReady(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.isReady else false)) {
             Log.w(TAG, "queryProductDetails: BillingClient not ready. Cannot query.")
             return
