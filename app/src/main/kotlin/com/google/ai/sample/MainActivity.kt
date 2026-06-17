@@ -32,6 +32,10 @@ import java.util.Date
 import java.util.Locale
 import android.view.View
 import android.widget.Toast
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebSettings
+import android.webkit.JavascriptInterface
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -95,6 +99,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
+import com.google.ai.sample.GenerativeViewModelFactory
 
 class MainActivity : ComponentActivity() {
 
@@ -118,6 +130,7 @@ class MainActivity : ComponentActivity() {
     private var trialInfoMessage by mutableStateOf("")
 
     private var permissionRequestCount by mutableStateOf(0)
+    private var webViewHtmlContent by mutableStateOf<String?>(null)
 
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
@@ -572,6 +585,31 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun loadWebViewContent() {
+        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient()
+                val request = Request.Builder().url(htmlUrl).build()
+                val response = client.newCall(request).execute()
+                val responseCode = response.code
+                val body = response.body?.string()
+                response.close()
+
+                if (response.isSuccessful && !body.isNullOrBlank()) {
+                    Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen ({} Zeichen).".format(body.length))
+                    withContext(Dispatchers.Main) {
+                        webViewHtmlContent = body
+                    }
+                } else {
+                    Log.e(TAG, "loadWebViewContent: Laden fehlgeschlagen. responseCode={}".format(responseCode))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "loadWebViewContent: Exception beim Laden des HTML-Inhalts", e)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
         super.onCreate(savedInstanceState)
@@ -582,6 +620,10 @@ class MainActivity : ComponentActivity() {
 
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
+        // Initialize ViewModel early so WebView mode can use it without PhotoReasoningRoute
+        val vm: PhotoReasoningViewModel = ViewModelProvider(this as ViewModelStoreOwner, GenerativeViewModelFactory).get(PhotoReasoningViewModel::class.java)
+        photoReasoningViewModel = vm
+        Log.d(TAG, "onCreate: PhotoReasoningViewModel initialized early for WebView mode.")
         // API key dialog logic removed from onCreate as requested.
         // It will be triggered when needed (e.g., when the user tries to use an online model).
 
@@ -632,78 +674,107 @@ class MainActivity : ComponentActivity() {
 
         setupKeyboardVisibilityListener()
 
+        Log.d(TAG, "onCreate: Starting fetch of remote WebView HTML content.")
+        loadWebViewContent()
+
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
-            Log.d(TAG, "setContent: Composable content rendering. Current trial state: $currentTrialState")
-            navController = rememberNavController()
             GenerativeAISample {
-                Scaffold(
-                    topBar = { }
-                ) { innerPadding ->
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),  // Entferne globalen .padding(innerPadding) – handle es pro Screen
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        Log.d(TAG, "setContent: Rendering AppNavigation.")
-                        AppNavigation(navController, innerPadding)  // Übergebe innerPadding als Parameter
+                Scaffold { innerPadding ->
+                    val htmlContent = webViewHtmlContent
+                    if (htmlContent != null) {
+                        Log.d(TAG, "setContent: Remote content available, showing WebView.")
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.databaseEnabled = false
+                                    settings.allowFileAccess = false
+                                    settings.allowContentAccess = false
+                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                    settings.setSupportZoom(true)
+                                    settings.builtInZoomControls = true
+                                    settings.displayZoomControls = false
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
 
-                        if (showFirstLaunchInfoDialog) {
-                            Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
-                            FirstLaunchInfoDialog(
-                                onDismiss = {
-                                    showFirstLaunchInfoDialog = false
-                                    prefs.edit()
-                                        .putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                                    Log.d(
-                                        TAG,
-                                        "FirstLaunchInfoDialog dismissed and preference set."
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        settings.safeBrowsingEnabled = true
+                                    }
+
+                                    webViewClient = object : WebViewClient() {
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
+
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                            Log.d(TAG, "WebView page rendered: {}".format(url))
+                                        }
+
+                                        override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                                            super.onReceivedError(view, errorCode, description, failingUrl)
+                                            Log.e(TAG, "WebView error: {}".format(description))
+                                        }
+                                    }
+
+                                    // Wichtig: per loadDataWithBaseURL mit explizitem "text/html" laden,
+                                    // statt loadUrl() direkt auf raw.githubusercontent.com aufzurufen.
+                                    // Sonst liefert GitHub "Content-Type: text/plain" und der Inhalt wird
+                                    // nur als Rohtext angezeigt statt als HTML interpretiert.
+                                    loadDataWithBaseURL(
+                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
+                                        htmlContent,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
                                     )
                                 }
-                            )
-                        } else if (showApiKeyDialog && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
-                            Log.d(
-                                TAG,
-                                "setContent: Rendering ApiKeyDialog. showApiKeyDialog=$showApiKeyDialog, currentTrialState=$currentTrialState"
-                            )
+                            }
+                        )
+                    } else {
+                        Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
+                        navController = rememberNavController()
+                        AppNavigation(navController = navController, innerPadding = innerPadding)
+
+                        TrialStateDialogs(
+                            trialState = currentTrialState,
+                            showTrialInfoDialog = showTrialInfoDialog,
+                            trialInfoMessage = trialInfoMessage,
+                            onDismissTrialInfo = {
+                                showTrialInfoDialog = false
+                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                            },
+                            onPurchaseClick = { initiateDonationPurchase() }
+                        )
+
+                        if (showFirstLaunchInfoDialog) {
+                            FirstLaunchInfoDialog(onDismiss = {
+                                showFirstLaunchInfoDialog = false
+                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                            })
+                        }
+
+                        if (showApiKeyDialog) {
                             ApiKeyDialogSection(
                                 apiKeyManager = apiKeyManager,
-                                isFirstLaunch = apiKeyManager.getApiKeys(ApiProvider.GOOGLE).isEmpty() && apiKeyManager.getApiKeys(ApiProvider.CEREBRAS).isEmpty(),
+                                isFirstLaunch = false,
                                 initialProvider = apiKeyDialogInitialProvider,
                                 onDismiss = {
-                                    Log.d(TAG, "ApiKeyDialog onDismiss called.")
                                     showApiKeyDialog = false
                                     apiKeyDialogInitialProvider = null
                                 }
                             )
-                        } else {
-                            Log.d(
-                                TAG,
-                                "setContent: Handling Trial State Dialogs. Current state: $currentTrialState, showTrialInfoDialog: $showTrialInfoDialog"
-                            )
-                            TrialStateDialogs(
-                                trialState = currentTrialState,
-                                showTrialInfoDialog = showTrialInfoDialog,
-                                trialInfoMessage = trialInfoMessage,
-                                onDismissTrialInfo = { showTrialInfoDialog = false },
-                                onPurchaseClick = { initiateDonationPurchase() }
-                            )
                         }
 
-                        // Payment method dialog
                         if (showPaymentMethodDialog) {
                             PaymentMethodDialog(
                                 onDismiss = { showPaymentMethodDialog = false },
                                 onPayPalClick = {
                                     showPaymentMethodDialog = false
-                                    val shortId = java.util.UUID.randomUUID().toString().substring(0, 8)
-                                    val ctx = this@MainActivity
-                                    ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                                        .edit()
-                                        .putString("payment_support_id", shortId)
-                                        .apply()
-                                    Toast.makeText(ctx, "Your Support ID is: $shortId", Toast.LENGTH_LONG).show()
-                                    val url = "https://www.paypal.com/webapps/billing/subscriptions?plan_id=P-5J921557TD348880GNGUCRSI&custom_id=$shortId"
-                                    ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                                    Toast.makeText(this@MainActivity, "PayPal ist in dieser Fallback-UI noch nicht verfügbar.", Toast.LENGTH_LONG).show()
                                 },
                                 onGooglePlayClick = {
                                     showPaymentMethodDialog = false
@@ -711,8 +782,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-
-
                     }
                 }
             }
@@ -873,20 +942,8 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-                Log.d(TAG, "AppNavigation: Composing 'menu' screen. showWebView=$showWebView")
-                
-                // If WebView should be shown and is loaded, show it instead of menu
-                if (showWebView && isWebViewLoaded) {
-                    WebViewScreen(innerPadding)
-                    return@composable
-                }
-                
     private fun queryProductDetails() {
         Log.d(TAG, "queryProductDetails called.")
-                    onWebViewClicked = {
-                        Log.d(TAG, "WebView button clicked. Setting showWebView = true")
-                        showWebView = true
-                    },
         if (!MainActivityBillingClientState.isInitializedAndReady(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.isReady else false)) {
             Log.w(TAG, "queryProductDetails: BillingClient not ready. Cannot query.")
             return
