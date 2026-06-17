@@ -104,6 +104,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
+import com.google.ai.sample.GenerativeViewModelFactory
 
 class MainActivity : ComponentActivity() {
 
@@ -618,7 +621,7 @@ class MainActivity : ComponentActivity() {
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
         // Initialize ViewModel early so WebView mode can use it without PhotoReasoningRoute
-        val vm = androidx.lifecycle.ViewModelProvider(this, GenerativeAiViewModelFactory)[PhotoReasoningViewModel::class.java]
+        val vm = ViewModelProvider(this as ViewModelStoreOwner, GenerativeViewModelFactory).get(PhotoReasoningViewModel::class.java)
         photoReasoningViewModel = vm
         Log.d(TAG, "onCreate: PhotoReasoningViewModel initialized early for WebView mode.")
         // API key dialog logic removed from onCreate as requested.
