@@ -585,11 +585,12 @@ class MainActivity : ComponentActivity() {
     private fun loadWebViewContent() {
         val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
         lifecycleScope.launch(Dispatchers.IO) {
+    private fun loadWebViewContent() {
+        val htmlUrl = ""
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val client = OkHttpClient()
                 val request = Request.Builder().url(htmlUrl).build()
-                val response = client.newCall(request).execute()
-                val responseCode = response.code
                 val response = client.newCall(request).execute()
                 val responseCode = response.code
                 val isSuccessful = response.isSuccessful
@@ -599,6 +600,10 @@ class MainActivity : ComponentActivity() {
                 if (isSuccessful && !body.isNullOrBlank()) {
                     Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen (${body.length} Zeichen).")
                     withContext(Dispatchers.Main) {
+                        if (isDestroyed || isFinishing) {
+                            Log.w(TAG, "loadWebViewContent: Activity destroyed, skipping state update")
+                            return@withContext
+                        }
                         webViewHtmlContent = body
                     }
                 } else {
