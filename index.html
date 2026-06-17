@@ -445,12 +445,6 @@ function addErrorBubble(text){
   bubble.textContent = text;
   area.appendChild(bubble);
 }
-function addModelBubble(text){
-  var area = document.getElementById('chat-area');
-  var row = document.createElement('div');
-  row.className = 'msg-row';
-  row.innerHTML = '<div class="bubble-model"></div>';
-  row.querySelector('.bubble-model').textContent = text;
   area.appendChild(row);
 }
 function undoLast(){
