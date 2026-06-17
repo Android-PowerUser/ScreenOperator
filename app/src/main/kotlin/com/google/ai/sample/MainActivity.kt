@@ -682,6 +682,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             GenerativeAISample {
                 Scaffold { innerPadding ->
+                    navController = rememberNavController()
                     val htmlContent = webViewHtmlContent
                     if (htmlContent != null) {
                         Log.d(TAG, "setContent: Remote content available, showing WebView.")
@@ -737,7 +738,6 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
-                        navController = rememberNavController()
                         AppNavigation(navController = navController, innerPadding = innerPadding)
 
                         TrialStateDialogs(
