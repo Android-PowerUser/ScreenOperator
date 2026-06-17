@@ -1,504 +1,1153 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Screen Operator</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+/* ── Reset ────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
 
+/* ── M3 Light tokens (default) ─────────────────────────── */
 :root{
-  --bg-primary:#FFFBFE;
+  --bg:#FFFBFE;
   --bg-card:#E7E0EC;
-  --bg-card-accent:#EADDFF;
+  --bg-primary-container:#EADDFF;
   --bg-secondary-container:#E8DEF8;
+  --bg-tertiary-container:#FFD8E4;
   --bg-error-container:#F9DEDC;
+  --bg-surface-variant:#E7E0EC;
   --text-primary:#1C1B1F;
   --text-secondary:#49454F;
-  --text-on-accent:#21005D;
+  --text-on-primary:#FFFFFF;
+  --text-on-primary-container:#21005D;
   --text-on-secondary-container:#1D192B;
   --text-on-error-container:#410E0B;
   --error:#B3261E;
-  --border-color:#79747E;
-  --hard-border:#000000;
-  --button-bg:#6650A4;
-  --button-text:#FFFFFF;
-  --link-color:#6650A4;
-  --slider-thumb:#6650A4;
-  --slider-track:#79747E;
-}
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg-primary:#1C1B1F;
-    --bg-card:#48454E;
-    --bg-card-accent:#4F378B;
-    --bg-secondary-container:#4A4458;
-    --bg-error-container:#8C1D18;
-    --text-primary:#E6E1E5;
-    --text-secondary:#CAC4D0;
-    --text-on-accent:#EADDFF;
-    --text-on-secondary-container:#E8DEF8;
-    --text-on-error-container:#F9DEDC;
-    --error:#F2B8B5;
-    --border-color:#938F99;
-    --hard-border:#000000;
-    --button-bg:#D0BCFF;
-    --button-text:#381E72;
-    --link-color:#D0BCFF;
-    --slider-thumb:#D0BCFF;
-    --slider-track:#938F99;
-  }
+  --outline:#79747E;
+  --outline-variant:#CAC4D0;
+  --primary:#6650A4;
+  --primary-btn-text:#FFFFFF;
+  --shadow:rgba(0,0,0,.14);
+  --scrim:rgba(0,0,0,.50);
+  --chip-selected-bg:#6650A4;
+  --chip-selected-text:#FFFFFF;
+  --chip-bg:#E7E0EC;
+  --chip-text:#1C1B1F;
+  --input-bg:#FFFFFF;
+  --input-border:#79747E;
+  --item-hover:#F3EFF4;
+  --divider:#CAC4D0;
+  --bubble-user-bg:#EADDFF;
+  --bubble-user-text:#21005D;
+  --bubble-model-bg:#E8DEF8;
+  --bubble-model-text:#1D192B;
 }
 
-body{
-  font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
-  background-color:var(--bg-primary);
-  color:var(--text-primary);
-  min-height:100vh;
-}
-.app{ max-width:480px; margin:0 auto; min-height:100vh; background:var(--bg-primary); position:relative; }
-.screen{ display:none; padding:0 14px 24px; }
-.screen.active{ display:block; }
+/* ── App shell ──────────────────────────────────────────── */
+#app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column}
 
-/* ---------- status bar ---------- */
-.status-bar{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:10px 12px 6px; font-size:13px; font-weight:500; color:var(--text-primary);
-}
-.status-left{ display:flex; align-items:center; gap:6px; }
-.status-right{ display:flex; align-items:center; gap:5px; }
-.status-bar svg{ display:block; }
+/* ── Screens ────────────────────────────────────────────── */
+.screen{display:none;flex-direction:column;flex:1;min-height:0}
+.screen.active{display:flex}
 
-/* ---------- generic card ---------- */
-.card{
-  background:var(--bg-card);
-  border-radius:18px;
-  padding:16px;
-  margin:10px 0;
-}
-.card-accent{
-  background:var(--bg-card-accent);
-  border-radius:18px;
-  padding:16px;
-  margin:10px 0;
-}
-.row{ display:flex; align-items:center; gap:10px; }
-.row.between{ justify-content:space-between; }
-.title-md{ font-size:17px; font-weight:500; color:var(--text-primary); }
-.body-md{ font-size:14px; color:var(--text-primary); line-height:1.5; }
-.body-sub{ font-size:13px; color:var(--text-secondary); }
+/* ── MENU SCREEN ─────────────────────────────────────────── */
+#screen-menu{overflow-y:auto;padding:8px 14px 32px}
 
-/* ---------- buttons ---------- */
-.btn-solid{
-  background:var(--button-bg);
-  color:var(--button-text);
-  border:none;
-  border-radius:999px;
-  padding:10px 22px;
-  font-size:14px;
-  font-weight:500;
-  cursor:pointer;
-  white-space:nowrap;
-}
-.btn-solid:active{ opacity:0.85; }
-.btn-outline{
-  background:transparent;
-  color:var(--text-on-accent);
-  border:1px solid var(--hard-border);
-  border-radius:999px;
-  padding:8px 16px;
-  font-size:11px;
-  font-weight:500;
-  line-height:1.2;
-  cursor:pointer;
-  text-align:center;
-}
-.btn-text{
-  background:none;
-  border:none;
-  color:var(--link-color);
-  font-size:15px;
-  font-weight:500;
-  cursor:pointer;
-  padding:4px 0;
-}
-.circle-btn{
-  width:38px; height:38px; border-radius:50%;
-  border:1px solid var(--hard-border);
-  background:transparent;
-  display:flex; align-items:center; justify-content:center;
-  color:var(--button-bg);
-  font-size:11px; font-weight:500;
-  cursor:pointer;
-}
-.icon-btn{
-  width:38px; height:38px; border-radius:50%;
-  border:none; background:transparent;
-  display:flex; align-items:center; justify-content:center;
-  color:var(--text-primary);
-  cursor:pointer;
-}
+/* ── CHAT SCREEN ─────────────────────────────────────────── */
+#screen-chat{overflow:hidden}
+#chat-sys-wrap{flex-shrink:0;padding:8px 14px 0}
+#chat-messages-wrap{flex:1;overflow-y:auto;padding:4px 14px 4px;display:flex;flex-direction:column;gap:2px}
+#chat-bottom{flex-shrink:0;padding:0 14px 8px}
 
-/* ---------- sliders ---------- */
-.slider-label{ font-size:14px; color:var(--text-primary); margin-bottom:6px; }
-input[type=range]{
-  -webkit-appearance:none; appearance:none;
-  width:100%; height:2px; background:var(--slider-track);
-  border-radius:2px; outline:none; margin:4px 0 14px;
-}
-input[type=range]::-webkit-slider-thumb{
-  -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
-  background:var(--slider-thumb); cursor:pointer; border:none;
-}
-input[type=range]::-moz-range-thumb{
-  width:18px; height:18px; border-radius:50%;
-  background:var(--slider-thumb); cursor:pointer; border:none;
-}
+/* ── Card ────────────────────────────────────────────────── */
+.card{background:var(--bg-card);border-radius:18px;padding:16px;margin:8px 0}
+.card-accent{background:var(--bg-primary-container);border-radius:18px;padding:14px;margin:8px 0}
 
-/* ---------- dropdown ---------- */
-.dropdown{ position:relative; }
-.dropdown-content{
-  display:none; position:absolute; right:0; top:46px;
-  background:var(--bg-primary); border:1px solid var(--border-color);
-  border-radius:10px; min-width:220px; max-height:280px; overflow-y:auto;
-  box-shadow:0 4px 14px rgba(0,0,0,0.25); z-index:10;
-}
-.dropdown-content.show{ display:block; }
-.dropdown-item{ padding:11px 14px; font-size:14px; cursor:pointer; color:var(--text-primary); }
-.dropdown-item:hover{ background:var(--bg-card); }
+/* ── Typography ──────────────────────────────────────────── */
+.title-md{font-size:16px;font-weight:500;color:var(--text-primary)}
+.body-md{font-size:14px;color:var(--text-primary);line-height:1.55}
+.body-sm{font-size:13px;color:var(--text-secondary);line-height:1.5}
 
-/* ---------- chat screen ---------- */
-.chat-header{ display:flex; align-items:center; gap:8px; padding:8px 0 4px; }
-.chat-header .title-md{ font-size:18px; }
-.system-box{
-  border:1px solid var(--border-color);
-  border-radius:8px;
-  padding:14px;
-  font-size:14px;
-  color:var(--text-on-accent);
-  line-height:1.5;
-  background:transparent;
-  margin-top:10px;
-}
-.msg-row{ display:flex; align-items:flex-start; gap:6px; margin:14px 0; }
-.bubble-user{
-  background:var(--bg-card-accent);
-  color:var(--text-on-accent);
-  border-radius:14px;
-  padding:14px 16px;
-  font-size:14px;
-  line-height:1.5;
-  max-width:78%;
-  margin-left:auto;
-}
-.bubble-model{
-  background:var(--bg-secondary-container);
-  color:var(--text-on-secondary-container);
-  border-radius:14px;
-  padding:14px 16px;
-  font-size:14px;
-  line-height:1.5;
-  max-width:78%;
-}
-.bubble-error{
-  background:var(--bg-error-container);
-  color:var(--error);
-  border-radius:14px;
-  padding:14px 16px;
-  font-size:13px;
-  line-height:1.45;
-  word-break:break-word;
-  margin:14px 0;
-}
-.bubble-meta{ font-size:11px; color:var(--text-secondary); margin-top:6px; }
+/* ── Row helpers ─────────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:8px}
+.row.between{justify-content:space-between}
+.row.end{justify-content:flex-end}
+.col{display:flex;flex-direction:column;gap:6px}
 
-.input-area{ margin-top:18px; }
-.input-row{ display:flex; align-items:center; gap:8px; }
-.left-col{ display:flex; flex-direction:column; align-items:center; gap:8px; }
-.right-col{ display:flex; flex-direction:column; align-items:center; gap:8px; }
-.task-input{
-  flex:1; height:40px; border:1px solid var(--border-color);
-  border-radius:6px; padding:0 12px; font-size:14px;
-  background:transparent; color:var(--text-primary);
-}
-.task-input:focus{ outline:none; border-color:var(--button-bg); }
-.send-arrow{ font-size:20px; }
-.send-arrow.disabled{ color:#8a8a8a; }
-.send-arrow.enabled{ color:var(--button-bg); }
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn{border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-weight:500;white-space:nowrap;transition:opacity .15s}
+.btn:active{opacity:.8}
+.btn-solid{background:var(--primary);color:var(--primary-btn-text);padding:9px 20px;font-size:14px}
+.btn-solid.red{background:#B3261E}
+.btn-outline{background:transparent;color:var(--text-on-primary-container);border:1px solid #000;padding:6px 12px;font-size:11px;line-height:1.3;text-align:center}
+.btn-text{background:none;border:none;color:var(--primary);font-size:15px;font-weight:500;cursor:pointer;padding:4px 2px}
+.btn-icon{width:36px;height:36px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-primary);cursor:pointer;font-size:18px;flex-shrink:0}
+.btn-icon:active{background:var(--item-hover)}
+.btn-circle{width:36px;height:36px;border-radius:50%;border:1px solid #000;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:11px;font-weight:500;cursor:pointer;flex-shrink:0}
+
+/* ── Chips ───────────────────────────────────────────────── */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:var(--chip-bg);color:var(--chip-text);transition:background .15s}
+.chip.active{background:var(--chip-selected-bg);color:var(--chip-selected-text)}
+
+/* ── Inputs ──────────────────────────────────────────────── */
+.text-input{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;transition:border-color .2s}
+.text-input:focus{border-color:var(--primary)}
+textarea.text-input{resize:vertical;min-height:80px;line-height:1.5}
+
+/* ── Sliders ─────────────────────────────────────────────── */
+.slider-row{margin-bottom:10px}
+.slider-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:2px;background:var(--outline);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--primary);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--primary);cursor:pointer;border:none}
+
+/* ── Model dropdown ──────────────────────────────────────── */
+#model-dropdown{position:relative;display:inline-block}
+#model-dropdown-menu{display:none;position:absolute;right:0;top:42px;background:var(--bg);border:1px solid var(--outline-variant);border-radius:12px;min-width:240px;max-height:300px;overflow-y:auto;box-shadow:0 4px 16px var(--shadow);z-index:20}
+#model-dropdown-menu.open{display:block}
+.drop-item{padding:11px 16px;font-size:14px;cursor:pointer;color:var(--text-primary);border-bottom:1px solid var(--divider)}
+.drop-item:last-child{border-bottom:none}
+.drop-item:hover{background:var(--item-hover)}
+.drop-item.strikethrough span{text-decoration:line-through;color:var(--text-secondary)}
+.drop-item.drop-section{font-size:11px;font-weight:600;color:var(--text-secondary);padding:8px 16px 4px;pointer-events:none;cursor:default;background:transparent;text-transform:uppercase;letter-spacing:.6px}
+.drop-item.drop-section:hover{background:transparent}
+
+/* ── System message card ─────────────────────────────────── */
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;max-height:200px;overflow-y:auto;margin-top:10px}
+#sys-msg-textarea:focus{border-color:var(--primary)}
+
+/* ── Chat bubbles ────────────────────────────────────────── */
+.bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
+.bubble-wrap.user-wrap{flex-direction:row-reverse}
+.bubble{border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.55;max-width:82%;word-break:break-word}
+.bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text)}
+.bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text)}
+.bubble.error{background:var(--bg-error-container);color:var(--text-on-error-container);width:100%;max-width:100%}
+.bubble-wrap.error-wrap{display:block}
+.pending-dots{display:inline-block;margin-left:6px;font-size:16px;line-height:1;animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+
+/* ── Command status card ─────────────────────────────────── */
+.cmd-status-card{background:var(--bg-secondary-container);border-radius:12px;padding:12px 14px;margin:6px 0;font-size:13px;color:var(--text-on-secondary-container)}
+
+/* ── Input area ──────────────────────────────────────────── */
+#chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
+.input-row{display:flex;align-items:center;gap:6px}
+.task-input{flex:1;height:38px;border:1px solid var(--input-border);border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none}
+.task-input:focus{border-color:var(--primary)}
+#send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.send-icon{font-size:22px;color:var(--outline)}
+.send-icon.active{color:var(--primary)}
+
+/* ── Stop / Unload button ────────────────────────────────── */
+#stop-btn-wrap{margin-top:6px}
+#stop-btn{width:100%;padding:10px;background:#B3261E;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit}
+#stop-btn:active{opacity:.85}
+
+/* ── Key list ────────────────────────────────────────────── */
+.key-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--divider)}
+.key-row:last-child{border-bottom:none}
+.key-radio{flex-shrink:0;width:18px;height:18px;cursor:pointer;accent-color:var(--primary)}
+.key-label{flex:1;font-size:13px;color:var(--text-primary);word-break:break-all}
+.key-del{background:none;border:none;cursor:pointer;color:var(--error);font-size:15px;flex-shrink:0;padding:2px 6px}
+
+/* ── Overlays / Popups ───────────────────────────────────── */
+.overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
+.overlay.open{display:flex;align-items:flex-start;justify-content:center}
+.popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative}
+.popup-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:14px}
+.popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
+.popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+
+/* ── Database entries list ───────────────────────────────── */
+.db-entry{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;cursor:pointer;border-bottom:1px solid var(--divider)}
+.db-entry:last-child{border-bottom:none}
+.db-entry:hover{background:var(--item-hover)}
+.db-entry-title{flex:1;font-size:14px;color:var(--text-primary)}
+.db-entry-del{background:none;border:none;cursor:pointer;color:var(--error);font-size:18px;padding:2px 6px;flex-shrink:0}
+
+/* ── Hint text ───────────────────────────────────────────── */
+.model-hint{font-size:13px;color:var(--text-secondary);margin-top:8px;line-height:1.5}
+
+/* ── Backend toggle ──────────────────────────────────────── */
+.backend-row{display:flex;gap:10px;margin-top:10px}
+.backend-btn{flex:1;padding:9px;border:1px solid var(--outline);border-radius:999px;background:transparent;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
+.backend-btn.active-btn{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+/* ── Progress / spinner ──────────────────────────────────── */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--outline);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Scrollbar thin ──────────────────────────────────────── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--outline-variant);border-radius:4px}
+
+/* ── Offline section toggle ──────────────────────────────── */
+.collapse-section{display:none}
+.collapse-section.visible{display:block}
+
+/* ── Pro purchased ───────────────────────────────────────── */
+.pro-thanks{text-align:center;font-size:15px;font-weight:500;color:var(--text-primary);padding:8px 0}
+
+/* ── Add model popup ─────────────────────────────────────── */
+.form-group{margin-bottom:14px}
+.form-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px;display:block}
+select.text-input{height:40px;padding:0 10px;cursor:pointer}
 </style>
 </head>
 <body>
-<div class="app">
+<div id="app">
 
-  <!-- ================= MENU SCREEN ================= -->
-  <div id="menu-screen" class="screen active">
-    <div class="status-bar">
-      <div class="status-left">
-        <span id="clock1">14:15</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v8l4 2"/><path d="M5 9V5h4"/></svg>
-        <span>21&deg;</span>
-      </div>
-      <div class="status-right">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="7"/><path d="M12 13v-3"/><path d="M9 3h6"/></svg>
-        <span>4G</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="14" width="3" height="6"/><rect x="8" y="10" width="3" height="10"/><rect x="14" y="6" width="3" height="14"/><rect x="20" y="2" width="3" height="18"/></svg>
-        <svg width="12" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
-        <span>68</span>
-      </div>
-    </div>
+<!-- ═══════════════════════════════════════════════════════
+     MENU SCREEN
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-menu" class="screen active">
 
-    <div class="card">
-      <div class="row between">
-        <span class="title-md">API Key Management</span>
-        <button class="btn-solid" onclick="alert('API Key Management would open here')">Change API Key</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="title-md" style="margin-bottom:8px;">Model Selection</div>
-      <div class="body-md" style="margin-bottom:10px;">Current model: <span id="current-model">Qwen3.7 Plus (Puter)</span></div>
-      <div class="row" style="justify-content:flex-end;">
-        <div class="dropdown">
-          <button class="btn-solid" onclick="toggleDropdown()">Change Model</button>
-          <div class="dropdown-content" id="modelDropdown">
-            <div class="dropdown-item" onclick="selectModel('Qwen3.7 Plus (Puter)')">Qwen3.7 Plus (Puter)</div>
-            <div class="dropdown-item" onclick="selectModel('GPT-5.4 Nano (Puter)')">GPT-5.4 Nano (Puter)</div>
-            <div class="dropdown-item" onclick="selectModel('Mimo-V2.5 (Puter)')">Mimo-V2.5 (Puter)</div>
-            <div class="dropdown-item" onclick="selectModel('Mistral Large 3')">Mistral Large 3</div>
-            <div class="dropdown-item" onclick="selectModel('Gemini 2.5 Pro')">Gemini 2.5 Pro</div>
-            <div class="dropdown-item" onclick="selectModel('Human Expert')">Human Expert</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="title-md" style="margin-bottom:14px;">Generation Settings (<span class="gen-model">Qwen3.7 Plus (Puter)</span>)</div>
-      <div class="slider-label">Temperature: <span id="temp-value">0,00</span></div>
-      <input type="range" min="0" max="2" step="0.01" value="0" oninput="updateSlider('temp', this.value)">
-      <div class="slider-label">Top P: <span id="topp-value">0,00</span></div>
-      <input type="range" min="0" max="1" step="0.01" value="0" oninput="updateSlider('topp', this.value)" style="margin-bottom:0;">
-    </div>
-
-    <div class="card">
-      <div class="title-md" style="margin-bottom:8px;">Operate the screen with AI</div>
-      <div class="body-md" style="margin-bottom:10px;">A vision LLM uses automatic screenshots and operates with predefined commands</div>
-      <div class="row" style="justify-content:flex-end;">
-        <button class="btn-text" onclick="navigateToPhotoReasoning()">Try it</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row between">
-        <div>
-          <div class="title-md">Support Improvements</div>
-          <div style="font-size:20px; margin-top:2px;">&#127881;</div>
-        </div>
-        <button class="btn-solid" onclick="alert('Pro subscription flow would open here')">Pro (2,90 &euro;/Month)</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="body-sub" style="line-height:1.6; color:var(--text-primary);">
-        &bull; <strong>Preview Models</strong> could be deactivated by Google without being handed over to the final release.<br>
-        &bull; <strong>API Keys</strong> are automatically switched if multiple are inserted and one is exhausted.<br>
-        &bull; Models with a line through them do not work properly.<br>
-        &bull; GPT models (<strong>Vercel</strong>) have a free budget of $5 per month and a credit card is necessary.<br>
-        GPT-5.1 Input: $1.25/M Output: $10.00/M<br>
-        GPT-5.1 mini Input: $0.25/M Output: $2.00/M<br>
-        GPT-5 nano Input: $0.05/M Output: $0.40/M<br>
-        &bull; When a language model repeats a token, Top K and Top P must be lowered.<br>
-        &bull; Google has recently significantly tightened its rate limits and is fluctuating widely with its free quota. Try it for yourself. More information is available at
-        <a href="https://aistudio.google.com/rate-limit" style="color:var(--link-color); text-decoration:underline;" target="_blank">https://aistudio.google.com/rate-limit</a>
-      </div>
+  <!-- API Key Management -->
+  <div class="card">
+    <div class="row between">
+      <span class="title-md">API Key Management</span>
+      <button class="btn btn-solid" onclick="openApiKeyPopup()">Change API Key</button>
     </div>
   </div>
 
-  <!-- ================= PHOTO REASONING / CHAT SCREEN ================= -->
-  <div id="photo-reasoning-screen" class="screen">
-    <div class="status-bar">
-      <div class="status-left">
-        <span id="clock2">14:17</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v8l4 2"/><path d="M5 9V5h4"/></svg>
-        <span>21&deg;</span>
-      </div>
-      <div class="status-right">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="7"/><path d="M12 13v-3"/><path d="M9 3h6"/></svg>
-        <span>4G</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="14" width="3" height="6"/><rect x="8" y="10" width="3" height="10"/><rect x="14" y="6" width="3" height="14"/><rect x="20" y="2" width="3" height="18"/></svg>
-        <svg width="12" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
-        <span>68</span>
+  <!-- Model Selection -->
+  <div class="card">
+    <div class="title-md" style="margin-bottom:8px">Model Selection</div>
+    <div class="body-md" style="margin-bottom:10px">Current model: <strong id="current-model-name">Qwen3.7 Plus (Puter)</strong></div>
+    <div class="row end">
+      <div id="model-dropdown">
+        <button class="btn btn-solid" onclick="toggleModelDropdown()">Change Model</button>
+        <div id="model-dropdown-menu"></div>
       </div>
     </div>
+    <div id="model-hint" class="model-hint"></div>
+  </div>
 
-    <div class="chat-header">
-      <button class="icon-btn" onclick="navigateBack()" aria-label="Back">&larr;</button>
+  <!-- CPU / GPU (offline only) -->
+  <div id="backend-card" class="card collapse-section">
+    <div class="title-md">Backend (CPU / GPU)</div>
+    <div class="body-sm" style="margin-top:6px">Current: <strong id="backend-label">GPU</strong></div>
+    <div class="backend-row">
+      <button id="gpu-btn" class="backend-btn active-btn" onclick="setBackend('GPU')">GPU</button>
+      <button id="cpu-btn" class="backend-btn" onclick="setBackend('CPU')">CPU</button>
     </div>
+    <div class="body-sm" style="margin-top:10px">GPU models require a lot of RAM; CPU models write a cache file and use less peak memory.</div>
+  </div>
 
+  <!-- Generation Settings -->
+  <div class="card">
+    <div class="title-md" style="margin-bottom:12px">Generation Settings (<span id="gen-model-name">Qwen3.7 Plus (Puter)</span>)</div>
+    <div class="slider-row">
+      <div class="slider-label">Temperature: <span id="temp-val">0.00</span></div>
+      <input type="range" id="temp-slider" min="0" max="2" step="0.01" value="0" oninput="onSlider('temp',this.value)">
+    </div>
+    <div class="slider-row">
+      <div class="slider-label">Top P: <span id="topp-val">0.00</span></div>
+      <input type="range" id="topp-slider" min="0" max="1" step="0.01" value="0" oninput="onSlider('topp',this.value)">
+    </div>
+    <div id="topk-row" class="slider-row">
+      <div class="slider-label">Top K: <span id="topk-val">1</span></div>
+      <input type="range" id="topk-slider" min="1" max="100" step="1" value="1" oninput="onSlider('topk',this.value)">
+    </div>
+  </div>
+
+  <!-- Try it -->
+  <div class="card">
+    <div class="title-md" style="margin-bottom:6px" id="try-title">Operate the screen with AI</div>
+    <div class="body-md" id="try-desc" style="margin-bottom:8px">A vision LLM uses automatic screenshots and operates with predefined commands</div>
+    <div class="row end">
+      <button class="btn btn-text" onclick="navigateToChat()">Try it</button>
+    </div>
+  </div>
+
+  <!-- Pro / Donation -->
+  <div class="card" id="donation-card">
+    <div class="row between" id="donation-row">
+      <div>
+        <div class="title-md">Support Improvements &#127881;</div>
+      </div>
+      <button class="btn btn-solid" onclick="initiateDonation()">Pro (2,90 €/Month)</button>
+    </div>
+    <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
+  </div>
+
+  <!-- Add Model (WebView Update Feature) -->
+  <div class="card">
+    <div class="title-md" style="margin-bottom:8px">Add Custom Model</div>
+    <div class="body-sm" style="margin-bottom:10px">Add new models without updating the app. Models added here are registered in the app.</div>
+    <button class="btn btn-solid" onclick="openAddModelPopup()">Add Model</button>
+  </div>
+
+  <!-- Info -->
+  <div class="card">
+    <div class="body-sm" style="color:var(--text-primary);line-height:1.7">
+      &bull; <strong>Preview Models</strong> could be deactivated by Google without a final release.<br>
+      &bull; <strong>API Keys</strong> switch automatically when one is exhausted.<br>
+      &bull; Models with strikethrough do not work properly.<br>
+      &bull; <strong>Vercel</strong> GPT models need a credit card; $5 free budget/month.<br>
+      &nbsp;&nbsp;GPT-5.1 Codex Max: $1.25/M in | $10.00/M out<br>
+      &nbsp;&nbsp;GPT-5.1 Codex Mini: $0.25/M in | $2.00/M out<br>
+      &nbsp;&nbsp;GPT-5 Nano: $0.05/M in | $0.40/M out<br>
+      &bull; When a model repeats tokens, lower Top K and Top P.<br>
+      &bull; Google rate limits info: <a href="https://aistudio.google.com/rate-limit" style="color:var(--primary)">aistudio.google.com/rate-limit</a>
+    </div>
+  </div>
+
+</div><!-- /screen-menu -->
+
+<!-- ═══════════════════════════════════════════════════════
+     CHAT SCREEN
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-chat" class="screen">
+
+  <!-- System message -->
+  <div id="chat-sys-wrap">
     <div class="card-accent">
-      <div class="row between" style="align-items:flex-start;">
-        <span class="title-md" style="color:var(--text-on-accent);">System Message</span>
-        <div class="row" style="gap:8px;">
-          <button class="btn-outline" onclick="restoreSystemMessage()">Restore<br>System Message</button>
-          <button class="btn-outline" onclick="openDatabase()">Database</button>
+      <div class="row between" style="align-items:flex-start;gap:8px">
+        <span class="title-md" style="color:var(--text-on-primary-container);padding-top:2px">System Message</span>
+        <div class="row" style="gap:6px;flex-shrink:0">
+          <button class="btn btn-outline" onclick="restoreSystemMessage()">Restore<br>System Message</button>
+          <button class="btn btn-outline" onclick="openDatabasePopup()">Database</button>
         </div>
       </div>
-      <div class="system-box" id="system-message-text">You are on the app Screen Operator on a Smartphone. You start from this app. Proceed step by step and wait for answer!</div>
+      <textarea id="sys-msg-textarea" rows="3" placeholder="Enter a system message here…" oninput="onSystemMessageChange()"></textarea>
     </div>
+  </div>
 
-    <div id="chat-area"></div>
+  <!-- Messages -->
+  <div id="chat-messages-wrap">
+    <div id="chat-messages"></div>
+    <div id="cmd-status-wrap"></div>
+  </div>
 
-    <div class="input-area">
+  <!-- Bottom input -->
+  <div id="chat-bottom">
+    <div id="stop-btn-wrap" style="display:none">
+      <button id="stop-btn" onclick="stopGeneration()">Stop</button>
+    </div>
+    <div id="chat-input-card">
       <div class="input-row">
-        <div class="left-col">
-          <button class="icon-btn" onclick="alert('Pick an image or video')" aria-label="Add image">+</button>
-          <button class="circle-btn" onclick="clearChat()">New</button>
+        <div class="col" style="flex-shrink:0;gap:4px">
+          <button class="btn-icon" onclick="pickImage()" title="Add image">+</button>
+          <button class="btn-circle" onclick="clearChat()">New</button>
         </div>
-        <input type="text" id="task-input" class="task-input" placeholder="Task" oninput="onTaskInputChanged()">
-        <div class="right-col">
-          <button class="circle-btn" id="termux-toggle" onclick="toggleTermuxMode()">TB</button>
-          <button class="icon-btn" id="send-btn" onclick="sendTask()" aria-label="Send">
-            <span class="send-arrow disabled" id="send-arrow-icon">&#10148;</span>
+        <input type="text" id="task-input" class="task-input" placeholder="Task"
+          oninput="onTaskInput()" onkeydown="onTaskKey(event)">
+        <div class="col" style="flex-shrink:0;gap:4px">
+          <button class="btn-circle" id="tb-btn" onclick="toggleTermuxMode()" title="Termux background/foreground">TB</button>
+          <button id="send-btn" class="btn-icon" onclick="sendMessage()" title="Send">
+            <span class="send-icon" id="send-icon">&#10148;</span>
           </button>
         </div>
       </div>
     </div>
   </div>
 
+</div><!-- /screen-chat -->
+
+</div><!-- /app -->
+
+<!-- ═══════════════════════════════════════════════════════
+     POPUPS
+═══════════════════════════════════════════════════════════ -->
+
+<!-- API Key Popup -->
+<div id="popup-apikey" class="overlay" onclick="overlayClose(event,'popup-apikey')">
+  <div class="popup" onclick="event.stopPropagation()">
+    <button class="popup-close" onclick="closePopup('popup-apikey')">✕</button>
+    <div class="popup-title">Manage API Keys</div>
+    <div class="chips" id="provider-chips"></div>
+    <div style="margin-bottom:12px">
+      <a id="get-key-link" href="#" target="_blank" class="btn-text" style="font-size:13px;display:block;margin-bottom:10px">Get API Key ↗</a>
+      <div class="row" style="gap:8px">
+        <input type="text" id="new-key-input" class="text-input" placeholder="Enter API Key" style="flex:1;height:38px">
+        <button class="btn btn-solid" onclick="addApiKey()" style="padding:9px 16px">Add</button>
+      </div>
+      <div id="key-error" style="color:var(--error);font-size:12px;margin-top:4px;display:none"></div>
+    </div>
+    <div id="key-list" style="max-height:200px;overflow-y:auto"></div>
+    <div class="popup-actions">
+      <button class="btn btn-text" onclick="closePopup('popup-apikey')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Database Popup -->
+<div id="popup-db" class="overlay" onclick="overlayClose(event,'popup-db')">
+  <div class="popup" onclick="event.stopPropagation()">
+    <button class="popup-close" onclick="closePopup('popup-db')">✕</button>
+    <div class="popup-title">Database</div>
+    <div class="body-sm" style="margin-bottom:12px">Headings are sent to the AI; content is included on request.</div>
+    <div id="db-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--divider);border-radius:10px;margin-bottom:12px"></div>
+    <button class="btn btn-solid" style="width:100%" onclick="openEditEntry(null)">+ New Entry</button>
+    <div class="row" style="margin-top:10px;gap:8px">
+      <button class="btn btn-outline" style="flex:1" onclick="exportDatabase()">Export</button>
+      <button class="btn btn-outline" style="flex:1" onclick="document.getElementById('import-file').click()">Import</button>
+      <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
+    </div>
+  </div>
+</div>
+
+<!-- Edit Entry Popup -->
+<div id="popup-edit-entry" class="overlay" onclick="overlayClose(event,'popup-edit-entry')">
+  <div class="popup" onclick="event.stopPropagation()">
+    <button class="popup-close" onclick="closePopup('popup-edit-entry')">✕</button>
+    <div class="popup-title" id="edit-entry-title">New Entry</div>
+    <div class="form-group">
+      <label class="form-label">Title</label>
+      <input type="text" id="entry-title-input" class="text-input" placeholder="App / Task">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Guide</label>
+      <textarea id="entry-guide-input" class="text-input" placeholder="Write a guide for the AI on how to perform this task…" rows="7"></textarea>
+    </div>
+    <div class="popup-actions">
+      <button class="btn btn-text" onclick="closePopup('popup-edit-entry')">Cancel</button>
+      <button class="btn btn-solid" onclick="saveEntry()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Custom Model Popup -->
+<div id="popup-add-model" class="overlay" onclick="overlayClose(event,'popup-add-model')">
+  <div class="popup" onclick="event.stopPropagation()">
+    <button class="popup-close" onclick="closePopup('popup-add-model')">✕</button>
+    <div class="popup-title">Add Custom Model</div>
+    <div class="body-sm" style="margin-bottom:14px">New models are registered in the app and available immediately. They persist across sessions.</div>
+    <div class="form-group">
+      <label class="form-label">Display Name</label>
+      <input type="text" id="am-display" class="text-input" placeholder="e.g. GPT-5 Turbo (Puter)">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Model Name (API identifier)</label>
+      <input type="text" id="am-model" class="text-input" placeholder="e.g. openai/gpt-5-turbo">
+    </div>
+    <div class="form-group">
+      <label class="form-label">API Provider</label>
+      <select id="am-provider" class="text-input">
+        <option value="PUTER">Puter</option>
+        <option value="GOOGLE">Google</option>
+        <option value="MISTRAL">Mistral</option>
+        <option value="CEREBRAS">Cerebras</option>
+        <option value="GROQ">Groq</option>
+        <option value="VERCEL">Vercel</option>
+        <option value="CLOUDFLARE">Cloudflare</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Hint / Pricing (optional)</label>
+      <input type="text" id="am-hint" class="text-input" placeholder="e.g. $0.1/M input | $0.5/M output">
+    </div>
+    <div class="row" style="gap:10px;margin-bottom:4px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="am-screenshot" checked> Supports screenshots
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="am-topk"> Supports Top K
+      </label>
+    </div>
+    <div id="am-error" style="color:var(--error);font-size:12px;margin-top:4px;display:none"></div>
+    <div class="popup-actions">
+      <button class="btn btn-text" onclick="closePopup('popup-add-model')">Cancel</button>
+      <button class="btn btn-solid" onclick="addCustomModel()">Add Model</button>
+    </div>
+  </div>
 </div>
 
 <script>
-function pad(n){ return n.toString().padStart(2,'0'); }
-function tick(){
-  var now = new Date();
-  var t = pad(now.getHours()) + ':' + pad(now.getMinutes());
-  var c1 = document.getElementById('clock1');
-  var c2 = document.getElementById('clock2');
-  if(c1) c1.textContent = t;
-  if(c2) c2.textContent = t;
-}
-tick();
-setInterval(tick, 30000);
+/* ════════════════════════════════════════════════════════
+   ANDROID BRIDGE
+   Android must expose window.Android via WebView.addJavascriptInterface
+   with @JavascriptInterface on each method listed below.
+   Falls back to localStorage when running in a browser.
+════════════════════════════════════════════════════════ */
+const LS = window.localStorage;
+const inAndroid = typeof window.Android !== 'undefined';
 
-function navigateToPhotoReasoning(){
-  document.getElementById('menu-screen').classList.remove('active');
-  document.getElementById('photo-reasoning-screen').classList.add('active');
-  if(document.getElementById('chat-area').childElementCount === 0){
-    seedConversation();
-  }
-}
-function navigateBack(){
-  document.getElementById('photo-reasoning-screen').classList.remove('active');
-  document.getElementById('menu-screen').classList.add('active');
-}
+const Bridge = {
+  /* System message */
+  getSystemMessage:()=> inAndroid ? Android.getSystemMessage() : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
+  setSystemMessage:(m)=>{ inAndroid ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
 
-function toggleDropdown(){
-  document.getElementById('modelDropdown').classList.toggle('show');
-}
-function selectModel(name){
-  document.getElementById('current-model').textContent = name;
-  document.querySelectorAll('.gen-model').forEach(function(el){ el.textContent = name; });
-  toggleDropdown();
-}
-window.addEventListener('click', function(e){
-  if(!e.target.closest('.dropdown')){
-    var dd = document.getElementById('modelDropdown');
-    if(dd) dd.classList.remove('show');
+  /* Model selection */
+  getSelectedModelId:()=> inAndroid ? Android.getSelectedModelId() : (LS.getItem('modelId')||'PUTER_QWEN2_5_VL_72B'),
+  setSelectedModel:(id)=>{ inAndroid ? Android.setSelectedModel(id) : LS.setItem('modelId',id); },
+
+  /* API Keys */
+  getAllApiKeys:(prov)=> JSON.parse(inAndroid ? Android.getAllApiKeys(prov) : (LS.getItem('keys_'+prov)||'[]')),
+  addApiKey:(key,prov)=>{
+    if(inAndroid) return Android.addApiKey(key,prov);
+    const k=Bridge.getAllApiKeys(prov); if(k.includes(key)) return false;
+    k.push(key); LS.setItem('keys_'+prov,JSON.stringify(k)); return true;
+  },
+  removeApiKey:(key,prov)=>{
+    if(inAndroid){Android.removeApiKey(key,prov);return;}
+    const k=Bridge.getAllApiKeys(prov).filter(x=>x!==key); LS.setItem('keys_'+prov,JSON.stringify(k));
+  },
+  getCurrentKeyIndex:(prov)=> inAndroid ? Android.getCurrentKeyIndex(prov) : parseInt(LS.getItem('kIdx_'+prov)||'0'),
+  setCurrentKeyIndex:(idx,prov)=>{ inAndroid ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
+
+  /* Database entries */
+  getDatabaseEntries:()=> JSON.parse(inAndroid ? Android.getDatabaseEntries() : (LS.getItem('dbEntries')||'[]')),
+  addDatabaseEntry:(title,guide)=>{
+    if(inAndroid){Android.addDatabaseEntry(title,guide);return;}
+    const e=Bridge.getDatabaseEntries(); e.push({title,guide}); LS.setItem('dbEntries',JSON.stringify(e));
+  },
+  updateDatabaseEntry:(oldTitle,title,guide)=>{
+    if(inAndroid){Android.updateDatabaseEntry(oldTitle,title,guide);return;}
+    const e=Bridge.getDatabaseEntries().map(x=>x.title===oldTitle?{title,guide}:x); LS.setItem('dbEntries',JSON.stringify(e));
+  },
+  deleteDatabaseEntry:(title)=>{
+    if(inAndroid){Android.deleteDatabaseEntry(title);return;}
+    const e=Bridge.getDatabaseEntries().filter(x=>x.title!==title); LS.setItem('dbEntries',JSON.stringify(e));
+  },
+
+  /* Generation settings */
+  getGenerationSettings:(id)=>{
+    const def={temperature:0,topP:0,topK:1};
+    if(inAndroid) return JSON.parse(Android.getGenerationSettings(id)||'{}');
+    return JSON.parse(LS.getItem('gen_'+id)||JSON.stringify(def));
+  },
+  saveGenerationSettings:(id,temp,topP,topK)=>{
+    if(inAndroid){Android.saveGenerationSettings(id,temp,topP,topK);return;}
+    LS.setItem('gen_'+id,JSON.stringify({temperature:temp,topP,topK}));
+  },
+
+  /* Chat */
+  sendMessage:(text)=>{ if(inAndroid) Android.sendMessage(text); else addModelBubble('[Demo] Processing: '+text,false); },
+  clearChatHistory:()=>{ if(inAndroid) Android.clearChatHistory(); },
+  stopGeneration:()=>{ if(inAndroid) Android.stopGeneration(); },
+  isGenerationRunning:()=> inAndroid ? Android.isGenerationRunning() : false,
+  isOfflineModelLoaded:()=> inAndroid ? Android.isOfflineModelLoaded() : false,
+
+  /* Custom models */
+  addCustomModel:(json)=>{ if(inAndroid) Android.addCustomModel(json); },
+
+  /* Backend */
+  getBackendPreference:()=> inAndroid ? Android.getBackendPreference() : (LS.getItem('backend')||'GPU'),
+  setBackendPreference:(b)=>{ inAndroid ? Android.setBackendPreference(b) : LS.setItem('backend',b); },
+
+  /* Donation / trial */
+  initiateDonation:()=>{ if(inAndroid) Android.initiateDonation(); else alert('Subscription flow would open here'); },
+  isPurchased:()=> inAndroid ? Android.isPurchased() : false,
+};
+
+/* ════════════════════════════════════════════════════════
+   MODEL DEFINITIONS  (extensible via addCustomModel / HTML update)
+════════════════════════════════════════════════════════ */
+const PROVIDERS = {
+  PUTER:    { name:'Puter',     keyUrl:'https://puter.com/dashboard#account',       keyLabel:'Get Auth Token for Puter' },
+  GOOGLE:   { name:'Google',    keyUrl:'https://makersuite.google.com/app/apikey',   keyLabel:'Get API Key for Google' },
+  MISTRAL:  { name:'Mistral',   keyUrl:'https://console.mistral.ai/home?profile_dialog=api-keys', keyLabel:'Get API Key for Mistral' },
+  CEREBRAS: { name:'Cerebras',  keyUrl:'https://cloud.cerebras.ai/',                keyLabel:'Get API Key for Cerebras' },
+  GROQ:     { name:'Groq',      keyUrl:'https://console.groq.com/keys',             keyLabel:'Get API Key for Groq' },
+  VERCEL:   { name:'Vercel',    keyUrl:'https://vercel.com/ai-gateway',             keyLabel:'Get API Key for Vercel' },
+  CLOUDFLARE:{ name:'Cloudflare',keyUrl:'https://dash.cloudflare.com/',             keyLabel:'Get API Key for Cloudflare' },
+  HUMAN_EXPERT:{ name:'Human Expert', keyUrl:'', keyLabel:'' },
+};
+
+const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLARE','PUTER'];
+
+// Built-in model list — matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
+let MODELS = [
+  { id:'PUTER_GPT_5_4_NANO',       displayName:'GPT-5.4 Nano (Puter)',                    modelName:'openai/gpt-5.4-nano',                     apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.2/M input | $1.25/M output', strike:false },
+  { id:'MISTRAL_MEDIUM_3_1',       displayName:'Mistral Medium 3.1',                       modelName:'mistral-medium-latest',                    apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
+  { id:'MISTRAL_MEDIUM_3_5',       displayName:'Mistral Medium 3.5',                       modelName:'mistral-medium-3-5',                       apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'This is a reasoning model',     strike:false },
+  { id:'PUTER_MIMO_V2_5',          displayName:'Mimo-V2.5 (Puter)',                        modelName:'xiaomi/mimo-v2.5',                         apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.14/M input | $0.28/M output',strike:false },
+  { id:'PUTER_QWEN3_5_FLASH',      displayName:'Qwen3.5-Flash (Puter)',                    modelName:'qwen/qwen3.5-flash-02-23',                 apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.07/M input | $0.26/M output',strike:false },
+  { id:'PUTER_AUTOGLM',            displayName:'AutoGLM Phone Multilingual 9B (Puter)',    modelName:'z-ai/autoglm-phone-multilingual',          apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'free',                          strike:false },
+  { id:'PUTER_MINIMAX_M3',         displayName:'MiniMax M3 (Puter)',                       modelName:'minimax/minimax-m3',                       apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.3/M input | $1.2/M output',  strike:false },
+  { id:'PUTER_QWEN2_5_VL_72B',     displayName:'Qwen3.7 Plus (Puter)',                     modelName:'qwen/qwen3.7-plus',                        apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
+  { id:'GROQ_LLAMA_4_SCOUT_17B',   displayName:'Llama 4 Scout 109B (Groq)',               modelName:'meta-llama/llama-4-scout-17b-16e-instruct',apiProvider:'GROQ',      supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'30 requests per min',           strike:false },
+  { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
+  { id:'GPT_OSS_120B',             displayName:'GPT-OSS 120B (Cerebras)',                  modelName:'gpt-oss-120b',                             apiProvider:'CEREBRAS',  supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Text-only model. Cerebras may restrict free access or change rate limits.', strike:false },
+  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3 Flash',                           modelName:'gemini-3-flash-preview',                   apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'Google often rejects requests with a 503 "Model is exhausted" error.', strike:false },
+  { id:'GEMINI_PRO',               displayName:'Gemini 2.5 Pro',                           modelName:'gemini-2.5-pro',                           apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
+  { id:'GEMINI_FLASH_PREVIEW',     displayName:'Gemini 2.5 Flash',                         modelName:'gemini-2.5-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
+  { id:'GEMINI_FLASH',             displayName:'Gemini 2.0 Flash',                         modelName:'gemini-2.0-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
+  { id:'GEMINI_FLASH_LITE',        displayName:'Gemini 2.0 Flash Lite',                    modelName:'gemini-2.0-flash-lite',                    apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
+  { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:true,  hint:'4.92 GB download required.',    strike:false },
+  { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  isOffline:true,  hint:'3.40 GB download required.',    strike:false },
+  { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
+  { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
+  { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
+  { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
+  { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
+  { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 2.5 Flash Live Preview',            modelName:'gemini-live-2.5-flash-native-audio',       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:true },
+  { id:'GEMINI_FLASH_LITE_PREVIEW',displayName:'Gemini 2.5 Flash Lite Preview',            modelName:'gemini-2.5-flash-lite-preview-06-17',      apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:true },
+  { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:true,  hint:'6.3 GB download required.',     strike:true },
+  { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'Approx. 15 responses per day are free.', strike:true },
+];
+
+/* Load any custom models saved previously */
+try {
+  const custom = JSON.parse(LS.getItem('customModels')||'[]');
+  MODELS = MODELS.concat(custom);
+} catch(e){}
+
+/* ════════════════════════════════════════════════════════
+   DEFAULT SYSTEM MESSAGE
+════════════════════════════════════════════════════════ */
+const DEFAULT_SYSTEM_MSG = `You are on an App on a Smartphone. Your app is called Screen Operator. You start from this app. Proceed step by step! DON'T USE TOOL CODE!
+You must operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" "tapAtCoordinates(x, y)" "tapAtCoordinates(x percent of screen%, y percent of screen%)" "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown(x, y, how much pixel to scroll, duration in milliseconds)" "scrollUp(x, y, how much pixel to scroll, duration in milliseconds)" "scrollLeft(x, y, how much pixel to scroll, duration in milliseconds)" "scrollRight(x, y, how much pixel to scroll, duration in milliseconds)" scroll status bar down: "scrollUp(540, 0, 1100, 50)" "Wait(seconds)"
+
+"Termux("command")"
+1. You don't need to open Termux because a run.command intent is being called.
+2. Each call to Termux("command") starts a new session. To prevent this, you must first write Termux("tmux new-session -A -s main") and then pass all subsequent commands with Termux("tmux send-keys -t main "command" Enter").
+3. Do not use wait(seconds) commands when using Termux.
+
+To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist.
+If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field.
+
+Say "completed()" when the task is finished.
+
+Notes:
+1. Don't write the commands if you're just planning about it or messaging me.
+2. If you have questions, open Screen Operator, ask your question(s), and use "completed()" until you receive a human response.
+3. After each message, you will see the screen with additional information about it.`;
+
+/* ════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════ */
+let currentModelId = '';
+let currentProviderId = 'PUTER';
+let editingEntryOriginalTitle = null;
+let termuxBackground = false;
+let generationRunning = false;
+
+/* ════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  currentModelId = Bridge.getSelectedModelId();
+  buildModelDropdown();
+  applyModelSelection(currentModelId);
+  loadGenerationSettings();
+  loadBackendPreference();
+  updateDonationCard();
+
+  // System message
+  document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
+
+  // Keyboard height handling (WebView adjustResize)
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      const bottom = document.getElementById('chat-bottom');
+      if (!bottom) return;
+      const keyH = window.innerHeight - window.visualViewport.height;
+      bottom.style.paddingBottom = keyH > 0 ? keyH+'px' : '';
+    });
   }
 });
 
-function formatDe(v){
-  return Number(v).toFixed(2).replace('.', ',');
+/* ════════════════════════════════════════════════════════
+   ANDROID → JS CALLBACKS  (called by Android via evaluateJavascript)
+════════════════════════════════════════════════════════ */
+window.onAiMessage = function(text, isPending) {
+  const msgs = document.getElementById('chat-messages');
+  let last = msgs.querySelector('.bubble.model:last-child');
+  const parentWrap = last && last.closest('.bubble-wrap');
+  if (parentWrap && parentWrap.querySelector('.pending-dots')) {
+    last.textContent = text;
+    if (!isPending) parentWrap.querySelector('.pending-dots')?.remove();
+  } else {
+    addModelBubble(text, isPending);
+  }
+  scrollToBottom();
+};
+
+window.onCommandStatus = function(status) {
+  const wrap = document.getElementById('cmd-status-wrap');
+  if (!status) { wrap.innerHTML=''; return; }
+  wrap.innerHTML = `<div class="cmd-status-card">${escHtml(status)}</div>`;
+  scrollToBottom();
+};
+
+window.onChatCleared = function() {
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('cmd-status-wrap').innerHTML = '';
+};
+
+window.onGenerationStateChanged = function(running, isOfflineLoaded) {
+  generationRunning = running;
+  const wrap = document.getElementById('stop-btn-wrap');
+  const btn  = document.getElementById('stop-btn');
+  if (running || isOfflineLoaded) {
+    wrap.style.display = 'block';
+    btn.textContent = running ? 'Stop' : 'Model Unload';
+  } else {
+    wrap.style.display = 'none';
+  }
+};
+
+window.onModelRegistered = function(modelId, displayName) {
+  // Called by Android after addCustomModel() completes
+  if (!MODELS.find(m=>m.id===modelId)) {
+    // Already added client-side in addCustomModel(), no-op here
+  }
+  buildModelDropdown();
+};
+
+/* ════════════════════════════════════════════════════════
+   NAVIGATION
+════════════════════════════════════════════════════════ */
+function navigateToChat() {
+  document.getElementById('screen-menu').classList.remove('active');
+  document.getElementById('screen-chat').classList.add('active');
+  document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
+  scrollToBottom();
 }
-function updateSlider(type, value){
-  if(type === 'temp'){
-    document.getElementById('temp-value').textContent = formatDe(value);
-  } else if(type === 'topp'){
-    document.getElementById('topp-value').textContent = formatDe(value);
+function navigateToMenu() {
+  document.getElementById('screen-chat').classList.remove('active');
+  document.getElementById('screen-menu').classList.add('active');
+}
+
+/* ════════════════════════════════════════════════════════
+   MODEL DROPDOWN
+════════════════════════════════════════════════════════ */
+function buildModelDropdown() {
+  const menu = document.getElementById('model-dropdown-menu');
+  menu.innerHTML = '';
+
+  const addSection = (label) => {
+    const s = document.createElement('div');
+    s.className = 'drop-item drop-section';
+    s.textContent = label;
+    menu.appendChild(s);
+  };
+  const addItem = (model) => {
+    const d = document.createElement('div');
+    d.className = 'drop-item' + (model.strike ? ' strikethrough' : '');
+    d.onclick = () => { selectModel(model.id); closeModelDropdown(); };
+    const span = document.createElement('span');
+    span.textContent = model.displayName;
+    d.appendChild(span);
+    menu.appendChild(d);
+  };
+
+  // Group: Normal models
+  const vercelIds = new Set(['GPT_5_1_CODEX_MAX','GPT_5_1_CODEX_MINI','GPT_5_NANO']);
+  const strikeIds = new Set(MODELS.filter(m=>m.strike).map(m=>m.id));
+  const firstIds  = new Set(['PUTER_GPT_5_4_NANO','MISTRAL_MEDIUM_3_1','MISTRAL_MEDIUM_3_5']);
+
+  const ordered = [
+    ...MODELS.filter(m=>firstIds.has(m.id)),
+    ...MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'),
+    ...MODELS.filter(m=>m.apiProvider==='HUMAN_EXPERT'&&!strikeIds.has(m.id)),
+    ...MODELS.filter(m=>vercelIds.has(m.id)&&!strikeIds.has(m.id)),
+    ...MODELS.filter(m=>strikeIds.has(m.id)),
+  ];
+
+  ordered.forEach((m,i) => {
+    if (!m.strike && ordered[i-1]?.strike) addSection('Deactivated');
+    if (m.apiProvider==='VERCEL' && !m.strike && ordered[i-1]?.apiProvider!=='VERCEL') addSection('Vercel');
+    addItem(m);
+  });
+}
+
+function toggleModelDropdown() {
+  const menu = document.getElementById('model-dropdown-menu');
+  menu.classList.toggle('open');
+}
+function closeModelDropdown() {
+  document.getElementById('model-dropdown-menu').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#model-dropdown')) closeModelDropdown();
+});
+
+function selectModel(id) {
+  currentModelId = id;
+  Bridge.setSelectedModel(id);
+  applyModelSelection(id);
+  loadGenerationSettings();
+}
+
+function applyModelSelection(id) {
+  const m = MODELS.find(x=>x.id===id);
+  if (!m) return;
+
+  document.getElementById('current-model-name').textContent = m.displayName;
+  document.getElementById('gen-model-name').textContent = m.displayName;
+  document.getElementById('model-hint').textContent = m.hint || '';
+
+  // Backend card visibility
+  const bc = document.getElementById('backend-card');
+  m.isOffline ? bc.classList.add('visible') : bc.classList.remove('visible');
+
+  // Top K slider
+  document.getElementById('topk-row').style.display = m.supportsTopK ? 'block' : 'none';
+
+  // Try it card text
+  if (id === 'HUMAN_EXPERT') {
+    document.getElementById('try-title').textContent = 'Operate with Human Expert';
+    document.getElementById('try-desc').textContent = 'A human expert uses screen mirroring and operates with taps';
+  } else {
+    document.getElementById('try-title').textContent = 'Operate the screen with AI';
+    document.getElementById('try-desc').textContent = 'A vision LLM uses automatic screenshots and operates with predefined commands';
   }
 }
 
-function restoreSystemMessage(){
-  document.getElementById('system-message-text').textContent =
-    'You are on the app Screen Operator on a Smartphone. You start from this app. Proceed step by step and wait for answer!';
+/* ════════════════════════════════════════════════════════
+   GENERATION SETTINGS
+════════════════════════════════════════════════════════ */
+let sliderTimeout = null;
+function onSlider(type, val) {
+  if (type==='temp') { document.getElementById('temp-val').textContent=parseFloat(val).toFixed(2); }
+  else if (type==='topp') { document.getElementById('topp-val').textContent=parseFloat(val).toFixed(2); }
+  else if (type==='topk') { document.getElementById('topk-val').textContent=parseInt(val); }
+  clearTimeout(sliderTimeout);
+  sliderTimeout = setTimeout(saveGenerationSettings, 400);
 }
-function openDatabase(){
-  alert('Database: Termux, Chromium-based Browser, Root availability, Codex, Developing Android apps ...');
+function saveGenerationSettings() {
+  const temp = parseFloat(document.getElementById('temp-slider').value);
+  const topP = parseFloat(document.getElementById('topp-slider').value);
+  const topK = parseInt(document.getElementById('topk-slider').value);
+  Bridge.saveGenerationSettings(currentModelId, temp, topP, topK);
+}
+function loadGenerationSettings() {
+  const s = Bridge.getGenerationSettings(currentModelId);
+  const temp = s.temperature || 0;
+  const topP = s.topP || 0;
+  const topK = s.topK || 1;
+  document.getElementById('temp-slider').value = temp;
+  document.getElementById('temp-val').textContent = parseFloat(temp).toFixed(2);
+  document.getElementById('topp-slider').value = topP;
+  document.getElementById('topp-val').textContent = parseFloat(topP).toFixed(2);
+  document.getElementById('topk-slider').value = topK;
+  document.getElementById('topk-val').textContent = topK;
 }
 
-function addUserBubble(text){
-  var area = document.getElementById('chat-area');
-  var row = document.createElement('div');
-  row.className = 'msg-row';
-  row.innerHTML =
-    '<button class="icon-btn" style="flex-shrink:0;" onclick="undoLast()" aria-label="Undo">&#10227;</button>' +
-    '<div style="flex:1; display:flex; justify-content:flex-end;">' +
-      '<div class="bubble-user"></div>' +
-    '</div>';
-  row.querySelector('.bubble-user').textContent = text;
-  area.appendChild(row);
+/* ════════════════════════════════════════════════════════
+   BACKEND
+════════════════════════════════════════════════════════ */
+function loadBackendPreference() {
+  const b = Bridge.getBackendPreference();
+  applyBackend(b, false);
 }
-function addErrorBubble(text){
-  var area = document.getElementById('chat-area');
-  var bubble = document.createElement('div');
-  bubble.className = 'bubble-error';
-  bubble.textContent = text;
-  area.appendChild(bubble);
+function setBackend(b) {
+  Bridge.setBackendPreference(b);
+  applyBackend(b, true);
 }
-function addModelBubble(text){
-  var area = document.getElementById('chat-area');
-  var row = document.createElement('div');
-  row.className = 'msg-row';
-  row.innerHTML = '<div class="bubble-model"></div>';
-  row.querySelector('.bubble-model').textContent = text;
-  area.appendChild(row);
+function applyBackend(b, notify) {
+  document.getElementById('backend-label').textContent = b;
+  document.getElementById('gpu-btn').classList.toggle('active-btn', b==='GPU');
+  document.getElementById('cpu-btn').classList.toggle('active-btn', b==='CPU');
+  if (notify) window.onCommandStatus?.('Backend switched to '+b+'. Model will reload on next generation.');
 }
-function undoLast(){
-  var input = document.getElementById('task-input');
-  var bubble = document.querySelector('.bubble-user');
-  if(bubble){ input.value = bubble.textContent; onTaskInputChanged(); }
+
+/* ════════════════════════════════════════════════════════
+   SYSTEM MESSAGE
+════════════════════════════════════════════════════════ */
+let sysTimeout = null;
+function onSystemMessageChange() {
+  clearTimeout(sysTimeout);
+  sysTimeout = setTimeout(() => {
+    Bridge.setSystemMessage(document.getElementById('sys-msg-textarea').value);
+  }, 600);
+}
+function restoreSystemMessage() {
+  document.getElementById('sys-msg-textarea').value = DEFAULT_SYSTEM_MSG;
+  Bridge.setSystemMessage(DEFAULT_SYSTEM_MSG);
+}
+
+/* ════════════════════════════════════════════════════════
+   CHAT
+════════════════════════════════════════════════════════ */
+function addUserBubble(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap user-wrap';
+  wrap.innerHTML = `<button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>
+    <div class="bubble user">${escHtml(text)}</div>`;
+  document.getElementById('chat-messages').appendChild(wrap);
+  scrollToBottom();
+}
+function addModelBubble(text, isPending) {
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap';
+  wrap.innerHTML = `<div class="bubble model">${escHtml(text)}${isPending?'<span class="pending-dots">…</span>':''}</div>`;
+  document.getElementById('chat-messages').appendChild(wrap);
+  scrollToBottom();
+}
+function addErrorBubble(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap error-wrap';
+  wrap.innerHTML = `<div class="bubble error">${escHtml(text)}</div>`;
+  document.getElementById('chat-messages').appendChild(wrap);
+  scrollToBottom();
+}
+function scrollToBottom() {
+  const w = document.getElementById('chat-messages-wrap');
+  requestAnimationFrame(() => { w.scrollTop = w.scrollHeight; });
+}
+function undoLast(text) {
+  document.getElementById('task-input').value = text;
+  onTaskInput();
   clearChat();
 }
-
-function seedConversation(){
-  document.getElementById('chat-area').innerHTML = '';
-  addUserBubble('Ich habe einen Nethunter Kernel und Root. Mache legale Penetrationstests auf meinem alten FRITZ! Box 7520 JO \u00dcbungsrouter. Finde heraus ob du ohne Passwort hereinkommen kannst.');
-  addErrorBubble('Error: Puter Error 400: {"error":"400 {\\"id\\":\\"ooPHm3h-2kFHot-a0c90343c9fbdbdb\\",\\"error\\":{\\"message\\":{\\"message\\":\\"<400> InternalError.Algo.InvalidParameter: Range of max_tokens should be [1, 65536]\\",\\"type\\":\\"invalid_request_error\\",\\"param\\":null,\\"code\\":\\"invalid_parameter_error\\"},\\"type\\":\\"invalid_request_error\\",\\"param\\":null,\\"code\\":null}}","message":"400 {\\"id\\":\\"ooPHm3h-2kFHot-a0c90343c9fbdbdb\\",\\"error\\":{\\"message\\":{\\"message\\":\\"<400> InternalError.Algo.InvalidParameter: Range of max_tokens should be [1, 65536]\\",\\"type\\":\\"invalid_request_error\\",\\"param\\":null,\\"code\\":\\"invalid_parameter_error\\"},\\"type\\":');
+function clearChat() {
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('cmd-status-wrap').innerHTML = '';
+  Bridge.clearChatHistory();
+}
+function stopGeneration() {
+  Bridge.stopGeneration();
+  window.onGenerationStateChanged(false, false);
 }
 
-function clearChat(){
-  document.getElementById('chat-area').innerHTML = '';
-  document.getElementById('task-input').value = '';
-  onTaskInputChanged();
+function onTaskInput() {
+  const val = document.getElementById('task-input').value.trim();
+  const icon = document.getElementById('send-icon');
+  icon.className = val ? 'send-icon active' : 'send-icon';
 }
-
-function toggleTermuxMode(){
-  var btn = document.getElementById('termux-toggle');
-  btn.textContent = btn.textContent === 'TB' ? 'TF' : 'TB';
+function onTaskKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
-
-function onTaskInputChanged(){
-  var val = document.getElementById('task-input').value.trim();
-  var icon = document.getElementById('send-arrow-icon');
-  if(val.length > 0){
-    icon.classList.remove('disabled');
-    icon.classList.add('enabled');
-  } else {
-    icon.classList.remove('enabled');
-    icon.classList.add('disabled');
-  }
-}
-
-function sendTask(){
-  var input = document.getElementById('task-input');
-  var text = input.value.trim();
-  if(!text) return;
+function sendMessage() {
+  const input = document.getElementById('task-input');
+  const text = input.value.trim();
+  if (!text) return;
   addUserBubble(text);
   input.value = '';
-  onTaskInputChanged();
-  setTimeout(function(){
-    addModelBubble('Processing screenshot... (demo only, no live model connected)');
-  }, 400);
+  onTaskInput();
+  addModelBubble('', true); // pending bubble; Android replaces via onAiMessage
+  Bridge.sendMessage(text);
+  window.onGenerationStateChanged(true, false);
+}
+
+function pickImage() { alert('Attach an image or video (requires Android image picker integration)'); }
+
+function toggleTermuxMode() {
+  termuxBackground = !termuxBackground;
+  document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+  if (inAndroid && Android.setTermuxBackground) Android.setTermuxBackground(termuxBackground);
+}
+
+/* ════════════════════════════════════════════════════════
+   API KEY POPUP
+════════════════════════════════════════════════════════ */
+function openApiKeyPopup() {
+  // Build provider chips
+  const chips = document.getElementById('provider-chips');
+  chips.innerHTML = '';
+  PROVIDER_ORDER.forEach(pid => {
+    const p = PROVIDERS[pid]; if (!p) return;
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (pid===currentProviderId?' active':'');
+    btn.textContent = p.name;
+    btn.onclick = () => { currentProviderId=pid; renderApiKeyChips(); renderKeyList(); };
+    chips.appendChild(btn);
+  });
+  renderApiKeyChips();
+  renderKeyList();
+  openPopup('popup-apikey');
+}
+function renderApiKeyChips() {
+  document.querySelectorAll('#provider-chips .chip').forEach((c,i) => {
+    c.classList.toggle('active', PROVIDER_ORDER[i]===currentProviderId);
+  });
+  const p = PROVIDERS[currentProviderId];
+  const link = document.getElementById('get-key-link');
+  if (p && p.keyUrl) {
+    link.textContent = (p.keyLabel || 'Get API Key') + ' ↗';
+    link.href = p.keyUrl;
+    link.style.display = 'block';
+  } else {
+    link.style.display = 'none';
+  }
+  document.getElementById('new-key-input').placeholder =
+    currentProviderId==='PUTER' ? 'Enter Puter Auth Token' : 'Enter '+PROVIDERS[currentProviderId]?.name+' API Key';
+}
+function renderKeyList() {
+  const list = document.getElementById('key-list');
+  const keys = Bridge.getAllApiKeys(currentProviderId);
+  const curIdx = Bridge.getCurrentKeyIndex(currentProviderId);
+  list.innerHTML = '';
+  if (!keys.length) { list.innerHTML='<div class="body-sm" style="padding:8px 0;color:var(--text-secondary)">No keys saved yet.</div>'; return; }
+  keys.forEach((k,i) => {
+    const row = document.createElement('div');
+    row.className='key-row';
+    const masked = k.length > 15 ? k.slice(0,10)+'…'+k.slice(-5) : k;
+    row.innerHTML = `
+      <input type="radio" class="key-radio" name="keysel" ${i===curIdx?'checked':''} onchange="Bridge.setCurrentKeyIndex(${i},'${currentProviderId}')">
+      <span class="key-label">${escHtml(masked)}</span>
+      <button class="key-del" onclick="deleteApiKey('${escAttr(k)}')">✕</button>`;
+    list.appendChild(row);
+  });
+}
+function addApiKey() {
+  const input = document.getElementById('new-key-input');
+  const err = document.getElementById('key-error');
+  const key = input.value.trim();
+  if (!key) { err.textContent='API key cannot be empty.'; err.style.display='block'; return; }
+  const ok = Bridge.addApiKey(key, currentProviderId);
+  if (!ok) { err.textContent='This key already exists.'; err.style.display='block'; return; }
+  err.style.display='none';
+  input.value='';
+  renderKeyList();
+}
+function deleteApiKey(key) {
+  Bridge.removeApiKey(key, currentProviderId);
+  renderKeyList();
+}
+
+/* ════════════════════════════════════════════════════════
+   DATABASE POPUP
+════════════════════════════════════════════════════════ */
+function openDatabasePopup() {
+  renderDbList();
+  openPopup('popup-db');
+}
+function renderDbList() {
+  const list = document.getElementById('db-list');
+  const entries = Bridge.getDatabaseEntries();
+  list.innerHTML = '';
+  if (!entries.length) {
+    list.innerHTML='<div class="body-sm" style="padding:12px">No entries yet. Tap "+ New Entry" to add one.</div>';
+    return;
+  }
+  entries.forEach(e => {
+    const row = document.createElement('div');
+    row.className='db-entry';
+    row.innerHTML=`<span class="db-entry-title">${escHtml(e.title)}</span>
+      <button class="db-entry-del" onclick="event.stopPropagation();deleteEntry('${escAttr(e.title)}')">✕</button>`;
+    row.addEventListener('click', () => openEditEntry(e));
+    list.appendChild(row);
+  });
+}
+function deleteEntry(title) {
+  if (!confirm('Delete "'+title+'"?')) return;
+  Bridge.deleteDatabaseEntry(title);
+  renderDbList();
+}
+function openEditEntry(entry) {
+  editingEntryOriginalTitle = entry ? entry.title : null;
+  document.getElementById('edit-entry-title').textContent = entry ? 'Edit Entry' : 'New Entry';
+  document.getElementById('entry-title-input').value = entry ? entry.title : '';
+  document.getElementById('entry-guide-input').value = entry ? entry.guide : '';
+  openPopup('popup-edit-entry');
+}
+function saveEntry() {
+  const title = document.getElementById('entry-title-input').value.trim();
+  const guide = document.getElementById('entry-guide-input').value.trim();
+  if (!title || !guide) { alert('Title and Guide cannot be empty.'); return; }
+  if (editingEntryOriginalTitle) {
+    Bridge.updateDatabaseEntry(editingEntryOriginalTitle, title, guide);
+  } else {
+    const exists = Bridge.getDatabaseEntries().some(e=>e.title.toLowerCase()===title.toLowerCase());
+    if (exists) { alert('An entry with this title already exists.'); return; }
+    Bridge.addDatabaseEntry(title, guide);
+  }
+  closePopup('popup-edit-entry');
+  renderDbList();
+}
+function exportDatabase() {
+  const entries = Bridge.getDatabaseEntries();
+  const json = JSON.stringify(entries, null, 2);
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorDatabase.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+function importDatabase(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!Array.isArray(imported)) throw new Error('Invalid format');
+      const current = Bridge.getDatabaseEntries();
+      let added=0, skipped=0;
+      imported.forEach(entry => {
+        if (!entry.title || !entry.guide) return;
+        const exists = current.some(c=>c.title.toLowerCase()===entry.title.toLowerCase());
+        if (exists) { skipped++; return; }
+        Bridge.addDatabaseEntry(entry.title, entry.guide);
+        added++;
+      });
+      alert(`Import complete: ${added} added, ${skipped} skipped.`);
+      renderDbList();
+    } catch(err) { alert('Import failed: '+err.message); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+/* ════════════════════════════════════════════════════════
+   ADD CUSTOM MODEL
+════════════════════════════════════════════════════════ */
+function openAddModelPopup() {
+  ['am-display','am-model','am-hint'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('am-provider').value='PUTER';
+  document.getElementById('am-screenshot').checked=true;
+  document.getElementById('am-topk').checked=false;
+  document.getElementById('am-error').style.display='none';
+  openPopup('popup-add-model');
+}
+function addCustomModel() {
+  const displayName = document.getElementById('am-display').value.trim();
+  const modelName   = document.getElementById('am-model').value.trim();
+  const apiProvider = document.getElementById('am-provider').value;
+  const hint        = document.getElementById('am-hint').value.trim();
+  const supportsScreenshot = document.getElementById('am-screenshot').checked;
+  const supportsTopK = document.getElementById('am-topk').checked;
+  const err = document.getElementById('am-error');
+
+  if (!displayName || !modelName) { err.textContent='Display Name and Model Name are required.'; err.style.display='block'; return; }
+
+  const id = 'CUSTOM_'+modelName.replace(/[^a-zA-Z0-9]/g,'_').toUpperCase();
+  if (MODELS.find(m=>m.id===id)) { err.textContent='A model with this identifier already exists.'; err.style.display='block'; return; }
+
+  const newModel = { id, displayName, modelName, apiProvider, supportsScreenshot, supportsTopK, isOffline:false, hint, strike:false, isCustom:true };
+  MODELS.push(newModel);
+
+  // Persist locally
+  try {
+    const custom = JSON.parse(LS.getItem('customModels')||'[]');
+    custom.push(newModel);
+    LS.setItem('customModels', JSON.stringify(custom));
+  } catch(e){}
+
+  // Register in Android app
+  Bridge.addCustomModel(JSON.stringify(newModel));
+
+  buildModelDropdown();
+  closePopup('popup-add-model');
+  err.style.display='none';
+}
+
+/* ════════════════════════════════════════════════════════
+   DONATION
+════════════════════════════════════════════════════════ */
+function updateDonationCard() {
+  const purchased = Bridge.isPurchased();
+  document.getElementById('donation-row').style.display = purchased ? 'none' : 'flex';
+  document.getElementById('pro-thanks').style.display = purchased ? 'block' : 'none';
+}
+function initiateDonation() {
+  Bridge.initiateDonation();
+}
+
+/* ════════════════════════════════════════════════════════
+   POPUP HELPERS
+════════════════════════════════════════════════════════ */
+function openPopup(id) { document.getElementById(id).classList.add('open'); }
+function closePopup(id) { document.getElementById(id).classList.remove('open'); }
+function overlayClose(e, id) { if (e.target.id===id) closePopup(id); }
+
+/* ════════════════════════════════════════════════════════
+   UTILS
+════════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s).replace(/'/g,"\\'").replace(/\n/g,'\\n');
 }
 </script>
 </body>
