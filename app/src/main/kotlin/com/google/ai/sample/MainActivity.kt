@@ -94,6 +94,7 @@ import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.ui.theme.GenerativeAISample
 import com.google.ai.sample.util.BroadcastReceiverCompat
 import com.google.ai.sample.util.NotificationUtil
+import com.google.ai.sample.util.TermuxExecutionModePreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1260,6 +1261,62 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * Called by [WebViewBridge] after the selected model has been changed from the WebView UI.
+     * Mirrors the offline-model load/unload handling performed in MenuScreen when the model
+     * is changed from the native UI.
+     */
+    fun onModelChangedFromWebView() {
+        Log.d(TAG, "onModelChangedFromWebView called.")
+        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+        val vm = photoReasoningViewModel
+        if (currentModel.isOfflineModel) {
+            Log.d(TAG, "onModelChangedFromWebView: New model is an offline model. Reinitializing offline model.")
+            vm?.reinitializeOfflineModel(this)
+        } else {
+            Log.d(TAG, "onModelChangedFromWebView: New model is not an offline model. Closing any loaded offline model.")
+            vm?.closeOfflineModel()
+        }
+    }
+
+    /**
+     * Called by [WebViewBridge] when the user sends a chat message from the WebView UI.
+     * The WebView UI currently doesn't support attaching images, so this is always called
+     * with an empty image list.
+     */
+    fun sendMessageFromWebView(text: String) {
+        Log.d(TAG, "sendMessageFromWebView called.")
+        photoReasoningViewModel?.reason(
+            userInput = text,
+            selectedImages = emptyList()
+        )
+    }
+
+    /**
+     * Called by [WebViewBridge] when the user requests to start a donation/subscription
+     * purchase from the WebView UI.
+     */
+    fun initiateDonationFromWebView() {
+        Log.d(TAG, "initiateDonationFromWebView called.")
+        initiateDonationPurchase()
+    }
+
+    /**
+     * Called by [WebViewBridge] to persist the "execute Termux commands in background" preference
+     * when toggled from the WebView UI.
+     */
+    fun setTermuxBackgroundFromWebView(background: Boolean) {
+        Log.d(TAG, "setTermuxBackgroundFromWebView called with background=$background")
+        TermuxExecutionModePreferences.setExecuteInBackground(this, background)
+    }
+
+    /**
+     * Escapes a string so it can be safely embedded inside a single-quoted JS string literal
+     * passed to [WebView.evaluateJavascript]. Delegates to [WebViewBridge.jsEscape] so both
+     * directions of the bridge use identical escaping logic.
+     */
+    private fun escapeForJs(s: String): String = WebViewBridge.jsEscape(s)
 
     private fun observeViewModelForWebView() {
         if (webViewObserversStarted) return
