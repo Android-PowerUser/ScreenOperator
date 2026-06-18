@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
     private val keyboardVisibilityObserver = KeyboardVisibilityObserver(TAG)
 
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
-    private lateinit var apiKeyManager: ApiKeyManager
+    internal lateinit var apiKeyManager: ApiKeyManager
     private var showApiKeyDialog by mutableStateOf(false)
     private var apiKeyDialogInitialProvider by mutableStateOf<ApiProvider?>(null)
 
@@ -131,6 +131,8 @@ class MainActivity : ComponentActivity() {
 
     private var permissionRequestCount by mutableStateOf(0)
     private var webViewHtmlContent by mutableStateOf<String?>(null)
+    private var webViewInstance: WebView? = null
+    private var webViewObserversStarted = false
 
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
@@ -712,6 +714,7 @@ class MainActivity : ComponentActivity() {
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
                                             Log.d(TAG, "WebView page rendered: {}".format(url))
+                                            observeViewModelForWebView()
                                         }
 
                                         override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
@@ -724,6 +727,8 @@ class MainActivity : ComponentActivity() {
                                     // statt loadUrl() direkt auf raw.githubusercontent.com aufzurufen.
                                     // Sonst liefert GitHub "Content-Type: text/plain" und der Inhalt wird
                                     // nur als Rohtext angezeigt statt als HTML interpretiert.
+                                    this@MainActivity.webViewInstance = this
+                                    addJavascriptInterface(WebViewBridge(this@MainActivity), "Android")
                                     loadDataWithBaseURL(
                                         "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
                                         htmlContent,
@@ -1255,4 +1260,50 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun observeViewModelForWebView() {
+        if (webViewObserversStarted) return
+        webViewObserversStarted = true
+        val vm = photoReasoningViewModel ?: return
+        val wv = webViewInstance ?: return
+        lifecycleScope.launch {
+            vm.uiState.collect { state ->
+                val js = when (state) {
+                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Loading ->
+                        "window.onAiMessage && window.onAiMessage('', true)"
+                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Success -> {
+                        val escaped = escapeForJs(state.outputText)
+                        "window.onAiMessage && window.onAiMessage('$escaped', false)"
+                    }
+                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Error -> {
+                        val escaped = escapeForJs("[Error] " + state.errorMessage)
+                        "window.onAiMessage && window.onAiMessage('$escaped', false)"
+                    }
+                    is com.google.ai.sample.feature.multimodal.PhotoReasoningUiState.Stopped ->
+                        "window.onAiMessage && window.onAiMessage('', false)"
+                    else -> null
+                }
+                if (js != null) wv.post { wv.evaluateJavascript(js, null) }
+            }
+        }
+        lifecycleScope.launch {
+            kotlinx.coroutines.flow.combine(
+                vm.isGenerationRunningFlow,
+                vm.isOfflineGpuModelLoadedFlow
+            ) { running, offline -> Pair(running, offline) }.collect { (running, offline) ->
+                val js = "window.onGenerationStateChanged && window.onGenerationStateChanged($running, $offline)"
+                wv.post { wv.evaluateJavascript(js, null) }
+            }
+        }
+        lifecycleScope.launch {
+            vm.commandExecutionStatus.collect { status ->
+                if (status.isNotBlank()) {
+                    val escaped = escapeForJs(status)
+                    val js = "window.onCommandStatus && window.onCommandStatus('$escaped')"
+                    wv.post { wv.evaluateJavascript(js, null) }
+                }
+            }
+        }
+    }
+
 }
