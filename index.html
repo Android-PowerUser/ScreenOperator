@@ -116,8 +116,11 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .drop-item.drop-section:hover{background:transparent}
 
 /* ── System message card ─────────────────────────────────── */
-#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;max-height:200px;overflow-y:auto;margin-top:10px}
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;margin-top:10px;transition:max-height .2s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
+#sys-msg-textarea.collapsed{max-height:72px}
+#sys-msg-textarea.expanded-keyboard{max-height:45vh}
+#sys-msg-textarea.expanded-full{max-height:80vh}
 
 /* ── Chat bubbles ────────────────────────────────────────── */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
@@ -135,17 +138,21 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 /* ── Input area ──────────────────────────────────────────── */
 #chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
-.input-row{display:flex;align-items:center;gap:6px}
-.task-input{flex:1;height:38px;border:1px solid var(--input-border);border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none}
+.input-row{display:flex;align-items:flex-end;gap:6px}
+.task-input{flex:1;min-height:38px;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
 .task-input:focus{border-color:var(--primary)}
 #send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .send-icon{font-size:22px;color:var(--outline)}
 .send-icon.active{color:var(--primary)}
+/* ── Toast ───────────────────────────────────────────────── */
+#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .25s;z-index:200;white-space:nowrap}
 
 /* ── Stop / Unload button ────────────────────────────────── */
 #stop-btn-wrap{margin-top:6px}
 #stop-btn{width:100%;padding:10px;background:#B3261E;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit}
 #stop-btn:active{opacity:.85}
+/* ── chat-bottom fixed positioning when keyboard open ────── */
+#chat-bottom{transition:bottom .1s}
 
 /* ── Key list ────────────────────────────────────────────── */
 .key-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--divider)}
@@ -308,7 +315,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
           <button class="btn btn-outline" onclick="openDatabasePopup()">Database</button>
         </div>
       </div>
-      <textarea id="sys-msg-textarea" rows="3" placeholder="Enter a system message here…" oninput="onSystemMessageChange()"></textarea>
+      <textarea id="sys-msg-textarea" class="collapsed" rows="3" placeholder="Enter a system message here…" oninput="onSystemMessageChange()" onfocus="onSysTextareaFocus()" onblur="onSysTextareaBlur()"></textarea>
     </div>
   </div>
 
@@ -329,8 +336,8 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
           <button class="btn-icon" onclick="pickImage()" title="Add image">+</button>
           <button class="btn-circle" onclick="clearChat()">New</button>
         </div>
-        <input type="text" id="task-input" class="task-input" placeholder="Task"
-          oninput="onTaskInput()" onkeydown="onTaskKey(event)">
+        <textarea id="task-input" class="task-input" rows="1" placeholder="Task"
+          oninput="onTaskInput()" onkeydown="onTaskKey(event)" onfocus="onTaskInputFocus()" onblur="onTaskInputBlur()"></textarea>
         <div class="col" style="flex-shrink:0;gap:4px">
           <button class="btn-circle" id="tb-btn" onclick="toggleTermuxMode()" title="Termux background/foreground">TB</button>
           <button id="send-btn" class="btn-icon" onclick="sendMessage()" title="Send">
@@ -344,6 +351,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 </div><!-- /screen-chat -->
 
 </div><!-- /app -->
+<div id="toast"></div>
 
 <!-- ═══════════════════════════════════════════════════════
      POPUPS
@@ -573,16 +581,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
 
-  // Keyboard height handling (WebView adjustResize)
+  // Keyboard height: shift chat-bottom above keyboard using visualViewport
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-      const bottom = document.getElementById('chat-bottom');
-      if (!bottom) return;
-      const keyH = window.innerHeight - window.visualViewport.height;
-      bottom.style.paddingBottom = keyH > 0 ? keyH+'px' : '';
-    });
+    window.visualViewport.addEventListener('resize', onViewportResize);
+    window.visualViewport.addEventListener('scroll', onViewportResize);
   }
+
+  // Back-button: listen for popstate to go back to menu
+  window.addEventListener('popstate', (e) => {
+    const chatActive = document.getElementById('screen-chat').classList.contains('active');
+    if (chatActive) {
+      _showMenu();
+    }
+  });
 });
+
+function onViewportResize() {
+  const vv = window.visualViewport;
+  const chatBottom = document.getElementById('chat-bottom');
+  if (!chatBottom) return;
+  // Only apply when chat screen is active
+  if (!document.getElementById('screen-chat').classList.contains('active')) return;
+  const keyH = window.innerHeight - vv.height - vv.offsetTop;
+  chatBottom.style.position = 'sticky';
+  chatBottom.style.bottom = keyH > 10 ? keyH + 'px' : '0';
+  // Also adjust system message textarea
+  const ta = document.getElementById('sys-msg-textarea');
+  if (document.activeElement === ta) {
+    ta.className = keyH > 10 ? 'expanded-keyboard' : 'expanded-full';
+  }
+}
 
 /* ════════════════════════════════════════════════════════
    ANDROID → JS CALLBACKS  (called by Android via evaluateJavascript)
@@ -635,14 +663,24 @@ window.onModelRegistered = function(modelId, displayName) {
    NAVIGATION
 ════════════════════════════════════════════════════════ */
 function navigateToChat() {
+  history.pushState({screen:'chat'}, '');
   document.getElementById('screen-menu').classList.remove('active');
   document.getElementById('screen-chat').classList.add('active');
+  // Sync system message fresh from app
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
   scrollToBottom();
 }
 function navigateToMenu() {
+  _showMenu();
+  history.back(); // remove the pushState entry
+}
+function _showMenu() {
   document.getElementById('screen-chat').classList.remove('active');
   document.getElementById('screen-menu').classList.add('active');
+  // Reset sticky positioning
+  const chatBottom = document.getElementById('chat-bottom');
+  chatBottom.style.position = '';
+  chatBottom.style.bottom = '';
 }
 
 /* ════════════════════════════════════════════════════════
@@ -785,14 +823,32 @@ function applyBackend(b, notify) {
 let sysTimeout = null;
 function onSystemMessageChange() {
   clearTimeout(sysTimeout);
+  autoGrowTextarea(document.getElementById('sys-msg-textarea'));
   sysTimeout = setTimeout(() => {
     Bridge.setSystemMessage(document.getElementById('sys-msg-textarea').value);
   }, 600);
 }
-function restoreSystemMessage() {
-  document.getElementById('sys-msg-textarea').value = DEFAULT_SYSTEM_MSG;
-  Bridge.setSystemMessage(DEFAULT_SYSTEM_MSG);
+function onSysTextareaFocus() {
+  const ta = document.getElementById('sys-msg-textarea');
+  const vv = window.visualViewport;
+  const keyH = vv ? (window.innerHeight - vv.height - vv.offsetTop) : 0;
+  ta.className = keyH > 10 ? 'expanded-keyboard' : 'expanded-full';
+  autoGrowTextarea(ta);
 }
+function onSysTextareaBlur() {
+  const ta = document.getElementById('sys-msg-textarea');
+  ta.className = 'collapsed';
+}
+function restoreSystemMessage() {
+  const ta = document.getElementById('sys-msg-textarea');
+  ta.value = DEFAULT_SYSTEM_MSG;
+  Bridge.setSystemMessage(DEFAULT_SYSTEM_MSG);
+  autoGrowTextarea(ta);
+}
+// Android can call this when system message changes externally
+window.onSystemMessageChanged = function(msg) {
+  document.getElementById('sys-msg-textarea').value = msg;
+};
 
 /* ════════════════════════════════════════════════════════
    CHAT
@@ -838,10 +894,26 @@ function stopGeneration() {
   window.onGenerationStateChanged(false, false);
 }
 
+function autoGrowTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
 function onTaskInput() {
-  const val = document.getElementById('task-input').value.trim();
+  const ta = document.getElementById('task-input');
+  const val = ta.value.trim();
   const icon = document.getElementById('send-icon');
   icon.className = val ? 'send-icon active' : 'send-icon';
+  autoGrowTextarea(ta);
+}
+function onTaskInputFocus() {
+  const ta = document.getElementById('task-input');
+  if (!ta.value.trim()) {
+    ta.placeholder = 'Describe step by step if complicated tasks have to be solved';
+  }
+}
+function onTaskInputBlur() {
+  const ta = document.getElementById('task-input');
+  ta.placeholder = 'Task';
 }
 function onTaskKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -852,18 +924,35 @@ function sendMessage() {
   if (!text) return;
   addUserBubble(text);
   input.value = '';
+  input.style.height = '';
   onTaskInput();
-  addModelBubble('', true); // pending bubble; Android replaces via onAiMessage
+  addModelBubble('', true);
   Bridge.sendMessage(text);
   window.onGenerationStateChanged(true, false);
 }
 
-function pickImage() { alert('Attach an image or video (requires Android image picker integration)'); }
+function pickImage() {
+  if (inAndroid && Android.pickImage) { Android.pickImage(); }
+  else { showToast('Attach an image or video (requires Android integration)'); }
+}
+
+let _toastTimer = null;
+function showToast(msg, durationMs) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.style.opacity = '0'; }, durationMs || 2500);
+}
 
 function toggleTermuxMode() {
   termuxBackground = !termuxBackground;
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
   if (inAndroid && Android.setTermuxBackground) Android.setTermuxBackground(termuxBackground);
+  const msg = termuxBackground
+    ? 'Termux commands are executed in the background'
+    : 'Termux commands are executed in the foreground';
+  showToast(msg);
 }
 
 /* ════════════════════════════════════════════════════════
