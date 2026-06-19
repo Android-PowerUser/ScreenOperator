@@ -9,6 +9,10 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -589,8 +593,10 @@ class MainActivity : ComponentActivity() {
 
 
     private fun loadWebViewContent() {
+        if (webViewHtmlContent != null) return
         val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
         lifecycleScope.launch(Dispatchers.IO) {
+            if (webViewHtmlContent != null) return@launch
             try {
                 val client = OkHttpClient()
                 val request = Request.Builder().url(htmlUrl).build()
@@ -679,6 +685,7 @@ class MainActivity : ComponentActivity() {
 
         Log.d(TAG, "onCreate: Starting fetch of remote WebView HTML content.")
         loadWebViewContent()
+        registerNetworkCallback()
 
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
@@ -1363,4 +1370,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun registerNetworkCallback() {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val networkRequest = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+
+        connectivityManager.registerNetworkCallback(networkRequest, object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                Log.d(TAG, "Network available. Checking if WebView content needs loading. Current: ${if (webViewHtmlContent == null) "null" else "loaded"}")
+                if (webViewHtmlContent == null) {
+                    loadWebViewContent()
+                }
+            }
+        })
+    }
 }
