@@ -6,6 +6,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.google.ai.sample.feature.multimodal.PhotoReasoningUiState
 import com.google.ai.sample.util.GenerationSettingsPreferences
+import com.google.ai.sample.util.SystemMessageEntry
+import com.google.ai.sample.util.SystemMessageEntryPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,17 +23,19 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getSystemMessage(): String {
-        val vm = mainActivity.getPhotoReasoningViewModel()
-        if (vm != null) return vm.systemMessage.value
-        return context.getSharedPreferences(PREFS_WEBVIEW, Context.MODE_PRIVATE)
-            .getString(KEY_SYS_MSG, "") ?: ""
+        return mainActivity.getPhotoReasoningViewModel()?.systemMessage?.value ?: ""
     }
 
     @JavascriptInterface
     fun setSystemMessage(message: String) {
-        context.getSharedPreferences(PREFS_WEBVIEW, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SYS_MSG, message).apply()
         mainActivity.getPhotoReasoningViewModel()?.updateSystemMessage(message, context)
+    }
+
+    @JavascriptInterface
+    fun restoreSystemMessage() {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.restoreSystemMessage(context)
+        }
     }
 
     // ── Model Selection ───────────────────────────────────────────────────────
@@ -112,44 +116,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getDatabaseEntries(): String {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]"
+        val entries = SystemMessageEntryPreferences.loadEntries(context)
+        val arr = JSONArray()
+        entries.forEach { 
+            arr.put(JSONObject().put("title", it.title).put("guide", it.guide))
+        }
+        return arr.toString()
     }
 
     @JavascriptInterface
     fun addDatabaseEntry(title: String, guide: String) {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        val arr = JSONArray(prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]")
-        arr.put(JSONObject().put("title", title).put("guide", guide))
-        prefs.edit().putString(KEY_DB_ENTRIES, arr.toString()).apply()
+        SystemMessageEntryPreferences.addEntry(context, SystemMessageEntry(title, guide))
     }
 
     @JavascriptInterface
     fun updateDatabaseEntry(oldTitle: String, newTitle: String, guide: String) {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        val arr = JSONArray(prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]")
-        val newArr = JSONArray()
-        for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
-            if (obj.getString("title") == oldTitle) {
-                newArr.put(JSONObject().put("title", newTitle).put("guide", guide))
-            } else {
-                newArr.put(obj)
-            }
+        val oldEntry = SystemMessageEntryPreferences.loadEntries(context).find { it.title == oldTitle }
+        if (oldEntry != null) {
+            SystemMessageEntryPreferences.updateEntry(context, oldEntry, SystemMessageEntry(newTitle, guide))
         }
-        prefs.edit().putString(KEY_DB_ENTRIES, newArr.toString()).apply()
     }
 
     @JavascriptInterface
     fun deleteDatabaseEntry(title: String) {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        val arr = JSONArray(prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]")
-        val newArr = JSONArray()
-        for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
-            if (obj.getString("title") != title) newArr.put(obj)
+        val entry = SystemMessageEntryPreferences.loadEntries(context).find { it.title == title }
+        if (entry != null) {
+            SystemMessageEntryPreferences.deleteEntry(context, entry)
         }
-        prefs.edit().putString(KEY_DB_ENTRIES, newArr.toString()).apply()
     }
 
     // ── Generation Settings ───────────────────────────────────────────────────
@@ -189,7 +182,22 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun sendMessage(text: String) {
         mainActivity.runOnUiThread {
-            mainActivity.sendMessageFromWebView(text)
+            mainActivity.sendMessageFromWebView(text, emptyList())
+        }
+    }
+
+    @JavascriptInterface
+    fun sendMessageWithImages(text: String, urisCsv: String) {
+        val uris = urisCsv.split(",").filter { it.isNotBlank() }.map { android.net.Uri.parse(it) }
+        mainActivity.runOnUiThread {
+            mainActivity.sendMessageFromWebView(text, uris)
+        }
+    }
+
+    @JavascriptInterface
+    fun pickImage() {
+        mainActivity.runOnUiThread {
+            mainActivity.openImagePicker()
         }
     }
 
@@ -264,14 +272,14 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    @JavascriptInterface
+    fun getTermuxBackground(): Boolean {
+        return com.google.ai.sample.util.TermuxExecutionModePreferences.executeInBackground(context)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
-        private const val PREFS_WEBVIEW = "webview_prefs"
-        private const val PREFS_WEBVIEW_DB = "webview_db"
-        private const val KEY_SYS_MSG = "sysMsg"
-        private const val KEY_DB_ENTRIES = "entries"
-
         fun jsEscape(s: String): String =
             s.replace("\\", "\\\\")
              .replace("'", "\\'")

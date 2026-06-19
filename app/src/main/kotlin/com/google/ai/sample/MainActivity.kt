@@ -112,6 +112,13 @@ import okhttp3.Request
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import com.google.ai.sample.GenerativeViewModelFactory
+import androidx.activity.result.PickVisualMediaRequest
+import android.graphics.drawable.BitmapDrawable
+import android.media.MediaMetadataRetriever
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import coil.size.Precision
 
 class MainActivity : ComponentActivity() {
 
@@ -143,6 +150,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
     private lateinit var webRtcMediaProjectionLauncher: ActivityResultLauncher<Intent>
+    private lateinit var pickMediaLauncher: ActivityResultLauncher<PickVisualMediaRequest>
 
     private var currentScreenInfoForScreenshot: String? = null
 
@@ -254,6 +262,15 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
             handleWebRtcMediaProjectionResult(result.resultCode, result.data)
+        }
+
+        pickMediaLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            uri?.let { 
+                Log.d(TAG, "Selected image URI from picker: $it")
+                webViewInstance?.post { 
+                    webViewInstance?.evaluateJavascript("window.onImagePicked('$it')", null)
+                }
+            }
         }
     }
 
@@ -1289,15 +1306,74 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Called by [WebViewBridge] when the user sends a chat message from the WebView UI.
-     * The WebView UI currently doesn't support attaching images, so this is always called
-     * with an empty image list.
+     * Supports passing a list of media URIs selected via the + button.
      */
-    fun sendMessageFromWebView(text: String) {
-        Log.d(TAG, "sendMessageFromWebView called.")
-        photoReasoningViewModel?.reason(
-            userInput = text,
-            selectedImages = emptyList()
-        )
+    fun sendMessageFromWebView(text: String, selectedImages: List<Uri>) {
+        Log.d(TAG, "sendMessageFromWebView called with ${selectedImages.size} images.")
+        lifecycleScope.launch {
+            val bitmaps = selectedImages.mapNotNull { uri ->
+                uriToBitmap(uri)
+            }
+            photoReasoningViewModel?.reason(
+                userInput = text,
+                selectedImages = bitmaps,
+                screenInfoForPrompt = null,
+                imageUrisForChat = selectedImages.map { it.toString() }
+            )
+        }
+    }
+
+    private suspend fun uriToBitmap(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
+        val mimeType = contentResolver.getType(uri).orEmpty()
+        if (mimeType.startsWith("video/")) {
+            return@withContext extractVideoFrame(uri)
+        }
+
+        val imageLoader = ImageLoader.Builder(this@MainActivity).build()
+        val imageRequest = ImageRequest.Builder(this@MainActivity)
+            .data(uri)
+            .precision(Precision.EXACT)
+            .build()
+        return@withContext try {
+            val result = imageLoader.execute(imageRequest)
+            if (result is SuccessResult) (result.drawable as? BitmapDrawable)?.bitmap else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun extractVideoFrame(uri: Uri): Bitmap? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(this, uri)
+            retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting video frame for URI: $uri", e)
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    fun openImagePicker() {
+        Log.d(TAG, "openImagePicker called via Bridge.")
+        pickMediaLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+    }
+
+    override fun onBackPressed() {
+        val wv = webViewInstance
+        // Wenn wir nicht im WebView-Inhalt sind (htmlContent == null), nutzen wir standard back.
+        // Wenn WebView aktiv ist, fragen wir JS ob es ein "back" innerhalb der UI gibt.
+        if (wv != null && wv.visibility == View.VISIBLE) {
+            wv.evaluateJavascript("window.onBackPressed && window.onBackPressed()") { result ->
+                // JS gibt "true" zurück wenn es den Event konsumiert hat, sonst "false" oder "null"
+                if (result != "true") {
+                    runOnUiThread { super.onBackPressed() }
+                }
+            }
+        } else {
+            super.onBackPressed()
+        }
     }
 
     /**
@@ -1316,6 +1392,12 @@ class MainActivity : ComponentActivity() {
     fun setTermuxBackgroundFromWebView(background: Boolean) {
         Log.d(TAG, "setTermuxBackgroundFromWebView called with background=$background")
         TermuxExecutionModePreferences.setExecuteInBackground(this, background)
+        val toastMessage = if (background) {
+            "Termux commands are executed in the background"
+        } else {
+            "Termux commands are executed in the foreground"
+        }
+        Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -1365,6 +1447,13 @@ class MainActivity : ComponentActivity() {
                     val escaped = escapeForJs(status)
                     val js = "window.onCommandStatus && window.onCommandStatus('$escaped')"
                     wv.post { wv.evaluateJavascript(js, null) }
+                }
+            }
+        }
+        lifecycleScope.launch {
+            vm.systemMessage.collect { msg ->
+                wv.post {
+                    wv.evaluateJavascript("window.onSystemMessageChanged && window.onSystemMessageChanged('${escapeForJs(msg)}')", null)
                 }
             }
         }

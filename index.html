@@ -116,11 +116,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .drop-item.drop-section:hover{background:transparent}
 
 /* ── System message card ─────────────────────────────────── */
-#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;margin-top:10px;transition:max-height .2s ease}
+#chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
-#sys-msg-textarea.collapsed{max-height:72px}
-#sys-msg-textarea.expanded-keyboard{max-height:45vh}
-#sys-msg-textarea.expanded-full{max-height:80vh}
+
+#sys-msg-textarea.collapsed{height:120px}
+#sys-msg-textarea.expanded-keyboard{height:35vh}
+#sys-msg-textarea.expanded-full{height:78vh}
 
 /* ── Chat bubbles ────────────────────────────────────────── */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
@@ -438,6 +440,11 @@ const Bridge = {
   /* System message */
   getSystemMessage:()=> inAndroid ? Android.getSystemMessage() : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
   setSystemMessage:(m)=>{ inAndroid ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
+  restoreSystemMessage:()=>{ if(inAndroid) Android.restoreSystemMessage(); else LS.setItem('sysMsg', DEFAULT_SYSTEM_MSG); },
+
+  /* Termux background */
+  getTermuxBackground:()=> inAndroid ? Android.getTermuxBackground() : (LS.getItem('termuxBg')==='true'),
+  setTermuxBackground:(b)=>{ inAndroid ? Android.setTermuxBackground(b) : LS.setItem('termuxBg',String(b)); },
 
   /* Model selection */
   getSelectedModelId:()=> inAndroid ? Android.getSelectedModelId() : (LS.getItem('modelId')||'PUTER_QWEN2_5_VL_72B'),
@@ -485,6 +492,8 @@ const Bridge = {
 
   /* Chat */
   sendMessage:(text)=>{ if(inAndroid) Android.sendMessage(text); else addModelBubble('[Demo] Processing: '+text,false); },
+  sendMessageWithImages:(text,urisCsv)=>{ if(inAndroid) Android.sendMessageWithImages(text,urisCsv); else addModelBubble('[Demo] Processing with images: '+urisCsv,false); },
+  pickImage:()=>{ if(inAndroid) Android.pickImage(); else document.getElementById('image-file-input').click(); },
   clearChatHistory:()=>{ if(inAndroid) Android.clearChatHistory(); },
   stopGeneration:()=>{ if(inAndroid) Android.stopGeneration(); },
   isGenerationRunning:()=> inAndroid ? Android.isGenerationRunning() : false,
@@ -590,20 +599,47 @@ document.addEventListener('DOMContentLoaded', () => {
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
 
+  // Termux background setting
+  termuxBackground = Bridge.getTermuxBackground();
+  document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+
   // Keyboard height: shift chat-bottom above keyboard using visualViewport
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', onViewportResize);
-    window.visualViewport.addEventListener('scroll', onViewportResize);
+    window.visualViewport.addEventListener('resize', () => {
+      onViewportResize();
+      updateSysTextareaClass();
+    });
+    window.visualViewport.addEventListener('scroll', () => {
+      onViewportResize();
+      updateSysTextareaClass();
+    });
   }
 
   // Back-button: listen for popstate to go back to menu
   window.addEventListener('popstate', (e) => {
     const chatActive = document.getElementById('screen-chat').classList.contains('active');
     if (chatActive) {
-      _showMenu();
+      navigateToMenu();
     }
   });
 });
+
+window.onBackPressed = function() {
+  if (document.getElementById('edit-entry-popup').classList.contains('open')) {
+    closeEditEntry();
+    return "true";
+  }
+  if (document.getElementById('db-popup').classList.contains('open')) {
+    closeDatabase();
+    return "true";
+  }
+  const chatActive = document.getElementById('screen-chat').classList.contains('active');
+  if (chatActive) {
+    navigateToMenu();
+    return "true";
+  }
+  return "false";
+};
 
 function onViewportResize() {
   const vv = window.visualViewport;
@@ -676,7 +712,8 @@ function navigateToChat() {
   document.getElementById('screen-menu').classList.remove('active');
   document.getElementById('screen-chat').classList.add('active');
   // Sync system message fresh from app
-  document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
+  const msg = Bridge.getSystemMessage();
+  document.getElementById('sys-msg-textarea').value = msg;
   scrollToBottom();
 }
 function navigateToMenu() {
@@ -827,9 +864,10 @@ function applyBackend(b, notify) {
 }
 
 /* ════════════════════════════════════════════════════════
-   SYSTEM MESSAGE
+   SYSTEM MESSAGE & KEYBOARD / VIEWPORT SYNC
 ════════════════════════════════════════════════════════ */
 let sysTimeout = null;
+
 function onSystemMessageChange() {
   clearTimeout(sysTimeout);
   autoGrowTextarea(document.getElementById('sys-msg-textarea'));
@@ -837,26 +875,60 @@ function onSystemMessageChange() {
     Bridge.setSystemMessage(document.getElementById('sys-msg-textarea').value);
   }, 600);
 }
-function onSysTextareaFocus() {
+
+function updateSysTextareaClass() {
   const ta = document.getElementById('sys-msg-textarea');
-  const vv = window.visualViewport;
-  const keyH = vv ? (window.innerHeight - vv.height - vv.offsetTop) : 0;
-  ta.className = keyH > 10 ? 'expanded-keyboard' : 'expanded-full';
-  autoGrowTextarea(ta);
+  if (document.activeElement !== ta) return;
+  const isKeyboard = window.visualViewport && (window.visualViewport.height < window.innerHeight * 0.88);
+  ta.className = isKeyboard ? 'expanded-keyboard' : 'expanded-full';
 }
+
+function onSysTextareaFocus() {
+  updateSysTextareaClass();
+  autoGrowTextarea(document.getElementById('sys-msg-textarea'));
+}
+
 function onSysTextareaBlur() {
   const ta = document.getElementById('sys-msg-textarea');
-  ta.className = 'collapsed';
+  setTimeout(() => {
+    if (document.activeElement !== ta) {
+      ta.className = 'collapsed';
+    }
+  }, 150);
 }
+
 function restoreSystemMessage() {
-  const ta = document.getElementById('sys-msg-textarea');
-  ta.value = DEFAULT_SYSTEM_MSG;
-  Bridge.setSystemMessage(DEFAULT_SYSTEM_MSG);
-  autoGrowTextarea(ta);
+  Bridge.restoreSystemMessage();
 }
+
 // Android can call this when system message changes externally
 window.onSystemMessageChanged = function(msg) {
-  document.getElementById('sys-msg-textarea').value = msg;
+  const ta = document.getElementById('sys-msg-textarea');
+  if (document.activeElement !== ta) {
+    ta.value = msg;
+    autoGrowTextarea(ta);
+  }
+};
+
+// Android System Back Button Handler (returns Boolean to WebViewBridge)
+window.onBackPressed = function() {
+  if (document.getElementById('popup-edit-entry').classList.contains('open')) {
+    closePopup('popup-edit-entry');
+    return true;
+  }
+  if (document.getElementById('popup-db').classList.contains('open')) {
+    closePopup('popup-db');
+    return true;
+  }
+  if (document.getElementById('popup-apikey').classList.contains('open')) {
+    closePopup('popup-apikey');
+    return true;
+  }
+  if (document.getElementById('screen-chat').classList.contains('active')) {
+    navigateToMenu();
+    return true;
+  }
+  return false;
 };
 
 /* ════════════════════════════════════════════════════════
@@ -912,17 +984,20 @@ function onTaskInput() {
   const val = ta.value.trim();
   const icon = document.getElementById('send-icon');
   icon.className = val ? 'send-icon active' : 'send-icon';
+  
+  if (document.activeElement === ta) {
+    ta.placeholder = val ? 'Task' : 'Describe step by step if complicated tasks have to be solved';
+  } else {
+    ta.placeholder = 'Task';
+  }
+  
   autoGrowTextarea(ta);
 }
 function onTaskInputFocus() {
-  const ta = document.getElementById('task-input');
-  if (!ta.value.trim()) {
-    ta.placeholder = 'Describe step by step if complicated tasks have to be solved';
-  }
+  onTaskInput();
 }
 function onTaskInputBlur() {
-  const ta = document.getElementById('task-input');
-  ta.placeholder = 'Task';
+  onTaskInput();
 }
 function onTaskKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -930,15 +1005,15 @@ function onTaskKey(e) {
 function sendMessage() {
   const input = document.getElementById('task-input');
   const text = input.value.trim();
-  if (!text) return;
-  addUserBubble(text);
+  if (!text && selectedImages.length === 0) return;
+  addUserBubble(text || "(attached images)");
   input.value = '';
   input.style.height = '';
   onTaskInput();
   // Pass image URIs to Android if any
-  if (inAndroid && Android.sendMessageWithImages && selectedImages.length > 0) {
-    const uris = selectedImages.map(img => img.uri || img.objectUrl).join(',');
-    Android.sendMessageWithImages(text, uris);
+  if (selectedImages.length > 0) {
+    const urisCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
+    Bridge.sendMessageWithImages(text, urisCsv);
   } else {
     Bridge.sendMessage(text);
   }
@@ -954,11 +1029,7 @@ function sendMessage() {
 let selectedImages = [];
 
 function pickImage() {
-  if (inAndroid && Android.pickImage) {
-    Android.pickImage();
-  } else {
-    document.getElementById('image-file-input').click();
-  }
+  Bridge.pickImage();
 }
 
 function onFilesPicked(event) {
@@ -1009,11 +1080,7 @@ function showToast(msg, durationMs) {
 function toggleTermuxMode() {
   termuxBackground = !termuxBackground;
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
-  if (inAndroid && Android.setTermuxBackground) Android.setTermuxBackground(termuxBackground);
-  const msg = termuxBackground
-    ? 'Termux commands are executed in the background'
-    : 'Termux commands are executed in the foreground';
-  showToast(msg);
+  Bridge.setTermuxBackground(termuxBackground);
 }
 
 /* ════════════════════════════════════════════════════════
@@ -1094,6 +1161,7 @@ function openDatabasePopup() {
 function renderDbList() {
   const list = document.getElementById('db-list');
   const entries = Bridge.getDatabaseEntries();
+  
   list.innerHTML = '';
   if (!entries.length) {
     list.innerHTML='<div class="body-sm" style="padding:12px">No entries yet. Tap "+ New Entry" to add one.</div>';
@@ -1102,11 +1170,26 @@ function renderDbList() {
   entries.forEach(e => {
     const row = document.createElement('div');
     row.className='db-entry';
-    row.innerHTML=`<span class="db-entry-title">${escHtml(e.title)}</span>
-      <button class="db-entry-del" onclick="event.stopPropagation();deleteEntry('${escAttr(e.title)}')">✕</button>`;
-    row.addEventListener('click', () => openEditEntry(e));
+    row.innerHTML=`
+      <div style="flex-grow:1;cursor:pointer">
+        <div class="db-entry-title">${escHtml(e.title)}</div>
+        <div class="body-xs" style="color:var(--text-secondary);margin-top:2px">${escHtml(e.guide.substring(0,60))}...</div>
+      </div>
+      <div class="row align-center" style="gap:8px">
+        <button class="btn-icon" style="font-size:16px" onclick="event.stopPropagation();copyToSystemMessage('${escAttr(e.guide)}')" title="Use">&#10148;</button>
+        <button class="db-entry-del" onclick="event.stopPropagation();deleteEntry('${escAttr(e.title)}')">✕</button>
+      </div>`;
+    row.querySelector('div').onclick = () => openEditEntry(e);
     list.appendChild(row);
   });
+}
+
+function copyToSystemMessage(text) {
+  const ta = document.getElementById('sys-msg-textarea');
+  ta.value = text;
+  Bridge.setSystemMessage(text);
+  autoGrowTextarea(ta);
+  closePopup('popup-db');
 }
 function deleteEntry(title) {
   if (!confirm('Delete "'+title+'"?')) return;
@@ -1127,7 +1210,8 @@ function saveEntry() {
   if (editingEntryOriginalTitle) {
     Bridge.updateDatabaseEntry(editingEntryOriginalTitle, title, guide);
   } else {
-    const exists = Bridge.getDatabaseEntries().some(e=>e.title.toLowerCase()===title.toLowerCase());
+    const entries = Bridge.getDatabaseEntries();
+    const exists = entries.some(e=>e.title.toLowerCase()===title.toLowerCase());
     if (exists) { alert('An entry with this title already exists.'); return; }
     Bridge.addDatabaseEntry(title, guide);
   }
