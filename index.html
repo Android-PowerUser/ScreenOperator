@@ -179,6 +179,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 /* ── Hint text ───────────────────────────────────────────── */
 .model-hint{font-size:13px;color:var(--text-secondary);margin-top:8px;line-height:1.5}
 
+/* ── Image thumbnails row ────────────────────────────────── */
+#image-preview-row{display:flex;flex-wrap:nowrap;gap:6px;padding:6px 0 2px;overflow-x:auto}
+#image-preview-row:empty{display:none}
+.img-thumb-wrap{position:relative;flex-shrink:0}
+.img-thumb{width:72px;height:72px;object-fit:cover;border-radius:8px;display:block}
+.img-thumb-del{position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#B3261E;color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+
 /* ── Backend toggle ──────────────────────────────────────── */
 .backend-row{display:flex;gap:10px;margin-top:10px}
 .backend-btn{flex:1;padding:9px;border:1px solid var(--outline);border-radius:999px;background:transparent;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
@@ -345,6 +352,8 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
           </button>
         </div>
       </div>
+      <div id="image-preview-row"></div>
+      <input type="file" id="image-file-input" accept="image/*,video/*" multiple style="display:none" onchange="onFilesPicked(event)">
     </div>
   </div>
 
@@ -926,14 +935,66 @@ function sendMessage() {
   input.value = '';
   input.style.height = '';
   onTaskInput();
+  // Pass image URIs to Android if any
+  if (inAndroid && Android.sendMessageWithImages && selectedImages.length > 0) {
+    const uris = selectedImages.map(img => img.uri || img.objectUrl).join(',');
+    Android.sendMessageWithImages(text, uris);
+  } else {
+    Bridge.sendMessage(text);
+  }
+  // Clear selected images
+  selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
+  selectedImages = [];
+  renderImagePreviews();
   addModelBubble('', true);
-  Bridge.sendMessage(text);
   window.onGenerationStateChanged(true, false);
 }
 
+// Selected media: array of {objectUrl, name} (browser) or {uri} (Android)
+let selectedImages = [];
+
 function pickImage() {
-  if (inAndroid && Android.pickImage) { Android.pickImage(); }
-  else { showToast('Attach an image or video (requires Android integration)'); }
+  if (inAndroid && Android.pickImage) {
+    Android.pickImage();
+  } else {
+    document.getElementById('image-file-input').click();
+  }
+}
+
+function onFilesPicked(event) {
+  const files = Array.from(event.target.files);
+  files.forEach(file => {
+    const url = URL.createObjectURL(file);
+    selectedImages.push({ objectUrl: url, name: file.name });
+  });
+  event.target.value = '';
+  renderImagePreviews();
+}
+
+// Called by Android after user picks a media item: window.onImagePicked(uri)
+window.onImagePicked = function(uri) {
+  selectedImages.push({ uri: uri, name: uri.split('/').pop() });
+  renderImagePreviews();
+};
+
+function renderImagePreviews() {
+  const row = document.getElementById('image-preview-row');
+  row.innerHTML = '';
+  selectedImages.forEach((img, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'img-thumb-wrap';
+    const src = img.objectUrl || img.uri;
+    wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
+      <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    row.appendChild(wrap);
+  });
+}
+
+function removeImage(i) {
+  // Revoke object URL if browser-created to free memory
+  if (selectedImages[i]?.objectUrl) URL.revokeObjectURL(selectedImages[i].objectUrl);
+  selectedImages.splice(i, 1);
+  renderImagePreviews();
 }
 
 let _toastTimer = null;
