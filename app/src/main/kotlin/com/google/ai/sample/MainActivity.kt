@@ -266,9 +266,10 @@ class MainActivity : ComponentActivity() {
 
         pickMediaLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             uri?.let { 
-                Log.d(TAG, "Selected image URI from picker: $it")
+                Log.d(TAG, "Selected image/video URI from picker: $it")
+                val isVideo = contentResolver.getType(it)?.startsWith("video/") == true
                 webViewInstance?.post { 
-                    webViewInstance?.evaluateJavascript("window.onImagePicked('$it')", null)
+                    webViewInstance?.evaluateJavascript("window.onImagePicked('$it', $isVideo)", null)
                 }
             }
         }
@@ -720,8 +721,8 @@ class MainActivity : ComponentActivity() {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.databaseEnabled = false
-                                    settings.allowFileAccess = false
-                                    settings.allowContentAccess = false
+                                    settings.allowFileAccess = true
+                                    settings.allowContentAccess = true
                                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                     settings.setSupportZoom(true)
                                     settings.builtInZoomControls = true
@@ -739,6 +740,9 @@ class MainActivity : ComponentActivity() {
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
                                             Log.d(TAG, "WebView page rendered: {}".format(url))
+                                            view?.post {
+                                                view.evaluateJavascript("window.onAndroidReady && window.onAndroidReady()", null)
+                                            }
                                             observeViewModelForWebView()
                                         }
 
@@ -1367,7 +1371,8 @@ class MainActivity : ComponentActivity() {
         if (wv != null && wv.visibility == View.VISIBLE) {
             wv.evaluateJavascript("window.onBackPressed && window.onBackPressed()") { result ->
                 // JS gibt "true" zurück wenn es den Event konsumiert hat, sonst "false" oder "null"
-                if (result != "true") {
+                val cleanedResult = result?.replace("\"", "")?.trim()
+                if (cleanedResult != "true") {
                     runOnUiThread { super.onBackPressed() }
                 }
             }

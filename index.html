@@ -434,78 +434,78 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
    Falls back to localStorage when running in a browser.
 ════════════════════════════════════════════════════════ */
 const LS = window.localStorage;
-const inAndroid = typeof window.Android !== 'undefined';
+const getInAndroid = () => typeof window.Android !== 'undefined';
 
 const Bridge = {
   /* System message */
-  getSystemMessage:()=> inAndroid ? Android.getSystemMessage() : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
-  setSystemMessage:(m)=>{ inAndroid ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
-  restoreSystemMessage:()=>{ if(inAndroid) Android.restoreSystemMessage(); else LS.setItem('sysMsg', DEFAULT_SYSTEM_MSG); },
+  getSystemMessage:()=> getInAndroid() ? Android.getSystemMessage() : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
+  setSystemMessage:(m)=>{ getInAndroid() ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
+  restoreSystemMessage:()=>{ if(getInAndroid()) Android.restoreSystemMessage(); else LS.setItem('sysMsg', DEFAULT_SYSTEM_MSG); },
 
   /* Termux background */
-  getTermuxBackground:()=> inAndroid ? Android.getTermuxBackground() : (LS.getItem('termuxBg')==='true'),
-  setTermuxBackground:(b)=>{ inAndroid ? Android.setTermuxBackground(b) : LS.setItem('termuxBg',String(b)); },
+  getTermuxBackground:()=> getInAndroid() ? Android.getTermuxBackground() : (LS.getItem('termuxBg')==='true'),
+  setTermuxBackground:(b)=>{ getInAndroid() ? Android.setTermuxBackground(b) : LS.setItem('termuxBg',String(b)); },
 
   /* Model selection */
-  getSelectedModelId:()=> inAndroid ? Android.getSelectedModelId() : (LS.getItem('modelId')||'PUTER_QWEN2_5_VL_72B'),
-  setSelectedModel:(id)=>{ inAndroid ? Android.setSelectedModel(id) : LS.setItem('modelId',id); },
+  getSelectedModelId:()=> getInAndroid() ? Android.getSelectedModelId() : (LS.getItem('modelId')||'PUTER_QWEN2_5_VL_72B'),
+  setSelectedModel:(id)=>{ getInAndroid() ? Android.setSelectedModel(id) : LS.setItem('modelId',id); },
 
   /* API Keys */
-  getAllApiKeys:(prov)=> JSON.parse(inAndroid ? Android.getAllApiKeys(prov) : (LS.getItem('keys_'+prov)||'[]')),
+  getAllApiKeys:(prov)=> JSON.parse(getInAndroid() ? Android.getAllApiKeys(prov) : (LS.getItem('keys_'+prov)||'[]')),
   addApiKey:(key,prov)=>{
-    if(inAndroid) return Android.addApiKey(key,prov);
+    if(getInAndroid()) return Android.addApiKey(key,prov);
     const k=Bridge.getAllApiKeys(prov); if(k.includes(key)) return false;
     k.push(key); LS.setItem('keys_'+prov,JSON.stringify(k)); return true;
   },
   removeApiKey:(key,prov)=>{
-    if(inAndroid){Android.removeApiKey(key,prov);return;}
+    if(getInAndroid()){Android.removeApiKey(key,prov);return;}
     const k=Bridge.getAllApiKeys(prov).filter(x=>x!==key); LS.setItem('keys_'+prov,JSON.stringify(k));
   },
-  getCurrentKeyIndex:(prov)=> inAndroid ? Android.getCurrentKeyIndex(prov) : parseInt(LS.getItem('kIdx_'+prov)||'0'),
-  setCurrentKeyIndex:(idx,prov)=>{ inAndroid ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
+  getCurrentKeyIndex:(prov)=> getInAndroid() ? Android.getCurrentKeyIndex(prov) : parseInt(LS.getItem('kIdx_'+prov)||'0'),
+  setCurrentKeyIndex:(idx,prov)=>{ getInAndroid() ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
 
   /* Database entries */
-  getDatabaseEntries:()=> JSON.parse(inAndroid ? Android.getDatabaseEntries() : (LS.getItem('dbEntries')||'[]')),
+  getDatabaseEntries:()=> JSON.parse(getInAndroid() ? Android.getDatabaseEntries() : (LS.getItem('dbEntries')||'[]')),
   addDatabaseEntry:(title,guide)=>{
-    if(inAndroid){Android.addDatabaseEntry(title,guide);return;}
+    if(getInAndroid()){Android.addDatabaseEntry(title,guide);return;}
     const e=Bridge.getDatabaseEntries(); e.push({title,guide}); LS.setItem('dbEntries',JSON.stringify(e));
   },
   updateDatabaseEntry:(oldTitle,title,guide)=>{
-    if(inAndroid){Android.updateDatabaseEntry(oldTitle,title,guide);return;}
+    if(getInAndroid()){Android.updateDatabaseEntry(oldTitle,title,guide);return;}
     const e=Bridge.getDatabaseEntries().map(x=>x.title===oldTitle?{title,guide}:x); LS.setItem('dbEntries',JSON.stringify(e));
   },
   deleteDatabaseEntry:(title)=>{
-    if(inAndroid){Android.deleteDatabaseEntry(title);return;}
+    if(getInAndroid()){Android.deleteDatabaseEntry(title);return;}
     const e=Bridge.getDatabaseEntries().filter(x=>x.title!==title); LS.setItem('dbEntries',JSON.stringify(e));
   },
 
   /* Generation settings */
   getGenerationSettings:(id)=>{
     const def={temperature:0,topP:0,topK:1};
-    if(inAndroid) return JSON.parse(Android.getGenerationSettings(id)||'{}');
+    if(getInAndroid()) return JSON.parse(Android.getGenerationSettings(id)||'{}');
     return JSON.parse(LS.getItem('gen_'+id)||JSON.stringify(def));
   },
   saveGenerationSettings:(id,temp,topP,topK)=>{
-    if(inAndroid){Android.saveGenerationSettings(id,temp,topP,topK);return;}
+    if(getInAndroid()){Android.saveGenerationSettings(id,temp,topP,topK);return;}
     LS.setItem('gen_'+id,JSON.stringify({temperature:temp,topP,topK}));
   },
 
   /* Chat */
-  sendMessage:(text)=>{ if(inAndroid) Android.sendMessage(text); else addModelBubble('[Demo] Processing: '+text,false); },
-  sendMessageWithImages:(text,urisCsv)=>{ if(inAndroid) Android.sendMessageWithImages(text,urisCsv); else addModelBubble('[Demo] Processing with images: '+urisCsv,false); },
-  pickImage:()=>{ if(inAndroid) Android.pickImage(); else document.getElementById('image-file-input').click(); },
-  clearChatHistory:()=>{ if(inAndroid) Android.clearChatHistory(); },
-  stopGeneration:()=>{ if(inAndroid) Android.stopGeneration(); },
-  isGenerationRunning:()=> inAndroid ? Android.isGenerationRunning() : false,
-  isOfflineModelLoaded:()=> inAndroid ? Android.isOfflineModelLoaded() : false,
+  sendMessage:(text)=>{ if(getInAndroid()) Android.sendMessage(text); else addModelBubble('[Demo] Processing: '+text,false); },
+  sendMessageWithImages:(text,urisCsv)=>{ if(getInAndroid()) Android.sendMessageWithImages(text,urisCsv); else addModelBubble('[Demo] Processing with images: '+urisCsv,false); },
+  pickImage:()=>{ if(getInAndroid()) Android.pickImage(); else document.getElementById('image-file-input').click(); },
+  clearChatHistory:()=>{ if(getInAndroid()) Android.clearChatHistory(); },
+  stopGeneration:()=>{ if(getInAndroid()) Android.stopGeneration(); },
+  isGenerationRunning:()=> getInAndroid() ? Android.isGenerationRunning() : false,
+  isOfflineModelLoaded:()=> getInAndroid() ? Android.isOfflineModelLoaded() : false,
 
   /* Backend */
-  getBackendPreference:()=> inAndroid ? Android.getBackendPreference() : (LS.getItem('backend')||'GPU'),
-  setBackendPreference:(b)=>{ inAndroid ? Android.setBackendPreference(b) : LS.setItem('backend',b); },
+  getBackendPreference:()=> getInAndroid() ? Android.getBackendPreference() : (LS.getItem('backend')||'GPU'),
+  setBackendPreference:(b)=>{ getInAndroid() ? Android.setBackendPreference(b) : LS.setItem('backend',b); },
 
   /* Donation / trial */
-  initiateDonation:()=>{ if(inAndroid) Android.initiateDonation(); else alert('Subscription flow would open here'); },
-  isPurchased:()=> inAndroid ? Android.isPurchased() : false,
+  initiateDonation:()=>{ if(getInAndroid()) Android.initiateDonation(); else alert('Subscription flow would open here'); },
+  isPurchased:()=> getInAndroid() ? Android.isPurchased() : false,
 };
 
 /* ════════════════════════════════════════════════════════
@@ -624,22 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-window.onBackPressed = function() {
-  if (document.getElementById('edit-entry-popup').classList.contains('open')) {
-    closeEditEntry();
-    return "true";
-  }
-  if (document.getElementById('db-popup').classList.contains('open')) {
-    closeDatabase();
-    return "true";
-  }
-  const chatActive = document.getElementById('screen-chat').classList.contains('active');
-  if (chatActive) {
-    navigateToMenu();
-    return "true";
-  }
-  return "false";
-};
+
 
 function onViewportResize() {
   const vv = window.visualViewport;
@@ -910,6 +895,22 @@ window.onSystemMessageChanged = function(msg) {
   }
 };
 
+window.onAndroidReady = function() {
+  currentModelId = Bridge.getSelectedModelId();
+  buildModelDropdown();
+  applyModelSelection(currentModelId);
+  loadGenerationSettings();
+  loadBackendPreference();
+  updateDonationCard();
+
+  // System message
+  document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
+
+  // Termux background setting
+  termuxBackground = Bridge.getTermuxBackground();
+  document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+};
+
 // Android System Back Button Handler (returns Boolean to WebViewBridge)
 window.onBackPressed = function() {
   if (document.getElementById('popup-edit-entry').classList.contains('open')) {
@@ -1036,15 +1037,16 @@ function onFilesPicked(event) {
   const files = Array.from(event.target.files);
   files.forEach(file => {
     const url = URL.createObjectURL(file);
-    selectedImages.push({ objectUrl: url, name: file.name });
+    const isVideo = file.type.startsWith('video/');
+    selectedImages.push({ objectUrl: url, name: file.name, isVideo: isVideo });
   });
   event.target.value = '';
   renderImagePreviews();
 }
 
-// Called by Android after user picks a media item: window.onImagePicked(uri)
-window.onImagePicked = function(uri) {
-  selectedImages.push({ uri: uri, name: uri.split('/').pop() });
+// Called by Android after user picks a media item: window.onImagePicked(uri, isVideo)
+window.onImagePicked = function(uri, isVideo) {
+  selectedImages.push({ uri: uri, name: uri.split('/').pop(), isVideo: !!isVideo });
   renderImagePreviews();
 };
 
@@ -1054,9 +1056,15 @@ function renderImagePreviews() {
   selectedImages.forEach((img, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'img-thumb-wrap';
-    const src = img.objectUrl || img.uri;
-    wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
-      <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    if (img.isVideo) {
+      wrap.innerHTML = `
+        <div class="img-thumb" style="display:flex;align-items:center;justify-content:center;background:#121212;color:#fff;font-size:28px;border-radius:8px;width:72px;height:72px;border:1px solid var(--outline-variant);">🎬</div>
+        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    } else {
+      const src = img.objectUrl || img.uri;
+      wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
+        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    }
     row.appendChild(wrap);
   });
 }
