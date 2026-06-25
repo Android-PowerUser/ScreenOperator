@@ -506,6 +506,10 @@ const Bridge = {
   /* Donation / trial */
   initiateDonation:()=>{ if(getInAndroid()) Android.initiateDonation(); else alert('Subscription flow would open here'); },
   isPurchased:()=> getInAndroid() ? Android.isPurchased() : false,
+
+  /* Command pattern overrides (remote-updatable command syntax for new models) */
+  setCommandPatternOverrides:(json)=>{ if(getInAndroid()) return Android.setCommandPatternOverrides(json); },
+  getCommandPatternOverrides:()=> getInAndroid() ? Android.getCommandPatternOverrides() : '[]',
 };
 
 /* ════════════════════════════════════════════════════════
@@ -584,6 +588,21 @@ let currentProviderId = 'PUTER';
 let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
+
+/* ════════════════════════════════════════════════════════
+   COMMAND PATTERN OVERRIDES
+   Optional file "command-patterns.json" next to this index.html, fetched relative to
+   the WebView's base URL. Lets a new model's slightly different command syntax (e.g.
+   "Click('...')" instead of "click(\"...\")") be supported via a repo commit, without
+   an app update. Safe to omit entirely - 404/parse errors are ignored.
+════════════════════════════════════════════════════════ */
+window.onAndroidReady = function() {
+  if (!getInAndroid()) return;
+  fetch('command-patterns.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setCommandPatternOverrides(json); })
+    .catch(() => { /* file is optional; ignore if missing or fetch fails */ });
+};
 
 /* ════════════════════════════════════════════════════════
    INIT

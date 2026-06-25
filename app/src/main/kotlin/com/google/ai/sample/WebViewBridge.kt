@@ -288,6 +288,29 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TermuxExecutionModePreferences.executeInBackground(context)
     }
 
+    // ── Command Pattern Overrides (remote-updatable command syntax) ────────────
+    // Lets the WebView bundle teach the native command parser new/alternate ways to spell
+    // an *existing* action (see CommandPatternConfig for the safety boundary). This is what
+    // makes "a new model emits slightly different command syntax" fixable via a repo commit
+    // instead of an app release.
+
+    @JavascriptInterface
+    fun setCommandPatternOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.CommandParser.setRemotePatternOverrides(json)
+            com.google.ai.sample.util.CommandPatternOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setCommandPatternOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getCommandPatternOverrides(): String {
+        return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

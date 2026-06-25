@@ -37,5 +37,13 @@ class PhotoReasoningApplication : Application() {
         super.onCreate()
         instance = this
         Log.d(TAG, "Application created")
+
+        // Re-apply any command pattern overrides that were previously received from the
+        // WebView bundle, so alternate command syntax for new models keeps working even
+        // before the WebView has re-fetched/re-applied its config in this session.
+        com.google.ai.sample.util.CommandPatternOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.CommandParser.setRemotePatternOverrides(savedJson)
+            Log.d(TAG, "Restored $applied command pattern override(s) from preferences")
+        }
     }
 }
