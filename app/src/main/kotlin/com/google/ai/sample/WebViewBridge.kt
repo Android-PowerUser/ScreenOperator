@@ -8,6 +8,7 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningUiState
 import com.google.ai.sample.util.GenerationSettingsPreferences
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,7 +24,17 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getSystemMessage(): String {
-        return mainActivity.getPhotoReasoningViewModel()?.systemMessage?.value ?: ""
+        val viewModel = mainActivity.getPhotoReasoningViewModel()
+        val currentMessage = viewModel?.systemMessage?.value ?: ""
+        
+        // If system message is empty and ViewModel is not initialized, load from preferences
+        if (currentMessage.isEmpty() && (viewModel?.isInitialized?.value == false)) {
+            val savedMessage = SystemMessagePreferences.loadSystemMessage(context)
+            Log.d(TAG, "getSystemMessage: Loading from preferences because ViewModel not initialized. Length: ${savedMessage.length}")
+            return savedMessage
+        }
+        
+        return currentMessage
     }
 
     @JavascriptInterface
