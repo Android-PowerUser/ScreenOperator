@@ -537,6 +537,18 @@ class MainActivity : ComponentActivity() {
             TAG,
             "updateTrialState: trialInfoMessage='${uiModel.infoMessage}', showTrialInfoDialog=${uiModel.shouldShowInfoDialog}"
         )
+
+        // Notify the WebView so JS can update its UI (e.g. hide the Pro button after purchase).
+        val isExpired = newState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+        val isPurchased = newState == TrialManager.TrialState.PURCHASED
+        val escapedMsg = escapeForJs(uiModel.infoMessage)
+        webViewInstance?.post {
+            webViewInstance?.evaluateJavascript(
+                "window.onTrialStateChanged && window.onTrialStateChanged($isExpired, $isPurchased, '$escapedMsg')",
+                null
+            )
+        }
+    }
     }
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
@@ -710,6 +722,19 @@ class MainActivity : ComponentActivity() {
             GenerativeAISample {
                 Scaffold { innerPadding ->
                     val htmlContent = webViewHtmlContent
+                    // ── Dialogs: always rendered so they float above WebView too ──────────
+                    TrialStateDialogs(
+                        trialState = currentTrialState,
+                        showTrialInfoDialog = showTrialInfoDialog,
+                        trialInfoMessage = trialInfoMessage,
+                        onDismissTrialInfo = {
+                            showTrialInfoDialog = false
+                            prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                        },
+                        onPurchaseClick = { initiateDonationPurchase() }
+                    )
+                    // ─────────────────────────────────────────────────────────────────────
+
                     if (htmlContent != null) {
                         Log.d(TAG, "setContent: Remote content available, showing WebView.")
                         AndroidView(
@@ -742,6 +767,14 @@ class MainActivity : ComponentActivity() {
                                             Log.d(TAG, "WebView page rendered: {}".format(url))
                                             view?.post {
                                                 view.evaluateJavascript("window.onAndroidReady && window.onAndroidReady()", null)
+                                                // Push the current trial state so JS can update its UI on first load.
+                                                val isExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+                                                val isPurchased = currentTrialState == TrialManager.TrialState.PURCHASED
+                                                val escapedMsg = escapeForJs(trialInfoMessage)
+                                                view.evaluateJavascript(
+                                                    "window.onTrialStateChanged && window.onTrialStateChanged($isExpired, $isPurchased, '$escapedMsg')",
+                                                    null
+                                                )
                                             }
                                             observeViewModelForWebView()
                                         }
@@ -772,17 +805,6 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
                         navController = rememberNavController()
                         AppNavigation(navController = navController, innerPadding = innerPadding)
-
-                        TrialStateDialogs(
-                            trialState = currentTrialState,
-                            showTrialInfoDialog = showTrialInfoDialog,
-                            trialInfoMessage = trialInfoMessage,
-                            onDismissTrialInfo = {
-                                showTrialInfoDialog = false
-                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                            },
-                            onPurchaseClick = { initiateDonationPurchase() }
-                        )
 
                         if (showFirstLaunchInfoDialog) {
                             FirstLaunchInfoDialog(onDismiss = {
@@ -1386,8 +1408,8 @@ class MainActivity : ComponentActivity() {
      * purchase from the WebView UI.
      */
     fun initiateDonationFromWebView() {
-        Log.d(TAG, "initiateDonationFromWebView called.")
-        initiateDonationPurchase()
+        Log.d(TAG, "initiateDonationFromWebView called. Launching Google Play billing directly (PaymentMethodDialog lives in the non-WebView branch).")
+        launchGooglePlayBilling()
     }
 
     /**

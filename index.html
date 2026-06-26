@@ -1066,6 +1066,11 @@ window.onSystemMessageChanged = function(msg) {
   }
 };
 
+window.onTrialStateChanged = function(isExpired, isPurchased, message) {
+  // Refresh the donation card (show/hide the Pro button).
+  updateDonationCard();
+};
+
 window.onAndroidReady = function() {
   currentModelId = Bridge.getSelectedModelId();
   buildModelDropdown();
