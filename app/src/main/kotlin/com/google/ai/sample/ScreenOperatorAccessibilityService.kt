@@ -445,7 +445,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
         val captureAndRequestScreenshot = {
             val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-            if (!currentModel.supportsScreenshot || onlyTermuxContext) {
+            // A custom (JSON-defined) model, if active, overrides the stale native ModelOption's
+            // flag here - otherwise the autonomous screenshot loop would silently never send
+            // real screenshots to a custom vision model (it would fall back to text-only screen
+            // info every time, regardless of "supportsScreenshot" in custom-models.json).
+            val effectiveSupportsScreenshot = com.google.ai.sample.util.CustomModelRegistry.getActiveModel()
+                ?.supportsScreenshot ?: currentModel.supportsScreenshot
+            if (!effectiveSupportsScreenshot || onlyTermuxContext) {
                 Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                 showToast("Capturing screen info...", false)
                 val screenInfo = buildScreenInfoPayload(captureScreenInformation())

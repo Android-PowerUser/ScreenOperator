@@ -5,45 +5,26 @@ import android.util.Log
 import androidx.core.content.edit
 
 /**
- * Utility class to manage system message persistence
+ * Utility class to manage system message persistence.
+ *
+ * The DEFAULT system message is intentionally NOT stored here – it lives in
+ * index.html (DEFAULT_SYSTEM_MSG) so it can be updated via a web bundle change
+ * without an app release.  When [loadSystemMessage] returns an empty string the
+ * caller (WebViewBridge / JS) falls back to the HTML-defined default.
  */
 object SystemMessagePreferences {
     private const val TAG = "SystemMessagePrefs"
     private const val PREFS_NAME = "system_message_prefs"
     private const val KEY_SYSTEM_MESSAGE = "system_message"
-    private const val KEY_FIRST_START_COMPLETED = "first_start_completed" // New flag
-    private val DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START = """You are on an App on a Smartphone. Your app is called Screen Operator. You start from this app. Proceed step by step! DON'T USE TOOL CODE!
-You must operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" "tapAtCoordinates(x, y)"  "tapAtCoordinates(x percent of screen%, y percent of screen%)" "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown(x, y, how much pixel to scroll, duration in milliseconds)" "scrollUp(x, y, how much pixel to scroll, duration in milliseconds)" "scrollLeft(x, y, how much pixel to scroll, duration in milliseconds)" "scrollRight(x, y, how much pixel to scroll, duration in milliseconds)" "scrollDown(x percent of screen%, y percent of screen%, how much percent to scroll%, duration in milliseconds)" "scrollUp(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" "scrollLeft(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" "scrollRight(x percent of screen%, y percent of screen%, how much percent to scroll, duration in milliseconds)" scroll status bar down:  "scrollUp(540, 0, 1100, 50)" "Wait(seconds)"
-    
-"Termux("command")"
-1. You don't need to open Termux because a run.command intent is being called.
 
-2. Each call to Termux("command") starts a new session. To prevent this, you must first write Termux("tmux new-session -A -s main") and then pass all subsequent commands with Termux("tmux send-keys -t main "command" Enter").
-
-3.  Do not use wait(seconds) commands when using Termux.
-
-To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist.
-If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field. 
-
-
-Say "completed()" when the task is finished.
-
-
-Notes:
-1. Don't write the commands if you're just planing about it or messaging me.
-    
-    
-2. If you have questions, open Screen Operator, ask your question(s), and use "completed()" until you receive an human response.
-    
-3. After each message, you will see the screen with additional information about it.""".trimIndent()
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /**
-     * Save system message to SharedPreferences
+     * Save system message to SharedPreferences.
      */
     fun saveSystemMessage(context: Context, message: String) {
         try {
-            Log.d(TAG, "Saving system message: $message")
+            Log.d(TAG, "Saving system message (length=${message.length})")
             prefs(context).edit { putString(KEY_SYSTEM_MESSAGE, message) }
         } catch (e: Exception) {
             Log.e(TAG, "Error saving system message: ${e.message}", e)
@@ -52,36 +33,26 @@ Notes:
 
     /**
      * Load system message from SharedPreferences.
-     * On first start, it loads a default message, saves it, and marks first start as completed.
+     *
+     * Returns the user-saved message, or an empty string when nothing has been
+     * saved yet.  An empty string is the signal for the WebView layer to use
+     * its own DEFAULT_SYSTEM_MSG constant (defined in index.html), keeping the
+     * authoritative default in one place – the HTML bundle.
      */
     fun loadSystemMessage(context: Context): String {
-        try {
-            val sharedPreferences = prefs(context)
-            val isFirstStartCompleted = sharedPreferences.getBoolean(KEY_FIRST_START_COMPLETED, false)
-
-            if (!isFirstStartCompleted) {
-                Log.d(TAG, "First start detected. Loading and saving default system message.")
-                sharedPreferences.edit {
-                    putString(KEY_SYSTEM_MESSAGE, DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START)
-                    putBoolean(KEY_FIRST_START_COMPLETED, true)
-                }
-                Log.d(TAG, "Loaded default system message: $DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START")
-                return DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START
-            } else {
-                val message = sharedPreferences.getString(KEY_SYSTEM_MESSAGE, "") ?: ""
-                Log.d(TAG, "Loaded system message from prefs: $message")
-                return message
-            }
+        return try {
+            val message = prefs(context).getString(KEY_SYSTEM_MESSAGE, "") ?: ""
+            Log.d(TAG, "Loaded system message from prefs (length=${message.length})")
+            message
         } catch (e: Exception) {
             Log.e(TAG, "Error loading system message: ${e.message}", e)
-            return "" // Return empty string in case of error, consistent with original behavior
+            ""
         }
     }
 
     /**
-     * Get the default system message.
+     * Returns an empty string – the default is now owned by the WebView's DEFAULT_SYSTEM_MSG
+     * in index.html.  Kept for source compatibility with callers that may still reference it.
      */
-    fun getDefaultSystemMessage(): String {
-        return DEFAULT_SYSTEM_MESSAGE_ON_FIRST_START
-    }
+    fun getDefaultSystemMessage(): String = ""
 }

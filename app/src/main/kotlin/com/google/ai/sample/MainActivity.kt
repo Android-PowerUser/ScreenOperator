@@ -112,6 +112,13 @@ import okhttp3.Request
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import com.google.ai.sample.GenerativeViewModelFactory
+import androidx.activity.result.PickVisualMediaRequest
+import android.graphics.drawable.BitmapDrawable
+import android.media.MediaMetadataRetriever
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import coil.size.Precision
 
 class MainActivity : ComponentActivity() {
 
@@ -143,6 +150,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
     private lateinit var webRtcMediaProjectionLauncher: ActivityResultLauncher<Intent>
+    private lateinit var pickMediaLauncher: ActivityResultLauncher<PickVisualMediaRequest>
 
     private var currentScreenInfoForScreenshot: String? = null
 
@@ -254,6 +262,16 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
             handleWebRtcMediaProjectionResult(result.resultCode, result.data)
+        }
+
+        pickMediaLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            uri?.let { 
+                Log.d(TAG, "Selected image/video URI from picker: $it")
+                val isVideo = contentResolver.getType(it)?.startsWith("video/") == true
+                webViewInstance?.post { 
+                    webViewInstance?.evaluateJavascript("window.onImagePicked('$it', $isVideo)", null)
+                }
+            }
         }
     }
 
@@ -519,6 +537,17 @@ class MainActivity : ComponentActivity() {
             TAG,
             "updateTrialState: trialInfoMessage='${uiModel.infoMessage}', showTrialInfoDialog=${uiModel.shouldShowInfoDialog}"
         )
+
+        // Notify the WebView so JS can update its UI (e.g. hide the Pro button after purchase).
+        val isExpired = newState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+        val isPurchased = newState == TrialManager.TrialState.PURCHASED
+        val escapedMsg = escapeForJs(uiModel.infoMessage)
+        webViewInstance?.post {
+            webViewInstance?.evaluateJavascript(
+                "window.onTrialStateChanged && window.onTrialStateChanged($isExpired, $isPurchased, '$escapedMsg')",
+                null
+            )
+        }
     }
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
@@ -594,7 +623,7 @@ class MainActivity : ComponentActivity() {
 
     private fun loadWebViewContent() {
         if (webViewHtmlContent != null) return
-        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
+        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/feature/webview-test/index.html"
         lifecycleScope.launch(Dispatchers.IO) {
             if (webViewHtmlContent != null) return@launch
             try {
@@ -692,6 +721,19 @@ class MainActivity : ComponentActivity() {
             GenerativeAISample {
                 Scaffold { innerPadding ->
                     val htmlContent = webViewHtmlContent
+                    // ── Dialogs: always rendered so they float above WebView too ──────────
+                    TrialStateDialogs(
+                        trialState = currentTrialState,
+                        showTrialInfoDialog = showTrialInfoDialog,
+                        trialInfoMessage = trialInfoMessage,
+                        onDismissTrialInfo = {
+                            showTrialInfoDialog = false
+                            prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                        },
+                        onPurchaseClick = { initiateDonationPurchase() }
+                    )
+                    // ─────────────────────────────────────────────────────────────────────
+
                     if (htmlContent != null) {
                         Log.d(TAG, "setContent: Remote content available, showing WebView.")
                         AndroidView(
@@ -703,8 +745,8 @@ class MainActivity : ComponentActivity() {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.databaseEnabled = false
-                                    settings.allowFileAccess = false
-                                    settings.allowContentAccess = false
+                                    settings.allowFileAccess = true
+                                    settings.allowContentAccess = true
                                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                     settings.setSupportZoom(true)
                                     settings.builtInZoomControls = true
@@ -722,6 +764,17 @@ class MainActivity : ComponentActivity() {
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
                                             Log.d(TAG, "WebView page rendered: {}".format(url))
+                                            view?.post {
+                                                view.evaluateJavascript("window.onAndroidReady && window.onAndroidReady()", null)
+                                                // Push the current trial state so JS can update its UI on first load.
+                                                val isExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+                                                val isPurchased = currentTrialState == TrialManager.TrialState.PURCHASED
+                                                val escapedMsg = escapeForJs(trialInfoMessage)
+                                                view.evaluateJavascript(
+                                                    "window.onTrialStateChanged && window.onTrialStateChanged($isExpired, $isPurchased, '$escapedMsg')",
+                                                    null
+                                                )
+                                            }
                                             observeViewModelForWebView()
                                         }
 
@@ -738,7 +791,7 @@ class MainActivity : ComponentActivity() {
                                     this@MainActivity.webViewInstance = this
                                     addJavascriptInterface(WebViewBridge(this@MainActivity), "Android")
                                     loadDataWithBaseURL(
-                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
+                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/feature/webview-test/",
                                         htmlContent,
                                         "text/html",
                                         "UTF-8",
@@ -751,17 +804,6 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
                         navController = rememberNavController()
                         AppNavigation(navController = navController, innerPadding = innerPadding)
-
-                        TrialStateDialogs(
-                            trialState = currentTrialState,
-                            showTrialInfoDialog = showTrialInfoDialog,
-                            trialInfoMessage = trialInfoMessage,
-                            onDismissTrialInfo = {
-                                showTrialInfoDialog = false
-                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                            },
-                            onPurchaseClick = { initiateDonationPurchase() }
-                        )
 
                         if (showFirstLaunchInfoDialog) {
                             FirstLaunchInfoDialog(onDismiss = {
@@ -1289,15 +1331,75 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Called by [WebViewBridge] when the user sends a chat message from the WebView UI.
-     * The WebView UI currently doesn't support attaching images, so this is always called
-     * with an empty image list.
+     * Supports passing a list of media URIs selected via the + button.
      */
-    fun sendMessageFromWebView(text: String) {
-        Log.d(TAG, "sendMessageFromWebView called.")
-        photoReasoningViewModel?.reason(
-            userInput = text,
-            selectedImages = emptyList()
-        )
+    fun sendMessageFromWebView(text: String, selectedImages: List<Uri>) {
+        Log.d(TAG, "sendMessageFromWebView called with ${selectedImages.size} images.")
+        lifecycleScope.launch {
+            val bitmaps = selectedImages.mapNotNull { uri ->
+                uriToBitmap(uri)
+            }
+            photoReasoningViewModel?.reason(
+                userInput = text,
+                selectedImages = bitmaps,
+                screenInfoForPrompt = null,
+                imageUrisForChat = selectedImages.map { it.toString() }
+            )
+        }
+    }
+
+    private suspend fun uriToBitmap(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
+        val mimeType = contentResolver.getType(uri).orEmpty()
+        if (mimeType.startsWith("video/")) {
+            return@withContext extractVideoFrame(uri)
+        }
+
+        val imageLoader = ImageLoader.Builder(this@MainActivity).build()
+        val imageRequest = ImageRequest.Builder(this@MainActivity)
+            .data(uri)
+            .precision(Precision.EXACT)
+            .build()
+        return@withContext try {
+            val result = imageLoader.execute(imageRequest)
+            if (result is SuccessResult) (result.drawable as? BitmapDrawable)?.bitmap else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun extractVideoFrame(uri: Uri): Bitmap? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(this, uri)
+            retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting video frame for URI: $uri", e)
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    fun openImagePicker() {
+        Log.d(TAG, "openImagePicker called via Bridge.")
+        pickMediaLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+    }
+
+    override fun onBackPressed() {
+        val wv = webViewInstance
+        // Wenn wir nicht im WebView-Inhalt sind (htmlContent == null), nutzen wir standard back.
+        // Wenn WebView aktiv ist, fragen wir JS ob es ein "back" innerhalb der UI gibt.
+        if (wv != null && wv.visibility == View.VISIBLE) {
+            wv.evaluateJavascript("window.onBackPressed && window.onBackPressed()") { result ->
+                // JS gibt "true" zurück wenn es den Event konsumiert hat, sonst "false" oder "null"
+                val cleanedResult = result?.replace("\"", "")?.trim()
+                if (cleanedResult != "true") {
+                    runOnUiThread { super.onBackPressed() }
+                }
+            }
+        } else {
+            super.onBackPressed()
+        }
     }
 
     /**
@@ -1305,8 +1407,8 @@ class MainActivity : ComponentActivity() {
      * purchase from the WebView UI.
      */
     fun initiateDonationFromWebView() {
-        Log.d(TAG, "initiateDonationFromWebView called.")
-        initiateDonationPurchase()
+        Log.d(TAG, "initiateDonationFromWebView called. Launching Google Play billing directly (PaymentMethodDialog lives in the non-WebView branch).")
+        launchGooglePlayBilling()
     }
 
     /**
@@ -1316,6 +1418,12 @@ class MainActivity : ComponentActivity() {
     fun setTermuxBackgroundFromWebView(background: Boolean) {
         Log.d(TAG, "setTermuxBackgroundFromWebView called with background=$background")
         TermuxExecutionModePreferences.setExecuteInBackground(this, background)
+        val toastMessage = if (background) {
+            "Termux commands are executed in the background"
+        } else {
+            "Termux commands are executed in the foreground"
+        }
+        Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -1368,6 +1476,39 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        lifecycleScope.launch {
+            vm.systemMessage.collect { msg ->
+                wv.post {
+                    wv.evaluateJavascript("window.onSystemMessageChanged && window.onSystemMessageChanged('${escapeForJs(msg)}')", null)
+                }
+            }
+        }
+        lifecycleScope.launch {
+            vm.customModelRequestEvents.collect { payloadJson ->
+                val escaped = escapeForJs(payloadJson)
+                wv.post {
+                    wv.evaluateJavascript("window.onCustomModelRequest && window.onCustomModelRequest('$escaped')", null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Called by [WebViewBridge] with a streaming chunk (accumulated text so far) of a custom,
+     * fully JSON-defined model's response (see [com.google.ai.sample.util.CustomModelRegistry]).
+     */
+    fun customModelPartialResponseFromWebView(text: String) {
+        photoReasoningViewModel?.onCustomModelPartialResponse(text)
+    }
+
+    /** Called by [WebViewBridge] with the final, complete response text of a custom model's turn. */
+    fun customModelFinalResponseFromWebView(text: String) {
+        photoReasoningViewModel?.onCustomModelFinalResponse(text)
+    }
+
+    /** Called by [WebViewBridge] when a custom model's turn failed in JavaScript. */
+    fun customModelErrorFromWebView(message: String) {
+        photoReasoningViewModel?.onCustomModelError(message)
     }
 
     private fun registerNetworkCallback() {

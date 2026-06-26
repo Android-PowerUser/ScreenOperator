@@ -6,6 +6,9 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.google.ai.sample.feature.multimodal.PhotoReasoningUiState
 import com.google.ai.sample.util.GenerationSettingsPreferences
+import com.google.ai.sample.util.SystemMessageEntry
+import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,23 +24,36 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getSystemMessage(): String {
-        val vm = mainActivity.getPhotoReasoningViewModel()
-        if (vm != null) return vm.systemMessage.value
-        return context.getSharedPreferences(PREFS_WEBVIEW, Context.MODE_PRIVATE)
-            .getString(KEY_SYS_MSG, "") ?: ""
+        val viewModel = mainActivity.getPhotoReasoningViewModel()
+        val currentMessage = viewModel?.systemMessage?.value ?: ""
+        
+        // If system message is empty and ViewModel is not initialized, load from preferences
+        if (currentMessage.isEmpty() && (viewModel?.isInitialized?.value == false)) {
+            val savedMessage = SystemMessagePreferences.loadSystemMessage(context)
+            Log.d(TAG, "getSystemMessage: Loading from preferences because ViewModel not initialized. Length: ${savedMessage.length}")
+            return savedMessage
+        }
+        
+        return currentMessage
     }
 
     @JavascriptInterface
     fun setSystemMessage(message: String) {
-        context.getSharedPreferences(PREFS_WEBVIEW, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SYS_MSG, message).apply()
         mainActivity.getPhotoReasoningViewModel()?.updateSystemMessage(message, context)
+    }
+
+    @JavascriptInterface
+    fun restoreSystemMessage() {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.restoreSystemMessage(context)
+        }
     }
 
     // ── Model Selection ───────────────────────────────────────────────────────
 
     @JavascriptInterface
     fun getSelectedModelId(): String {
+        com.google.ai.sample.util.CustomModelRegistry.getActiveModelId()?.let { return it }
         return GenerativeAiViewModelFactory.getCurrentModel().name
     }
 
@@ -45,12 +61,25 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun setSelectedModel(id: String) {
         try {
             val model = ModelOption.valueOf(id)
+            com.google.ai.sample.util.CustomModelRegistry.clearActiveModel()
+            com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, null)
             GenerativeAiViewModelFactory.setModel(model, context)
             mainActivity.runOnUiThread {
                 mainActivity.onModelChangedFromWebView()
             }
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "setSelectedModel: unknown model id '$id'")
+            // Not a built-in ModelOption - check whether it's a custom, JSON-defined model
+            // (see CustomModelRegistry). This is what lets a brand-new model/provider be
+            // selected without it ever having existed as a compiled-in enum constant.
+            val activated = com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(id)
+            if (activated) {
+                com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, id)
+                mainActivity.runOnUiThread {
+                    mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
+                }
+            } else {
+                Log.w(TAG, "setSelectedModel: unknown model id '$id' (not a ModelOption nor a known custom model)")
+            }
         }
     }
 
@@ -112,44 +141,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getDatabaseEntries(): String {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]"
+        val entries = SystemMessageEntryPreferences.loadEntries(context)
+        val arr = JSONArray()
+        entries.forEach { 
+            arr.put(JSONObject().put("title", it.title).put("guide", it.guide))
+        }
+        return arr.toString()
     }
 
     @JavascriptInterface
     fun addDatabaseEntry(title: String, guide: String) {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        val arr = JSONArray(prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]")
-        arr.put(JSONObject().put("title", title).put("guide", guide))
-        prefs.edit().putString(KEY_DB_ENTRIES, arr.toString()).apply()
+        SystemMessageEntryPreferences.addEntry(context, SystemMessageEntry(title, guide))
     }
 
     @JavascriptInterface
     fun updateDatabaseEntry(oldTitle: String, newTitle: String, guide: String) {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        val arr = JSONArray(prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]")
-        val newArr = JSONArray()
-        for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
-            if (obj.getString("title") == oldTitle) {
-                newArr.put(JSONObject().put("title", newTitle).put("guide", guide))
-            } else {
-                newArr.put(obj)
-            }
+        val oldEntry = SystemMessageEntryPreferences.loadEntries(context).find { it.title == oldTitle }
+        if (oldEntry != null) {
+            SystemMessageEntryPreferences.updateEntry(context, oldEntry, SystemMessageEntry(newTitle, guide))
         }
-        prefs.edit().putString(KEY_DB_ENTRIES, newArr.toString()).apply()
     }
 
     @JavascriptInterface
     fun deleteDatabaseEntry(title: String) {
-        val prefs = context.getSharedPreferences(PREFS_WEBVIEW_DB, Context.MODE_PRIVATE)
-        val arr = JSONArray(prefs.getString(KEY_DB_ENTRIES, "[]") ?: "[]")
-        val newArr = JSONArray()
-        for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
-            if (obj.getString("title") != title) newArr.put(obj)
+        val entry = SystemMessageEntryPreferences.loadEntries(context).find { it.title == title }
+        if (entry != null) {
+            SystemMessageEntryPreferences.deleteEntry(context, entry)
         }
-        prefs.edit().putString(KEY_DB_ENTRIES, newArr.toString()).apply()
     }
 
     // ── Generation Settings ───────────────────────────────────────────────────
@@ -157,8 +175,17 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun getGenerationSettings(modelId: String): String {
         return try {
-            val model = ModelOption.valueOf(modelId)
-            val s = GenerationSettingsPreferences.loadSettings(context, model.modelName)
+            // Resolve to the persistence key the same way regardless of whether this is a
+            // built-in ModelOption or a custom (JSON-defined) model: GenerationSettingsPreferences
+            // itself is already keyed by an arbitrary string, not by the ModelOption enum, so no
+            // new storage mechanism is needed here - only this id-resolution step.
+            val settingsKey = try {
+                ModelOption.valueOf(modelId).modelName
+            } catch (e: IllegalArgumentException) {
+                com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
+                    ?: throw e
+            }
+            val s = GenerationSettingsPreferences.loadSettings(context, settingsKey)
             JSONObject()
                 .put("temperature", s.temperature)
                 .put("topP", s.topP)
@@ -173,10 +200,15 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun saveGenerationSettings(modelId: String, temperature: Float, topP: Float, topK: Int) {
         try {
-            val model = ModelOption.valueOf(modelId)
+            val settingsKey = try {
+                ModelOption.valueOf(modelId).modelName
+            } catch (e: IllegalArgumentException) {
+                com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
+                    ?: throw e
+            }
             GenerationSettingsPreferences.saveSettings(
                 context,
-                model.modelName,
+                settingsKey,
                 GenerationSettingsPreferences.GenerationSettings(temperature, topP, topK)
             )
         } catch (e: Exception) {
@@ -184,12 +216,63 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Custom Models (entirely JSON-defined, JS-driven - see CustomModelRegistry) ──────────
+    // A "custom model" never existed as a compiled ModelOption. Its API call is made by JS
+    // itself (fetch()), not by native networking code, so adding one - even for a brand-new
+    // provider - needs only a custom-models.json commit, no app release.
+
+    @JavascriptInterface
+    fun setCustomModelOverrides(json: String): Int {
+        return try {
+            val installed = com.google.ai.sample.util.CustomModelRegistry.setModels(json)
+            com.google.ai.sample.util.CustomModelPreferences.saveModelsJson(context, json)
+            installed
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomModelOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomModelOverrides(): String {
+        return com.google.ai.sample.util.CustomModelPreferences.loadModelsJson(context) ?: "[]"
+    }
+
+    @JavascriptInterface
+    fun setCustomModelApiKey(modelId: String, key: String) {
+        try {
+            com.google.ai.sample.util.CustomModelPreferences.saveApiKey(context, modelId, key)
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomModelApiKey error: ${e.message}")
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomModelApiKey(modelId: String): String {
+        return com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, modelId) ?: ""
+    }
+
     // ── Chat Operations ───────────────────────────────────────────────────────
 
     @JavascriptInterface
     fun sendMessage(text: String) {
         mainActivity.runOnUiThread {
-            mainActivity.sendMessageFromWebView(text)
+            mainActivity.sendMessageFromWebView(text, emptyList())
+        }
+    }
+
+    @JavascriptInterface
+    fun sendMessageWithImages(text: String, urisCsv: String) {
+        val uris = urisCsv.split(",").filter { it.isNotBlank() }.map { android.net.Uri.parse(it) }
+        mainActivity.runOnUiThread {
+            mainActivity.sendMessageFromWebView(text, uris)
+        }
+    }
+
+    @JavascriptInterface
+    fun pickImage() {
+        mainActivity.runOnUiThread {
+            mainActivity.openImagePicker()
         }
     }
 
@@ -207,6 +290,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Custom Model Responses ───────────────────────────────────────────────
+    // Called by JS after it performed the actual fetch() to a custom model's endpoint. The
+    // text is fed into the EXISTING, unmodified command-parsing/execution/persistence
+    // pipeline (PhotoReasoningCommandProcessing, AccessibilityCommandQueue, chat history) -
+    // only the network transport differs from a built-in ModelOption.
+
+    @JavascriptInterface
+    fun onCustomModelPartialResponse(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.onCustomModelPartialResponse(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun onCustomModelFinalResponse(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.onCustomModelFinalResponse(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun onCustomModelError(message: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.onCustomModelError(message)
+        }
+    }
+
     @JavascriptInterface
     fun isGenerationRunning(): Boolean {
         return mainActivity.getPhotoReasoningViewModel()?.isGenerationRunningFlow?.value ?: false
@@ -215,13 +325,6 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun isOfflineModelLoaded(): Boolean {
         return mainActivity.getPhotoReasoningViewModel()?.isOfflineGpuModelLoadedFlow?.value ?: false
-    }
-
-    // ── Custom Models (no-op – section removed from HTML) ─────────────────────
-
-    @JavascriptInterface
-    fun addCustomModel(json: String) {
-        Log.d(TAG, "addCustomModel called (no-op, section removed from UI): $json")
     }
 
     // ── Backend Preference ────────────────────────────────────────────────────
@@ -264,14 +367,37 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    @JavascriptInterface
+    fun getTermuxBackground(): Boolean {
+        return com.google.ai.sample.util.TermuxExecutionModePreferences.executeInBackground(context)
+    }
+
+    // ── Command Pattern Overrides (remote-updatable command syntax) ────────────
+    // Lets the WebView bundle teach the native command parser new/alternate ways to spell
+    // an *existing* action (see CommandPatternConfig for the safety boundary). This is what
+    // makes "a new model emits slightly different command syntax" fixable via a repo commit
+    // instead of an app release.
+
+    @JavascriptInterface
+    fun setCommandPatternOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.CommandParser.setRemotePatternOverrides(json)
+            com.google.ai.sample.util.CommandPatternOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setCommandPatternOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getCommandPatternOverrides(): String {
+        return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
-        private const val PREFS_WEBVIEW = "webview_prefs"
-        private const val PREFS_WEBVIEW_DB = "webview_db"
-        private const val KEY_SYS_MSG = "sysMsg"
-        private const val KEY_DB_ENTRIES = "entries"
-
         fun jsEscape(s: String): String =
             s.replace("\\", "\\\\")
              .replace("'", "\\'")

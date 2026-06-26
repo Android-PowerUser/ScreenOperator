@@ -43,6 +43,9 @@ import com.google.ai.sample.feature.multimodal.dtos.TempFilePathCollector
 import kotlinx.coroutines.Dispatchers
 import java.util.ArrayList // Required for StringArrayListExtra
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -117,6 +120,15 @@ class PhotoReasoningViewModel(
 
     private val _isInitializingOfflineModelFlow = MutableStateFlow(false)
     val isInitializingOfflineModelFlow: StateFlow<Boolean> = _isInitializingOfflineModelFlow.asStateFlow()
+
+    // Emits one JSON payload per turn that should be answered by a *custom*, fully JSON-defined
+    // model (see CustomModelRegistry). MainActivity collects this and hands the payload to
+    // window.onCustomModelRequest() in the WebView, which performs the actual network call
+    // (fetch()) and reports back via onCustomModelPartialResponse/onCustomModelFinalResponse/
+    // onCustomModelError. Native code for every existing (ModelOption-based) model is
+    // untouched - this flow only ever emits when a custom model is the active selection.
+    private val _customModelRequestEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val customModelRequestEvents: SharedFlow<String> = _customModelRequestEvents.asSharedFlow()
 
     private val app: Application
         get() = getApplication<Application>()
@@ -795,9 +807,18 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
-        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
         clearStaleErrorState()
         stopExecutionFlag.set(false)
+
+        // A custom, fully JSON-defined model (added via custom-models.json, never compiled into
+        // ModelOption) is active: delegate the actual API call to JavaScript in the WebView
+        // instead of any native networking path. See CustomModelRegistry / reasonWithCustomJsModel.
+        com.google.ai.sample.util.CustomModelRegistry.getActiveModel()?.let { customModel ->
+            reasonWithCustomJsModel(customModel, userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+            return
+        }
+
+        val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
@@ -1451,6 +1472,131 @@ class PhotoReasoningViewModel(
             }
         }
     }
+    }
+
+    /**
+     * Handles a turn for a *custom*, fully JSON-defined model (see [CustomModelRegistry]).
+     * Unlike every other `reasonWith*` function, this never makes a network call itself -
+     * it only assembles everything JavaScript needs to make the call, and emits it via
+     * [customModelRequestEvents]. The actual HTTP request happens in the WebView's
+     * `window.onCustomModelRequest`, which then reports back through
+     * [onCustomModelPartialResponse] / [onCustomModelFinalResponse] / [onCustomModelError] -
+     * which feed into the exact same chat/command-processing pipeline every other model uses.
+     */
+    private fun reasonWithCustomJsModel(
+        customModel: com.google.ai.sample.util.CustomModelDefinition,
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String?,
+        imageUrisForChat: List<String>?
+    ) {
+        val context = appContext
+
+        val userMessageText = if (!screenInfoForPrompt.isNullOrBlank()) {
+            "$userInput\n\n$screenInfoForPrompt"
+        } else {
+            userInput
+        }
+
+        val userMessage = PhotoReasoningMessage(
+            text = userMessageText,
+            participant = PhotoParticipant.USER,
+            imageUris = if (customModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
+            isPending = false
+        )
+        appendUserAndPendingModelMessages(userMessage)
+
+        _uiState.value = PhotoReasoningUiState.Loading
+        resetStreamingCommandState()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val systemMessageText = _systemMessage.value
+                val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
+
+                val allMessages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
+                // Exclude the pending AI message and the user message we just added above -
+                // both get sent separately/explicitly in the payload below.
+                val historyMessages = allMessages.filter { !it.isPending && it.participant != PhotoParticipant.ERROR }.dropLast(1)
+
+                val historyJson = org.json.JSONArray()
+                historyMessages.forEach { message ->
+                    val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
+                    historyJson.put(org.json.JSONObject().put("role", role).put("text", message.text))
+                }
+
+                val imagesJson = org.json.JSONArray()
+                if (customModel.supportsScreenshot) {
+                    for (bitmap in selectedImages) {
+                        imagesJson.put(com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(bitmap))
+                    }
+                }
+
+                val apiKey = com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, customModel.id) ?: ""
+
+                // Same storage as every other model (GenerationSettingsPreferences is keyed by
+                // an arbitrary string, not by the ModelOption enum) - just keyed by the custom
+                // model's id instead of model.modelName. See WebViewBridge.getGenerationSettings/
+                // saveGenerationSettings, which the WebView's existing settings UI already calls
+                // with this same id.
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, customModel.id)
+
+                val payload = org.json.JSONObject().apply {
+                    put("modelId", customModel.id)
+                    put("modelName", customModel.modelName)
+                    put("endpoint", customModel.endpoint)
+                    put("apiKeyHeader", customModel.apiKeyHeader)
+                    put("apiKeyPrefix", customModel.apiKeyPrefix)
+                    put("apiKey", apiKey)
+                    put("stream", customModel.stream)
+                    put("temperature", genSettings.temperature)
+                    put("topP", genSettings.topP)
+                    if (customModel.supportsTopK) {
+                        put("topK", genSettings.topK)
+                    }
+                    put("systemMessage", systemMessageText)
+                    put("databaseEntries", formattedDbEntries)
+                    put("history", historyJson)
+                    put("userText", userMessageText)
+                    put("images", imagesJson)
+                }
+
+                _customModelRequestEvents.emit(payload.toString())
+            } catch (e: Exception) {
+                Log.e(TAG, "reasonWithCustomJsModel: failed to build request: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    onCustomModelError(e.message ?: "Unknown error building request")
+                }
+            }
+        }
+    }
+
+    /**
+     * Reports a streaming chunk of a custom model's response (accumulated so far, not a delta).
+     * Mirrors exactly what every other model's streaming callback does
+     * (e.g. [reasonWithCerebras]'s `openAiStreamParser.parse` callback) so command execution,
+     * the chat bubble, etc. behave identically regardless of which model produced the text.
+     */
+    fun onCustomModelPartialResponse(accumulatedText: String) {
+        if (!isTaskCompletedByAi) {
+            replaceAiMessageText(accumulatedText, isPending = true)
+            processCommandsIncrementally(accumulatedText)
+        }
+    }
+
+    /** Reports the final, complete response text of a custom model's turn. */
+    fun onCustomModelFinalResponse(finalText: String) {
+        _uiState.value = PhotoReasoningUiState.Success(finalText)
+        finalizeAiMessage(finalText)
+        processCommands(finalText)
+        saveChatHistory(appContext)
+    }
+
+    /** Reports that the custom model's turn failed (network error, non-2xx, bad JSON, ...). */
+    fun onCustomModelError(message: String) {
+        _uiState.value = PhotoReasoningUiState.Error(message)
+        appendErrorMessage("Error: $message")
+        saveChatHistory(appContext)
     }
 
     private fun reasonWithPuter(
@@ -2214,11 +2360,16 @@ class PhotoReasoningViewModel(
     }
 
     /**
-     * Restore the system message to its default value
+     * Restore the system message to its default value.
+     *
+     * The authoritative default now lives in index.html (DEFAULT_SYSTEM_MSG).
+     * Bridge.restoreSystemMessage() in JS calls Android.setSystemMessage(DEFAULT_SYSTEM_MSG)
+     * directly, so the full default text is immediately written back to prefs via
+     * updateSystemMessage(). This function is kept as a fallback; getDefaultSystemMessage()
+     * returns "" so calling it is effectively a no-op from the native side alone.
      */
     fun restoreSystemMessage(context: Context) {
-        val defaultMessage = SystemMessagePreferences.getDefaultSystemMessage()
-        updateSystemMessage(defaultMessage, context)
+        updateSystemMessage(SystemMessagePreferences.getDefaultSystemMessage(), context)
     }
 
     /**

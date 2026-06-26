@@ -116,11 +116,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .drop-item.drop-section:hover{background:transparent}
 
 /* ── System message card ─────────────────────────────────── */
-#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;margin-top:10px;transition:max-height .2s ease}
+#chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
-#sys-msg-textarea.collapsed{max-height:72px}
-#sys-msg-textarea.expanded-keyboard{max-height:45vh}
-#sys-msg-textarea.expanded-full{max-height:80vh}
+
+#sys-msg-textarea.collapsed{height:120px}
+#sys-msg-textarea.expanded-keyboard{height:35vh}
+#sys-msg-textarea.expanded-full{height:78vh}
 
 /* ── Chat bubbles ────────────────────────────────────────── */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
@@ -432,71 +434,91 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
    Falls back to localStorage when running in a browser.
 ════════════════════════════════════════════════════════ */
 const LS = window.localStorage;
-const inAndroid = typeof window.Android !== 'undefined';
+const getInAndroid = () => typeof window.Android !== 'undefined';
 
 const Bridge = {
   /* System message */
-  getSystemMessage:()=> inAndroid ? Android.getSystemMessage() : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
-  setSystemMessage:(m)=>{ inAndroid ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
+  getSystemMessage:()=> getInAndroid() ? (Android.getSystemMessage()||DEFAULT_SYSTEM_MSG) : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
+  setSystemMessage:(m)=>{ getInAndroid() ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
+  restoreSystemMessage:()=>{ if(getInAndroid()) Android.setSystemMessage(DEFAULT_SYSTEM_MSG); else LS.setItem('sysMsg', DEFAULT_SYSTEM_MSG); },
+
+  /* Termux background */
+  getTermuxBackground:()=> getInAndroid() ? Android.getTermuxBackground() : (LS.getItem('termuxBg')==='true'),
+  setTermuxBackground:(b)=>{ getInAndroid() ? Android.setTermuxBackground(b) : LS.setItem('termuxBg',String(b)); },
 
   /* Model selection */
-  getSelectedModelId:()=> inAndroid ? Android.getSelectedModelId() : (LS.getItem('modelId')||'PUTER_QWEN2_5_VL_72B'),
-  setSelectedModel:(id)=>{ inAndroid ? Android.setSelectedModel(id) : LS.setItem('modelId',id); },
+  getSelectedModelId:()=> getInAndroid() ? Android.getSelectedModelId() : (LS.getItem('modelId')||'PUTER_QWEN2_5_VL_72B'),
+  setSelectedModel:(id)=>{ getInAndroid() ? Android.setSelectedModel(id) : LS.setItem('modelId',id); },
 
   /* API Keys */
-  getAllApiKeys:(prov)=> JSON.parse(inAndroid ? Android.getAllApiKeys(prov) : (LS.getItem('keys_'+prov)||'[]')),
+  getAllApiKeys:(prov)=> JSON.parse(getInAndroid() ? Android.getAllApiKeys(prov) : (LS.getItem('keys_'+prov)||'[]')),
   addApiKey:(key,prov)=>{
-    if(inAndroid) return Android.addApiKey(key,prov);
+    if(getInAndroid()) return Android.addApiKey(key,prov);
     const k=Bridge.getAllApiKeys(prov); if(k.includes(key)) return false;
     k.push(key); LS.setItem('keys_'+prov,JSON.stringify(k)); return true;
   },
   removeApiKey:(key,prov)=>{
-    if(inAndroid){Android.removeApiKey(key,prov);return;}
+    if(getInAndroid()){Android.removeApiKey(key,prov);return;}
     const k=Bridge.getAllApiKeys(prov).filter(x=>x!==key); LS.setItem('keys_'+prov,JSON.stringify(k));
   },
-  getCurrentKeyIndex:(prov)=> inAndroid ? Android.getCurrentKeyIndex(prov) : parseInt(LS.getItem('kIdx_'+prov)||'0'),
-  setCurrentKeyIndex:(idx,prov)=>{ inAndroid ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
+  getCurrentKeyIndex:(prov)=> getInAndroid() ? Android.getCurrentKeyIndex(prov) : parseInt(LS.getItem('kIdx_'+prov)||'0'),
+  setCurrentKeyIndex:(idx,prov)=>{ getInAndroid() ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
 
   /* Database entries */
-  getDatabaseEntries:()=> JSON.parse(inAndroid ? Android.getDatabaseEntries() : (LS.getItem('dbEntries')||'[]')),
+  getDatabaseEntries:()=> JSON.parse(getInAndroid() ? Android.getDatabaseEntries() : (LS.getItem('dbEntries')||'[]')),
   addDatabaseEntry:(title,guide)=>{
-    if(inAndroid){Android.addDatabaseEntry(title,guide);return;}
+    if(getInAndroid()){Android.addDatabaseEntry(title,guide);return;}
     const e=Bridge.getDatabaseEntries(); e.push({title,guide}); LS.setItem('dbEntries',JSON.stringify(e));
   },
   updateDatabaseEntry:(oldTitle,title,guide)=>{
-    if(inAndroid){Android.updateDatabaseEntry(oldTitle,title,guide);return;}
+    if(getInAndroid()){Android.updateDatabaseEntry(oldTitle,title,guide);return;}
     const e=Bridge.getDatabaseEntries().map(x=>x.title===oldTitle?{title,guide}:x); LS.setItem('dbEntries',JSON.stringify(e));
   },
   deleteDatabaseEntry:(title)=>{
-    if(inAndroid){Android.deleteDatabaseEntry(title);return;}
+    if(getInAndroid()){Android.deleteDatabaseEntry(title);return;}
     const e=Bridge.getDatabaseEntries().filter(x=>x.title!==title); LS.setItem('dbEntries',JSON.stringify(e));
   },
 
   /* Generation settings */
   getGenerationSettings:(id)=>{
     const def={temperature:0,topP:0,topK:1};
-    if(inAndroid) return JSON.parse(Android.getGenerationSettings(id)||'{}');
+    if(getInAndroid()) return JSON.parse(Android.getGenerationSettings(id)||'{}');
     return JSON.parse(LS.getItem('gen_'+id)||JSON.stringify(def));
   },
   saveGenerationSettings:(id,temp,topP,topK)=>{
-    if(inAndroid){Android.saveGenerationSettings(id,temp,topP,topK);return;}
+    if(getInAndroid()){Android.saveGenerationSettings(id,temp,topP,topK);return;}
     LS.setItem('gen_'+id,JSON.stringify({temperature:temp,topP,topK}));
   },
 
   /* Chat */
-  sendMessage:(text)=>{ if(inAndroid) Android.sendMessage(text); else addModelBubble('[Demo] Processing: '+text,false); },
-  clearChatHistory:()=>{ if(inAndroid) Android.clearChatHistory(); },
-  stopGeneration:()=>{ if(inAndroid) Android.stopGeneration(); },
-  isGenerationRunning:()=> inAndroid ? Android.isGenerationRunning() : false,
-  isOfflineModelLoaded:()=> inAndroid ? Android.isOfflineModelLoaded() : false,
+  sendMessage:(text)=>{ if(getInAndroid()) Android.sendMessage(text); else addModelBubble('[Demo] Processing: '+text,false); },
+  sendMessageWithImages:(text,urisCsv)=>{ if(getInAndroid()) Android.sendMessageWithImages(text,urisCsv); else addModelBubble('[Demo] Processing with images: '+urisCsv,false); },
+  pickImage:()=>{ if(getInAndroid()) Android.pickImage(); else document.getElementById('image-file-input').click(); },
+  clearChatHistory:()=>{ if(getInAndroid()) Android.clearChatHistory(); },
+  stopGeneration:()=>{ if(getInAndroid()) Android.stopGeneration(); },
+  isGenerationRunning:()=> getInAndroid() ? Android.isGenerationRunning() : false,
+  isOfflineModelLoaded:()=> getInAndroid() ? Android.isOfflineModelLoaded() : false,
 
   /* Backend */
-  getBackendPreference:()=> inAndroid ? Android.getBackendPreference() : (LS.getItem('backend')||'GPU'),
-  setBackendPreference:(b)=>{ inAndroid ? Android.setBackendPreference(b) : LS.setItem('backend',b); },
+  getBackendPreference:()=> getInAndroid() ? Android.getBackendPreference() : (LS.getItem('backend')||'GPU'),
+  setBackendPreference:(b)=>{ getInAndroid() ? Android.setBackendPreference(b) : LS.setItem('backend',b); },
 
   /* Donation / trial */
-  initiateDonation:()=>{ if(inAndroid) Android.initiateDonation(); else alert('Subscription flow would open here'); },
-  isPurchased:()=> inAndroid ? Android.isPurchased() : false,
+  initiateDonation:()=>{ if(getInAndroid()) Android.initiateDonation(); else alert('Subscription flow would open here'); },
+  isPurchased:()=> getInAndroid() ? Android.isPurchased() : false,
+
+  /* Command pattern overrides (remote-updatable command syntax for new models) */
+  setCommandPatternOverrides:(json)=>{ if(getInAndroid()) return Android.setCommandPatternOverrides(json); },
+  getCommandPatternOverrides:()=> getInAndroid() ? Android.getCommandPatternOverrides() : '[]',
+
+  /* Custom models (fully JSON-defined, network call happens here in JS) */
+  setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
+  getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
+  setCustomModelApiKey:(modelId,key)=>{ if(getInAndroid()) Android.setCustomModelApiKey(modelId,key); },
+  getCustomModelApiKey:(modelId)=> getInAndroid() ? Android.getCustomModelApiKey(modelId) : '',
+  onCustomModelPartialResponse:(text)=>{ if(getInAndroid()) Android.onCustomModelPartialResponse(text); },
+  onCustomModelFinalResponse:(text)=>{ if(getInAndroid()) Android.onCustomModelFinalResponse(text); },
+  onCustomModelError:(message)=>{ if(getInAndroid()) Android.onCustomModelError(message); },
 };
 
 /* ════════════════════════════════════════════════════════
@@ -590,20 +612,32 @@ document.addEventListener('DOMContentLoaded', () => {
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
 
+  // Termux background setting
+  termuxBackground = Bridge.getTermuxBackground();
+  document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+
   // Keyboard height: shift chat-bottom above keyboard using visualViewport
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', onViewportResize);
-    window.visualViewport.addEventListener('scroll', onViewportResize);
+    window.visualViewport.addEventListener('resize', () => {
+      onViewportResize();
+      updateSysTextareaClass();
+    });
+    window.visualViewport.addEventListener('scroll', () => {
+      onViewportResize();
+      updateSysTextareaClass();
+    });
   }
 
   // Back-button: listen for popstate to go back to menu
   window.addEventListener('popstate', (e) => {
     const chatActive = document.getElementById('screen-chat').classList.contains('active');
     if (chatActive) {
-      _showMenu();
+      navigateToMenu();
     }
   });
 });
+
+
 
 function onViewportResize() {
   const vv = window.visualViewport;
@@ -676,7 +710,8 @@ function navigateToChat() {
   document.getElementById('screen-menu').classList.remove('active');
   document.getElementById('screen-chat').classList.add('active');
   // Sync system message fresh from app
-  document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
+  const msg = Bridge.getSystemMessage();
+  document.getElementById('sys-msg-textarea').value = msg;
   scrollToBottom();
 }
 function navigateToMenu() {
@@ -722,18 +757,176 @@ function buildModelDropdown() {
 
   const ordered = [
     ...MODELS.filter(m=>firstIds.has(m.id)),
-    ...MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'),
+    ...MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'&&m.apiProvider!=='CUSTOM'),
     ...MODELS.filter(m=>m.apiProvider==='HUMAN_EXPERT'&&!strikeIds.has(m.id)),
     ...MODELS.filter(m=>vercelIds.has(m.id)&&!strikeIds.has(m.id)),
+    ...MODELS.filter(m=>m.apiProvider==='CUSTOM'&&!strikeIds.has(m.id)),
     ...MODELS.filter(m=>strikeIds.has(m.id)),
   ];
 
   ordered.forEach((m,i) => {
     if (!m.strike && ordered[i-1]?.strike) addSection('Deactivated');
     if (m.apiProvider==='VERCEL' && !m.strike && ordered[i-1]?.apiProvider!=='VERCEL') addSection('Vercel');
+    if (m.apiProvider==='CUSTOM' && !m.strike && ordered[i-1]?.apiProvider!=='CUSTOM') addSection('Custom');
     addItem(m);
   });
 }
+
+/* ════════════════════════════════════════════════════════
+   CUSTOM MODELS
+   Optional file "custom-models.json" next to this index.html (see docs/command-pattern-
+   overrides.md's sibling doc for the format). Each entry describes a genuinely new model/
+   provider - id, endpoint, modelName, etc. - with no corresponding native ModelOption at
+   all. They show up in the model picker like any built-in model; the actual API call for
+   them is made right here in JS (see window.onCustomModelRequest below) once selected.
+════════════════════════════════════════════════════════ */
+function mergeCustomModelsIntoDropdown(json) {
+  let entries;
+  try {
+    entries = JSON.parse(json);
+  } catch (e) {
+    return;
+  }
+  if (!Array.isArray(entries)) return;
+
+  // Remove any previously merged custom entries first, so re-applying a config (e.g. after
+  // it changed) doesn't accumulate stale duplicates.
+  MODELS = MODELS.filter(m => m.apiProvider !== 'CUSTOM');
+
+  entries.forEach(e => {
+    if (!e || !e.id || !e.endpoint || !e.modelName) return;
+    MODELS.push({
+      id: e.id,
+      displayName: e.displayName || e.id,
+      apiProvider: 'CUSTOM',
+      supportsTopK: !!e.supportsTopK,
+      supportsScreenshot: !!e.supportsScreenshot,
+      isOffline: false,
+      strike: false,
+      hint: 'Custom model (defined in custom-models.json)'
+    });
+  });
+
+  buildModelDropdown();
+  applyModelSelection(currentModelId);
+}
+
+/**
+ * Called by native (PhotoReasoningViewModel.reasonWithCustomJsModel, via MainActivity) once
+ * per turn when the currently active model is a custom one. `payloadJsonString` contains
+ * everything needed to build the request: system message, db-entries text, sanitized chat
+ * history, the current user text, optional base64 image data URIs, and the model's endpoint/
+ * auth/streaming config (see CustomModelDefinition on the native side).
+ *
+ * This is the actual network call for custom models: it runs as a normal `fetch()` here in
+ * the WebView, not in native Kotlin networking code - which is what lets a brand-new model/
+ * provider be added with zero app release (as long as its endpoint is reachable via fetch()
+ * from this page, i.e. supports CORS - verify this per provider).
+ *
+ * Reports back via Bridge.onCustomModelPartialResponse/onCustomModelFinalResponse/
+ * onCustomModelError, which feed into the exact same chat/command-processing pipeline native
+ * code already uses for every other model.
+ */
+window.onCustomModelRequest = async function(payloadJsonString) {
+  let payload;
+  try {
+    payload = JSON.parse(payloadJsonString);
+  } catch (e) {
+    Bridge.onCustomModelError('Invalid request payload: ' + e.message);
+    return;
+  }
+
+  const messages = [];
+  const systemParts = [];
+  if (payload.systemMessage) systemParts.push(payload.systemMessage);
+  if (payload.databaseEntries) systemParts.push('Additional context from database:\n' + payload.databaseEntries);
+  if (systemParts.length) messages.push({ role: 'system', content: systemParts.join('\n\n') });
+
+  (payload.history || []).forEach(m => {
+    if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
+  });
+
+  if (payload.images && payload.images.length > 0) {
+    const content = [];
+    if (payload.userText) content.push({ type: 'text', text: payload.userText });
+    payload.images.forEach(dataUri => content.push({ type: 'image_url', image_url: { url: dataUri } }));
+    messages.push({ role: 'user', content: content });
+  } else {
+    messages.push({ role: 'user', content: payload.userText || '' });
+  }
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (payload.apiKeyHeader && payload.apiKey) {
+    headers[payload.apiKeyHeader] = (payload.apiKeyPrefix || '') + payload.apiKey;
+  }
+
+  const requestBody = JSON.stringify({
+    model: payload.modelName,
+    messages: messages,
+    stream: !!payload.stream,
+    temperature: payload.temperature,
+    top_p: payload.topP,
+    ...(payload.topK !== undefined ? { top_k: payload.topK } : {})
+  });
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+
+  try {
+    const response = await fetch(payload.endpoint, {
+      method: 'POST',
+      headers: headers,
+      body: requestBody,
+      signal: window.__customModelAbortController.signal
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.text()).slice(0, 300); } catch (e) {}
+      throw new Error('HTTP ' + response.status + (detail ? (': ' + detail) : ''));
+    }
+
+    if (payload.stream && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]' || data === '') continue;
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+            if (delta) {
+              acc += delta;
+              Bridge.onCustomModelPartialResponse(acc);
+            }
+          } catch (e) { /* ignore malformed SSE chunk */ }
+        }
+      }
+    } else {
+      const json = await response.json();
+      acc = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
+    }
+
+    Bridge.onCustomModelFinalResponse(acc);
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      Bridge.onCustomModelError(e && e.message ? e.message : String(e));
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+};
 
 function toggleModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
@@ -827,9 +1020,10 @@ function applyBackend(b, notify) {
 }
 
 /* ════════════════════════════════════════════════════════
-   SYSTEM MESSAGE
+   SYSTEM MESSAGE & KEYBOARD / VIEWPORT SYNC
 ════════════════════════════════════════════════════════ */
 let sysTimeout = null;
+
 function onSystemMessageChange() {
   clearTimeout(sysTimeout);
   autoGrowTextarea(document.getElementById('sys-msg-textarea'));
@@ -837,26 +1031,103 @@ function onSystemMessageChange() {
     Bridge.setSystemMessage(document.getElementById('sys-msg-textarea').value);
   }, 600);
 }
-function onSysTextareaFocus() {
+
+function updateSysTextareaClass() {
   const ta = document.getElementById('sys-msg-textarea');
-  const vv = window.visualViewport;
-  const keyH = vv ? (window.innerHeight - vv.height - vv.offsetTop) : 0;
-  ta.className = keyH > 10 ? 'expanded-keyboard' : 'expanded-full';
-  autoGrowTextarea(ta);
+  if (document.activeElement !== ta) return;
+  const isKeyboard = window.visualViewport && (window.visualViewport.height < window.innerHeight * 0.88);
+  ta.className = isKeyboard ? 'expanded-keyboard' : 'expanded-full';
 }
+
+function onSysTextareaFocus() {
+  updateSysTextareaClass();
+  autoGrowTextarea(document.getElementById('sys-msg-textarea'));
+}
+
 function onSysTextareaBlur() {
   const ta = document.getElementById('sys-msg-textarea');
-  ta.className = 'collapsed';
+  setTimeout(() => {
+    if (document.activeElement !== ta) {
+      ta.className = 'collapsed';
+    }
+  }, 150);
 }
+
 function restoreSystemMessage() {
-  const ta = document.getElementById('sys-msg-textarea');
-  ta.value = DEFAULT_SYSTEM_MSG;
-  Bridge.setSystemMessage(DEFAULT_SYSTEM_MSG);
-  autoGrowTextarea(ta);
+  Bridge.restoreSystemMessage();
 }
+
 // Android can call this when system message changes externally
 window.onSystemMessageChanged = function(msg) {
-  document.getElementById('sys-msg-textarea').value = msg;
+  const ta = document.getElementById('sys-msg-textarea');
+  if (document.activeElement !== ta) {
+    ta.value = msg;
+    autoGrowTextarea(ta);
+  }
+};
+
+window.onTrialStateChanged = function(isExpired, isPurchased, message) {
+  // Refresh the donation card (show/hide the Pro button).
+  updateDonationCard();
+};
+
+window.onAndroidReady = function() {
+  currentModelId = Bridge.getSelectedModelId();
+  buildModelDropdown();
+  applyModelSelection(currentModelId);
+  loadGenerationSettings();
+  loadBackendPreference();
+  updateDonationCard();
+
+  // System message
+  document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
+
+  // Termux background setting
+  termuxBackground = Bridge.getTermuxBackground();
+  document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+
+  // ── Remote config (see docs/command-pattern-overrides.md) ──────────────────
+  // Both files are optional next to this index.html, fetched relative to the WebView's
+  // base URL. Missing/invalid files are ignored - the app falls back to built-in behavior.
+
+  // New/alternate command syntax for existing actions (e.g. a new model emits
+  // "Click('...')" instead of "click(\"...\")") - no app update needed to support it.
+  fetch('command-patterns.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setCommandPatternOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Genuinely new models/providers, defined entirely in JSON. The actual API call for
+  // these happens in window.onCustomModelRequest() below (fetch()), not in native code.
+  fetch('custom-models.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      Bridge.setCustomModelOverrides(json);
+      mergeCustomModelsIntoDropdown(json);
+    })
+    .catch(() => { /* optional file */ });
+};
+
+// Android System Back Button Handler (returns Boolean to WebViewBridge)
+window.onBackPressed = function() {
+  if (document.getElementById('popup-edit-entry').classList.contains('open')) {
+    closePopup('popup-edit-entry');
+    return true;
+  }
+  if (document.getElementById('popup-db').classList.contains('open')) {
+    closePopup('popup-db');
+    return true;
+  }
+  if (document.getElementById('popup-apikey').classList.contains('open')) {
+    closePopup('popup-apikey');
+    return true;
+  }
+  if (document.getElementById('screen-chat').classList.contains('active')) {
+    navigateToMenu();
+    return true;
+  }
+  return false;
 };
 
 /* ════════════════════════════════════════════════════════
@@ -900,6 +1171,10 @@ function clearChat() {
 }
 function stopGeneration() {
   Bridge.stopGeneration();
+  // Custom (JS-driven) models have no native network call to cancel - abort the fetch() here.
+  if (window.__customModelAbortController) {
+    window.__customModelAbortController.abort();
+  }
   window.onGenerationStateChanged(false, false);
 }
 
@@ -912,17 +1187,20 @@ function onTaskInput() {
   const val = ta.value.trim();
   const icon = document.getElementById('send-icon');
   icon.className = val ? 'send-icon active' : 'send-icon';
+  
+  if (document.activeElement === ta) {
+    ta.placeholder = val ? 'Task' : 'Describe step by step if complicated tasks have to be solved';
+  } else {
+    ta.placeholder = 'Task';
+  }
+  
   autoGrowTextarea(ta);
 }
 function onTaskInputFocus() {
-  const ta = document.getElementById('task-input');
-  if (!ta.value.trim()) {
-    ta.placeholder = 'Describe step by step if complicated tasks have to be solved';
-  }
+  onTaskInput();
 }
 function onTaskInputBlur() {
-  const ta = document.getElementById('task-input');
-  ta.placeholder = 'Task';
+  onTaskInput();
 }
 function onTaskKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -930,15 +1208,15 @@ function onTaskKey(e) {
 function sendMessage() {
   const input = document.getElementById('task-input');
   const text = input.value.trim();
-  if (!text) return;
-  addUserBubble(text);
+  if (!text && selectedImages.length === 0) return;
+  addUserBubble(text || "(attached images)");
   input.value = '';
   input.style.height = '';
   onTaskInput();
   // Pass image URIs to Android if any
-  if (inAndroid && Android.sendMessageWithImages && selectedImages.length > 0) {
-    const uris = selectedImages.map(img => img.uri || img.objectUrl).join(',');
-    Android.sendMessageWithImages(text, uris);
+  if (selectedImages.length > 0) {
+    const urisCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
+    Bridge.sendMessageWithImages(text, urisCsv);
   } else {
     Bridge.sendMessage(text);
   }
@@ -954,26 +1232,23 @@ function sendMessage() {
 let selectedImages = [];
 
 function pickImage() {
-  if (inAndroid && Android.pickImage) {
-    Android.pickImage();
-  } else {
-    document.getElementById('image-file-input').click();
-  }
+  Bridge.pickImage();
 }
 
 function onFilesPicked(event) {
   const files = Array.from(event.target.files);
   files.forEach(file => {
     const url = URL.createObjectURL(file);
-    selectedImages.push({ objectUrl: url, name: file.name });
+    const isVideo = file.type.startsWith('video/');
+    selectedImages.push({ objectUrl: url, name: file.name, isVideo: isVideo });
   });
   event.target.value = '';
   renderImagePreviews();
 }
 
-// Called by Android after user picks a media item: window.onImagePicked(uri)
-window.onImagePicked = function(uri) {
-  selectedImages.push({ uri: uri, name: uri.split('/').pop() });
+// Called by Android after user picks a media item: window.onImagePicked(uri, isVideo)
+window.onImagePicked = function(uri, isVideo) {
+  selectedImages.push({ uri: uri, name: uri.split('/').pop(), isVideo: !!isVideo });
   renderImagePreviews();
 };
 
@@ -983,9 +1258,15 @@ function renderImagePreviews() {
   selectedImages.forEach((img, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'img-thumb-wrap';
-    const src = img.objectUrl || img.uri;
-    wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
-      <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    if (img.isVideo) {
+      wrap.innerHTML = `
+        <div class="img-thumb" style="display:flex;align-items:center;justify-content:center;background:#121212;color:#fff;font-size:28px;border-radius:8px;width:72px;height:72px;border:1px solid var(--outline-variant);">🎬</div>
+        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    } else {
+      const src = img.objectUrl || img.uri;
+      wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
+        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+    }
     row.appendChild(wrap);
   });
 }
@@ -1009,11 +1290,7 @@ function showToast(msg, durationMs) {
 function toggleTermuxMode() {
   termuxBackground = !termuxBackground;
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
-  if (inAndroid && Android.setTermuxBackground) Android.setTermuxBackground(termuxBackground);
-  const msg = termuxBackground
-    ? 'Termux commands are executed in the background'
-    : 'Termux commands are executed in the foreground';
-  showToast(msg);
+  Bridge.setTermuxBackground(termuxBackground);
 }
 
 /* ════════════════════════════════════════════════════════
@@ -1094,6 +1371,7 @@ function openDatabasePopup() {
 function renderDbList() {
   const list = document.getElementById('db-list');
   const entries = Bridge.getDatabaseEntries();
+  
   list.innerHTML = '';
   if (!entries.length) {
     list.innerHTML='<div class="body-sm" style="padding:12px">No entries yet. Tap "+ New Entry" to add one.</div>';
@@ -1102,11 +1380,26 @@ function renderDbList() {
   entries.forEach(e => {
     const row = document.createElement('div');
     row.className='db-entry';
-    row.innerHTML=`<span class="db-entry-title">${escHtml(e.title)}</span>
-      <button class="db-entry-del" onclick="event.stopPropagation();deleteEntry('${escAttr(e.title)}')">✕</button>`;
-    row.addEventListener('click', () => openEditEntry(e));
+    row.innerHTML=`
+      <div style="flex-grow:1;cursor:pointer">
+        <div class="db-entry-title">${escHtml(e.title)}</div>
+        <div class="body-xs" style="color:var(--text-secondary);margin-top:2px">${escHtml(e.guide.substring(0,60))}...</div>
+      </div>
+      <div class="row align-center" style="gap:8px">
+        <button class="btn-icon" style="font-size:16px" onclick="event.stopPropagation();copyToSystemMessage('${escAttr(e.guide)}')" title="Use">&#10148;</button>
+        <button class="db-entry-del" onclick="event.stopPropagation();deleteEntry('${escAttr(e.title)}')">✕</button>
+      </div>`;
+    row.querySelector('div').onclick = () => openEditEntry(e);
     list.appendChild(row);
   });
+}
+
+function copyToSystemMessage(text) {
+  const ta = document.getElementById('sys-msg-textarea');
+  ta.value = text;
+  Bridge.setSystemMessage(text);
+  autoGrowTextarea(ta);
+  closePopup('popup-db');
 }
 function deleteEntry(title) {
   if (!confirm('Delete "'+title+'"?')) return;
@@ -1127,7 +1420,8 @@ function saveEntry() {
   if (editingEntryOriginalTitle) {
     Bridge.updateDatabaseEntry(editingEntryOriginalTitle, title, guide);
   } else {
-    const exists = Bridge.getDatabaseEntries().some(e=>e.title.toLowerCase()===title.toLowerCase());
+    const entries = Bridge.getDatabaseEntries();
+    const exists = entries.some(e=>e.title.toLowerCase()===title.toLowerCase());
     if (exists) { alert('An entry with this title already exists.'); return; }
     Bridge.addDatabaseEntry(title, guide);
   }

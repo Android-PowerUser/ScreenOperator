@@ -8,12 +8,19 @@ import android.util.Log
 object CommandParser {
     private const val TAG = "CommandParser"
     private val SINGLE_INSTANCE_COMMAND_TYPES = setOf(
-        CommandTypeEnum.TAKE_SCREENSHOT,
-        CommandTypeEnum.COMPLETED
+        CommandType.TAKE_SCREENSHOT,
+        CommandType.COMPLETED
     )
 
-    // Enum to represent different command types
-    private enum class CommandTypeEnum {
+    /**
+     * Enum representing the different *kinds* of commands the app knows how to execute.
+     *
+     * This is intentionally public: [CommandPatternConfig] uses it to validate remotely
+     * supplied pattern overrides against a fixed whitelist, so that remote config can only
+     * ever attach a new regular expression to an action that already exists in compiled
+     * code - never introduce a brand-new kind of action.
+     */
+    enum class CommandType {
         CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, COMPLETED, WAIT, PRESS_HOME, PRESS_BACK,
         SHOW_RECENT_APPS, SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
@@ -27,71 +34,115 @@ object CommandParser {
         val id: String, // For debugging
         val regex: Regex,
         val commandBuilder: (MatchResult) -> Command,
-        val commandType: CommandTypeEnum // Used for single-instance command check
+        val commandType: CommandType // Used for single-instance command check
     )
     private data class ProcessedMatch(
         val startIndex: Int,
         val endIndex: Int,
         val command: Command,
-        val commandType: CommandTypeEnum
+        val commandType: CommandType
     )
 
     // Master list of all patterns
     private val ALL_PATTERNS: List<PatternInfo> = listOf(
         // Enter key patterns
-        PatternInfo("enterKey1", Regex("(?i)\\benter\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
+        PatternInfo("enterKey1", Regex("(?i)\\benter\\(\\)"), { Command.PressEnterKey }, CommandType.PRESS_ENTER_KEY),
 
         // Model selection patterns
-        PatternInfo("highReasoning1", Regex("(?i)\\bhighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),
-        PatternInfo("lowReasoning1", Regex("(?i)\\blowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
+        PatternInfo("highReasoning1", Regex("(?i)\\bhighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandType.USE_HIGH_REASONING_MODEL),
+        PatternInfo("lowReasoning1", Regex("(?i)\\blowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandType.USE_LOW_REASONING_MODEL),
 
         // Write text patterns
-        PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
-        PatternInfo("termux1", Regex("""(?i)\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)"""), { match -> Command.TermuxCommand(match.groupValues[2]) }, CommandTypeEnum.TERMUX_COMMAND),
+        PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandType.WRITE_TEXT),
+        PatternInfo("termux1", Regex("""(?i)\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)"""), { match -> Command.TermuxCommand(match.groupValues[2]) }, CommandType.TERMUX_COMMAND),
 
         // Click (long) button patterns
-        PatternInfo("clickBtn1", Regex("(?i)\\bclick\\([\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
-        PatternInfo("longClickBtn1", Regex("(?i)\\blongClick\\([\"']([^\"']+)[\"']"), { match -> Command.LongClickButton(match.groupValues[1]) }, CommandTypeEnum.LONG_CLICK_BUTTON),
+        PatternInfo("clickBtn1", Regex("(?i)\\bclick\\([\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandType.CLICK_BUTTON),
+        PatternInfo("longClickBtn1", Regex("(?i)\\blongClick\\([\"']([^\"']+)[\"']"), { match -> Command.LongClickButton(match.groupValues[1]) }, CommandType.LONG_CLICK_BUTTON),
 
         // Tap coordinates patterns
-        PatternInfo("tapCoords1", Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
+        PatternInfo("tapCoords1", Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandType.TAP_COORDINATES),
 
         // Screenshot, completion and wait patterns
-        PatternInfo("screenshot1", Regex("(?i)\\btakeScreenshot\\(\\)"), { Command.TakeScreenshot }, CommandTypeEnum.TAKE_SCREENSHOT),
-        PatternInfo("completed1", Regex("(?i)\\bcompleted\\(\\)"), { Command.Completed }, CommandTypeEnum.COMPLETED),
-        PatternInfo("wait1", Regex("(?i)\\bWait\\(\\s*(\\d+)\\s*\\)"), { match -> Command.Wait(match.groupValues[1].toLong()) }, CommandTypeEnum.WAIT),
+        PatternInfo("screenshot1", Regex("(?i)\\btakeScreenshot\\(\\)"), { Command.TakeScreenshot }, CommandType.TAKE_SCREENSHOT),
+        PatternInfo("completed1", Regex("(?i)\\bcompleted\\(\\)"), { Command.Completed }, CommandType.COMPLETED),
+        PatternInfo("wait1", Regex("(?i)\\bWait\\(\\s*(\\d+)\\s*\\)"), { match -> Command.Wait(match.groupValues[1].toLong()) }, CommandType.WAIT),
 
         // Home button patterns
-        PatternInfo("home1", Regex("(?i)\\bhome\\(\\)"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
+        PatternInfo("home1", Regex("(?i)\\bhome\\(\\)"), { Command.PressHomeButton }, CommandType.PRESS_HOME),
 
         // Back button patterns
-        PatternInfo("back1", Regex("(?i)\\bback\\(\\)"), { Command.PressBackButton }, CommandTypeEnum.PRESS_BACK),
+        PatternInfo("back1", Regex("(?i)\\bback\\(\\)"), { Command.PressBackButton }, CommandType.PRESS_BACK),
 
         // Recent apps patterns
-        PatternInfo("recentApps1", Regex("(?i)\\brecentApps\\(\\)"), { Command.ShowRecentApps }, CommandTypeEnum.SHOW_RECENT_APPS),
+        PatternInfo("recentApps1", Regex("(?i)\\brecentApps\\(\\)"), { Command.ShowRecentApps }, CommandType.SHOW_RECENT_APPS),
 
         // Scroll patterns (simple)
-        PatternInfo("scrollDown1", Regex("(?i)\\bscrollDown\\(\\)"), { Command.ScrollDown }, CommandTypeEnum.SCROLL_DOWN),
-        PatternInfo("scrollUp1", Regex("(?i)\\bscrollUp\\(\\)"), { Command.ScrollUp }, CommandTypeEnum.SCROLL_UP),
-        PatternInfo("scrollLeft1", Regex("(?i)\\bscrollLeft\\(\\)"), { Command.ScrollLeft }, CommandTypeEnum.SCROLL_LEFT),
-        PatternInfo("scrollRight1", Regex("(?i)\\bscrollRight\\(\\)"), { Command.ScrollRight }, CommandTypeEnum.SCROLL_RIGHT),
+        PatternInfo("scrollDown1", Regex("(?i)\\bscrollDown\\(\\)"), { Command.ScrollDown }, CommandType.SCROLL_DOWN),
+        PatternInfo("scrollUp1", Regex("(?i)\\bscrollUp\\(\\)"), { Command.ScrollUp }, CommandType.SCROLL_UP),
+        PatternInfo("scrollLeft1", Regex("(?i)\\bscrollLeft\\(\\)"), { Command.ScrollLeft }, CommandType.SCROLL_LEFT),
+        PatternInfo("scrollRight1", Regex("(?i)\\bscrollRight\\(\\)"), { Command.ScrollRight }, CommandType.SCROLL_RIGHT),
 
         // Scroll from coordinates patterns
         PatternInfo("scrollDownCoords", Regex("(?i)\\bscrollDown\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollDownFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_DOWN_FROM_COORDINATES),
+            { match -> Command.ScrollDownFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_DOWN_FROM_COORDINATES),
         PatternInfo("scrollUpCoords", Regex("(?i)\\bscrollUp\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollUpFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_UP_FROM_COORDINATES),
+            { match -> Command.ScrollUpFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_UP_FROM_COORDINATES),
         PatternInfo("scrollLeftCoords", Regex("(?i)\\bscrollLeft\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollLeftFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_LEFT_FROM_COORDINATES),
+            { match -> Command.ScrollLeftFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_LEFT_FROM_COORDINATES),
         PatternInfo("scrollRightCoords", Regex("(?i)\\bscrollRight\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollRightFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_RIGHT_FROM_COORDINATES),
+            { match -> Command.ScrollRightFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_RIGHT_FROM_COORDINATES),
 
         // Open app patterns
-        PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP),
+        PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandType.OPEN_APP),
 
         // Retrieve information patterns
-        PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandTypeEnum.RETRIEVE)
+        PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandType.RETRIEVE)
     )
+
+    // One canonical command-builder per CommandType, derived from ALL_PATTERNS above.
+    // CommandPatternConfig uses this to attach remotely supplied regexes to the existing,
+    // compiled-in command-construction logic - it can never introduce custom logic of its own.
+    private val BUILDER_BY_TYPE: Map<CommandType, (MatchResult) -> Command> by lazy {
+        ALL_PATTERNS.associate { it.commandType to it.commandBuilder }
+    }
+
+    // Additional patterns supplied at runtime (e.g. fetched together with the WebView bundle)
+    // so that a new model's slightly different command syntax can be recognized without an
+    // app update. See [CommandPatternConfig] for the safety boundary this respects. Empty by
+    // default, i.e. behavior is unchanged unless overrides are explicitly installed.
+    @Volatile
+    private var remotePatterns: List<PatternInfo> = emptyList()
+
+    /**
+     * Installs additional command-recognition patterns from a remotely supplied JSON config.
+     * Each entry may only reference an existing [CommandType]; unknown types or invalid
+     * regexes are skipped (logged) rather than causing a crash, so a malformed remote config
+     * degrades gracefully to "no extra patterns".
+     *
+     * @return the number of overrides that were successfully installed.
+     */
+    @Synchronized
+    fun setRemotePatternOverrides(json: String): Int {
+        val parsed = CommandPatternConfig.parse(json)
+        remotePatterns = parsed.mapNotNull { override ->
+            val builder = BUILDER_BY_TYPE[override.commandType]
+            if (builder == null) {
+                Log.w(TAG, "Skipping remote pattern override '${override.id}': no builder for ${override.commandType}")
+                null
+            } else {
+                PatternInfo(override.id, override.regex, builder, override.commandType)
+            }
+        }
+        Log.d(TAG, "Installed ${remotePatterns.size} remote command pattern override(s)")
+        return remotePatterns.size
+    }
+
+    /** Removes all remotely installed pattern overrides, reverting to built-in patterns only. */
+    @Synchronized
+    fun clearRemotePatternOverrides() {
+        remotePatterns = emptyList()
+    }
 
     // Buffer for storing partial text between calls
     private var textBuffer = ""
@@ -184,7 +235,7 @@ object CommandParser {
     private fun processTextInternal(text: String): List<Command> {
         val foundRawMatches = collectRawMatches(text)
         val finalCommands = mutableListOf<Command>()
-        val addedSingleInstanceCommands = mutableSetOf<CommandTypeEnum>()
+        val addedSingleInstanceCommands = mutableSetOf<CommandType>()
 
         // Sort matches by start index
         foundRawMatches.sortBy { it.startIndex }
@@ -213,7 +264,7 @@ object CommandParser {
 
     private fun collectRawMatches(text: String): MutableList<ProcessedMatch> {
         val foundRawMatches = mutableListOf<ProcessedMatch>()
-        for (patternInfo in ALL_PATTERNS) {
+        for (patternInfo in ALL_PATTERNS + remotePatterns) {
             try {
                 patternInfo.regex.findAll(text).forEach { matchResult ->
                     try {

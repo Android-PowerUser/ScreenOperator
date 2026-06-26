@@ -10,6 +10,7 @@ class CommandParserTest {
     @Before
     fun setUp() {
         CommandParser.clearBuffer()
+        CommandParser.clearRemotePatternOverrides()
     }
 
     @Test
@@ -121,6 +122,52 @@ class CommandParserTest {
         val command = commands.first()
         assertTrue(command is Command.TermuxCommand)
         assertEquals("su -c \"ifconfig\"", (command as Command.TermuxCommand).command)
+    }
+
+    @Test
+    fun setRemotePatternOverrides_recognizesAlternateSyntaxForExistingCommandType() {
+        // A hypothetical new model emits "Click('...')" (capitalized, single quotes) instead
+        // of the built-in "click(\"...\")" syntax. Without an override, this is NOT recognized:
+        val before = CommandParser.parseCommands("Click('Login')", clearBuffer = true)
+        assertEquals(0, before.size)
+
+        val applied = CommandParser.setRemotePatternOverrides(
+            """[{"id":"clickAlt","commandType":"CLICK_BUTTON","regex":"(?i)\\bClick\\([\"']([^\"']+)[\"']"}]"""
+        )
+        assertEquals(1, applied)
+
+        val after = CommandParser.parseCommands("Click('Login')", clearBuffer = true)
+        assertEquals(1, after.size)
+        assertTrue(after.first() is Command.ClickButton)
+        assertEquals("Login", (after.first() as Command.ClickButton).buttonText)
+    }
+
+    @Test
+    fun setRemotePatternOverrides_skipsUnknownCommandType() {
+        val applied = CommandParser.setRemotePatternOverrides(
+            """[{"id":"bogus","commandType":"DOES_NOT_EXIST","regex":"(?i)\\bfoo\\(\\)"}]"""
+        )
+        assertEquals(0, applied)
+    }
+
+    @Test
+    fun setRemotePatternOverrides_skipsInvalidRegexWithoutCrashing() {
+        val applied = CommandParser.setRemotePatternOverrides(
+            """[{"id":"badRegex","commandType":"CLICK_BUTTON","regex":"("}]"""
+        )
+        assertEquals(0, applied)
+    }
+
+    @Test
+    fun clearRemotePatternOverrides_revertsToBuiltInPatternsOnly() {
+        CommandParser.setRemotePatternOverrides(
+            """[{"id":"clickAlt","commandType":"CLICK_BUTTON","regex":"(?i)\\bClick\\([\"']([^\"']+)[\"']"}]"""
+        )
+        assertEquals(1, CommandParser.parseCommands("Click('Login')", clearBuffer = true).size)
+
+        CommandParser.clearRemotePatternOverrides()
+
+        assertEquals(0, CommandParser.parseCommands("Click('Login')", clearBuffer = true).size)
     }
 
 }
