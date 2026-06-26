@@ -732,6 +732,26 @@ class MainActivity : ComponentActivity() {
                         },
                         onPurchaseClick = { initiateDonationPurchase() }
                     )
+
+                    // PaymentMethodDialog must also float above the WebView UI: it can be
+                    // triggered by TrialExpiredDialog's "Subscribe" button above, which is
+                    // itself rendered unconditionally. Previously this dialog lived only in
+                    // the `else` branch below, so when the WebView UI was active
+                    // (htmlContent != null) setting showPaymentMethodDialog = true had no
+                    // visible effect at all — the "Subscribe" button appeared to do nothing.
+                    if (showPaymentMethodDialog) {
+                        PaymentMethodDialog(
+                            onDismiss = { showPaymentMethodDialog = false },
+                            onPayPalClick = {
+                                showPaymentMethodDialog = false
+                                Toast.makeText(this@MainActivity, "PayPal ist in dieser Fallback-UI noch nicht verfügbar.", Toast.LENGTH_LONG).show()
+                            },
+                            onGooglePlayClick = {
+                                showPaymentMethodDialog = false
+                                launchGooglePlayBilling()
+                            }
+                        )
+                    }
                     // ─────────────────────────────────────────────────────────────────────
 
                     if (htmlContent != null) {
@@ -820,20 +840,6 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = {
                                     showApiKeyDialog = false
                                     apiKeyDialogInitialProvider = null
-                                }
-                            )
-                        }
-
-                        if (showPaymentMethodDialog) {
-                            PaymentMethodDialog(
-                                onDismiss = { showPaymentMethodDialog = false },
-                                onPayPalClick = {
-                                    showPaymentMethodDialog = false
-                                    Toast.makeText(this@MainActivity, "PayPal ist in dieser Fallback-UI noch nicht verfügbar.", Toast.LENGTH_LONG).show()
-                                },
-                                onGooglePlayClick = {
-                                    showPaymentMethodDialog = false
-                                    launchGooglePlayBilling()
                                 }
                             )
                         }
