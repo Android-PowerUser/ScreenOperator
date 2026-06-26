@@ -45,5 +45,15 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.CommandParser.setRemotePatternOverrides(savedJson)
             Log.d(TAG, "Restored $applied command pattern override(s) from preferences")
         }
+
+        // Re-apply any custom (fully JSON-defined, JS-driven) model definitions and the
+        // previously active selection, so a custom model keeps working across app restarts.
+        com.google.ai.sample.util.CustomModelPreferences.loadModelsJson(this)?.let { savedJson ->
+            val installed = com.google.ai.sample.util.CustomModelRegistry.setModels(savedJson)
+            Log.d(TAG, "Restored $installed custom model definition(s) from preferences")
+        }
+        com.google.ai.sample.util.CustomModelPreferences.loadActiveModelId(this)?.let { savedId ->
+            com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(savedId)
+        }
     }
 }

@@ -53,6 +53,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getSelectedModelId(): String {
+        com.google.ai.sample.util.CustomModelRegistry.getActiveModelId()?.let { return it }
         return GenerativeAiViewModelFactory.getCurrentModel().name
     }
 
@@ -60,12 +61,25 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun setSelectedModel(id: String) {
         try {
             val model = ModelOption.valueOf(id)
+            com.google.ai.sample.util.CustomModelRegistry.clearActiveModel()
+            com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, null)
             GenerativeAiViewModelFactory.setModel(model, context)
             mainActivity.runOnUiThread {
                 mainActivity.onModelChangedFromWebView()
             }
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "setSelectedModel: unknown model id '$id'")
+            // Not a built-in ModelOption - check whether it's a custom, JSON-defined model
+            // (see CustomModelRegistry). This is what lets a brand-new model/provider be
+            // selected without it ever having existed as a compiled-in enum constant.
+            val activated = com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(id)
+            if (activated) {
+                com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, id)
+                mainActivity.runOnUiThread {
+                    mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
+                }
+            } else {
+                Log.w(TAG, "setSelectedModel: unknown model id '$id' (not a ModelOption nor a known custom model)")
+            }
         }
     }
 
@@ -188,6 +202,42 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Custom Models (entirely JSON-defined, JS-driven - see CustomModelRegistry) ──────────
+    // A "custom model" never existed as a compiled ModelOption. Its API call is made by JS
+    // itself (fetch()), not by native networking code, so adding one - even for a brand-new
+    // provider - needs only a custom-models.json commit, no app release.
+
+    @JavascriptInterface
+    fun setCustomModelOverrides(json: String): Int {
+        return try {
+            val installed = com.google.ai.sample.util.CustomModelRegistry.setModels(json)
+            com.google.ai.sample.util.CustomModelPreferences.saveModelsJson(context, json)
+            installed
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomModelOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomModelOverrides(): String {
+        return com.google.ai.sample.util.CustomModelPreferences.loadModelsJson(context) ?: "[]"
+    }
+
+    @JavascriptInterface
+    fun setCustomModelApiKey(modelId: String, key: String) {
+        try {
+            com.google.ai.sample.util.CustomModelPreferences.saveApiKey(context, modelId, key)
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomModelApiKey error: ${e.message}")
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomModelApiKey(modelId: String): String {
+        return com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, modelId) ?: ""
+    }
+
     // ── Chat Operations ───────────────────────────────────────────────────────
 
     @JavascriptInterface
@@ -226,6 +276,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Custom Model Responses ───────────────────────────────────────────────
+    // Called by JS after it performed the actual fetch() to a custom model's endpoint. The
+    // text is fed into the EXISTING, unmodified command-parsing/execution/persistence
+    // pipeline (PhotoReasoningCommandProcessing, AccessibilityCommandQueue, chat history) -
+    // only the network transport differs from a built-in ModelOption.
+
+    @JavascriptInterface
+    fun onCustomModelPartialResponse(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.onCustomModelPartialResponse(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun onCustomModelFinalResponse(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.onCustomModelFinalResponse(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun onCustomModelError(message: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.onCustomModelError(message)
+        }
+    }
+
     @JavascriptInterface
     fun isGenerationRunning(): Boolean {
         return mainActivity.getPhotoReasoningViewModel()?.isGenerationRunningFlow?.value ?: false
@@ -234,13 +311,6 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun isOfflineModelLoaded(): Boolean {
         return mainActivity.getPhotoReasoningViewModel()?.isOfflineGpuModelLoadedFlow?.value ?: false
-    }
-
-    // ── Custom Models (no-op – section removed from HTML) ─────────────────────
-
-    @JavascriptInterface
-    fun addCustomModel(json: String) {
-        Log.d(TAG, "addCustomModel called (no-op, section removed from UI): $json")
     }
 
     // ── Backend Preference ────────────────────────────────────────────────────
@@ -309,6 +379,64 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun getCommandPatternOverrides(): String {
         return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
+    }
+
+    // ── Custom Models (fully JSON-defined, JS-driven models - no native code needed) ──────────
+    // Lets a genuinely new model/provider be added purely via custom-models.json: the actual
+    // network call happens in window.onCustomModelRequest() in the WebView (fetch()), not in
+    // native code. See CustomModelRegistry for the in-memory state and reasonWithCustomJsModel
+    // in PhotoReasoningViewModel for how a turn is delegated to JS.
+
+    @JavascriptInterface
+    fun setCustomModelOverrides(json: String): Int {
+        return try {
+            val installed = com.google.ai.sample.util.CustomModelRegistry.setModels(json)
+            com.google.ai.sample.util.CustomModelPreferences.saveModelsJson(context, json)
+            installed
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomModelOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomModelOverrides(): String {
+        return com.google.ai.sample.util.CustomModelPreferences.loadModelsJson(context) ?: "[]"
+    }
+
+    @JavascriptInterface
+    fun setCustomModelApiKey(modelId: String, key: String) {
+        try {
+            com.google.ai.sample.util.CustomModelPreferences.saveApiKey(context, modelId, key)
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomModelApiKey error: ${e.message}")
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomModelApiKey(modelId: String): String {
+        return com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, modelId) ?: ""
+    }
+
+    @JavascriptInterface
+    fun onCustomModelPartialResponse(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.customModelPartialResponseFromWebView(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun onCustomModelFinalResponse(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.customModelFinalResponseFromWebView(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun onCustomModelError(message: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.customModelErrorFromWebView(message)
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

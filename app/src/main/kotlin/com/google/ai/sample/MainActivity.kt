@@ -1462,6 +1462,32 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        lifecycleScope.launch {
+            vm.customModelRequestEvents.collect { payloadJson ->
+                val escaped = escapeForJs(payloadJson)
+                wv.post {
+                    wv.evaluateJavascript("window.onCustomModelRequest && window.onCustomModelRequest('$escaped')", null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Called by [WebViewBridge] with a streaming chunk (accumulated text so far) of a custom,
+     * fully JSON-defined model's response (see [com.google.ai.sample.util.CustomModelRegistry]).
+     */
+    fun customModelPartialResponseFromWebView(text: String) {
+        photoReasoningViewModel?.onCustomModelPartialResponse(text)
+    }
+
+    /** Called by [WebViewBridge] with the final, complete response text of a custom model's turn. */
+    fun customModelFinalResponseFromWebView(text: String) {
+        photoReasoningViewModel?.onCustomModelFinalResponse(text)
+    }
+
+    /** Called by [WebViewBridge] when a custom model's turn failed in JavaScript. */
+    fun customModelErrorFromWebView(message: String) {
+        photoReasoningViewModel?.onCustomModelError(message)
     }
 
     private fun registerNetworkCallback() {

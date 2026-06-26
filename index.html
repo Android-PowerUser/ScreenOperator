@@ -510,6 +510,15 @@ const Bridge = {
   /* Command pattern overrides (remote-updatable command syntax for new models) */
   setCommandPatternOverrides:(json)=>{ if(getInAndroid()) return Android.setCommandPatternOverrides(json); },
   getCommandPatternOverrides:()=> getInAndroid() ? Android.getCommandPatternOverrides() : '[]',
+
+  /* Custom models (fully JSON-defined, network call happens here in JS) */
+  setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
+  getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
+  setCustomModelApiKey:(modelId,key)=>{ if(getInAndroid()) Android.setCustomModelApiKey(modelId,key); },
+  getCustomModelApiKey:(modelId)=> getInAndroid() ? Android.getCustomModelApiKey(modelId) : '',
+  onCustomModelPartialResponse:(text)=>{ if(getInAndroid()) Android.onCustomModelPartialResponse(text); },
+  onCustomModelFinalResponse:(text)=>{ if(getInAndroid()) Android.onCustomModelFinalResponse(text); },
+  onCustomModelError:(message)=>{ if(getInAndroid()) Android.onCustomModelError(message); },
 };
 
 /* ════════════════════════════════════════════════════════
@@ -588,21 +597,6 @@ let currentProviderId = 'PUTER';
 let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
-
-/* ════════════════════════════════════════════════════════
-   COMMAND PATTERN OVERRIDES
-   Optional file "command-patterns.json" next to this index.html, fetched relative to
-   the WebView's base URL. Lets a new model's slightly different command syntax (e.g.
-   "Click('...')" instead of "click(\"...\")") be supported via a repo commit, without
-   an app update. Safe to omit entirely - 404/parse errors are ignored.
-════════════════════════════════════════════════════════ */
-window.onAndroidReady = function() {
-  if (!getInAndroid()) return;
-  fetch('command-patterns.json', { cache: 'no-store' })
-    .then(r => r.ok ? r.text() : null)
-    .then(json => { if (json) Bridge.setCommandPatternOverrides(json); })
-    .catch(() => { /* file is optional; ignore if missing or fetch fails */ });
-};
 
 /* ════════════════════════════════════════════════════════
    INIT
@@ -763,18 +757,173 @@ function buildModelDropdown() {
 
   const ordered = [
     ...MODELS.filter(m=>firstIds.has(m.id)),
-    ...MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'),
+    ...MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'&&m.apiProvider!=='CUSTOM'),
     ...MODELS.filter(m=>m.apiProvider==='HUMAN_EXPERT'&&!strikeIds.has(m.id)),
     ...MODELS.filter(m=>vercelIds.has(m.id)&&!strikeIds.has(m.id)),
+    ...MODELS.filter(m=>m.apiProvider==='CUSTOM'&&!strikeIds.has(m.id)),
     ...MODELS.filter(m=>strikeIds.has(m.id)),
   ];
 
   ordered.forEach((m,i) => {
     if (!m.strike && ordered[i-1]?.strike) addSection('Deactivated');
     if (m.apiProvider==='VERCEL' && !m.strike && ordered[i-1]?.apiProvider!=='VERCEL') addSection('Vercel');
+    if (m.apiProvider==='CUSTOM' && !m.strike && ordered[i-1]?.apiProvider!=='CUSTOM') addSection('Custom');
     addItem(m);
   });
 }
+
+/* ════════════════════════════════════════════════════════
+   CUSTOM MODELS
+   Optional file "custom-models.json" next to this index.html (see docs/command-pattern-
+   overrides.md's sibling doc for the format). Each entry describes a genuinely new model/
+   provider - id, endpoint, modelName, etc. - with no corresponding native ModelOption at
+   all. They show up in the model picker like any built-in model; the actual API call for
+   them is made right here in JS (see window.onCustomModelRequest below) once selected.
+════════════════════════════════════════════════════════ */
+function mergeCustomModelsIntoDropdown(json) {
+  let entries;
+  try {
+    entries = JSON.parse(json);
+  } catch (e) {
+    return;
+  }
+  if (!Array.isArray(entries)) return;
+
+  // Remove any previously merged custom entries first, so re-applying a config (e.g. after
+  // it changed) doesn't accumulate stale duplicates.
+  MODELS = MODELS.filter(m => m.apiProvider !== 'CUSTOM');
+
+  entries.forEach(e => {
+    if (!e || !e.id || !e.endpoint || !e.modelName) return;
+    MODELS.push({
+      id: e.id,
+      displayName: e.displayName || e.id,
+      apiProvider: 'CUSTOM',
+      supportsTopK: !!e.supportsTopK,
+      supportsScreenshot: !!e.supportsScreenshot,
+      isOffline: false,
+      strike: false,
+      hint: 'Custom model (defined in custom-models.json)'
+    });
+  });
+
+  buildModelDropdown();
+  applyModelSelection(currentModelId);
+}
+
+/**
+ * Called by native (PhotoReasoningViewModel.reasonWithCustomJsModel, via MainActivity) once
+ * per turn when the currently active model is a custom one. `payloadJsonString` contains
+ * everything needed to build the request: system message, db-entries text, sanitized chat
+ * history, the current user text, optional base64 image data URIs, and the model's endpoint/
+ * auth/streaming config (see CustomModelDefinition on the native side).
+ *
+ * This is the actual network call for custom models: it runs as a normal `fetch()` here in
+ * the WebView, not in native Kotlin networking code - which is what lets a brand-new model/
+ * provider be added with zero app release (as long as its endpoint is reachable via fetch()
+ * from this page, i.e. supports CORS - verify this per provider).
+ *
+ * Reports back via Bridge.onCustomModelPartialResponse/onCustomModelFinalResponse/
+ * onCustomModelError, which feed into the exact same chat/command-processing pipeline native
+ * code already uses for every other model.
+ */
+window.onCustomModelRequest = async function(payloadJsonString) {
+  let payload;
+  try {
+    payload = JSON.parse(payloadJsonString);
+  } catch (e) {
+    Bridge.onCustomModelError('Invalid request payload: ' + e.message);
+    return;
+  }
+
+  const messages = [];
+  const systemParts = [];
+  if (payload.systemMessage) systemParts.push(payload.systemMessage);
+  if (payload.databaseEntries) systemParts.push('Additional context from database:\n' + payload.databaseEntries);
+  if (systemParts.length) messages.push({ role: 'system', content: systemParts.join('\n\n') });
+
+  (payload.history || []).forEach(m => {
+    if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
+  });
+
+  if (payload.images && payload.images.length > 0) {
+    const content = [];
+    if (payload.userText) content.push({ type: 'text', text: payload.userText });
+    payload.images.forEach(dataUri => content.push({ type: 'image_url', image_url: { url: dataUri } }));
+    messages.push({ role: 'user', content: content });
+  } else {
+    messages.push({ role: 'user', content: payload.userText || '' });
+  }
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (payload.apiKeyHeader && payload.apiKey) {
+    headers[payload.apiKeyHeader] = (payload.apiKeyPrefix || '') + payload.apiKey;
+  }
+
+  const requestBody = JSON.stringify({
+    model: payload.modelName,
+    messages: messages,
+    stream: !!payload.stream
+  });
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+
+  try {
+    const response = await fetch(payload.endpoint, {
+      method: 'POST',
+      headers: headers,
+      body: requestBody,
+      signal: window.__customModelAbortController.signal
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.text()).slice(0, 300); } catch (e) {}
+      throw new Error('HTTP ' + response.status + (detail ? (': ' + detail) : ''));
+    }
+
+    if (payload.stream && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]' || data === '') continue;
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+            if (delta) {
+              acc += delta;
+              Bridge.onCustomModelPartialResponse(acc);
+            }
+          } catch (e) { /* ignore malformed SSE chunk */ }
+        }
+      }
+    } else {
+      const json = await response.json();
+      acc = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
+    }
+
+    Bridge.onCustomModelFinalResponse(acc);
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      Bridge.onCustomModelError(e && e.message ? e.message : String(e));
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+};
 
 function toggleModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
@@ -928,6 +1077,28 @@ window.onAndroidReady = function() {
   // Termux background setting
   termuxBackground = Bridge.getTermuxBackground();
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+
+  // ── Remote config (see docs/command-pattern-overrides.md) ──────────────────
+  // Both files are optional next to this index.html, fetched relative to the WebView's
+  // base URL. Missing/invalid files are ignored - the app falls back to built-in behavior.
+
+  // New/alternate command syntax for existing actions (e.g. a new model emits
+  // "Click('...')" instead of "click(\"...\")") - no app update needed to support it.
+  fetch('command-patterns.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setCommandPatternOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Genuinely new models/providers, defined entirely in JSON. The actual API call for
+  // these happens in window.onCustomModelRequest() below (fetch()), not in native code.
+  fetch('custom-models.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      Bridge.setCustomModelOverrides(json);
+      mergeCustomModelsIntoDropdown(json);
+    })
+    .catch(() => { /* optional file */ });
 };
 
 // Android System Back Button Handler (returns Boolean to WebViewBridge)
@@ -992,6 +1163,10 @@ function clearChat() {
 }
 function stopGeneration() {
   Bridge.stopGeneration();
+  // Custom (JS-driven) models have no native network call to cancel - abort the fetch() here.
+  if (window.__customModelAbortController) {
+    window.__customModelAbortController.abort();
+  }
   window.onGenerationStateChanged(false, false);
 }
 
