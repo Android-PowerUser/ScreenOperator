@@ -395,64 +395,6 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
     }
 
-    // ── Custom Models (fully JSON-defined, JS-driven models - no native code needed) ──────────
-    // Lets a genuinely new model/provider be added purely via custom-models.json: the actual
-    // network call happens in window.onCustomModelRequest() in the WebView (fetch()), not in
-    // native code. See CustomModelRegistry for the in-memory state and reasonWithCustomJsModel
-    // in PhotoReasoningViewModel for how a turn is delegated to JS.
-
-    @JavascriptInterface
-    fun setCustomModelOverrides(json: String): Int {
-        return try {
-            val installed = com.google.ai.sample.util.CustomModelRegistry.setModels(json)
-            com.google.ai.sample.util.CustomModelPreferences.saveModelsJson(context, json)
-            installed
-        } catch (e: Exception) {
-            Log.e(TAG, "setCustomModelOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getCustomModelOverrides(): String {
-        return com.google.ai.sample.util.CustomModelPreferences.loadModelsJson(context) ?: "[]"
-    }
-
-    @JavascriptInterface
-    fun setCustomModelApiKey(modelId: String, key: String) {
-        try {
-            com.google.ai.sample.util.CustomModelPreferences.saveApiKey(context, modelId, key)
-        } catch (e: Exception) {
-            Log.e(TAG, "setCustomModelApiKey error: ${e.message}")
-        }
-    }
-
-    @JavascriptInterface
-    fun getCustomModelApiKey(modelId: String): String {
-        return com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, modelId) ?: ""
-    }
-
-    @JavascriptInterface
-    fun onCustomModelPartialResponse(text: String) {
-        mainActivity.runOnUiThread {
-            mainActivity.customModelPartialResponseFromWebView(text)
-        }
-    }
-
-    @JavascriptInterface
-    fun onCustomModelFinalResponse(text: String) {
-        mainActivity.runOnUiThread {
-            mainActivity.customModelFinalResponseFromWebView(text)
-        }
-    }
-
-    @JavascriptInterface
-    fun onCustomModelError(message: String) {
-        mainActivity.runOnUiThread {
-            mainActivity.customModelErrorFromWebView(message)
-        }
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
