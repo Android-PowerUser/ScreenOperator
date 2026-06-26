@@ -1534,6 +1534,13 @@ class PhotoReasoningViewModel(
 
                 val apiKey = com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, customModel.id) ?: ""
 
+                // Same storage as every other model (GenerationSettingsPreferences is keyed by
+                // an arbitrary string, not by the ModelOption enum) - just keyed by the custom
+                // model's id instead of model.modelName. See WebViewBridge.getGenerationSettings/
+                // saveGenerationSettings, which the WebView's existing settings UI already calls
+                // with this same id.
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, customModel.id)
+
                 val payload = org.json.JSONObject().apply {
                     put("modelId", customModel.id)
                     put("modelName", customModel.modelName)
@@ -1542,6 +1549,11 @@ class PhotoReasoningViewModel(
                     put("apiKeyPrefix", customModel.apiKeyPrefix)
                     put("apiKey", apiKey)
                     put("stream", customModel.stream)
+                    put("temperature", genSettings.temperature)
+                    put("topP", genSettings.topP)
+                    if (customModel.supportsTopK) {
+                        put("topK", genSettings.topK)
+                    }
                     put("systemMessage", systemMessageText)
                     put("databaseEntries", formattedDbEntries)
                     put("history", historyJson)

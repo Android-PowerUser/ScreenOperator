@@ -863,7 +863,10 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   const requestBody = JSON.stringify({
     model: payload.modelName,
     messages: messages,
-    stream: !!payload.stream
+    stream: !!payload.stream,
+    temperature: payload.temperature,
+    top_p: payload.topP,
+    ...(payload.topK !== undefined ? { top_k: payload.topK } : {})
   });
 
   window.__customModelAbortController = new AbortController();

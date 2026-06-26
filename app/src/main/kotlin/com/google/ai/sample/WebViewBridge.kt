@@ -175,8 +175,17 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun getGenerationSettings(modelId: String): String {
         return try {
-            val model = ModelOption.valueOf(modelId)
-            val s = GenerationSettingsPreferences.loadSettings(context, model.modelName)
+            // Resolve to the persistence key the same way regardless of whether this is a
+            // built-in ModelOption or a custom (JSON-defined) model: GenerationSettingsPreferences
+            // itself is already keyed by an arbitrary string, not by the ModelOption enum, so no
+            // new storage mechanism is needed here - only this id-resolution step.
+            val settingsKey = try {
+                ModelOption.valueOf(modelId).modelName
+            } catch (e: IllegalArgumentException) {
+                com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
+                    ?: throw e
+            }
+            val s = GenerationSettingsPreferences.loadSettings(context, settingsKey)
             JSONObject()
                 .put("temperature", s.temperature)
                 .put("topP", s.topP)
@@ -191,10 +200,15 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun saveGenerationSettings(modelId: String, temperature: Float, topP: Float, topK: Int) {
         try {
-            val model = ModelOption.valueOf(modelId)
+            val settingsKey = try {
+                ModelOption.valueOf(modelId).modelName
+            } catch (e: IllegalArgumentException) {
+                com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
+                    ?: throw e
+            }
             GenerationSettingsPreferences.saveSettings(
                 context,
-                model.modelName,
+                settingsKey,
                 GenerationSettingsPreferences.GenerationSettings(temperature, topP, topK)
             )
         } catch (e: Exception) {
