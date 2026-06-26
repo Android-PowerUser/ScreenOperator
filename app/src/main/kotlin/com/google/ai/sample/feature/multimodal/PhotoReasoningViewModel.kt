@@ -690,7 +690,7 @@ class PhotoReasoningViewModel(
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
         if (currentKey != null) {
             generativeModel = GenerativeModel(
-                modelName = modelName,
+                modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                 apiKey = currentKey
             )
             // Recreate chat with new model
@@ -1162,7 +1162,7 @@ class PhotoReasoningViewModel(
             val modelApiKey = if (currentModel.isOfflineModel) "offline-no-key-needed" else (currentKey ?: "")
             if (currentModel.isOfflineModel || modelApiKey.isNotBlank()) {
                 generativeModel = GenerativeModel(
-                    modelName = currentModel.modelName,
+                    modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                     apiKey = modelApiKey,
                     generationConfig = config
                 )
@@ -1218,9 +1218,11 @@ class PhotoReasoningViewModel(
                     }
 
                 // CerebrasRequest braucht stream-Feld — inline als JSON-String um Datenklasse nicht zu ändern
-                val selectedModelName = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().modelName
+                val currentCerebrasModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                val selectedModelName = currentCerebrasModel.modelName
+                val wireModelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentCerebrasModel)
                 val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, selectedModelName)
-                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":${genSettings.temperature.toDouble()},"top_p":${genSettings.topP.toDouble()},"stream":true}"""
+                val streamingBody = """{"model":"$wireModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":${genSettings.temperature.toDouble()},"top_p":${genSettings.topP.toDouble()},"stream":true}"""
                 val mediaType = "application/json".toMediaType()
                 val client = OkHttpClient()
 
@@ -1380,7 +1382,7 @@ class PhotoReasoningViewModel(
                 ignoreUnknownKeys = true
             }
             val requestBody = MistralRequest(
-                model = currentModel.modelName,
+                model = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                 messages = apiMessages,
                 temperature = genSettings.temperature.toDouble().coerceAtLeast(0.01),
                 top_p = genSettings.topP.toDouble().coerceAtLeast(0.01),
@@ -1683,7 +1685,7 @@ class PhotoReasoningViewModel(
                 }
 
                 val requestBody = com.google.ai.sample.network.PuterRequest(
-                    model = currentModel.modelName,
+                    model = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                     messages = apiMessages,
                     temperature = genSettings.temperature.toDouble(),
                     top_p = genSettings.topP.toDouble(),

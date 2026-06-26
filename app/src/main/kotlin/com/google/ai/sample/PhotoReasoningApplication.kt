@@ -55,5 +55,19 @@ class PhotoReasoningApplication : Application() {
         com.google.ai.sample.util.CustomModelPreferences.loadActiveModelId(this)?.let { savedId ->
             com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(savedId)
         }
+
+        // Re-apply any model identifier overrides (corrected/replacement wire-level model
+        // names for existing built-in models) previously received from the WebView bundle.
+        com.google.ai.sample.util.ModelIdentifierOverridePreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.ModelIdentifierOverrides.setRemoteOverrides(savedJson)
+            Log.d(TAG, "Restored $applied model identifier override(s) from preferences")
+        }
+
+        // Re-apply any offline model download overrides (corrected URL/size/extra files for
+        // existing built-in offline models) previously received from the WebView bundle.
+        com.google.ai.sample.util.OfflineModelOverridePreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.OfflineModelOverrides.setRemoteOverrides(savedJson)
+            Log.d(TAG, "Restored $applied offline model override(s) from preferences")
+        }
     }
 }

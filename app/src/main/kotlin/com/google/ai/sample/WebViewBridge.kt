@@ -395,6 +395,52 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
     }
 
+    // ── Model Identifier Overrides (remote-updatable wire-level model names) ───
+    // Lets the WebView bundle correct the API-side model identifier string for an *existing*
+    // built-in ModelOption (see ModelIdentifierOverrides for the safety boundary). This is
+    // what makes "a Gemini preview model got renamed/retired" fixable via a repo commit
+    // instead of an app release.
+
+    @JavascriptInterface
+    fun setModelIdentifierOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.ModelIdentifierOverrides.setRemoteOverrides(json)
+            com.google.ai.sample.util.ModelIdentifierOverridePreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setModelIdentifierOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getModelIdentifierOverrides(): String {
+        return com.google.ai.sample.util.ModelIdentifierOverridePreferences.load(context) ?: "[]"
+    }
+
+    // ── Offline Model Overrides (remote-updatable download URL/size/extra files) ─
+    // Lets the WebView bundle correct the download metadata for an *existing* built-in
+    // offline ModelOption (see OfflineModelOverrides for the safety boundary). This is what
+    // makes "a Hugging Face download link moved" fixable via a repo commit instead of an app
+    // release.
+
+    @JavascriptInterface
+    fun setOfflineModelOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.OfflineModelOverrides.setRemoteOverrides(json)
+            com.google.ai.sample.util.OfflineModelOverridePreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setOfflineModelOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getOfflineModelOverrides(): String {
+        return com.google.ai.sample.util.OfflineModelOverridePreferences.load(context) ?: "[]"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

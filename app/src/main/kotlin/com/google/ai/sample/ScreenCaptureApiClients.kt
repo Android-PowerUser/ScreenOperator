@@ -121,7 +121,7 @@ internal suspend fun callMistralApi(
         }
 
         val requestBody = ServiceMistralRequest(
-            model = modelName,
+            model = currentModelOption?.let { com.google.ai.sample.util.ModelIdentifierOverrides.resolve(it) } ?: modelName,
             messages = apiMessages
         )
 
@@ -259,7 +259,7 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
         }
 
         val requestBody = com.google.ai.sample.network.PuterRequest(
-            model = modelName,
+            model = currentModelOption?.let { com.google.ai.sample.util.ModelIdentifierOverrides.resolve(it) } ?: modelName,
             messages = apiMessages,
             max_tokens = maxTokens
         )
@@ -357,7 +357,10 @@ internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory:
             }
         }
 
-        val requestBody = ServiceGroqRequest(model = modelName, messages = apiMessages)
+        val requestBody = ServiceGroqRequest(
+            model = currentModelOption?.let { com.google.ai.sample.util.ModelIdentifierOverrides.resolve(it) } ?: modelName,
+            messages = apiMessages
+        )
         val json = Json {
             ignoreUnknownKeys = true
             serializersModule = SerializersModule {

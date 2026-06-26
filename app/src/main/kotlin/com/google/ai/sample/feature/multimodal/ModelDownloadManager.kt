@@ -202,7 +202,7 @@ object ModelDownloadManager {
         // Delete temp files for full package
         val externalFilesDir = context.getExternalFilesDir(null)
         if (externalFilesDir != null) {
-            val targets = buildDownloadTargets(context, model, model.downloadUrl ?: "")
+            val targets = buildDownloadTargets(context, model, com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model) ?: "")
             targets.forEach { target ->
                 if (target.tempFile.exists()) {
                     target.tempFile.delete()
@@ -246,7 +246,7 @@ object ModelDownloadManager {
     private fun buildDownloadTargets(context: Context, model: ModelOption, primaryUrl: String): List<DownloadTarget> {
         val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
         val primaryFilename = model.offlineModelFilename ?: return emptyList()
-        val urls = listOf(primaryUrl) + model.additionalDownloadUrls
+        val urls = listOf(primaryUrl) + com.google.ai.sample.util.OfflineModelOverrides.effectiveAdditionalDownloadUrls(model)
         val filenames = urls.mapIndexedNotNull { idx, url ->
             if (idx == 0) primaryFilename else filenameFromUrl(url)
         }

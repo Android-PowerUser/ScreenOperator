@@ -511,6 +511,14 @@ const Bridge = {
   setCommandPatternOverrides:(json)=>{ if(getInAndroid()) return Android.setCommandPatternOverrides(json); },
   getCommandPatternOverrides:()=> getInAndroid() ? Android.getCommandPatternOverrides() : '[]',
 
+  /* Model identifier overrides (remote-updatable wire-level model name for built-in models) */
+  setModelIdentifierOverrides:(json)=>{ if(getInAndroid()) return Android.setModelIdentifierOverrides(json); },
+  getModelIdentifierOverrides:()=> getInAndroid() ? Android.getModelIdentifierOverrides() : '[]',
+
+  /* Offline model overrides (remote-updatable download URL/size/extra files) */
+  setOfflineModelOverrides:(json)=>{ if(getInAndroid()) return Android.setOfflineModelOverrides(json); },
+  getOfflineModelOverrides:()=> getInAndroid() ? Android.getOfflineModelOverrides() : '[]',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1086,7 +1094,8 @@ window.onAndroidReady = function() {
   termuxBackground = Bridge.getTermuxBackground();
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
 
-  // ── Remote config (see docs/command-pattern-overrides.md) ──────────────────
+  // ── Remote config (see docs/command-pattern-overrides.md, docs/model-identifier-
+  // overrides.md, docs/offline-model-overrides.md) ───────────────────────────
   // Both files are optional next to this index.html, fetched relative to the WebView's
   // base URL. Missing/invalid files are ignored - the app falls back to built-in behavior.
 
@@ -1106,6 +1115,20 @@ window.onAndroidReady = function() {
       Bridge.setCustomModelOverrides(json);
       mergeCustomModelsIntoDropdown(json);
     })
+    .catch(() => { /* optional file */ });
+
+  // Corrected wire-level model identifier for an *existing* built-in model (e.g. a Gemini
+  // preview model got renamed/retired by Google) - no app update needed to fix it.
+  fetch('model-identifier-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setModelIdentifierOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Corrected download URL/size/extra files for an *existing* built-in offline model (e.g. a
+  // Hugging Face link moved) - no app update needed to fix it.
+  fetch('offline-model-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setOfflineModelOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 
