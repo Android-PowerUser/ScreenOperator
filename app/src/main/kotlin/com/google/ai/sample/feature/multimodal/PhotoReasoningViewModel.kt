@@ -2360,11 +2360,16 @@ class PhotoReasoningViewModel(
     }
 
     /**
-     * Restore the system message to its default value
+     * Restore the system message to its default value.
+     *
+     * The authoritative default now lives in index.html (DEFAULT_SYSTEM_MSG).
+     * Bridge.restoreSystemMessage() in JS calls Android.setSystemMessage(DEFAULT_SYSTEM_MSG)
+     * directly, so the full default text is immediately written back to prefs via
+     * updateSystemMessage(). This function is kept as a fallback; getDefaultSystemMessage()
+     * returns "" so calling it is effectively a no-op from the native side alone.
      */
     fun restoreSystemMessage(context: Context) {
-        val defaultMessage = SystemMessagePreferences.getDefaultSystemMessage()
-        updateSystemMessage(defaultMessage, context)
+        updateSystemMessage(SystemMessagePreferences.getDefaultSystemMessage(), context)
     }
 
     /**

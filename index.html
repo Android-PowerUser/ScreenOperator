@@ -438,9 +438,9 @@ const getInAndroid = () => typeof window.Android !== 'undefined';
 
 const Bridge = {
   /* System message */
-  getSystemMessage:()=> getInAndroid() ? Android.getSystemMessage() : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
+  getSystemMessage:()=> getInAndroid() ? (Android.getSystemMessage()||DEFAULT_SYSTEM_MSG) : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
   setSystemMessage:(m)=>{ getInAndroid() ? Android.setSystemMessage(m) : LS.setItem('sysMsg',m); },
-  restoreSystemMessage:()=>{ if(getInAndroid()) Android.restoreSystemMessage(); else LS.setItem('sysMsg', DEFAULT_SYSTEM_MSG); },
+  restoreSystemMessage:()=>{ if(getInAndroid()) Android.setSystemMessage(DEFAULT_SYSTEM_MSG); else LS.setItem('sysMsg', DEFAULT_SYSTEM_MSG); },
 
   /* Termux background */
   getTermuxBackground:()=> getInAndroid() ? Android.getTermuxBackground() : (LS.getItem('termuxBg')==='true'),
