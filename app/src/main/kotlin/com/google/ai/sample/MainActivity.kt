@@ -549,7 +549,6 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
-    }
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
         Log.i(TAG, "purchasesUpdatedListener: BillingResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}")
