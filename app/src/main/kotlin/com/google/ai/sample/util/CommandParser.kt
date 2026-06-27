@@ -19,7 +19,9 @@ object CommandParser {
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
         OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
-        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND
+        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND,
+        /** Container type for all action types defined remotely via custom-action-types.json. */
+        WEBVIEW_CUSTOM_ACTION
     }
 
     // Data class to hold pattern information
@@ -107,6 +109,12 @@ object CommandParser {
     @Volatile
     private var remotePatterns: List<PatternInfo> = emptyList()
 
+    // Entirely new action types defined in the remote WebView bundle (custom-action-types.json).
+    // Each entry carries its own id and regex; matches are emitted as Command.WebViewCustomAction
+    // and executed by calling window.onCustomAction(id, groups[]) in JavaScript.
+    @Volatile
+    private var customActionPatterns: List<CustomActionTypeConfig.ParsedEntry> = emptyList()
+
     /**
      * Installs additional command-recognition patterns from a remotely supplied JSON config.
      * Each entry may only reference an existing [CommandType]; unknown types or invalid
@@ -135,6 +143,28 @@ object CommandParser {
     @Synchronized
     fun clearRemotePatternOverrides() {
         remotePatterns = emptyList()
+    }
+
+    /**
+     * Installs entirely new action type definitions from a remotely supplied JSON config.
+     * Each entry must have a unique `id` and a `regex`; unknown/malformed entries are
+     * skipped (logged) rather than causing a crash. Matches are emitted as
+     * [Command.WebViewCustomAction] and executed by the native side calling
+     * `window.onCustomAction(id, groups[])` back into JavaScript.
+     *
+     * @return the number of action types that were successfully installed.
+     */
+    @Synchronized
+    fun setCustomActionTypes(json: String): Int {
+        customActionPatterns = CustomActionTypeConfig.parse(json)
+        Log.d(TAG, "Installed ${customActionPatterns.size} custom action type(s)")
+        return customActionPatterns.size
+    }
+
+    /** Removes all remotely installed custom action types. */
+    @Synchronized
+    fun clearCustomActionTypes() {
+        customActionPatterns = emptyList()
     }
 
     // Buffer for storing partial text between calls
@@ -219,6 +249,7 @@ object CommandParser {
             is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
             is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
             is Command.TermuxCommand -> Log.d(TAG, "Command details: TermuxCommand(\"${command.command}\")")
+            is Command.WebViewCustomAction -> Log.d(TAG, "Command details: WebViewCustomAction(id=\"${command.id}\", groups=${command.groups})")
         }
     }
 
@@ -284,6 +315,36 @@ object CommandParser {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error finding matches for pattern ${patternInfo.id}: ${e.message}", e)
+            }
+        }
+        for (entry in customActionPatterns) {
+            try {
+                entry.regex.findAll(text).forEach { matchResult ->
+                    try {
+                        val groups = matchResult.groupValues.drop(1)
+                        val command = Command.WebViewCustomAction(entry.id, groups)
+                        foundRawMatches.add(
+                            ProcessedMatch(
+                                startIndex = matchResult.range.first,
+                                endIndex = matchResult.range.last,
+                                command = command,
+                                commandType = CommandType.WEBVIEW_CUSTOM_ACTION
+                            )
+                        )
+                        Log.d(
+                            TAG,
+                            "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=$command, Type=WEBVIEW_CUSTOM_ACTION, id=${entry.id}"
+                        )
+                    } catch (e: Exception) {
+                        Log.e(
+                            TAG,
+                            "Error building WebViewCustomAction for id=${entry.id} with match ${matchResult.value}: ${e.message}",
+                            e
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error finding matches for custom action type id=${entry.id}: ${e.message}", e)
             }
         }
         return foundRawMatches

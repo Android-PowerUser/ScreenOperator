@@ -441,6 +441,29 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.OfflineModelOverridePreferences.load(context) ?: "[]"
     }
 
+    // ── Custom Action Types (remote-updatable, entirely new action kinds) ──────────────────
+    // Lets the WebView bundle define completely new action types (regex + id) without a native
+    // app release. When the command parser matches one of these, it emits a
+    // Command.WebViewCustomAction and the native side calls window.onCustomAction(id, groups[])
+    // so the JS handler can invoke any existing Android.* bridge method to carry out the action.
+
+    @JavascriptInterface
+    fun setCustomActionTypes(json: String): Int {
+        return try {
+            val installed = com.google.ai.sample.util.CommandParser.setCustomActionTypes(json)
+            com.google.ai.sample.util.CustomActionTypePreferences.save(context, json)
+            installed
+        } catch (e: Exception) {
+            Log.e(TAG, "setCustomActionTypes error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getCustomActionTypes(): String {
+        return com.google.ai.sample.util.CustomActionTypePreferences.load(context) ?: "[]"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

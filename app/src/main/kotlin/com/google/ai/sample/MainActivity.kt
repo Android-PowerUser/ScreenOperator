@@ -1433,6 +1433,16 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Evaluates a JavaScript expression in the active WebView on the UI thread.
+     * No-op if no WebView is currently loaded.
+     */
+    fun evaluateWebViewJs(js: String) {
+        webViewInstance?.post {
+            webViewInstance?.evaluateJavascript(js, null)
+        }
+    }
+
+    /**
      * Escapes a string so it can be safely embedded inside a single-quoted JS string literal
      * passed to [WebView.evaluateJavascript]. Delegates to [WebViewBridge.jsEscape] so both
      * directions of the bridge use identical escaping logic.

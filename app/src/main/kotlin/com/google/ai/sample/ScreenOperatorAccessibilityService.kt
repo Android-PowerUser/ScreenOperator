@@ -423,6 +423,23 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     pressEnterKey()
                 }
             }
+            is Command.WebViewCustomAction -> {
+                // Execution is fully JS-driven: call window.onCustomAction(id, groups[]) in
+                // the WebView and let the JS handler invoke any existing Android.* bridge method.
+                executeSyncCommandAction(
+                    logMessage = "Executing WebView custom action: id=${command.id}, groups=${command.groups}",
+                    toastMessage = "Executing custom action: ${command.id}"
+                ) {
+                    val groupsJson = org.json.JSONArray(command.groups).toString()
+                    val escapedId = command.id
+                        .replace("\\", "\\\\")
+                        .replace("'", "\\'")
+                    mainHandler.post {
+                        MainActivity.getInstance()
+                            ?.evaluateWebViewJs("window.onCustomAction && window.onCustomAction('$escapedId', $groupsJson)")
+                    }
+                }
+            }
         }.also {
             if (command !is Command.TakeScreenshot && command !is Command.TermuxCommand && command !is Command.Completed) {
                 sawNonTermuxCommandSinceLastScreenshot = true

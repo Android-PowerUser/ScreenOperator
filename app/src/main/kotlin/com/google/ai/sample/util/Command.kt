@@ -28,4 +28,14 @@ sealed class Command {
     data class TermuxCommand(val command: String) : Command()
     object UseHighReasoningModel : Command()
     object UseLowReasoningModel : Command()
+    /**
+     * A custom action type defined entirely in the remote WebView bundle
+     * (`custom-action-types.json`). When executed, the native accessibility service calls
+     * `window.onCustomAction(id, groups[])` in JavaScript so the WebView handler can carry
+     * out the actual work using existing `Android.*` bridge methods.
+     *
+     * @param id     The `id` field from the matching custom-action-types entry.
+     * @param groups The regex capture groups (index 0 = first capture group).
+     */
+    data class WebViewCustomAction(val id: String, val groups: List<String>) : Command()
 }

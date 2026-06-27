@@ -69,5 +69,13 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.OfflineModelOverrides.setRemoteOverrides(savedJson)
             Log.d(TAG, "Restored $applied offline model override(s) from preferences")
         }
+
+        // Re-apply any custom action type definitions (new action kinds with regex + JS handler)
+        // previously received from the WebView bundle, so they keep working across app restarts
+        // before the WebView has re-fetched and re-applied its config for the current session.
+        com.google.ai.sample.util.CustomActionTypePreferences.load(this)?.let { savedJson ->
+            val installed = com.google.ai.sample.util.CommandParser.setCustomActionTypes(savedJson)
+            Log.d(TAG, "Restored $installed custom action type(s) from preferences")
+        }
     }
 }
