@@ -12,14 +12,7 @@ object CommandParser {
         CommandType.COMPLETED
     )
 
-    /**
-     * Enum representing the different *kinds* of commands the app knows how to execute.
-     *
-     * This is intentionally public: [CommandPatternConfig] uses it to validate remotely
-     * supplied pattern overrides against a fixed whitelist, so that remote config can only
-     * ever attach a new regular expression to an action that already exists in compiled
-     * code - never introduce a brand-new kind of action.
-     */
+    
     enum class CommandType {
         CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, COMPLETED, WAIT, PRESS_HOME, PRESS_BACK,
         SHOW_RECENT_APPS, SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
