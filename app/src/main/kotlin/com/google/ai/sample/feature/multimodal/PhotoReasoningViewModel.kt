@@ -28,6 +28,7 @@ import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
+import com.google.ai.sample.util.ExecutionPolicyConfig
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.TermuxFeedbackPreferences
@@ -2395,10 +2396,23 @@ class PhotoReasoningViewModel(
                 // There are new commands to execute
                 val newCommands = allCommands.subList(incrementalCommandCount, allCommands.size)
                 Log.d(TAG, "Incremental: Found ${newCommands.size} new commands (total: ${allCommands.size}, already executed: $incrementalCommandCount)")
-                
+
+                // Remote-updatable cap (see ExecutionPolicyConfig / execution-policy-overrides.json)
+                // on how many commands from this single message may run in total. Enforced here
+                // too (not just in the final processCommands() pass below) since most commands are
+                // normally already executed incrementally as they stream in.
+                val maxCommandsPerMessage = ExecutionPolicyConfig.current().maxCommandsPerMessage
+
                 for (command in newCommands) {
                     if (stopExecutionFlag.get()) break
-                    
+
+                    val absoluteIndex = incrementalCommandCount
+                    if (!CommandExecutionLimiter.isWithinLimit(absoluteIndex, maxCommandsPerMessage)) {
+                        Log.d(TAG, "Incremental: Skipping command beyond per-message limit ($maxCommandsPerMessage): $command")
+                        incrementalCommandCount++
+                        continue
+                    }
+
                     // Skip commands that are handled only after streaming has finished.
                     if (command is Command.TakeScreenshot) {
                         Log.d(TAG, "Incremental: Skipping takeScreenshot during streaming (will be handled at end)")
@@ -2468,9 +2482,17 @@ private fun processCommands(text: String) {
         if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) return@launch // Check for cancellation
         try {
             val commandBatch = PhotoReasoningCommandProcessing.parseForFinalExecution(text)
-            val parsedCommands = commandBatch.commands
-            val hasCompletedCommand = commandBatch.hasCompletedCommand
-            val hasTakeScreenshotCommand = commandBatch.hasTakeScreenshotCommand
+            val maxCommandsPerMessage = ExecutionPolicyConfig.current().maxCommandsPerMessage
+            val truncation = CommandExecutionLimiter.truncate(commandBatch.commands, maxCommandsPerMessage)
+            // parsedCommands is the (possibly truncated) list everything below this point works
+            // with. hasCompletedCommand/hasTakeScreenshotCommand are recomputed against it on
+            // purpose: if completed()/takeScreenshot() got cut off by the limit, the existing
+            // logic just below already takes care of appending a fresh TakeScreenshot so the AI
+            // still gets feedback, and markTaskCompletedByAi() further down is correctly skipped
+            // for this turn.
+            val parsedCommands = truncation.commandsToExecute
+            val hasCompletedCommand = parsedCommands.any { it is Command.Completed }
+            val hasTakeScreenshotCommand = parsedCommands.any { it is Command.TakeScreenshot }
             val commandsBeforeCompletion = if (hasCompletedCommand) {
                 parsedCommands.takeWhile { it !is Command.Completed } + Command.Completed
             } else {
@@ -2491,7 +2513,16 @@ private fun processCommands(text: String) {
             }
 
             if (!hasCompletedCommand) {
-                pendingRetrievedInfoForNextScreenshot = buildRetrievedInfoForNextScreenshot(commands)
+                val truncationNote = if (truncation.wasTruncated) {
+                    ExecutionPolicyConfig.current()
+                        .formatTruncationFeedback(truncation.totalCount, truncation.executedCount)
+                } else {
+                    null
+                }
+                pendingRetrievedInfoForNextScreenshot = listOfNotNull(
+                    truncationNote,
+                    buildRetrievedInfoForNextScreenshot(commands)
+                ).joinToString("\n\n").ifBlank { null }
             }
 
             if (commands.isNotEmpty()) {

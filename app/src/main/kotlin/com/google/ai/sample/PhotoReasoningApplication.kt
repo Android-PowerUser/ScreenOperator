@@ -77,5 +77,13 @@ class PhotoReasoningApplication : Application() {
             val installed = com.google.ai.sample.util.CommandParser.setCustomActionTypes(savedJson)
             Log.d(TAG, "Restored $installed custom action type(s) from preferences")
         }
+
+        // Re-apply any execution policy override (max commands executed per AI response, plus
+        // the feedback wording sent back when commands get dropped for exceeding it) previously
+        // received from the WebView bundle.
+        com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.ExecutionPolicyConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored execution policy override from preferences (applied=$applied)")
+        }
     }
 }

@@ -464,6 +464,30 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.CustomActionTypePreferences.load(context) ?: "[]"
     }
 
+    // ── Execution Policy Overrides (remote-updatable per-message command limit) ───────────
+    // Lets the WebView bundle cap how many commands from a single AI response are executed
+    // (and customize the feedback text sent back together with the next screenshot/screen-
+    // elements message when commands were dropped because too many were sent at once)
+    // without a native app release. See ExecutionPolicyConfig for the safety boundary
+    // (missing/invalid config => unlimited, i.e. unchanged behavior).
+
+    @JavascriptInterface
+    fun setExecutionPolicyOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.ExecutionPolicyConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setExecutionPolicyOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getExecutionPolicyOverrides(): String {
+        return com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

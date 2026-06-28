@@ -523,6 +523,10 @@ const Bridge = {
   setCustomActionTypes:(json)=>{ if(getInAndroid()) return Android.setCustomActionTypes(json); },
   getCustomActionTypes:()=> getInAndroid() ? Android.getCustomActionTypes() : '[]',
 
+  /* Execution policy overrides (remote-updatable max commands per message + feedback text) */
+  setExecutionPolicyOverrides:(json)=>{ if(getInAndroid()) return Android.setExecutionPolicyOverrides(json); },
+  getExecutionPolicyOverrides:()=> getInAndroid() ? Android.getExecutionPolicyOverrides() : '{}',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1163,6 +1167,16 @@ window.onAndroidReady = function() {
   fetch('custom-action-types.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setCustomActionTypes(json); })
+    .catch(() => { /* optional file */ });
+
+  // Caps how many commands from a single AI response are executed, and customizes the
+  // feedback text sent back (together with the next screenshot/screen-elements message)
+  // when commands were dropped because the model sent more than the configured limit at
+  // once - e.g. {"maxCommandsPerMessage": 2}. No app update needed to tune the limit or the
+  // wording; see docs/execution-policy-overrides.md.
+  fetch('execution-policy-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setExecutionPolicyOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 
