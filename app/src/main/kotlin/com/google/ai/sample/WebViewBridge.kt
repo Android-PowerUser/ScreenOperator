@@ -531,6 +531,28 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.ErrorClassificationOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── Trial/Donation UI Overrides (remote-updatable dialog text, not the gating logic) ──
+    // Lets the WebView bundle change the wording of the first-launch info dialog, the trial-
+    // expired dialog, and the payment-method dialog, without a native app release. Does NOT
+    // touch TrialManager's trial-length/entitlement logic - see TrialUiConfig's doc comment.
+
+    @JavascriptInterface
+    fun setTrialUiOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.TrialUiConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.TrialUiOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setTrialUiOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getTrialUiOverrides(): String {
+        return com.google.ai.sample.util.TrialUiOverridesPreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

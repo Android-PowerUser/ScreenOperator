@@ -1,5 +1,7 @@
 package com.google.ai.sample
 
+import com.google.ai.sample.util.TrialUiConfig
+
 internal data class TrialStateUiModel(
     val infoMessage: String,
     val shouldShowInfoDialog: Boolean
@@ -9,7 +11,7 @@ internal object TrialStateUiModelResolver {
     fun resolve(state: TrialManager.TrialState): TrialStateUiModel {
         return when (state) {
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> TrialStateUiModel(
-                infoMessage = "Please support the development of the app so that you can continue using it \uD83C\uDF89",
+                infoMessage = TrialUiConfig.current().resolvedExpiredStateInfoMessage(),
                 shouldShowInfoDialog = true
             )
             TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,

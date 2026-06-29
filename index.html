@@ -535,6 +535,10 @@ const Bridge = {
   setErrorClassificationOverrides:(json)=>{ if(getInAndroid()) return Android.setErrorClassificationOverrides(json); },
   getErrorClassificationOverrides:()=> getInAndroid() ? Android.getErrorClassificationOverrides() : '{}',
 
+  /* Trial/donation dialog text overrides (titles, body copy, button labels - not the gating logic) */
+  setTrialUiOverrides:(json)=>{ if(getInAndroid()) return Android.setTrialUiOverrides(json); },
+  getTrialUiOverrides:()=> getInAndroid() ? Android.getTrialUiOverrides() : '{}',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1202,6 +1206,14 @@ window.onAndroidReady = function() {
   fetch('error-classification-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setErrorClassificationOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Wording for the first-launch info dialog, the trial-expired dialog, and the payment-
+  // method dialog (titles/body/button labels) - text only, not whether/when they're shown.
+  // See docs/trial-ui-overrides.md.
+  fetch('trial-ui-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setTrialUiOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 

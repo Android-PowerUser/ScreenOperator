@@ -99,5 +99,12 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.ErrorClassificationConfig.setRemoteOverride(savedJson)
             Log.d(TAG, "Restored error classification override from preferences (applied=$applied)")
         }
+
+        // Re-apply any trial/donation dialog text overrides previously received from the
+        // WebView bundle. Text only - trial length/entitlement logic is untouched.
+        com.google.ai.sample.util.TrialUiOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.TrialUiConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored trial UI override from preferences (applied=$applied)")
+        }
     }
 }
