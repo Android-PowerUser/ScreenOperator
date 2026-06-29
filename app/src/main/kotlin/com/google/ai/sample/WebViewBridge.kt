@@ -488,6 +488,49 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── App Mapping Overrides (remote-updatable openApp() name/package resolution) ────────
+    // Lets the WebView bundle teach openApp("...") about new apps, aliases, or a retuned
+    // fuzzy-match threshold without a native app release. See AppMappingOverridesConfig.
+
+    @JavascriptInterface
+    fun setAppMappingOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.AppMappingOverridesConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.AppMappingOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setAppMappingOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getAppMappingOverrides(): String {
+        return com.google.ai.sample.util.AppMappingOverridesPreferences.load(context) ?: "{}"
+    }
+
+    // ── Error Classification Overrides (remote-updatable AI-provider error matching) ──────
+    // Lets the WebView bundle update the substrings used to detect a quota/rate-limit error
+    // (triggers API key switching + retry) vs. a high-demand/overloaded error (does not switch
+    // keys) - without a native app release, in case the AI provider changes its error wording.
+
+    @JavascriptInterface
+    fun setErrorClassificationOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.ErrorClassificationConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.ErrorClassificationOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setErrorClassificationOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getErrorClassificationOverrides(): String {
+        return com.google.ai.sample.util.ErrorClassificationOverridesPreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

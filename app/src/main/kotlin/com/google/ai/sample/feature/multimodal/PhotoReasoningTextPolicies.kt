@@ -21,10 +21,7 @@ internal object PhotoReasoningTextPolicies {
     }
 
     fun isQuotaExceededError(message: String): Boolean {
-        return message.contains("exceeded your current quota") ||
-            message.contains("code 429") ||
-            message.contains("Too Many Requests", ignoreCase = true) ||
-            message.contains("rate_limit", ignoreCase = true)
+        return com.google.ai.sample.util.ErrorClassificationConfig.current().isQuotaExceededError(message)
     }
 
     /**
@@ -32,10 +29,7 @@ internal object PhotoReasoningTextPolicies {
      * These should NOT trigger API key switching.
      */
     fun isHighDemandError(message: String): Boolean {
-        return message.contains("Service Unavailable (503)") ||
-            message.contains("UNAVAILABLE") ||
-            message.contains("high demand") ||
-            message.contains("overloaded")
+        return com.google.ai.sample.util.ErrorClassificationConfig.current().isHighDemandError(message)
     }
 
     /**

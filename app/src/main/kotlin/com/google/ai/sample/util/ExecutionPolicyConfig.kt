@@ -17,16 +17,23 @@ import org.json.JSONObject
  * ```json
  * {
  *   "maxCommandsPerMessage": 2,
- *   "truncationFeedbackTemplate": "Note: this response contained {total} commands, but only the first {executed} were executed because more than {limit} commands were sent in a single message. Wait for this screenshot before sending more."
+ *   "truncationFeedbackTemplate": "Note: this response contained {total} commands, but only the first {executed} were executed because more than {limit} commands were sent in a single message. Wait for this screenshot before sending more.",
+ *   "maxRelevantScreenElementMessages": 3
  * }
  * ```
  *
  * `maxCommandsPerMessage` <= 0 (or the field missing/the whole file missing) means "unlimited",
  * i.e. the original, unrestricted behavior - the feature is fully opt-in via remote config and
  * never changes existing behavior unless an override is explicitly installed.
+ *
+ * `maxRelevantScreenElementMessages` controls how many of the most recent screenshot messages
+ * keep their "Screen elements:" section intact in the chat history sent to the model; older
+ * ones get collapsed to "no longer relevant" (see [PhotoReasoningScreenElementHistoryPolicy]).
+ * Missing/invalid falls back to the built-in default of 3.
  */
 internal object ExecutionPolicyConfig {
     private const val TAG = "ExecutionPolicyConfig"
+    private const val DEFAULT_MAX_RELEVANT_SCREEN_ELEMENT_MESSAGES = 3
 
     const val DEFAULT_TEMPLATE =
         "Note: this response contained {total} commands, but only the first {executed} were " +
@@ -36,7 +43,8 @@ internal object ExecutionPolicyConfig {
 
     data class Policy(
         val maxCommandsPerMessage: Int = 0,
-        val truncationFeedbackTemplate: String = DEFAULT_TEMPLATE
+        val truncationFeedbackTemplate: String = DEFAULT_TEMPLATE,
+        val maxRelevantScreenElementMessages: Int = DEFAULT_MAX_RELEVANT_SCREEN_ELEMENT_MESSAGES
     ) {
         /** Fills {total}/{executed}/{limit} placeholders into [truncationFeedbackTemplate]. */
         fun formatTruncationFeedback(total: Int, executed: Int): String {
@@ -55,8 +63,9 @@ internal object ExecutionPolicyConfig {
     /**
      * Parses and installs a remotely supplied JSON object describing the execution policy.
      * Malformed JSON or a missing field falls back to defaults (unlimited commands / built-in
-     * feedback template) instead of throwing, so a bad remote config degrades gracefully to
-     * "no limit" rather than crashing the app or blocking command execution.
+     * feedback template / 3 retained screen-element messages) instead of throwing, so a bad
+     * remote config degrades gracefully rather than crashing the app or blocking command
+     * execution.
      *
      * @return 1 if a policy object was successfully parsed and installed, 0 if the payload was
      *   blank/invalid and the previous policy (or defaults) remains in effect.
@@ -69,8 +78,20 @@ internal object ExecutionPolicyConfig {
             val max = obj.optInt("maxCommandsPerMessage", 0)
             val template = obj.optString("truncationFeedbackTemplate", DEFAULT_TEMPLATE)
                 .ifBlank { DEFAULT_TEMPLATE }
-            currentPolicy = Policy(maxCommandsPerMessage = max, truncationFeedbackTemplate = template)
-            Log.d(TAG, "Installed execution policy override: maxCommandsPerMessage=$max")
+            val maxRelevantScreenElementMessages = obj.optInt(
+                "maxRelevantScreenElementMessages",
+                DEFAULT_MAX_RELEVANT_SCREEN_ELEMENT_MESSAGES
+            ).let { if (it < 0) DEFAULT_MAX_RELEVANT_SCREEN_ELEMENT_MESSAGES else it }
+            currentPolicy = Policy(
+                maxCommandsPerMessage = max,
+                truncationFeedbackTemplate = template,
+                maxRelevantScreenElementMessages = maxRelevantScreenElementMessages
+            )
+            Log.d(
+                TAG,
+                "Installed execution policy override: maxCommandsPerMessage=$max, " +
+                    "maxRelevantScreenElementMessages=$maxRelevantScreenElementMessages"
+            )
             1
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse execution policy override: ${e.message}", e)
@@ -78,7 +99,7 @@ internal object ExecutionPolicyConfig {
         }
     }
 
-    /** Reverts to the built-in default policy (unlimited commands). */
+    /** Reverts to the built-in default policy (unlimited commands, 3 retained screenshots). */
     @Synchronized
     fun clearRemoteOverride() {
         currentPolicy = Policy()

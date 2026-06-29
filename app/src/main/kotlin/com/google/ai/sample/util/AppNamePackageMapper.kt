@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentHashMap
 class AppNamePackageMapper(private val context: Context) {
     companion object {
         private const val TAG = "AppNamePackageMapper"
-        private const val MATCH_THRESHOLD = 70
         private val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9]")
     }
     
@@ -23,9 +22,14 @@ class AppNamePackageMapper(private val context: Context) {
     
     // Cache for package name to app name mappings
     private val packageToAppNameCache = ConcurrentHashMap<String, String>()
-    
-    private val appNameVariations = AppMappings.appNameVariations
-    private val manualMappings = AppMappings.manualMappings
+
+    // Intentionally read live (not stored as constructor-time vals): AppMappings.* and
+    // AppMappingOverridesConfig.current() can change at runtime when the WebView bundle pushes
+    // new app-mapping overrides, and getPackageName() should see those on the very next call
+    // without needing the cache to be rebuilt.
+    private val appNameVariations get() = AppMappings.appNameVariations
+    private val manualMappings get() = AppMappings.manualMappings
+    private val matchThreshold get() = AppMappingOverridesConfig.current().matchThreshold
     
     /**
      * Initialize the cache with installed apps
@@ -94,6 +98,19 @@ class AppNamePackageMapper(private val context: Context) {
             appNameToPackageCache[normalizedAppName] = it
             return it
         }
+
+        // Check variations directly (covers a variation that just arrived via a remote
+        // app-mapping override after initializeCache() last ran, so it wasn't pre-populated
+        // into appNameToPackageCache yet).
+        appNameVariations.entries.firstOrNull { (_, variations) ->
+            variations.any { normalizeName(it) == normalizedAppName }
+        }?.let { (baseAppName, _) ->
+            manualMappings[baseAppName]?.let { packageName ->
+                Log.d(TAG, "Found package name via app-mapping variation for '$appName': $packageName")
+                appNameToPackageCache[normalizedAppName] = packageName
+                return packageName
+            }
+        }
         
         // Try to find a match in installed apps
         try {
@@ -111,7 +128,7 @@ class AppNamePackageMapper(private val context: Context) {
                 ?: (null to 0)
             
             // If we found a good match, return its package name
-            if (bestMatchScore >= MATCH_THRESHOLD && bestMatch != null) {
+            if (bestMatchScore >= matchThreshold && bestMatch != null) {
                 val packageName = bestMatch.activityInfo.packageName
                 Log.d(TAG, "Found package name for app name '$appName': $packageName (match score: $bestMatchScore%)")
                 

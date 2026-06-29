@@ -85,5 +85,19 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.ExecutionPolicyConfig.setRemoteOverride(savedJson)
             Log.d(TAG, "Restored execution policy override from preferences (applied=$applied)")
         }
+
+        // Re-apply any app-mapping overrides (new openApp() name/package entries, aliases, or a
+        // retuned fuzzy-match threshold) previously received from the WebView bundle.
+        com.google.ai.sample.util.AppMappingOverridesPreferences.load(this)?.let { savedJson ->
+            val installed = com.google.ai.sample.util.AppMappingOverridesConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored $installed app-mapping override(s) from preferences")
+        }
+
+        // Re-apply any error-classification overrides (quota/rate-limit vs. high-demand error
+        // substrings) previously received from the WebView bundle.
+        com.google.ai.sample.util.ErrorClassificationOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.ErrorClassificationConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored error classification override from preferences (applied=$applied)")
+        }
     }
 }

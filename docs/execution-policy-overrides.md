@@ -20,7 +20,8 @@ A JSON object (not an array, unlike the other override files):
 ```json
 {
   "maxCommandsPerMessage": 2,
-  "truncationFeedbackTemplate": "Note: this response contained {total} commands, but only the first {executed} were executed because more than {limit} commands were sent in a single message without an intermediate screenshot. Please send at most {limit} commands per message, then wait for the next screenshot before continuing."
+  "truncationFeedbackTemplate": "Note: this response contained {total} commands, but only the first {executed} were executed because more than {limit} commands were sent in a single message without an intermediate screenshot. Please send at most {limit} commands per message, then wait for the next screenshot before continuing.",
+  "maxRelevantScreenElementMessages": 3
 }
 ```
 
@@ -37,6 +38,12 @@ A JSON object (not an array, unlike the other override files):
 
   If omitted, a sensible English default is used (see `ExecutionPolicyConfig.kt`). You can set
   this to any wording/language you like, e.g. to match your system prompt's language.
+- `maxRelevantScreenElementMessages` — optional integer (default `3`, negative values also
+  fall back to `3`). How many of the most recent screenshot messages keep their full "Screen
+  elements:" listing in the chat history sent to the model; older ones are collapsed to "no
+  longer relevant" so the context window doesn't fill up with stale element lists (see
+  `PhotoReasoningScreenElementHistoryPolicy.kt`). Raise it if the model needs to refer back
+  further; lower it to save context budget.
 
 ## What counts toward the limit
 

@@ -527,6 +527,14 @@ const Bridge = {
   setExecutionPolicyOverrides:(json)=>{ if(getInAndroid()) return Android.setExecutionPolicyOverrides(json); },
   getExecutionPolicyOverrides:()=> getInAndroid() ? Android.getExecutionPolicyOverrides() : '{}',
 
+  /* App mapping overrides (remote-updatable openApp() name/package resolution) */
+  setAppMappingOverrides:(json)=>{ if(getInAndroid()) return Android.setAppMappingOverrides(json); },
+  getAppMappingOverrides:()=> getInAndroid() ? Android.getAppMappingOverrides() : '{}',
+
+  /* Error classification overrides (remote-updatable quota/high-demand error matching) */
+  setErrorClassificationOverrides:(json)=>{ if(getInAndroid()) return Android.setErrorClassificationOverrides(json); },
+  getErrorClassificationOverrides:()=> getInAndroid() ? Android.getErrorClassificationOverrides() : '{}',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1177,6 +1185,23 @@ window.onAndroidReady = function() {
   fetch('execution-policy-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setExecutionPolicyOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Teaches openApp("...") about new apps/aliases, or retunes the fuzzy-match threshold used
+  // to resolve an app name against installed apps - e.g. {"apps": [{"canonicalName": "...",
+  // "packageName": "...", "variations": [...]}]}. No app update needed; see
+  // docs/app-mappings-overrides.md.
+  fetch('app-mappings-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setAppMappingOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Updates the substrings used to tell a quota/rate-limit error (switches API key + retries)
+  // apart from a high-demand/overloaded error (does not switch keys) - useful if the AI
+  // provider changes its error wording. See docs/error-classification-overrides.md.
+  fetch('error-classification-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setErrorClassificationOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 

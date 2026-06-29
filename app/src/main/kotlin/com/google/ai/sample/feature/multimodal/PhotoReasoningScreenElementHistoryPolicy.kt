@@ -1,7 +1,8 @@
 package com.google.ai.sample.feature.multimodal
 
+import com.google.ai.sample.util.ExecutionPolicyConfig
+
 internal object PhotoReasoningScreenElementHistoryPolicy {
-    private const val MAX_RELEVANT_SCREEN_ELEMENT_MESSAGES = 3
     private const val MARKER = "Screen elements:"
     private const val NO_LONGER_RELEVANT = "no longer relevant"
     private val screenElementsSectionRegex = Regex(
@@ -10,7 +11,7 @@ internal object PhotoReasoningScreenElementHistoryPolicy {
     )
 
     fun sanitizeMessages(messages: List<PhotoReasoningMessage>): List<PhotoReasoningMessage> {
-        var remainingRelevant = MAX_RELEVANT_SCREEN_ELEMENT_MESSAGES
+        var remainingRelevant = ExecutionPolicyConfig.current().maxRelevantScreenElementMessages
         val keepRelevantIds = messages
             .asReversed()
             .filter { hasScreenElements(it.text) && !isAlreadyObsolete(it.text) }
