@@ -539,6 +539,10 @@ const Bridge = {
   setTrialUiOverrides:(json)=>{ if(getInAndroid()) return Android.setTrialUiOverrides(json); },
   getTrialUiOverrides:()=> getInAndroid() ? Android.getTrialUiOverrides() : '{}',
 
+  /* Operational tuning overrides (remote-updatable retry/cooldown timing) */
+  setOperationalTuningOverrides:(json)=>{ if(getInAndroid()) return Android.setOperationalTuningOverrides(json); },
+  getOperationalTuningOverrides:()=> getInAndroid() ? Android.getOperationalTuningOverrides() : '{}',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1214,6 +1218,15 @@ window.onAndroidReady = function() {
   fetch('trial-ui-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setTrialUiOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Retunes Mistral request cooldown/backoff timing, model-download retry timing, and the
+  // exact Termux "process completed" marker string the app strips from command output - all
+  // low-level mechanism knobs, none of which change what the app does, just how patiently/
+  // quickly. See docs/operational-tuning-overrides.md.
+  fetch('operational-tuning-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setOperationalTuningOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 

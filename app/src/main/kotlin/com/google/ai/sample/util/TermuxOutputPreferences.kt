@@ -5,7 +5,6 @@ import android.content.Context
 object TermuxOutputPreferences {
     private const val PREF_NAME = "termux_output_prefs"
     private const val KEY_PENDING_OUTPUT = "pending_output"
-    private const val PROCESS_COMPLETED_PROMPT = "[Process completed - press Enter]"
 
     fun appendOutput(context: Context, output: String) {
         val sanitizedOutput = removeProcessCompletedPrompt(output).trim()
@@ -33,7 +32,8 @@ object TermuxOutputPreferences {
     fun removeProcessCompletedPrompt(output: String): String {
         val lines = output.lineSequence().toList()
         val promptIndex = lines.indexOfLast { it.isNotBlank() }
-        if (promptIndex < 0 || lines[promptIndex].trim() != PROCESS_COMPLETED_PROMPT) {
+        val expectedPrompt = OperationalTuningConfig.current().termuxProcessCompletedPrompt
+        if (promptIndex < 0 || lines[promptIndex].trim() != expectedPrompt) {
             return output
         }
         return lines.take(promptIndex).joinToString("\n")

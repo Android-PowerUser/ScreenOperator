@@ -140,7 +140,11 @@ internal suspend fun callMistralApi(
         val minIntervalMs = if (
             modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
             modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_5.modelName
-        ) 420L else 1500L
+        ) {
+            com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsFastModels
+        } else {
+            com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsDefault
+        }
         val maxAttempts = if (
             modelName == com.google.ai.sample.ModelOption.MISTRAL_LARGE_3.modelName ||
             modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||

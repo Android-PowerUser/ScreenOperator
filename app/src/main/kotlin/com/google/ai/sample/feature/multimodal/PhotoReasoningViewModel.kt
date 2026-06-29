@@ -1413,8 +1413,8 @@ class PhotoReasoningViewModel(
             require(availableKeys.isNotEmpty()) { "No valid Mistral API keys available after filtering" }
             val mistralMinIntervalMs = when (currentModel) {
                 ModelOption.MISTRAL_MEDIUM_3_1,
-                ModelOption.MISTRAL_MEDIUM_3_5 -> 420L
-                else -> 1500L
+                ModelOption.MISTRAL_MEDIUM_3_5 -> com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsFastModels
+                else -> com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsDefault
             }
             val maxAttempts = when (currentModel) {
                 ModelOption.MISTRAL_LARGE_3,

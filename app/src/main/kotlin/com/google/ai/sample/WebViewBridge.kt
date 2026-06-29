@@ -553,6 +553,27 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TrialUiOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── Operational Tuning Overrides (remote-updatable retry/cooldown timing) ──────────────
+    // Lets the WebView bundle retune Mistral request cooldowns, model-download retry timing,
+    // and the Termux "process completed" marker without a native app release.
+
+    @JavascriptInterface
+    fun setOperationalTuningOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.OperationalTuningConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.OperationalTuningOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setOperationalTuningOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getOperationalTuningOverrides(): String {
+        return com.google.ai.sample.util.OperationalTuningOverridesPreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

@@ -106,5 +106,13 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.TrialUiConfig.setRemoteOverride(savedJson)
             Log.d(TAG, "Restored trial UI override from preferences (applied=$applied)")
         }
+
+        // Re-apply any operational tuning overrides (Mistral cooldown timing, model-download
+        // retry timing, the Termux completion marker) previously received from the WebView
+        // bundle.
+        com.google.ai.sample.util.OperationalTuningOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.OperationalTuningConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored operational tuning override from preferences (applied=$applied)")
+        }
     }
 }

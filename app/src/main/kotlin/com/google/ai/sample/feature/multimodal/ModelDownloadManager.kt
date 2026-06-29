@@ -29,9 +29,6 @@ object ModelDownloadManager {
     private const val TAG = "ModelDownloadManager"
     private const val TEMP_SUFFIX = ".downloading"
     private const val BUFFER_SIZE = 8192
-    private const val MAX_RETRIES = 3
-    private const val RETRY_DELAY_MS = 3000L
-    private const val PROGRESS_UPDATE_INTERVAL_MS = 500L
     
     // Notification constants
     private const val DOWNLOAD_CHANNEL_ID = "model_download_channel"
@@ -288,8 +285,12 @@ object ModelDownloadManager {
 
         var retryCount = 0
         var bytesDownloaded = if (tempFile.exists()) tempFile.length() else 0L
+        val tuning = com.google.ai.sample.util.OperationalTuningConfig.current()
+        val maxRetries = tuning.modelDownloadMaxRetries
+        val retryDelayMs = tuning.modelDownloadRetryDelayMs
+        val progressUpdateIntervalMs = tuning.modelDownloadProgressUpdateIntervalMs
 
-        while (retryCount <= MAX_RETRIES) {
+        while (retryCount <= maxRetries) {
             if (!coroutineContext.isActive) return null // Coroutine was cancelled
 
             var connection: HttpURLConnection? = null
@@ -369,7 +370,7 @@ object ModelDownloadManager {
 
                             // Rate-limit progress updates
                             val now = System.currentTimeMillis()
-                            if (now - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL_MS) {
+                            if (now - lastProgressUpdate >= progressUpdateIntervalMs) {
                                 lastProgressUpdate = now
                                 val progress = if (totalBytes > 0) bytesDownloaded.toFloat() / totalBytes else 0f
                                 val aggregateProgress = (fileIndex + progress) / fileCount.toFloat()
@@ -399,16 +400,16 @@ object ModelDownloadManager {
             } catch (e: IOException) {
                 Log.e(TAG, "Download error (attempt ${retryCount + 1}): ${e.message}")
                 retryCount++
-                if (retryCount > MAX_RETRIES) {
-                    return "Download failed for ${target.label} after $MAX_RETRIES retries: ${e.message}"
+                if (retryCount > maxRetries) {
+                    return "Download failed for ${target.label} after $maxRetries retries: ${e.message}"
                 } else {
                     _downloadState.value = DownloadState.Downloading(
                         progress = fileIndex.toFloat() / fileCount.toFloat(),
                         bytesDownloaded = bytesDownloaded,
                         totalBytes = -1
                     )
-                    Log.d(TAG, "Retrying in ${RETRY_DELAY_MS}ms...")
-                    delay(RETRY_DELAY_MS)
+                    Log.d(TAG, "Retrying in ${retryDelayMs}ms...")
+                    delay(retryDelayMs)
                 }
             } finally {
                 connection?.disconnect()
