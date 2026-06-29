@@ -574,6 +574,27 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.OperationalTuningOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── Trial Duration Override (remote-updatable trial length only) ──────────────────────
+    // See TrialDurationOverrideConfig's doc comment and docs/trial-duration-overrides.md for
+    // exactly what this does and does not affect, and the explicit confirmation this required.
+
+    @JavascriptInterface
+    fun setTrialDurationOverride(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.TrialDurationOverrideConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.TrialDurationOverridePreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setTrialDurationOverride error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getTrialDurationOverride(): String {
+        return com.google.ai.sample.util.TrialDurationOverridePreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

@@ -114,5 +114,13 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.OperationalTuningConfig.setRemoteOverride(savedJson)
             Log.d(TAG, "Restored operational tuning override from preferences (applied=$applied)")
         }
+
+        // Re-apply any trial-duration override previously received from the WebView bundle.
+        // See TrialDurationOverrideConfig's doc comment for exactly what this does and does not
+        // affect, and the explicit confirmation this required.
+        com.google.ai.sample.util.TrialDurationOverridePreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.TrialDurationOverrideConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored trial duration override from preferences (applied=$applied)")
+        }
     }
 }

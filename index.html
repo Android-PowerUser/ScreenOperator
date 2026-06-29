@@ -543,6 +543,10 @@ const Bridge = {
   setOperationalTuningOverrides:(json)=>{ if(getInAndroid()) return Android.setOperationalTuningOverrides(json); },
   getOperationalTuningOverrides:()=> getInAndroid() ? Android.getOperationalTuningOverrides() : '{}',
 
+  /* Trial duration override (remote-updatable trial length only - see docs/trial-duration-overrides.md) */
+  setTrialDurationOverride:(json)=>{ if(getInAndroid()) return Android.setTrialDurationOverride(json); },
+  getTrialDurationOverride:()=> getInAndroid() ? Android.getTrialDurationOverride() : '{}',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1227,6 +1231,14 @@ window.onAndroidReady = function() {
   fetch('operational-tuning-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setOperationalTuningOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Trial length only (e.g. {"trialDurationMs": 1209600000} for 14 days) - does not affect
+  // purchase verification, which stays anchored to real Play Billing purchase state. See
+  // docs/trial-duration-overrides.md.
+  fetch('trial-duration-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setTrialDurationOverride(json); })
     .catch(() => { /* optional file */ });
 };
 
