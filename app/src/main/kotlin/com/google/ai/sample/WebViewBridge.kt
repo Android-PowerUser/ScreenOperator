@@ -595,6 +595,28 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TrialDurationOverridePreferences.load(context) ?: "{}"
     }
 
+    // ── Generation Defaults Overrides (remote-updatable factory defaults, not user settings) ─
+    // Lets the WebView bundle ship a better out-of-the-box temperature/topP/topK default for
+    // models the user hasn't customized yet, without a native app release. A user's own saved
+    // per-model settings (via saveGenerationSettings) always take precedence over this.
+
+    @JavascriptInterface
+    fun setGenerationDefaultsOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.GenerationDefaultsConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setGenerationDefaultsOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getGenerationDefaultsOverrides(): String {
+        return com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

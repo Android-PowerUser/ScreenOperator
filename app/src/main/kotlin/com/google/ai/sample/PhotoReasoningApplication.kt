@@ -122,5 +122,12 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.TrialDurationOverrideConfig.setRemoteOverride(savedJson)
             Log.d(TAG, "Restored trial duration override from preferences (applied=$applied)")
         }
+
+        // Re-apply any generation-defaults overrides (factory temperature/topP/topK before a
+        // user customizes a model's settings) previously received from the WebView bundle.
+        com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.GenerationDefaultsConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored generation defaults override from preferences (applied=$applied)")
+        }
     }
 }

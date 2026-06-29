@@ -547,6 +547,10 @@ const Bridge = {
   setTrialDurationOverride:(json)=>{ if(getInAndroid()) return Android.setTrialDurationOverride(json); },
   getTrialDurationOverride:()=> getInAndroid() ? Android.getTrialDurationOverride() : '{}',
 
+  /* Generation defaults overrides (remote-updatable factory temperature/topP/topK, not user settings) */
+  setGenerationDefaultsOverrides:(json)=>{ if(getInAndroid()) return Android.setGenerationDefaultsOverrides(json); },
+  getGenerationDefaultsOverrides:()=> getInAndroid() ? Android.getGenerationDefaultsOverrides() : '{}',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -1239,6 +1243,14 @@ window.onAndroidReady = function() {
   fetch('trial-duration-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setTrialDurationOverride(json); })
+    .catch(() => { /* optional file */ });
+
+  // Better out-of-the-box temperature/topP/topK for a model the user hasn't customized yet -
+  // e.g. {"temperature": 0.2, "topP": 0.9, "topK": 32}. Never overrides a user's own saved
+  // per-model settings. See docs/generation-defaults-overrides.md.
+  fetch('generation-defaults-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setGenerationDefaultsOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 
