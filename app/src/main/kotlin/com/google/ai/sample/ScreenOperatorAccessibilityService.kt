@@ -1918,7 +1918,7 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         
         // Build a string with information about all interactive elements
         val screenInfo = StringBuilder()
-        screenInfo.append("Screen elements:\n")
+        screenInfo.append("${com.google.ai.sample.util.OperationalTuningConfig.current().screenElementsMarker}\n")
         
         // Find all interactive elements
         val currentRootNode = currentRootNodeOrHandleMissing(

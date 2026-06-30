@@ -30,7 +30,8 @@ internal object OperationalTuningConfig {
         val modelDownloadRetryDelayMs: Long = 3_000L,
         val modelDownloadProgressUpdateIntervalMs: Long = 500L,
         val termuxProcessCompletedPrompt: String = "[Process completed - press Enter]",
-        val retrievalHeaderPrefix: String = "Retrieved information ["
+        val retrievalHeaderPrefix: String = "Retrieved information [",
+        val screenElementsMarker: String = "Screen elements:"
     )
 
     @Volatile
@@ -87,6 +88,12 @@ internal object OperationalTuningConfig {
                         .ifBlank { base.retrievalHeaderPrefix }
                 } else {
                     base.retrievalHeaderPrefix
+                },
+                screenElementsMarker = if (obj.has("screenElementsMarker")) {
+                    obj.optString("screenElementsMarker", base.screenElementsMarker)
+                        .ifBlank { base.screenElementsMarker }
+                } else {
+                    base.screenElementsMarker
                 }
             )
             Log.d(TAG, "Installed operational tuning override")
