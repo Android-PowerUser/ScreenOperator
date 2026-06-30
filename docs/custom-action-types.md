@@ -52,7 +52,7 @@ window.onCustomAction = function(id, groups) {
     case 'PINCH_ZOOM':
       // groups[0]=centerX, groups[1]=centerY, groups[2]=scale
       // Use existing bridge methods to implement the gesture:
-      Android.tapAtCoordinates && Android.tapAtCoordinates(groups[0], groups[1]);
+      Bridge.tapAtCoordinates(groups[0], groups[1]);
       break;
 
     case 'SWIPE_GESTURE':
@@ -68,6 +68,17 @@ window.onCustomAction = function(id, groups) {
 
 The default `window.onCustomAction` (defined in `index.html`) is a no-op logger so that
 existing sessions without a custom handler do not throw errors.
+
+## Available bridge methods for implementing a custom action
+
+Before this, the only bridge method an `onCustomAction` handler could realistically use to
+*affect the device* was none at all - `showToast` (display only) was the first bridge method
+added. See `docs/device-control-bridge.md` for the full, now-complete list: every native
+gesture/navigation capability the AI's own built-in commands use (tap, long-tap, coordinate
+tap, scroll in all four directions/forms, home/back/recent-apps, open app, write text, press
+enter, run a Termux command, wait, request a screenshot, mark the task completed) is callable
+from JavaScript via `Bridge.<method>(...)`, going through the exact same execution path as an
+AI-emitted command.
 
 ## How it gets applied
 

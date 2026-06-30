@@ -660,6 +660,143 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Device Control (every native gesture/navigation capability, exposed to JS) ─────────
+    // Previously, a window.onCustomAction handler (custom-action-types.json) could only
+    // *display* something via showToast - it had no way to actually trigger a click, scroll,
+    // app launch, or any other accessibility-service action, even though those capabilities
+    // already existed natively for AI-emitted commands. Each method below constructs the same
+    // com.google.ai.sample.util.Command the AI's own command text would produce and hands it to
+    // ScreenOperatorAccessibilityService.executeCommand(), so it goes through the exact same
+    // execution path (queueing, geometry resolution, safety checks, async handling) as a
+    // command the AI wrote itself - no logic is duplicated or reimplemented here.
+
+    @JavascriptInterface
+    fun tapByText(buttonText: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.ClickButton(buttonText)
+        )
+    }
+
+    @JavascriptInterface
+    fun longTapByText(buttonText: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.LongClickButton(buttonText)
+        )
+    }
+
+    @JavascriptInterface
+    fun tapAtCoordinates(x: String, y: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.TapCoordinates(x, y)
+        )
+    }
+
+    @JavascriptInterface
+    fun pressHome() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.PressHomeButton)
+    }
+
+    @JavascriptInterface
+    fun pressBack() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.PressBackButton)
+    }
+
+    @JavascriptInterface
+    fun showRecentApps() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.ShowRecentApps)
+    }
+
+    @JavascriptInterface
+    fun pressEnterKey() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.PressEnterKey)
+    }
+
+    @JavascriptInterface
+    fun writeText(text: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.WriteText(text)
+        )
+    }
+
+    @JavascriptInterface
+    fun scrollDown() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.ScrollDown)
+    }
+
+    @JavascriptInterface
+    fun scrollUp() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.ScrollUp)
+    }
+
+    @JavascriptInterface
+    fun scrollLeft() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.ScrollLeft)
+    }
+
+    @JavascriptInterface
+    fun scrollRight() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.ScrollRight)
+    }
+
+    @JavascriptInterface
+    fun scrollDownFromCoordinates(x: String, y: String, distance: String, durationMs: Long) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.ScrollDownFromCoordinates(x, y, distance, durationMs)
+        )
+    }
+
+    @JavascriptInterface
+    fun scrollUpFromCoordinates(x: String, y: String, distance: String, durationMs: Long) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.ScrollUpFromCoordinates(x, y, distance, durationMs)
+        )
+    }
+
+    @JavascriptInterface
+    fun scrollLeftFromCoordinates(x: String, y: String, distance: String, durationMs: Long) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.ScrollLeftFromCoordinates(x, y, distance, durationMs)
+        )
+    }
+
+    @JavascriptInterface
+    fun scrollRightFromCoordinates(x: String, y: String, distance: String, durationMs: Long) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.ScrollRightFromCoordinates(x, y, distance, durationMs)
+        )
+    }
+
+    @JavascriptInterface
+    fun openAppByNameOrPackage(appNameOrPackage: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.OpenApp(appNameOrPackage)
+        )
+    }
+
+    @JavascriptInterface
+    fun runTermuxCommand(command: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.TermuxCommand(command)
+        )
+    }
+
+    @JavascriptInterface
+    fun waitSeconds(seconds: Long) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.Wait(seconds)
+        )
+    }
+
+    @JavascriptInterface
+    fun requestScreenshot() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.TakeScreenshot)
+    }
+
+    @JavascriptInterface
+    fun markCompleted() {
+        ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.Completed)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

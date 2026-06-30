@@ -558,6 +558,32 @@ const Bridge = {
   /* Show a native Android Toast - usable from window.onCustomAction handlers (see toast() example below) */
   showToast:(message, isLong)=>{ if(getInAndroid()) Android.showToast(String(message), !!isLong); else console.log('[Toast]', message); },
 
+  /* Device control - every native gesture/navigation capability the AI's own commands use,
+     now callable from a window.onCustomAction handler. All go through the exact same
+     ScreenOperatorAccessibilityService execution path as an AI-emitted command (queueing,
+     geometry resolution, safety checks). No-ops outside the Android app. */
+  tapByText:(text)=>{ if(getInAndroid()) Android.tapByText(String(text)); },
+  longTapByText:(text)=>{ if(getInAndroid()) Android.longTapByText(String(text)); },
+  tapAtCoordinates:(x,y)=>{ if(getInAndroid()) Android.tapAtCoordinates(String(x), String(y)); },
+  pressHome:()=>{ if(getInAndroid()) Android.pressHome(); },
+  pressBack:()=>{ if(getInAndroid()) Android.pressBack(); },
+  showRecentApps:()=>{ if(getInAndroid()) Android.showRecentApps(); },
+  pressEnterKey:()=>{ if(getInAndroid()) Android.pressEnterKey(); },
+  writeText:(text)=>{ if(getInAndroid()) Android.writeText(String(text)); },
+  scrollDown:()=>{ if(getInAndroid()) Android.scrollDown(); },
+  scrollUp:()=>{ if(getInAndroid()) Android.scrollUp(); },
+  scrollLeft:()=>{ if(getInAndroid()) Android.scrollLeft(); },
+  scrollRight:()=>{ if(getInAndroid()) Android.scrollRight(); },
+  scrollDownFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollDownFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  scrollUpFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollUpFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  scrollLeftFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollLeftFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  scrollRightFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollRightFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  openAppByNameOrPackage:(appNameOrPackage)=>{ if(getInAndroid()) Android.openAppByNameOrPackage(String(appNameOrPackage)); },
+  runTermuxCommand:(command)=>{ if(getInAndroid()) Android.runTermuxCommand(String(command)); },
+  waitSeconds:(seconds)=>{ if(getInAndroid()) Android.waitSeconds(Number(seconds)||0); },
+  requestScreenshot:()=>{ if(getInAndroid()) Android.requestScreenshot(); },
+  markCompleted:()=>{ if(getInAndroid()) Android.markCompleted(); },
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
