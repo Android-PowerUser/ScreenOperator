@@ -555,6 +555,9 @@ const Bridge = {
   setUiStringsOverrides:(json)=>{ if(getInAndroid()) return Android.setUiStringsOverrides(json); },
   getUiStringsOverrides:()=> getInAndroid() ? Android.getUiStringsOverrides() : '{}',
 
+  /* Show a native Android Toast - usable from window.onCustomAction handlers (see toast() example below) */
+  showToast:(message, isLong)=>{ if(getInAndroid()) Android.showToast(String(message), !!isLong); else console.log('[Toast]', message); },
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -625,6 +628,8 @@ You must operate the screen with exactly following commands: "home()" "back()" "
 
 To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist.
 If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field.
+
+To show the user a brief on-screen message (e.g. a status update or a warning), use "toast("message")".
 
 Say "completed()" when the task is finished.
 
@@ -1262,8 +1267,17 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
  *       Android.tapAtCoordinates && Android.tapAtCoordinates(groups[0], groups[1]);
  *     }
  *   };
+ *
+ * Built in below: a ready-to-use 'TOAST' case implementing an AI-emitted toast("message")
+ * command - see docs/ai-toast-command.md. It only fires once you add the matching entry to
+ * custom-action-types.json (this file alone does nothing - the regex has to be installed too).
  */
 window.onCustomAction = window.onCustomAction || function(id, groups) {
+  if (id === 'TOAST') {
+    // groups[0] = the message text captured from toast("...") / toast('...')
+    Bridge.showToast(groups[0] || '', false);
+    return;
+  }
   console.log('[ScreenOperator] onCustomAction: id=' + id + ', groups=' + JSON.stringify(groups));
 };
 

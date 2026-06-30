@@ -640,6 +640,26 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.UiStringsOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── Toast ────────────────────────────────────────────────────────────────
+    // Generic bridge method to show an Android Toast from JavaScript. Exists so a
+    // custom-action-types.json entry (e.g. an AI-emitted toast("message") command) can show
+    // the user a message without any native code change - see docs/ai-toast-command.md for a
+    // ready-to-use example wiring this up as an AI command.
+
+    @JavascriptInterface
+    fun showToast(message: String, isLong: Boolean) {
+        // Defensive: never let a long/empty/malformed message from a remote JSON-driven action
+        // type crash the UI thread or spam an unreadable wall of text.
+        val safeMessage = message.take(500).ifBlank { return }
+        mainActivity.runOnUiThread {
+            android.widget.Toast.makeText(
+                context,
+                safeMessage,
+                if (isLong) android.widget.Toast.LENGTH_LONG else android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
