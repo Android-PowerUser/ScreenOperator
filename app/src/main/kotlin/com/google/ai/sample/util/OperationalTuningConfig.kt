@@ -29,7 +29,8 @@ internal object OperationalTuningConfig {
         val modelDownloadMaxRetries: Int = 3,
         val modelDownloadRetryDelayMs: Long = 3_000L,
         val modelDownloadProgressUpdateIntervalMs: Long = 500L,
-        val termuxProcessCompletedPrompt: String = "[Process completed - press Enter]"
+        val termuxProcessCompletedPrompt: String = "[Process completed - press Enter]",
+        val retrievalHeaderPrefix: String = "Retrieved information ["
     )
 
     @Volatile
@@ -80,6 +81,12 @@ internal object OperationalTuningConfig {
                         .ifBlank { base.termuxProcessCompletedPrompt }
                 } else {
                     base.termuxProcessCompletedPrompt
+                },
+                retrievalHeaderPrefix = if (obj.has("retrievalHeaderPrefix")) {
+                    obj.optString("retrievalHeaderPrefix", base.retrievalHeaderPrefix)
+                        .ifBlank { base.retrievalHeaderPrefix }
+                } else {
+                    base.retrievalHeaderPrefix
                 }
             )
             Log.d(TAG, "Installed operational tuning override")

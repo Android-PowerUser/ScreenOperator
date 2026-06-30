@@ -19,7 +19,8 @@ this app's original hardcoded values):
   "modelDownloadMaxRetries": 3,
   "modelDownloadRetryDelayMs": 3000,
   "modelDownloadProgressUpdateIntervalMs": 500,
-  "termuxProcessCompletedPrompt": "[Process completed - press Enter]"
+  "termuxProcessCompletedPrompt": "[Process completed - press Enter]",
+  "retrievalHeaderPrefix": "Retrieved information ["
 }
 ```
 
@@ -38,6 +39,28 @@ this app's original hardcoded values):
 - `termuxProcessCompletedPrompt` — the exact marker line Termux:Task appends after a command
   finishes, which the app strips out of the output it shows/forwards. If a Termux:Task update
   ever changes this exact string, fix it here instead of waiting for an app release.
+- `retrievalHeaderPrefix` — the prefix the app uses both to *write* a "tool result" block into
+  the prompt (e.g. retrieved file contents) and to later *recognize* in chat history that a
+  given piece of information has already been retrieved (so it isn't fetched/inserted twice).
+  Both the writer and the reader (`PhotoReasoningTextPolicies.formatRetrievalResultForPrompt` /
+  `isHeadingAlreadyRetrievedInChat`) read this same live value, so changing it never desyncs
+  the two - this marker is purely internal app bookkeeping, the AI model never needs to
+  recognize or reproduce it itself.
+
+## A marker that is deliberately *not* here: "Screen elements:"
+
+The app also has a `"Screen elements:"` marker (`ScreenOperatorAccessibilityService.kt` writes
+it, `PhotoReasoningScreenElementHistoryPolicy.kt` reads it). That one is **not** remote-
+configurable, on purpose, and for a different reason than the billing logic: unlike
+`retrievalHeaderPrefix`, this string isn't purely internal - the AI model itself is expected
+(presumably via the system prompt) to recognize and continue using exactly this label when
+referring to on-screen elements in its own responses. Making it remote-configurable would mean
+the native "what does a screen-elements section look like" pattern and the model's own
+prompt-driven expectation of that pattern could silently drift apart - the model would keep
+writing `"Screen elements:"` while the app, under a stale override, looked for something else.
+That's a quieter, harder-to-debug failure than most other overrides in this app, since nothing
+would error - the screen-element history trimming would simply stop firing. If you need to
+change this string, do it as a coordinated native code + system prompt change instead.
 
 ## How it gets applied
 
