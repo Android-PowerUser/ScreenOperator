@@ -160,7 +160,7 @@ fun MenuScreen(
                             enabled = true, // Always enabled
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
-                            Text(text = "Change API Key")
+                            Text(text = com.google.ai.sample.util.UiStringsConfig.get("menu_change_api_key", "Change API Key"))
                         }
                     }
                 }
@@ -364,7 +364,7 @@ fun MenuScreen(
                                         currentBackend.value = InferenceBackend.GPU
                                         val mainActivity = context as? MainActivity
                                         mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
-                                        Toast.makeText(context, "GPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_gpu_selected", "GPU selected \u2013 Model stopped. Will load on next generation"), Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.GPU)
@@ -382,7 +382,7 @@ fun MenuScreen(
                                         currentBackend.value = InferenceBackend.CPU
                                         val mainActivity = context as? MainActivity
                                         mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
-                                        Toast.makeText(context, "CPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_cpu_selected", "CPU selected \u2013 Model stopped. Will load on next generation"), Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.CPU)
@@ -546,7 +546,7 @@ fun MenuScreen(
                         TextButton(
                             onClick = {
                                 if (isTrialExpired) {
-                                    Toast.makeText(context, "Please support the development of the app so that you can continue using it \uD83C\uDF89", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_support_donation_emoji", "Please support the development of the app so that you can continue using it \uD83C\uDF89"), Toast.LENGTH_LONG).show()
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
@@ -626,7 +626,7 @@ fun MenuScreen(
                                 onClick = onDonationButtonClicked,
                                 modifier = Modifier.padding(start = 8.dp)
                             ) {
-                                Text(text = "Pro (2,90 €/Month)")
+                                Text(text = com.google.ai.sample.util.UiStringsConfig.get("menu_pro_price_label", "Pro (2,90 \u20ac/Month)"))
                             }
                         }
                     }

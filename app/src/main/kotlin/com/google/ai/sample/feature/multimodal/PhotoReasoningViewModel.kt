@@ -919,7 +919,7 @@ class PhotoReasoningViewModel(
                     if (useLiteRt) {
                         if (liteRtEngine == null) {
                             withContext(Dispatchers.Main) {
-                                replaceAiMessageText("Initializing offline model...", isPending = true)
+                                replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_initializing_offline_model", "Initializing offline model..."), isPending = true)
                             }
                             _isInitializingOfflineModelFlow.value = true
                             refreshStopButtonState()
@@ -930,7 +930,7 @@ class PhotoReasoningViewModel(
                         }
                     } else if (llmInference == null) {
                         withContext(Dispatchers.Main) {
-                            replaceAiMessageText("Initializing offline model...", isPending = true)
+                            replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_initializing_offline_model", "Initializing offline model..."), isPending = true)
                         }
                         // Use Default dispatcher for CPU-intensive model loading
                         _isInitializingOfflineModelFlow.value = true
@@ -2113,7 +2113,7 @@ class PhotoReasoningViewModel(
                 viewModelScope.launch(Dispatchers.Main) {
                     if (state == "CONNECTED") {
                         _commandExecutionStatus.value = "Expert connected. Sharing screen."
-                        replaceAiMessageText("Expert connected! They can now see your screen and control your device.", isPending = false)
+                        replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_connected", "Expert connected! They can now see your screen and control your device."), isPending = false)
                     } else if (state == "DISCONNECTED" || state == "FAILED") {
                          _commandExecutionStatus.value = "Expert disconnected."
                     }
@@ -2158,7 +2158,7 @@ class PhotoReasoningViewModel(
             override fun onTaskClaimed(taskId: String) {
                 Log.d(TAG, "Task claimed! Requesting fresh MediaProjection for WebRTC.")
                 viewModelScope.launch(Dispatchers.Main) {
-                    replaceAiMessageText("Expert found! Requesting screen capture permission...", isPending = true)
+                    replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_found", "Expert found! Requesting screen capture permission..."), isPending = true)
                     
                     // Request a fresh MediaProjection specifically for WebRTC.
                     // MainActivity startet bereits ACTION_KEEP_ALIVE_FOR_WEBRTC BEVOR dieser Callback gerufen wird.
@@ -2167,7 +2167,7 @@ class PhotoReasoningViewModel(
                     if (mainActivity != null) {
                         mainActivity.requestMediaProjectionForWebRTC { _, resultData ->
                             Log.d(TAG, "WebRTC MediaProjection granted. Service läuft bereits via KEEP_ALIVE. Starte Screen Capture.")
-                            replaceAiMessageText("Establishing video connection...", isPending = true)
+                            replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_establishing_video", "Establishing video connection..."), isPending = true)
                             
                             // KEIN startForegroundService() hier - MainActivity hat bereits ACTION_KEEP_ALIVE_FOR_WEBRTC gesendet.
                             // Das vermeidet doppelten Service-Start und ForegroundServiceDidNotStartInTimeException.
@@ -2215,7 +2215,7 @@ class PhotoReasoningViewModel(
             override fun onPeerDisconnected() {
                  viewModelScope.launch(Dispatchers.Main) {
                     _commandExecutionStatus.value = "Expert disconnected."
-                    replaceAiMessageText("Expert disconnected.", isPending = false)
+                    replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_disconnected", "Expert disconnected."), isPending = false)
                     webRTCSender?.stop()
                 }
             }
@@ -2882,7 +2882,7 @@ private fun processCommands(text: String) {
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Error adding screenshot: ${e.message}"
-                Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_add_screenshot_error", "Error adding screenshot: {0}", e.message), Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -617,6 +617,29 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── UI String Overrides (remote-updatable native Compose-screen text) ──────────────────
+    // Lets the WebView bundle override individual native (non-WebView) UI strings - toasts,
+    // dialog labels, button text - by stable ID, without a native app release. Defaults always
+    // live in the Kotlin call sites themselves (UiStringsConfig.get(id, default)); this can
+    // only replace, never remove, that fallback.
+
+    @JavascriptInterface
+    fun setUiStringsOverrides(json: String): Int {
+        return try {
+            val applied = com.google.ai.sample.util.UiStringsConfig.setRemoteOverride(json)
+            com.google.ai.sample.util.UiStringsOverridesPreferences.save(context, json)
+            applied
+        } catch (e: Exception) {
+            Log.e(TAG, "setUiStringsOverrides error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getUiStringsOverrides(): String {
+        return com.google.ai.sample.util.UiStringsOverridesPreferences.load(context) ?: "{}"
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

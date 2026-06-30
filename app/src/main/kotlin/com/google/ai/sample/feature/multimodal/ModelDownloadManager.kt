@@ -142,7 +142,7 @@ object ModelDownloadManager {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, DOWNLOAD_CHANNEL_ID)
             .setContentTitle("Model Download Complete")
-            .setContentText("The model is ready to use.")
+            .setContentText(com.google.ai.sample.util.UiStringsConfig.get("notif_model_ready_text", "The model is ready to use."))
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(false)
@@ -158,7 +158,7 @@ object ModelDownloadManager {
 
     fun downloadModel(context: Context, model: ModelOption, url: String) {
         if (isModelDownloaded(context, model)) {
-            Toast.makeText(context, "Model already downloaded.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_model_already_downloaded", "Model already downloaded."), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -211,7 +211,7 @@ object ModelDownloadManager {
         _downloadState.value = DownloadState.Idle
         cancelDownloadNotification(context)
         CoroutineScope(Dispatchers.Main).launch {
-            Toast.makeText(context, "Download cancelled.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_download_cancelled", "Download cancelled."), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -236,7 +236,7 @@ object ModelDownloadManager {
         _downloadState.value = DownloadState.Completed
         showDownloadCompleteNotification(context)
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Model download complete!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_model_download_complete", "Model download complete!"), Toast.LENGTH_SHORT).show()
         }
     }
 

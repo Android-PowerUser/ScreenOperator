@@ -114,11 +114,11 @@ fun ApiKeyDialog(
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val clip = ClipData.newPlainText("Puter Link", url)
                             clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, "Link is in the clipboard.", Toast.LENGTH_SHORT).show()
-                            Toast.makeText(context, "After the sign up paste the link in the Browser", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_link_copied", "Link is in the clipboard."), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_paste_link_in_browser", "After the sign up paste the link in the Browser"), Toast.LENGTH_LONG).show()
                         }
                         if (selectedProvider == ApiProvider.CLOUDFLARE) {
-                            Toast.makeText(context, "After sign up use the search bar to find \"API token\"", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_find_api_token", "After sign up use the search bar to find \"API token\""), Toast.LENGTH_LONG).show()
                         }
 
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -171,7 +171,7 @@ fun ApiKeyDialog(
                             }
                         }
                     ) {
-                        Text("Add")
+                        Text(com.google.ai.sample.util.UiStringsConfig.get("apikey_add_button", "Add"))
                     }
                 }
 
@@ -223,7 +223,7 @@ fun ApiKeyDialog(
                                         loadKeysForProvider(selectedProvider)
                                     }
                                 ) {
-                                    Text("✕", textAlign = TextAlign.Center)
+                                    Text(com.google.ai.sample.util.UiStringsConfig.get("apikey_close_icon", "\u2715"), textAlign = TextAlign.Center)
                                 }
                             }
                         }
@@ -238,7 +238,7 @@ fun ApiKeyDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                         TextButton(onClick = onDismiss) {
-                        Text("Close")
+                        Text(com.google.ai.sample.util.UiStringsConfig.get("apikey_close_button", "Close"))
                     }
                 }
             }

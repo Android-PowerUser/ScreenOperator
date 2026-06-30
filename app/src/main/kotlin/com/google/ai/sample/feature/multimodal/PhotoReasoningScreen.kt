@@ -298,7 +298,7 @@ fun PhotoReasoningScreen(
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         ),
                         border = BorderStroke(1.dp, Color.Black)
-                    ) { Text("Database") }
+                    ) { Text(com.google.ai.sample.util.UiStringsConfig.get("screen_database_button", "Database")) }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 val systemMessageHeight = when {
@@ -311,7 +311,7 @@ fun PhotoReasoningScreen(
                 OutlinedTextField(
                     value = systemMessage,
                     onValueChange = onSystemMessageChanged,
-                    placeholder = { Text("Enter a system message here that will be sent with every request") },
+                    placeholder = { Text(com.google.ai.sample.util.UiStringsConfig.get("screen_sysmsg_placeholder", "Enter a system message here that will be sent with every request")) },
                     modifier = Modifier.fillMaxWidth().heightIn(max = systemMessageHeight)
                         .onFocusChanged { focusState -> isSystemMessageFocused = focusState.isFocused },
                     minLines = currentMinLines,
@@ -326,14 +326,14 @@ fun PhotoReasoningScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Accessibility Service is not enabled", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                    Text(com.google.ai.sample.util.UiStringsConfig.get("screen_accessibility_not_enabled_title", "Accessibility Service is not enabled"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("The click functionality requires the Accessibility Service. Please enable it in the settings.", color = MaterialTheme.colorScheme.error)
+                    Text(com.google.ai.sample.util.UiStringsConfig.get("screen_accessibility_not_enabled_body", "The click functionality requires the Accessibility Service. Please enable it in the settings."), color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
                         onEnableAccessibilityService()
-                        Toast.makeText(context, "Open Accessibility Settings..." as CharSequence, Toast.LENGTH_SHORT).show()
-                    }) { Text("Activate Accessibility Service") }
+                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_open_accessibility_settings", "Open Accessibility Settings...") as CharSequence, Toast.LENGTH_SHORT).show()
+                    }) { Text(com.google.ai.sample.util.UiStringsConfig.get("screen_activate_accessibility_button", "Activate Accessibility Service")) }
                 }
             }
         }
@@ -370,7 +370,7 @@ fun PhotoReasoningScreen(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Command Status:", style = MaterialTheme.typography.titleMedium)
+                                Text(com.google.ai.sample.util.UiStringsConfig.get("screen_command_status_label", "Command Status:"), style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(4.dp))
                                 Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
                             }
@@ -385,7 +385,7 @@ fun PhotoReasoningScreen(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
+                                Text(com.google.ai.sample.util.UiStringsConfig.get("screen_detected_commands_label", "Detected Commands:"), style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(4.dp))
                                 detectedCommands.forEachIndexed { index, command ->
                                     val commandText = when (command) {
@@ -436,7 +436,7 @@ fun PhotoReasoningScreen(
                                 onClearChatHistory()
                             }, modifier = Modifier.padding(top = 4.dp).drawBehind {
                                 drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-                            }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
+                            }) { Text(com.google.ai.sample.util.UiStringsConfig.get("screen_new_chat_button", "New"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                         }
                         OutlinedTextField(
                             value = userQuestion,
@@ -482,7 +482,7 @@ fun PhotoReasoningScreen(
                                     // Always check accessibility service (needed for both live and regular models)
                                     if (!isAccessibilityServiceEnabled) {
                                         onEnableAccessibilityService()
-                                        Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_enable_accessibility_service", "Enable the Accessibility service for Screen Operator"), Toast.LENGTH_LONG).show()
                                         return@IconButton
                                     }
 
@@ -504,7 +504,7 @@ fun PhotoReasoningScreen(
                                             // Ask for Termux only after screen capture permission is granted.
                                             requestTermuxPermissionThenSend(mainActivity)
                                         }
-                                        Toast.makeText(context, "Requesting screen capture permission...", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_requesting_screen_capture", "Requesting screen capture permission..."), Toast.LENGTH_SHORT).show()
                                         return@IconButton
                                     }
 
@@ -574,7 +574,7 @@ fun PhotoReasoningScreen(
                 onSaveClicked = { title, guide, originalEntry ->
                     val currentEntry = SystemMessageEntry(title.trim(), guide.trim()) 
                     if (title.isBlank() || guide.isBlank()) { 
-                        Toast.makeText(context, "Title and Guide cannot be empty." as CharSequence, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_title_guide_empty", "Title and Guide cannot be empty.") as CharSequence, Toast.LENGTH_SHORT).show()
                         return@EditEntryPopup
                     }
                     if (originalEntry == null) { 
@@ -584,13 +584,13 @@ fun PhotoReasoningScreen(
                             showEditEntryPopup = false
                             systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) 
                         } else {
-                            Toast.makeText(context, "An entry with this title already exists." as CharSequence, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_entry_title_exists", "An entry with this title already exists.") as CharSequence, Toast.LENGTH_SHORT).show()
                             return@EditEntryPopup 
                         }
                     } else { 
                         val existingEntryWithNewTitle = systemMessageEntries.find { it.title.equals(currentEntry.title, ignoreCase = true) && it.guide != originalEntry.guide }
                         if (existingEntryWithNewTitle != null && originalEntry.title != currentEntry.title) {
-                            Toast.makeText(context, "Another entry with this new title already exists." as CharSequence, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_entry_new_title_exists", "Another entry with this new title already exists.") as CharSequence, Toast.LENGTH_SHORT).show()
                             return@EditEntryPopup 
                         }
                         SystemMessageEntryPreferences.updateEntry(context, originalEntry, currentEntry)

@@ -236,7 +236,7 @@ fun InfoDialog(
                     Log.d("InfoDialog", "OK button clicked")
                     onDismiss()
                 }) {
-                    Text("OK")
+                    Text(com.google.ai.sample.util.UiStringsConfig.get("apikey_dialog_ok", "OK"))
                 }
             }
         }

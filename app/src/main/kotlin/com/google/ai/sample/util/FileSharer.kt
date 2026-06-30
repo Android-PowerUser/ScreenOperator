@@ -31,6 +31,6 @@ fun shareTextFile(context: Context, fileName: String, content: String) {
         context.startActivity(Intent.createChooser(shareIntent, "Export Entries"))
     } catch (e: Exception) {
         Log.e("FileSharer", "Error sharing file: $fileName", e)
-        Toast.makeText(context, "Error sharing file: ${e.message}", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_file_share_error", "Error sharing file: {0}", e.message), Toast.LENGTH_LONG).show()
     }
 }

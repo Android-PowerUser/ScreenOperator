@@ -38,7 +38,7 @@ fun StopButton(onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(8.dp)
     ) {
-        Text("Stop", color = Color.White)
+        Text(com.google.ai.sample.util.UiStringsConfig.get("chat_stop_button", "Stop"), color = Color.White)
     }
 }
 

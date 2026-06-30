@@ -136,14 +136,14 @@ fun DatabaseListPopup(
             if (uri == null) {
                 Log.w(TAG_IMPORT_PROCESS, "URI is null, no file selected or operation cancelled.")
                 scope.launch(Dispatchers.Main) {
-                    Toast.makeText(context, "No file selected." as CharSequence, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_no_file_selected", "No file selected.") as CharSequence, Toast.LENGTH_SHORT).show()
                 }
                 return@rememberLauncherForActivityResult
             }
 
             Log.i(TAG_IMPORT_PROCESS, "Selected file URI: $uri")
             scope.launch(Dispatchers.Main) {
-                Toast.makeText(context, "File selected: $uri. Starting import..." as CharSequence, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_file_selected_importing", "File selected: {0}. Starting import...", uri) as CharSequence, Toast.LENGTH_SHORT).show()
             }
 
             scope.launch(Dispatchers.IO) { 
@@ -164,14 +164,14 @@ fun DatabaseListPopup(
                     if (fileSize != -1L && fileSize > MAX_FILE_SIZE_BYTES) {
                         Log.e(TAG_IMPORT_PROCESS, "File size ($fileSize bytes) exceeds limit of $MAX_FILE_SIZE_BYTES bytes.")
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "File is too large (max 10MB)." as CharSequence, Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_file_too_large", "File is too large (max 10MB).") as CharSequence, Toast.LENGTH_LONG).show()
                         }
                         return@launch 
                     }
                      if (fileSize == 0L) { 
                          Log.w(TAG_IMPORT_PROCESS, "Imported file is empty (0 bytes).")
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Imported file is empty." as CharSequence, Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_imported_file_empty", "Imported file is empty.") as CharSequence, Toast.LENGTH_LONG).show()
                         }
                         return@launch 
                     }
@@ -185,7 +185,7 @@ fun DatabaseListPopup(
                         if (jsonString.isBlank()) {
                             Log.w(TAG_IMPORT_PROCESS, "Imported file content is blank.")
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "Imported file content is blank." as CharSequence, Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_imported_file_blank", "Imported file content is blank.") as CharSequence, Toast.LENGTH_LONG).show()
                             }
                             return@use 
                         }
@@ -219,7 +219,7 @@ fun DatabaseListPopup(
                     Log.e(TAG_IMPORT_PROCESS, "Error during file import for URI: $uri on thread: ${Thread.currentThread().name}", e)
                     withContext(Dispatchers.Main) {
                         val errorMessage = e.message ?: "Unknown error during import."
-                        Toast.makeText(context, "Error importing file: $errorMessage" as CharSequence, Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_import_error", "Error importing file: {0}", errorMessage) as CharSequence, Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -233,7 +233,7 @@ fun DatabaseListPopup(
             onConfirm = {
                 Log.d(TAG_IMPORT_PROCESS, "Overwrite confirmed for title: '${newEntry.title}'")
                 SystemMessageEntryPreferences.updateEntry(context, existingEntry, newEntry)
-                Toast.makeText(context, "Entry '${newEntry.title}' overwritten." as CharSequence, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_entry_overwritten", "Entry '{0}' overwritten.", newEntry.title) as CharSequence, Toast.LENGTH_SHORT).show()
                 entryToConfirmOverwrite = null
                 val currentSystemEntriesAfterUpdate = SystemMessageEntryPreferences.loadEntries(context) 
                 Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Confirm).")
@@ -268,7 +268,7 @@ fun DatabaseListPopup(
                 entryToConfirmOverwrite = null 
                 remainingEntriesToImport = emptyList() 
                 skipAllDuplicates = false
-                Toast.makeText(context, "Import cancelled for remaining items." as CharSequence, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_import_cancelled_remaining", "Import cancelled for remaining items.") as CharSequence, Toast.LENGTH_SHORT).show()
                 onImportCompleted() 
             }
         )
@@ -359,7 +359,7 @@ fun DatabaseListPopup(
                                                 onDismissRequest = { entryMenuToShow = null }
                                             ) {
                                                 DropdownMenuItem(
-                                                    text = { Text("Delete") },
+                                                    text = { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_delete_button", "Delete")) },
                                                     onClick = {
                                                         onDeleteClicked(entry)
                                                         entryMenuToShow = null
@@ -379,9 +379,9 @@ fun DatabaseListPopup(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.End 
                                 ) {
-                                    Text("The headings are sent to the AI and the content is included on request", color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_headings_note", "The headings are sent to the AI and the content is included on request"), color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                     Button(onClick = onNewClicked, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(start = 8.dp)) {
-                                        Text("New")
+                                        Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_new_button", "New"))
                                     }
                                 }
                             }
@@ -403,19 +403,19 @@ fun DatabaseListPopup(
                                 },
                                 colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
                             )
-                            Text("All", color = Color.Black, style = MaterialTheme.typography.bodyMedium)
+                            Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_all_button", "All"), color = Color.Black, style = MaterialTheme.typography.bodyMedium)
                         }
                     } else {
                         Spacer(modifier = Modifier.width(80.dp)) // Placeholder for alignment
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text("Import") }
+                        Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_import_button", "Import")) }
                         Button(
                             onClick = {
                                 if (selectionModeActive) { 
                                     if (selectedEntryTitles.isEmpty()) {
-                                        Toast.makeText(context, "No entries selected for export." as CharSequence, Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_no_entries_for_export", "No entries selected for export.") as CharSequence, Toast.LENGTH_SHORT).show()
                                     } else {
                                         val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
                                         val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
@@ -429,7 +429,7 @@ fun DatabaseListPopup(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) { Text("Export") } // Text is now always "Export"
+                        ) { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_export_button", "Export")) } // Text is now always "Export"
                     }
                 }
             }
@@ -448,15 +448,15 @@ fun OverwriteConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Confirm Overwrite") },
-        text = { Text("An entry with the title \"$entryTitle\" already exists. Do you want to overwrite its guide?") },
+        title = { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_overwrite_title", "Confirm Overwrite")) },
+        text = { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_overwrite_body", "An entry with the title \"{0}\" already exists. Do you want to overwrite its guide?", entryTitle)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Yes") }
+            TextButton(onClick = onConfirm) { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_overwrite_yes", "Yes")) }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onSkipAll) { Text("Skip All") }
-                TextButton(onClick = onDeny) { Text("No") }
+                TextButton(onClick = onSkipAll) { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_overwrite_skip_all", "Skip All")) }
+                TextButton(onClick = onDeny) { Text(com.google.ai.sample.util.UiStringsConfig.get("db_popup_overwrite_no", "No")) }
             }
         }
     )

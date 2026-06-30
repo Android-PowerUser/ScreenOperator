@@ -307,7 +307,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMediaProjectionPermissionDenied() {
         Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
-        Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_screen_capture_permission_denied", "Screen capture permission denied"), Toast.LENGTH_SHORT).show()
         resetExplicitScreenshotRequestFlagIfNeeded("explicit denial")
         _isMediaProjectionPermissionGranted.value = false
     }
@@ -332,7 +332,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleWebRtcMediaProjectionPermissionDenied() {
         Log.w(TAG, "WebRTC MediaProjection permission denied.")
-        Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_screen_capture_permission_denied", "Screen capture permission denied"), Toast.LENGTH_SHORT).show()
         onWebRtcMediaProjectionResult = null
     }
 
@@ -354,18 +354,18 @@ class MainActivity : ComponentActivity() {
     private fun registerPermissionLaunchers() {
         requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
-                Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_notification_permission_granted", "Notification permission granted."), Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Notification permission denied. Stop via notification will not be available.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_notification_permission_denied", "Notification permission denied. Stop via notification will not be available."), Toast.LENGTH_LONG).show()
             }
         }
 
         requestForegroundServicePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
-                Toast.makeText(this, "Foreground service permission granted.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_foreground_service_permission_granted", "Foreground service permission granted."), Toast.LENGTH_SHORT).show()
                 launchCaptureIntent(mediaProjectionLauncher, "requestForegroundServicePermissionLauncher")
             } else {
-                Toast.makeText(this, "Foreground service permission denied. The app may not function correctly.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_foreground_service_permission_denied", "Foreground service permission denied. The app may not function correctly."), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -465,7 +465,7 @@ class MainActivity : ComponentActivity() {
             // This situation (service not running but takeAdditionalScreenshot called directly)
             // should ideally be handled by the caller checking isRunning() first.
             // If called from screenshotRequestHandler, it would have called requestMediaProjectionPermission instead.
-            Toast.makeText(this, "Screenshot service not active. Please grant permission first.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_screenshot_service_not_active", "Screenshot service not active. Please grant permission first."), Toast.LENGTH_LONG).show()
             // Optionally, trigger permission request again if appropriate for the use case.
             // requestMediaProjectionPermission() // This might be too aggressive if called from unexpected places.
         }
@@ -560,10 +560,10 @@ class MainActivity : ComponentActivity() {
             }
         } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             Log.i(TAG, "purchasesUpdatedListener: User cancelled the purchase flow.")
-            Toast.makeText(this, "Support cancelled.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_support_cancelled", "Support cancelled."), Toast.LENGTH_SHORT).show()
         } else {
             Log.e(TAG, "purchasesUpdatedListener: Billing error: ${billingResult.debugMessage} (Code: ${billingResult.responseCode})")
-            Toast.makeText(this, "Error during donation process: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_donation_error", "Error during donation process: {0}", billingResult.debugMessage), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -744,7 +744,7 @@ class MainActivity : ComponentActivity() {
                             onDismiss = { showPaymentMethodDialog = false },
                             onPayPalClick = {
                                 showPaymentMethodDialog = false
-                                Toast.makeText(this@MainActivity, "PayPal ist in dieser Fallback-UI noch nicht verfügbar.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_paypal_fallback_unavailable", "PayPal ist in dieser Fallback-UI noch nicht verfügbar."), Toast.LENGTH_LONG).show()
                             },
                             onGooglePlayClick = {
                                 showPaymentMethodDialog = false
@@ -1202,7 +1202,7 @@ class MainActivity : ComponentActivity() {
                         updateTrialState(TrialManager.getTrialState(this, null))
                         if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                             Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (no active sub and trial expired). Showing Toast.")
-                            Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_subscription_deactivated", "Subscription is deactivated"), Toast.LENGTH_LONG).show()
                         }
                         startTrialServiceIfNeeded()
                     } else {
@@ -1210,7 +1210,7 @@ class MainActivity : ComponentActivity() {
                          updateTrialState(TrialManager.getTrialState(this, null))
                          if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                             Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (no active sub, was purchased, now trial expired). Showing Toast.")
-                            Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_subscription_deactivated", "Subscription is deactivated"), Toast.LENGTH_LONG).show()
                          }
                          startTrialServiceIfNeeded()
                     }
@@ -1226,7 +1226,7 @@ class MainActivity : ComponentActivity() {
                     updateTrialState(TrialManager.getTrialState(this, null))
                     if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                         Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (query failed, trial expired). Showing Toast.")
-                        Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_subscription_deactivated", "Subscription is deactivated"), Toast.LENGTH_LONG).show()
                     }
                     startTrialServiceIfNeeded()
                 }

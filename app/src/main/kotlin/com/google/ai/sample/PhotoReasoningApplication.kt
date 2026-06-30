@@ -129,5 +129,11 @@ class PhotoReasoningApplication : Application() {
             val applied = com.google.ai.sample.util.GenerationDefaultsConfig.setRemoteOverride(savedJson)
             Log.d(TAG, "Restored generation defaults override from preferences (applied=$applied)")
         }
+
+        // Re-apply any native UI string overrides previously received from the WebView bundle.
+        com.google.ai.sample.util.UiStringsOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.UiStringsConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored $applied UI string override(s) from preferences")
+        }
     }
 }
