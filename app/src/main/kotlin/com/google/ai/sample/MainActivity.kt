@@ -623,7 +623,7 @@ class MainActivity : ComponentActivity() {
 
     private fun loadWebViewContent() {
         if (webViewHtmlContent != null) return
-        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/feature/webview-test/index.html"
+        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
         lifecycleScope.launch(Dispatchers.IO) {
             if (webViewHtmlContent != null) return@launch
             try {
@@ -811,7 +811,7 @@ class MainActivity : ComponentActivity() {
                                     this@MainActivity.webViewInstance = this
                                     addJavascriptInterface(WebViewBridge(this@MainActivity), "Android")
                                     loadDataWithBaseURL(
-                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/feature/webview-test/",
+                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
                                         htmlContent,
                                         "text/html",
                                         "UTF-8",
