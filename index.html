@@ -846,14 +846,14 @@ document.addEventListener('DOMContentLoaded', () => {
       onViewportResize();
       updateSysTextareaClass();
     });
-  }
+  // Call the new state machine function instead
 
   // Back-button: listen for popstate to go back to menu
   window.addEventListener('popstate', (e) => {
     const chatActive = document.getElementById('screen-chat').classList.contains('active');
     if (chatActive) {
       navigateToMenu();
-    }
+    // Call the new state machine function instead
   });
 });
 
@@ -868,11 +868,8 @@ function onViewportResize() {
   const keyH = window.innerHeight - vv.height - vv.offsetTop;
   chatBottom.style.position = 'sticky';
   chatBottom.style.bottom = keyH > 10 ? keyH + 'px' : '0';
-  // Also adjust system message textarea
-  const ta = document.getElementById('sys-msg-textarea');
-  if (document.activeElement === ta) {
-    ta.className = keyH > 10 ? 'expanded-keyboard' : 'expanded-full';
-  }
+  // Update system message textarea state
+  updateSysTextareaClass();
 }
 
 /* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -887,7 +884,7 @@ window.onAiMessage = function(text, isPending) {
     if (!isPending) parentWrap.querySelector('.pending-dots')?.remove();
   } else {
     addModelBubble(text, isPending);
-  }
+  // Call the new state machine function instead
   scrollToBottom();
 };
 
@@ -912,13 +909,13 @@ window.onGenerationStateChanged = function(running, isOfflineLoaded) {
     btn.textContent = running ? 'Stop' : 'Model Unload';
   } else {
     wrap.style.display = 'none';
-  }
+  // Call the new state machine function instead
 };
 
 window.onModelRegistered = function(modelId, displayName) {
   if (!MODELS.find(m=>m.id===modelId)) {
     MODELS.push({ id: modelId, displayName: displayName || modelId, modelName: modelId, apiProvider: 'GOOGLE', supportsScreenshot: true, supportsTopK: true, isOffline: false, hint: '', strike: false });
-  }
+  // Call the new state machine function instead
   buildModelDropdown();
 };
 
@@ -1006,7 +1003,7 @@ function mergeCustomModelsIntoDropdown(json) {
     entries = JSON.parse(json);
   } catch (e) {
     return;
-  }
+  // Call the new state machine function instead
   if (!Array.isArray(entries)) return;
 
   // Remove any previously merged custom entries first, so re-applying a config (e.g. after
@@ -1054,7 +1051,7 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   } catch (e) {
     Bridge.onCustomModelError('Invalid request payload: ' + e.message);
     return;
-  }
+  // Call the new state machine function instead
 
   const messages = [];
   const systemParts = [];
@@ -1073,12 +1070,12 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     messages.push({ role: 'user', content: content });
   } else {
     messages.push({ role: 'user', content: payload.userText || '' });
-  }
+  // Call the new state machine function instead
 
   const headers = { 'Content-Type': 'application/json' };
   if (payload.apiKeyHeader && payload.apiKey) {
     headers[payload.apiKeyHeader] = (payload.apiKeyPrefix || '') + payload.apiKey;
-  }
+  // Call the new state machine function instead
 
   const requestBody = JSON.stringify({
     model: payload.modelName,
@@ -1104,7 +1101,7 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 300); } catch (e) {}
       throw new Error('HTTP ' + response.status + (detail ? (': ' + detail) : ''));
-    }
+    // Call the new state machine function instead
 
     if (payload.stream && response.body) {
       const reader = response.body.getReader();
@@ -1127,14 +1124,14 @@ window.onCustomModelRequest = async function(payloadJsonString) {
             if (delta) {
               acc += delta;
               Bridge.onCustomModelPartialResponse(acc);
-            }
+            // Call the new state machine function instead
           } catch (e) { /* ignore malformed SSE chunk */ }
-        }
-      }
+        // Call the new state machine function instead
+      // Call the new state machine function instead
     } else {
       const json = await response.json();
       acc = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
-    }
+    // Call the new state machine function instead
 
     Bridge.onCustomModelFinalResponse(acc);
   } catch (e) {
@@ -1142,10 +1139,10 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
     } else {
       Bridge.onCustomModelError(e && e.message ? e.message : String(e));
-    }
+    // Call the new state machine function instead
   } finally {
     window.__customModelAbortController = null;
-  }
+  // Call the new state machine function instead
 };
 
 function toggleModelDropdown() {
@@ -1188,7 +1185,7 @@ function applyModelSelection(id) {
   } else {
     document.getElementById('try-title').textContent = 'Operate the screen with AI';
     document.getElementById('try-desc').textContent = 'A vision LLM uses automatic screenshots and operates with predefined commands';
-  }
+  // Call the new state machine function instead
 }
 
 /* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -1260,61 +1257,59 @@ function isKeyboardOpen() {
 
 function updateSysTextareaClass() {
   const ta = document.getElementById('sys-msg-textarea');
-  if (document.activeElement !== ta) return;
-  
   const keyboardOpen = isKeyboardOpen();
   
-  if (keyboardOpen && sysTextareaState === 'expanded-full') {
-    sysTextareaState = 'expanded-keyboard';
-    ta.className = 'expanded-keyboard';
-    autoGrowTextarea(ta);
-  } else if (!keyboardOpen && sysTextareaState === 'expanded-keyboard') {
-    sysTextareaState = 'expanded-full';
-    ta.className = 'expanded-full';
-    autoGrowTextarea(ta);
-  }
+  // Always update based on keyboard state and current state
+  if (keyboardOpen) {
+    // Keyboard is open - if we're not already in keyboard mode, switch to it
+    if (sysTextareaState !== 'expanded-keyboard') {
+      sysTextareaState = 'expanded-keyboard';
+      ta.className = 'expanded-keyboard';
+      autoGrowTextarea(ta);
+    // Call the new state machine function instead
+  } else {
+    // Keyboard is closed - if we're in keyboard mode, go back to collapsed
+    if (sysTextareaState === 'expanded-keyboard') {
+      sysTextareaState = 'collapsed';
+      ta.className = 'collapsed';
+      autoGrowTextarea(ta);
+    // Call the new state machine function instead
+  // Call the new state machine function instead
 }
 
 function onSysTextareaFocus() {
   const ta = document.getElementById('sys-msg-textarea');
   
-  // First click: expand to full
-  if (sysTextareaState === 'collapsed') {
-    sysTextareaState = 'expanded-full';
-    ta.className = 'expanded-full';
-    autoGrowTextarea(ta);
-  }
-  // If keyboard is already open, switch to keyboard mode
-  else if (sysTextareaState === 'expanded-full' && isKeyboardOpen()) {
+  // If keyboard is open, go to keyboard mode
+  if (isKeyboardOpen()) {
     sysTextareaState = 'expanded-keyboard';
     ta.className = 'expanded-keyboard';
-    autoGrowTextarea(ta);
-  }
+  } else {
+    // Keyboard is closed, go to full expanded
+    sysTextareaState = 'expanded-full';
+    ta.className = 'expanded-full';
+  // Call the new state machine function instead
+  autoGrowTextarea(ta);
 }
 
 function onSysTextareaBlur() {
-  // Don't immediately collapse - wait for potential keyboard close
+  // When blur happens, check keyboard state
   setTimeout(() => {
     const ta = document.getElementById('sys-msg-textarea');
     if (document.activeElement !== ta) {
-      // If keyboard was open, go back to expanded-full
-      if (sysTextareaState === 'expanded-keyboard') {
-        sysTextareaState = 'expanded-full';
-        ta.className = 'expanded-full';
-        autoGrowTextarea(ta);
-      }
-      // If user clicked away from expanded-full, collapse
-      else if (sysTextareaState === 'expanded-full') {
+      // If keyboard is still open, stay in keyboard mode
+      if (isKeyboardOpen()) {
+        sysTextareaState = 'expanded-keyboard';
+        ta.className = 'expanded-keyboard';
+      } else {
+        // Keyboard is closed, go to collapsed
         sysTextareaState = 'collapsed';
         ta.className = 'collapsed';
-        autoGrowTextarea(ta);
-      }
-    }
+      // Call the new state machine function instead
+      autoGrowTextarea(ta);
+    // Call the new state machine function instead
   }, 150);
 }
-
-function restoreSystemMessage() {
-  Bridge.restoreSystemMessage();
 }
 
 // Android can call this when system message changes externally
@@ -1323,7 +1318,7 @@ window.onSystemMessageChanged = function(msg) {
   if (document.activeElement !== ta) {
     ta.value = msg;
     autoGrowTextarea(ta);
-  }
+  // Call the new state machine function instead
 };
 
 window.onTrialStateChanged = function(isExpired, isPurchased, message) {
@@ -1346,7 +1341,7 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
  *     if (id === 'PINCH_ZOOM') {
  *       // groups[0]=x, groups[1]=y, groups[2]=scale
  *       Android.tapAtCoordinates && Android.tapAtCoordinates(groups[0], groups[1]);
- *     }
+ *     // Call the new state machine function instead
  *   };
  *
  * Built in below: a ready-to-use 'TOAST' case implementing an AI-emitted toast("message")
@@ -1358,7 +1353,7 @@ window.onCustomAction = window.onCustomAction || function(id, groups) {
     // groups[0] = the message text captured from toast("...") / toast('...')
     Bridge.showToast(groups[0] || '', false);
     return;
-  }
+  // Call the new state machine function instead
   console.log('[ScreenOperator] onCustomAction: id=' + id + ', groups=' + JSON.stringify(groups));
 };
 
@@ -1496,19 +1491,19 @@ window.onBackPressed = function() {
   if (document.getElementById('popup-edit-entry').classList.contains('open')) {
     closePopup('popup-edit-entry');
     return true;
-  }
+  // Call the new state machine function instead
   if (document.getElementById('popup-db').classList.contains('open')) {
     closePopup('popup-db');
     return true;
-  }
+  // Call the new state machine function instead
   if (document.getElementById('popup-apikey').classList.contains('open')) {
     closePopup('popup-apikey');
     return true;
-  }
+  // Call the new state machine function instead
   if (document.getElementById('screen-chat').classList.contains('active')) {
     navigateToMenu();
     return true;
-  }
+  // Call the new state machine function instead
   return false;
 };
 
@@ -1556,7 +1551,7 @@ function stopGeneration() {
   // Custom (JS-driven) models have no native network call to cancel - abort the fetch() here.
   if (window.__customModelAbortController) {
     window.__customModelAbortController.abort();
-  }
+  // Call the new state machine function instead
   window.onGenerationStateChanged(false, false);
 }
 
@@ -1570,11 +1565,11 @@ function onTaskInput() {
   const icon = document.getElementById('send-icon');
   icon.className = val ? 'send-icon active' : 'send-icon';
   
-  if (document.activeElement === ta) {
+  //
     ta.placeholder = val ? 'Task' : 'Describe step by step if complicated tasks have to be solved';
   } else {
     ta.placeholder = 'Task';
-  }
+  // Call the new state machine function instead
   
   autoGrowTextarea(ta);
 }
@@ -1601,7 +1596,7 @@ function sendMessage() {
     Bridge.sendMessageWithImages(text, urisCsv);
   } else {
     Bridge.sendMessage(text);
-  }
+  // Call the new state machine function instead
   // Clear selected images
   selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
   selectedImages = [];
@@ -1648,7 +1643,7 @@ function renderImagePreviews() {
       const src = img.objectUrl || img.uri;
       wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
         <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">Ã</button>`;
-    }
+    // Call the new state machine function instead
     row.appendChild(wrap);
   });
 }
@@ -1706,7 +1701,7 @@ function renderApiKeyChips() {
     link.style.display = 'block';
   } else {
     link.style.display = 'none';
-  }
+  // Call the new state machine function instead
   document.getElementById('new-key-input').placeholder =
     currentProviderId==='PUTER' ? 'Enter Puter Auth Token' : 'Enter '+PROVIDERS[currentProviderId]?.name+' API Key';
 }
@@ -1758,7 +1753,7 @@ function renderDbList() {
   if (!entries.length) {
     list.innerHTML='<div class="body-sm" style="padding:12px">No entries yet. Tap "+ New Entry" to add one.</div>';
     return;
-  }
+  // Call the new state machine function instead
   entries.forEach(e => {
     const row = document.createElement('div');
     row.className='db-entry';
@@ -1806,7 +1801,7 @@ function saveEntry() {
     const exists = entries.some(e=>e.title.toLowerCase()===title.toLowerCase());
     if (exists) { alert('An entry with this title already exists.'); return; }
     Bridge.addDatabaseEntry(title, guide);
-  }
+  // Call the new state machine function instead
   closePopup('popup-edit-entry');
   renderDbList();
 }
