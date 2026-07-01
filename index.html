@@ -511,6 +511,90 @@ const Bridge = {
   setCommandPatternOverrides:(json)=>{ if(getInAndroid()) return Android.setCommandPatternOverrides(json); },
   getCommandPatternOverrides:()=> getInAndroid() ? Android.getCommandPatternOverrides() : '[]',
 
+  /* Model identifier overrides (remote-updatable wire-level model name for built-in models) */
+  setModelIdentifierOverrides:(json)=>{ if(getInAndroid()) return Android.setModelIdentifierOverrides(json); },
+  getModelIdentifierOverrides:()=> getInAndroid() ? Android.getModelIdentifierOverrides() : '[]',
+
+  /* Offline model overrides (remote-updatable download URL/size/extra files) */
+  setOfflineModelOverrides:(json)=>{ if(getInAndroid()) return Android.setOfflineModelOverrides(json); },
+  getOfflineModelOverrides:()=> getInAndroid() ? Android.getOfflineModelOverrides() : '[]',
+
+  /* Custom action types (remote-updatable, entirely new action kinds) */
+  setCustomActionTypes:(json)=>{ if(getInAndroid()) return Android.setCustomActionTypes(json); },
+  getCustomActionTypes:()=> getInAndroid() ? Android.getCustomActionTypes() : '[]',
+
+  /* Execution policy overrides (remote-updatable max commands per message + feedback text) */
+  setExecutionPolicyOverrides:(json)=>{ if(getInAndroid()) return Android.setExecutionPolicyOverrides(json); },
+  getExecutionPolicyOverrides:()=> getInAndroid() ? Android.getExecutionPolicyOverrides() : '{}',
+
+  /* App mapping overrides (remote-updatable openApp() name/package resolution) */
+  setAppMappingOverrides:(json)=>{ if(getInAndroid()) return Android.setAppMappingOverrides(json); },
+  getAppMappingOverrides:()=> getInAndroid() ? Android.getAppMappingOverrides() : '{}',
+
+  /* Error classification overrides (remote-updatable quota/high-demand error matching) */
+  setErrorClassificationOverrides:(json)=>{ if(getInAndroid()) return Android.setErrorClassificationOverrides(json); },
+  getErrorClassificationOverrides:()=> getInAndroid() ? Android.getErrorClassificationOverrides() : '{}',
+
+  /* Trial/donation dialog text overrides (titles, body copy, button labels - not the gating logic) */
+  setTrialUiOverrides:(json)=>{ if(getInAndroid()) return Android.setTrialUiOverrides(json); },
+  getTrialUiOverrides:()=> getInAndroid() ? Android.getTrialUiOverrides() : '{}',
+
+  /* Operational tuning overrides (remote-updatable retry/cooldown timing) */
+  setOperationalTuningOverrides:(json)=>{ if(getInAndroid()) return Android.setOperationalTuningOverrides(json); },
+  getOperationalTuningOverrides:()=> getInAndroid() ? Android.getOperationalTuningOverrides() : '{}',
+
+  /* Trial duration override (remote-updatable trial length only - see docs/trial-duration-overrides.md) */
+  setTrialDurationOverride:(json)=>{ if(getInAndroid()) return Android.setTrialDurationOverride(json); },
+  getTrialDurationOverride:()=> getInAndroid() ? Android.getTrialDurationOverride() : '{}',
+
+  /* Generation defaults overrides (remote-updatable factory temperature/topP/topK, not user settings) */
+  setGenerationDefaultsOverrides:(json)=>{ if(getInAndroid()) return Android.setGenerationDefaultsOverrides(json); },
+  getGenerationDefaultsOverrides:()=> getInAndroid() ? Android.getGenerationDefaultsOverrides() : '{}',
+
+  /* Native (Compose-screen) UI string overrides, by stable ID - see DEFAULT_UI_STRINGS below */
+  setUiStringsOverrides:(json)=>{ if(getInAndroid()) return Android.setUiStringsOverrides(json); },
+  getUiStringsOverrides:()=> getInAndroid() ? Android.getUiStringsOverrides() : '{}',
+
+  /* Show a native Android Toast - usable from window.onCustomAction handlers (see toast() example below) */
+  showToast:(message, isLong)=>{ if(getInAndroid()) Android.showToast(String(message), !!isLong); else console.log('[Toast]', message); },
+
+  /* Device control - every native gesture/navigation capability the AI's own commands use,
+     now callable from a window.onCustomAction handler. All go through the exact same
+     ScreenOperatorAccessibilityService execution path as an AI-emitted command (queueing,
+     geometry resolution, safety checks). No-ops outside the Android app. */
+  tapByText:(text)=>{ if(getInAndroid()) Android.tapByText(String(text)); },
+  longTapByText:(text)=>{ if(getInAndroid()) Android.longTapByText(String(text)); },
+  tapAtCoordinates:(x,y)=>{ if(getInAndroid()) Android.tapAtCoordinates(String(x), String(y)); },
+  pressHome:()=>{ if(getInAndroid()) Android.pressHome(); },
+  pressBack:()=>{ if(getInAndroid()) Android.pressBack(); },
+  showRecentApps:()=>{ if(getInAndroid()) Android.showRecentApps(); },
+  pressEnterKey:()=>{ if(getInAndroid()) Android.pressEnterKey(); },
+  writeText:(text)=>{ if(getInAndroid()) Android.writeText(String(text)); },
+  scrollDown:()=>{ if(getInAndroid()) Android.scrollDown(); },
+  scrollUp:()=>{ if(getInAndroid()) Android.scrollUp(); },
+  scrollLeft:()=>{ if(getInAndroid()) Android.scrollLeft(); },
+  scrollRight:()=>{ if(getInAndroid()) Android.scrollRight(); },
+  scrollDownFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollDownFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  scrollUpFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollUpFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  scrollLeftFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollLeftFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  scrollRightFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollRightFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
+  openAppByNameOrPackage:(appNameOrPackage)=>{ if(getInAndroid()) Android.openAppByNameOrPackage(String(appNameOrPackage)); },
+  runTermuxCommand:(command)=>{ if(getInAndroid()) Android.runTermuxCommand(String(command)); },
+  waitSeconds:(seconds)=>{ if(getInAndroid()) Android.waitSeconds(Number(seconds)||0); },
+  requestScreenshot:()=>{ if(getInAndroid()) Android.requestScreenshot(); },
+  markCompleted:()=>{ if(getInAndroid()) Android.markCompleted(); },
+  /* pinchGesture(centerX, centerY, startDistance, endDistance, durationMs)
+     endDistance > startDistance = zoom in; endDistance < startDistance = zoom out.
+     Coordinates/distances accept pixels or percentage strings like "50%". */
+  pinchGesture:(cx,cy,startD,endD,durationMs)=>{ if(getInAndroid()) Android.pinchGesture(String(cx), String(cy), String(startD), String(endD), Number(durationMs)||300); },
+
+  /* Clipboard - needs no extra Android permission. copyToClipboard writes and goes through the
+     same Command/executeCommand path as the AI's own copyToClipboard("text") command;
+     getClipboardText reads back synchronously and returns a plain string (may be '' if the app
+     isn't foregrounded, per Android 10+ clipboard-read restrictions). */
+  copyToClipboard:(text)=>{ if(getInAndroid()) Android.copyToClipboard(String(text)); },
+  getClipboardText:()=> getInAndroid() ? Android.getClipboardText() : '',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -582,12 +666,148 @@ You must operate the screen with exactly following commands: "home()" "back()" "
 To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist.
 If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field.
 
+To show the user a brief on-screen message (e.g. a status update or a warning), use "toast("message")".
+
+To copy text to the clipboard, use "copyToClipboard("text")".
+
+To zoom in on a point, use "pinch(centerX, centerY, startDistance, endDistance, durationMs)" where endDistance > startDistance zooms in and endDistance < startDistance zooms out. Coordinates and distances can be pixels or percentages like "50%". Example for zooming into the center: "pinch("50%", "50%", "10%", "60%", 300)". Example for zooming out: "pinch("50%", "50%", "60%", "10%", 300)".
+
 Say "completed()" when the task is finished.
 
 Notes:
 1. Don't write the commands if you're just planning about it or messaging me.
 2. If you have questions, open Screen Operator, ask your question(s), and use "completed()" until you receive a human response.
 3. After each message, you will see the screen with additional information about it.`;
+
+/* ════════════════════════════════════════════════════════
+   NATIVE (Compose-screen) UI STRINGS
+   ────────────────────────────────────────────────────────
+   These are the *documentation copy* of every native UI string ID Android's
+   UiStringsConfig.get(id, default) recognizes. The actual built-in default
+   text lives at each Kotlin call site (so the app works identically even if
+   this file/the override mechanism is never touched) - this object exists so
+   the full list, with its real current default value, lives in one place a
+   non-Android-developer can read and edit, exactly like DEFAULT_SYSTEM_MSG
+   above. Edit a value here, it gets POSTed to the app via
+   setUiStringsOverrides() on next launch and overrides that one native
+   string. See docs/ui-strings-overrides.md.
+════════════════════════════════════════════════════════ */
+const DEFAULT_UI_STRINGS = {
+  // MainActivity.kt - permission/billing toasts
+  toast_screen_capture_permission_denied: "Screen capture permission denied",
+  toast_notification_permission_granted: "Notification permission granted.",
+  toast_notification_permission_denied: "Notification permission denied. Stop via notification will not be available.",
+  toast_foreground_service_permission_granted: "Foreground service permission granted.",
+  toast_foreground_service_permission_denied: "Foreground service permission denied. The app may not function correctly.",
+  toast_screenshot_service_not_active: "Screenshot service not active. Please grant permission first.",
+  toast_support_cancelled: "Support cancelled.",
+  toast_donation_error: "Error during donation process: {0}",
+  toast_paypal_fallback_unavailable: "PayPal ist in dieser Fallback-UI noch nicht verfügbar.",
+  toast_subscription_deactivated: "Subscription is deactivated",
+
+  // ApiKeyDialog.kt
+  toast_link_copied: "Link is in the clipboard.",
+  toast_paste_link_in_browser: "After the sign up paste the link in the Browser",
+  toast_find_api_token: "After sign up use the search bar to find \"API token\"",
+  apikey_add_button: "Add",
+  apikey_close_button: "Close",
+
+  // MenuScreen.kt
+  menu_change_api_key: "Change API Key",
+  toast_gpu_selected: "GPU selected \u2013 Model stopped. Will load on next generation",
+  toast_cpu_selected: "CPU selected \u2013 Model stopped. Will load on next generation",
+  toast_support_donation_emoji: "Please support the development of the app so that you can continue using it \uD83C\uDF89",
+  menu_pro_price_label: "Pro (2,90 \u20ac/Month)",
+
+  // ModelDownloadManager.kt
+  notif_model_ready_text: "The model is ready to use.",
+  toast_model_already_downloaded: "Model already downloaded.",
+  toast_download_cancelled: "Download cancelled.",
+  toast_model_download_complete: "Model download complete!",
+
+  // ScreenCaptureNotificationFactory.kt
+  notif_processing_ai_request: "Processing AI request...",
+  notif_ready_to_screenshot: "Ready to take screenshots",
+
+  // NotificationUtil.kt
+  notif_stop_screen_operator: "Stop Screen Operator",
+
+  // util/FileSharer.kt
+  toast_file_share_error: "Error sharing file: {0}",
+
+  // feature/multimodal/PhotoReasoningRoute.kt
+  toast_accessibility_settings_open_error: "Error opening Accessibility Settings.",
+
+  // feature/multimodal/PhotoReasoningCommandUiNotifier.kt
+  toast_ai_stopped_app: "The AI stopped Screen Operator",
+
+  // feature/multimodal/PhotoReasoningScreenshotUiNotifier.kt
+  toast_processing_screenshot: "Processing screenshot...",
+  toast_screenshot_sending: "Screenshot added, sending to AI...",
+  toast_screenshot_added: "Screenshot added to conversation",
+
+  // feature/multimodal/PhotoReasoningViewModel.kt - inline AI-message status text
+  msg_initializing_offline_model: "Initializing offline model...",
+  msg_expert_connected: "Expert connected! They can now see your screen and control your device.",
+  msg_expert_found: "Expert found! Requesting screen capture permission...",
+  msg_establishing_video: "Establishing video connection...",
+  msg_expert_disconnected: "Expert disconnected.",
+  toast_add_screenshot_error: "Error adding screenshot: {0}",
+
+  // feature/multimodal/PhotoReasoningScreen.kt
+  screen_database_button: "Database",
+  screen_sysmsg_placeholder: "Enter a system message here that will be sent with every request",
+  screen_accessibility_not_enabled_title: "Accessibility Service is not enabled",
+  screen_accessibility_not_enabled_body: "The click functionality requires the Accessibility Service. Please enable it in the settings.",
+  toast_open_accessibility_settings: "Open Accessibility Settings...",
+  screen_activate_accessibility_button: "Activate Accessibility Service",
+  screen_command_status_label: "Command Status:",
+  screen_detected_commands_label: "Detected Commands:",
+  screen_new_chat_button: "New",
+  toast_enable_accessibility_service: "Enable the Accessibility service for Screen Operator",
+  toast_requesting_screen_capture: "Requesting screen capture permission...",
+  toast_title_guide_empty: "Title and Guide cannot be empty.",
+  toast_entry_title_exists: "An entry with this title already exists.",
+  toast_entry_new_title_exists: "Another entry with this new title already exists.",
+
+  // feature/multimodal/PhotoReasoningEntryEditor.kt
+  entry_editor_title_label: "Title",
+  entry_editor_title_placeholder: "App/Task",
+  entry_editor_guide_label: "Guide",
+  entry_editor_guide_placeholder: "Write a guide for an LLM on how it should perform certain tasks to be successful",
+  entry_editor_save_button: "Save",
+
+  // feature/multimodal/PhotoReasoningChatBubbles.kt
+  chat_stop_button: "Stop",
+
+  // feature/multimodal/PhotoReasoningDatabasePopup.kt
+  toast_no_file_selected: "No file selected.",
+  toast_file_selected_importing: "File selected: {0}. Starting import...",
+  toast_file_too_large: "File is too large (max 10MB).",
+  toast_imported_file_empty: "Imported file is empty.",
+  toast_imported_file_blank: "Imported file content is blank.",
+  toast_import_error: "Error importing file: {0}",
+  toast_entry_overwritten: "Entry '{0}' overwritten.",
+  toast_import_cancelled_remaining: "Import cancelled for remaining items.",
+  db_popup_delete_button: "Delete",
+  db_popup_headings_note: "The headings are sent to the AI and the content is included on request",
+  db_popup_new_button: "New",
+  db_popup_all_button: "All",
+  db_popup_import_button: "Import",
+  toast_no_entries_for_export: "No entries selected for export.",
+  db_popup_export_button: "Export",
+  db_popup_overwrite_title: "Confirm Overwrite",
+  db_popup_overwrite_body: "An entry with the title \"{0}\" already exists. Do you want to overwrite its guide?",
+  db_popup_overwrite_yes: "Yes",
+  db_popup_overwrite_skip_all: "Skip All",
+  db_popup_overwrite_no: "No",
+
+  // ApiKeyDialog.kt - close icon
+  apikey_close_icon: "\u2715",
+
+  // MainActivityDialogs.kt - ApiKeyDialogSection
+  apikey_dialog_ok: "OK",
+};
 
 /* ════════════════════════════════════════════════════════
    STATE
@@ -1071,6 +1291,37 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
   updateDonationCard();
 };
 
+/**
+ * Called by the native accessibility service when a Command.WebViewCustomAction is
+ * executed (i.e. the AI response contained text that matched a regex defined in
+ * custom-action-types.json).
+ *
+ * Override this function (or monkey-patch it) in your custom-action-types handler script
+ * to implement the actual behaviour. The function receives:
+ *   @param {string} id      - the `id` field from the matching custom-action-types entry.
+ *   @param {Array}  groups  - the regex capture groups (index 0 = first capture group).
+ *
+ * Example (defined alongside custom-action-types.json or in a loaded script):
+ *   window.onCustomAction = function(id, groups) {
+ *     if (id === 'PINCH_ZOOM') {
+ *       // groups[0]=x, groups[1]=y, groups[2]=scale
+ *       Android.tapAtCoordinates && Android.tapAtCoordinates(groups[0], groups[1]);
+ *     }
+ *   };
+ *
+ * Built in below: a ready-to-use 'TOAST' case implementing an AI-emitted toast("message")
+ * command - see docs/ai-toast-command.md. It only fires once you add the matching entry to
+ * custom-action-types.json (this file alone does nothing - the regex has to be installed too).
+ */
+window.onCustomAction = window.onCustomAction || function(id, groups) {
+  if (id === 'TOAST') {
+    // groups[0] = the message text captured from toast("...") / toast('...')
+    Bridge.showToast(groups[0] || '', false);
+    return;
+  }
+  console.log('[ScreenOperator] onCustomAction: id=' + id + ', groups=' + JSON.stringify(groups));
+};
+
 window.onAndroidReady = function() {
   currentModelId = Bridge.getSelectedModelId();
   buildModelDropdown();
@@ -1086,7 +1337,8 @@ window.onAndroidReady = function() {
   termuxBackground = Bridge.getTermuxBackground();
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
 
-  // ── Remote config (see docs/command-pattern-overrides.md) ──────────────────
+  // ── Remote config (see docs/command-pattern-overrides.md, docs/model-identifier-
+  // overrides.md, docs/offline-model-overrides.md) ───────────────────────────
   // Both files are optional next to this index.html, fetched relative to the WebView's
   // base URL. Missing/invalid files are ignored - the app falls back to built-in behavior.
 
@@ -1106,6 +1358,96 @@ window.onAndroidReady = function() {
       Bridge.setCustomModelOverrides(json);
       mergeCustomModelsIntoDropdown(json);
     })
+    .catch(() => { /* optional file */ });
+
+  // Corrected wire-level model identifier for an *existing* built-in model (e.g. a Gemini
+  // preview model got renamed/retired by Google) - no app update needed to fix it.
+  fetch('model-identifier-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setModelIdentifierOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Corrected download URL/size/extra files for an *existing* built-in offline model (e.g. a
+  // Hugging Face link moved) - no app update needed to fix it.
+  fetch('offline-model-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setOfflineModelOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Completely new action types (regex + JS handler). When the AI emits a matching command
+  // the native side calls window.onCustomAction(id, groups[]) so the JS handler can invoke
+  // any existing Android.* bridge method to carry out the action — no app update needed.
+  fetch('custom-action-types.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setCustomActionTypes(json); })
+    .catch(() => { /* optional file */ });
+
+  // Caps how many commands from a single AI response are executed, and customizes the
+  // feedback text sent back (together with the next screenshot/screen-elements message)
+  // when commands were dropped because the model sent more than the configured limit at
+  // once - e.g. {"maxCommandsPerMessage": 2}. No app update needed to tune the limit or the
+  // wording; see docs/execution-policy-overrides.md.
+  fetch('execution-policy-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setExecutionPolicyOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Teaches openApp("...") about new apps/aliases, or retunes the fuzzy-match threshold used
+  // to resolve an app name against installed apps - e.g. {"apps": [{"canonicalName": "...",
+  // "packageName": "...", "variations": [...]}]}. No app update needed; see
+  // docs/app-mappings-overrides.md.
+  fetch('app-mappings-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setAppMappingOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Updates the substrings used to tell a quota/rate-limit error (switches API key + retries)
+  // apart from a high-demand/overloaded error (does not switch keys) - useful if the AI
+  // provider changes its error wording. See docs/error-classification-overrides.md.
+  fetch('error-classification-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setErrorClassificationOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Wording for the first-launch info dialog, the trial-expired dialog, and the payment-
+  // method dialog (titles/body/button labels) - text only, not whether/when they're shown.
+  // See docs/trial-ui-overrides.md.
+  fetch('trial-ui-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setTrialUiOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Retunes Mistral request cooldown/backoff timing, model-download retry timing, and the
+  // exact Termux "process completed" marker string the app strips from command output - all
+  // low-level mechanism knobs, none of which change what the app does, just how patiently/
+  // quickly. See docs/operational-tuning-overrides.md.
+  fetch('operational-tuning-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setOperationalTuningOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Trial length only (e.g. {"trialDurationMs": 1209600000} for 14 days) - does not affect
+  // purchase verification, which stays anchored to real Play Billing purchase state. See
+  // docs/trial-duration-overrides.md.
+  fetch('trial-duration-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setTrialDurationOverride(json); })
+    .catch(() => { /* optional file */ });
+
+  // Better out-of-the-box temperature/topP/topK for a model the user hasn't customized yet -
+  // e.g. {"temperature": 0.2, "topP": 0.9, "topK": 32}. Never overrides a user's own saved
+  // per-model settings. See docs/generation-defaults-overrides.md.
+  fetch('generation-defaults-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setGenerationDefaultsOverrides(json); })
+    .catch(() => { /* optional file */ });
+
+  // Overrides for native (Compose-screen) UI strings by stable ID - see DEFAULT_UI_STRINGS
+  // above for the full list and current default text of every recognized ID. Only IDs present
+  // in the fetched JSON are overridden; everything else keeps using its built-in default.
+  fetch('ui-strings-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => { if (json) Bridge.setUiStringsOverrides(json); })
     .catch(() => { /* optional file */ });
 };
 

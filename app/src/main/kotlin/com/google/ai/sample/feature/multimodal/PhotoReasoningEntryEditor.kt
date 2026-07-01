@@ -52,12 +52,12 @@ fun EditEntryPopup(
                 var titleInput by rememberSaveable { mutableStateOf(entry?.title ?: "") }
                 var guideInput by rememberSaveable { mutableStateOf(entry?.guide ?: "") }
 
-                Text("Title", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) 
+                Text(com.google.ai.sample.util.UiStringsConfig.get("entry_editor_title_label", "Title"), style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) 
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = titleInput,
                     onValueChange = { titleInput = it },
-                    placeholder = { Text("App/Task", color = Color.Gray) },
+                    placeholder = { Text(com.google.ai.sample.util.UiStringsConfig.get("entry_editor_title_placeholder", "App/Task"), color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors( 
                         focusedContainerColor = Color.White,
@@ -70,12 +70,12 @@ fun EditEntryPopup(
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Guide", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) 
+                Text(com.google.ai.sample.util.UiStringsConfig.get("entry_editor_guide_label", "Guide"), style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) 
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = guideInput,
                     onValueChange = { guideInput = it },
-                    placeholder = { Text("Write a guide for an LLM on how it should perform certain tasks to be successful", color = Color.Gray) },
+                    placeholder = { Text(com.google.ai.sample.util.UiStringsConfig.get("entry_editor_guide_placeholder", "Write a guide for an LLM on how it should perform certain tasks to be successful"), color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
@@ -92,7 +92,7 @@ fun EditEntryPopup(
                     onClick = { onSaveClicked(titleInput, guideInput, entry) },
                     modifier = Modifier.align(Alignment.End),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) { Text("Save") }
+                ) { Text(com.google.ai.sample.util.UiStringsConfig.get("entry_editor_save_button", "Save")) }
             }
         }
     }

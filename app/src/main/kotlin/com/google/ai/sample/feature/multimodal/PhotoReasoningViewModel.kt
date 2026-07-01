@@ -28,6 +28,7 @@ import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
+import com.google.ai.sample.util.ExecutionPolicyConfig
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.TermuxFeedbackPreferences
@@ -690,7 +691,7 @@ class PhotoReasoningViewModel(
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
         if (currentKey != null) {
             generativeModel = GenerativeModel(
-                modelName = modelName,
+                modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                 apiKey = currentKey
             )
             // Recreate chat with new model
@@ -918,7 +919,7 @@ class PhotoReasoningViewModel(
                     if (useLiteRt) {
                         if (liteRtEngine == null) {
                             withContext(Dispatchers.Main) {
-                                replaceAiMessageText("Initializing offline model...", isPending = true)
+                                replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_initializing_offline_model", "Initializing offline model..."), isPending = true)
                             }
                             _isInitializingOfflineModelFlow.value = true
                             refreshStopButtonState()
@@ -929,7 +930,7 @@ class PhotoReasoningViewModel(
                         }
                     } else if (llmInference == null) {
                         withContext(Dispatchers.Main) {
-                            replaceAiMessageText("Initializing offline model...", isPending = true)
+                            replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_initializing_offline_model", "Initializing offline model..."), isPending = true)
                         }
                         // Use Default dispatcher for CPU-intensive model loading
                         _isInitializingOfflineModelFlow.value = true
@@ -1162,7 +1163,7 @@ class PhotoReasoningViewModel(
             val modelApiKey = if (currentModel.isOfflineModel) "offline-no-key-needed" else (currentKey ?: "")
             if (currentModel.isOfflineModel || modelApiKey.isNotBlank()) {
                 generativeModel = GenerativeModel(
-                    modelName = currentModel.modelName,
+                    modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                     apiKey = modelApiKey,
                     generationConfig = config
                 )
@@ -1218,9 +1219,11 @@ class PhotoReasoningViewModel(
                     }
 
                 // CerebrasRequest braucht stream-Feld — inline als JSON-String um Datenklasse nicht zu ändern
-                val selectedModelName = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel().modelName
+                val currentCerebrasModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
+                val selectedModelName = currentCerebrasModel.modelName
+                val wireModelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentCerebrasModel)
                 val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(context, selectedModelName)
-                val streamingBody = """{"model":"$selectedModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":${genSettings.temperature.toDouble()},"top_p":${genSettings.topP.toDouble()},"stream":true}"""
+                val streamingBody = """{"model":"$wireModelName","messages":${Json.encodeToString(apiMessages)},"max_completion_tokens":1024,"temperature":${genSettings.temperature.toDouble()},"top_p":${genSettings.topP.toDouble()},"stream":true}"""
                 val mediaType = "application/json".toMediaType()
                 val client = OkHttpClient()
 
@@ -1380,7 +1383,7 @@ class PhotoReasoningViewModel(
                 ignoreUnknownKeys = true
             }
             val requestBody = MistralRequest(
-                model = currentModel.modelName,
+                model = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                 messages = apiMessages,
                 temperature = genSettings.temperature.toDouble().coerceAtLeast(0.01),
                 top_p = genSettings.topP.toDouble().coerceAtLeast(0.01),
@@ -1410,8 +1413,8 @@ class PhotoReasoningViewModel(
             require(availableKeys.isNotEmpty()) { "No valid Mistral API keys available after filtering" }
             val mistralMinIntervalMs = when (currentModel) {
                 ModelOption.MISTRAL_MEDIUM_3_1,
-                ModelOption.MISTRAL_MEDIUM_3_5 -> 420L
-                else -> 1500L
+                ModelOption.MISTRAL_MEDIUM_3_5 -> com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsFastModels
+                else -> com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsDefault
             }
             val maxAttempts = when (currentModel) {
                 ModelOption.MISTRAL_LARGE_3,
@@ -1683,7 +1686,7 @@ class PhotoReasoningViewModel(
                 }
 
                 val requestBody = com.google.ai.sample.network.PuterRequest(
-                    model = currentModel.modelName,
+                    model = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                     messages = apiMessages,
                     temperature = genSettings.temperature.toDouble(),
                     top_p = genSettings.topP.toDouble(),
@@ -2110,7 +2113,7 @@ class PhotoReasoningViewModel(
                 viewModelScope.launch(Dispatchers.Main) {
                     if (state == "CONNECTED") {
                         _commandExecutionStatus.value = "Expert connected. Sharing screen."
-                        replaceAiMessageText("Expert connected! They can now see your screen and control your device.", isPending = false)
+                        replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_connected", "Expert connected! They can now see your screen and control your device."), isPending = false)
                     } else if (state == "DISCONNECTED" || state == "FAILED") {
                          _commandExecutionStatus.value = "Expert disconnected."
                     }
@@ -2155,7 +2158,7 @@ class PhotoReasoningViewModel(
             override fun onTaskClaimed(taskId: String) {
                 Log.d(TAG, "Task claimed! Requesting fresh MediaProjection for WebRTC.")
                 viewModelScope.launch(Dispatchers.Main) {
-                    replaceAiMessageText("Expert found! Requesting screen capture permission...", isPending = true)
+                    replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_found", "Expert found! Requesting screen capture permission..."), isPending = true)
                     
                     // Request a fresh MediaProjection specifically for WebRTC.
                     // MainActivity startet bereits ACTION_KEEP_ALIVE_FOR_WEBRTC BEVOR dieser Callback gerufen wird.
@@ -2164,7 +2167,7 @@ class PhotoReasoningViewModel(
                     if (mainActivity != null) {
                         mainActivity.requestMediaProjectionForWebRTC { _, resultData ->
                             Log.d(TAG, "WebRTC MediaProjection granted. Service läuft bereits via KEEP_ALIVE. Starte Screen Capture.")
-                            replaceAiMessageText("Establishing video connection...", isPending = true)
+                            replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_establishing_video", "Establishing video connection..."), isPending = true)
                             
                             // KEIN startForegroundService() hier - MainActivity hat bereits ACTION_KEEP_ALIVE_FOR_WEBRTC gesendet.
                             // Das vermeidet doppelten Service-Start und ForegroundServiceDidNotStartInTimeException.
@@ -2212,7 +2215,7 @@ class PhotoReasoningViewModel(
             override fun onPeerDisconnected() {
                  viewModelScope.launch(Dispatchers.Main) {
                     _commandExecutionStatus.value = "Expert disconnected."
-                    replaceAiMessageText("Expert disconnected.", isPending = false)
+                    replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_disconnected", "Expert disconnected."), isPending = false)
                     webRTCSender?.stop()
                 }
             }
@@ -2393,10 +2396,23 @@ class PhotoReasoningViewModel(
                 // There are new commands to execute
                 val newCommands = allCommands.subList(incrementalCommandCount, allCommands.size)
                 Log.d(TAG, "Incremental: Found ${newCommands.size} new commands (total: ${allCommands.size}, already executed: $incrementalCommandCount)")
-                
+
+                // Remote-updatable cap (see ExecutionPolicyConfig / execution-policy-overrides.json)
+                // on how many commands from this single message may run in total. Enforced here
+                // too (not just in the final processCommands() pass below) since most commands are
+                // normally already executed incrementally as they stream in.
+                val maxCommandsPerMessage = ExecutionPolicyConfig.current().maxCommandsPerMessage
+
                 for (command in newCommands) {
                     if (stopExecutionFlag.get()) break
-                    
+
+                    val absoluteIndex = incrementalCommandCount
+                    if (!CommandExecutionLimiter.isWithinLimit(absoluteIndex, maxCommandsPerMessage)) {
+                        Log.d(TAG, "Incremental: Skipping command beyond per-message limit ($maxCommandsPerMessage): $command")
+                        incrementalCommandCount++
+                        continue
+                    }
+
                     // Skip commands that are handled only after streaming has finished.
                     if (command is Command.TakeScreenshot) {
                         Log.d(TAG, "Incremental: Skipping takeScreenshot during streaming (will be handled at end)")
@@ -2466,9 +2482,17 @@ private fun processCommands(text: String) {
         if (PhotoReasoningCommandExecutionGuard.shouldAbort(commandProcessingJob?.isActive == true, stopExecutionFlag.get())) return@launch // Check for cancellation
         try {
             val commandBatch = PhotoReasoningCommandProcessing.parseForFinalExecution(text)
-            val parsedCommands = commandBatch.commands
-            val hasCompletedCommand = commandBatch.hasCompletedCommand
-            val hasTakeScreenshotCommand = commandBatch.hasTakeScreenshotCommand
+            val maxCommandsPerMessage = ExecutionPolicyConfig.current().maxCommandsPerMessage
+            val truncation = CommandExecutionLimiter.truncate(commandBatch.commands, maxCommandsPerMessage)
+            // parsedCommands is the (possibly truncated) list everything below this point works
+            // with. hasCompletedCommand/hasTakeScreenshotCommand are recomputed against it on
+            // purpose: if completed()/takeScreenshot() got cut off by the limit, the existing
+            // logic just below already takes care of appending a fresh TakeScreenshot so the AI
+            // still gets feedback, and markTaskCompletedByAi() further down is correctly skipped
+            // for this turn.
+            val parsedCommands = truncation.commandsToExecute
+            val hasCompletedCommand = parsedCommands.any { it is Command.Completed }
+            val hasTakeScreenshotCommand = parsedCommands.any { it is Command.TakeScreenshot }
             val commandsBeforeCompletion = if (hasCompletedCommand) {
                 parsedCommands.takeWhile { it !is Command.Completed } + Command.Completed
             } else {
@@ -2489,7 +2513,16 @@ private fun processCommands(text: String) {
             }
 
             if (!hasCompletedCommand) {
-                pendingRetrievedInfoForNextScreenshot = buildRetrievedInfoForNextScreenshot(commands)
+                val truncationNote = if (truncation.wasTruncated) {
+                    ExecutionPolicyConfig.current()
+                        .formatTruncationFeedback(truncation.totalCount, truncation.executedCount)
+                } else {
+                    null
+                }
+                pendingRetrievedInfoForNextScreenshot = listOfNotNull(
+                    truncationNote,
+                    buildRetrievedInfoForNextScreenshot(commands)
+                ).joinToString("\n\n").ifBlank { null }
             }
 
             if (commands.isNotEmpty()) {
@@ -2849,7 +2882,7 @@ private fun processCommands(text: String) {
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Error adding screenshot: ${e.message}"
-                Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_add_screenshot_error", "Error adding screenshot: {0}", e.message), Toast.LENGTH_SHORT).show()
             }
         }
     }

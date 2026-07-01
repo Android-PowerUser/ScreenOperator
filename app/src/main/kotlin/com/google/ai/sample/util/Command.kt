@@ -23,9 +23,41 @@ sealed class Command {
     data class ScrollLeftFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class OpenApp(val packageName: String) : Command()
+    /**
+     * A two-finger pinch gesture, centered at (centerX, centerY), with both fingers moving
+     * from startDistance apart to endDistance apart over durationMs. endDistance > startDistance
+     * pinches out (zoom in); endDistance < startDistance pinches in (zoom out). Coordinates and
+     * distances accept the same formats as other coordinate-based commands (pixels, or a
+     * percentage string like "50%").
+     */
+    data class PinchGesture(
+        val centerX: String,
+        val centerY: String,
+        val startDistance: String,
+        val endDistance: String,
+        val durationMs: Long
+    ) : Command()
     data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
+    /**
+     * Copies [text] to the system clipboard. Requires no Android permission (clipboard access
+     * is granted to every app by default), so - like the other entries in this "no extra
+     * permission needed" group - it is exposed both as a native command (for the AI's own
+     * text commands, via CommandParser) and as a WebView bridge method (`Android.copyToClipboard`)
+     * so a custom-action-types.json entry can trigger it directly.
+     */
+    data class CopyToClipboard(val text: String) : Command()
     data class TermuxCommand(val command: String) : Command()
     object UseHighReasoningModel : Command()
     object UseLowReasoningModel : Command()
+    /**
+     * A custom action type defined entirely in the remote WebView bundle
+     * (`custom-action-types.json`). When executed, the native accessibility service calls
+     * `window.onCustomAction(id, groups[])` in JavaScript so the WebView handler can carry
+     * out the actual work using existing `Android.*` bridge methods.
+     *
+     * @param id     The `id` field from the matching custom-action-types entry.
+     * @param groups The regex capture groups (index 0 = first capture group).
+     */
+    data class WebViewCustomAction(val id: String, val groups: List<String>) : Command()
 }

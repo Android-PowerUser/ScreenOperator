@@ -127,7 +127,7 @@ internal fun PhotoReasoningRoute(
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 accessibilitySettingsLauncher.launch(intent)
             } catch (e: Exception) {
-                Toast.makeText(context, "Error opening Accessibility Settings.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_accessibility_settings_open_error", "Error opening Accessibility Settings."), Toast.LENGTH_LONG).show()
             }
         },
         onClearChatHistory = {

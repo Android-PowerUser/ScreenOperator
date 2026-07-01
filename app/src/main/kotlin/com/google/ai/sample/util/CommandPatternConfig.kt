@@ -14,15 +14,6 @@ import org.json.JSONArray
  *   { "id": "clickBtnCapitalized", "commandType": "CLICK_BUTTON", "regex": "(?i)\\bClick\\([\"']([^\"']+)[\"']" }
  * ]
  * ```
- *
- * IMPORTANT (safety boundary): an override can only attach a *new regular expression* to an
- * *already existing* [CommandParser.CommandType]. It can never introduce a new kind of action,
- * and it can never run arbitrary code - the actual [Command] that gets built (and therefore
- * everything that is allowed to happen on the device) is still produced by the same,
- * compiled-in builder function that ships with the app for that command type. This means a new
- * model that simply phrases an existing action differently (e.g. "Click('...')" instead of
- * "click(\"...\")") can be supported purely by editing a JSON file in the repo - while what each
- * action is actually allowed to do stays fixed in native code and unrelated to this mechanism.
  */
 internal object CommandPatternConfig {
     private const val TAG = "CommandPatternConfig"

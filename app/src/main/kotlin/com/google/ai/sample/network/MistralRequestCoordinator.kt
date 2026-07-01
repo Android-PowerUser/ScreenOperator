@@ -1,6 +1,7 @@
 package com.google.ai.sample.network
 
 import android.util.Log
+import com.google.ai.sample.util.OperationalTuningConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -17,9 +18,6 @@ internal data class MistralCoordinatedResponse(
 
 internal object MistralRequestCoordinator {
     private const val TAG = "MistralCoordinator"
-    private const val MIN_INTERVAL_MS = 1500L
-    private const val MAX_SERVER_DELAY_MS = 5_000L
-    private const val CANCEL_CHECK_INTERVAL_MS = 100L
     private val cooldownMutex = Mutex()
     private val nextAllowedRequestAtMsByKey = mutableMapOf<String, Long>()
     private val requestId = AtomicLong(0L)
@@ -67,7 +65,7 @@ internal object MistralRequestCoordinator {
             raw >= 0L -> raw * 1000L
             else -> return null
         }
-        return delayMs.coerceAtLeast(0L).coerceAtMost(MAX_SERVER_DELAY_MS)
+        return delayMs.coerceAtLeast(0L).coerceAtMost(OperationalTuningConfig.current().mistralMaxServerDelayMs)
     }
 
     private fun adaptiveRetryDelayMs(failureCount: Int): Long {
@@ -83,7 +81,7 @@ internal object MistralRequestCoordinator {
             if (shouldCancel()) {
                 throw CancellationException("Mistral request cancelled by user")
             }
-            val nextDelayMs = remainingMs.coerceAtMost(CANCEL_CHECK_INTERVAL_MS)
+            val nextDelayMs = remainingMs.coerceAtMost(OperationalTuningConfig.current().mistralCancelCheckIntervalMs)
             delay(nextDelayMs)
             remainingMs -= nextDelayMs
         }
@@ -95,7 +93,7 @@ internal object MistralRequestCoordinator {
     suspend fun execute(
         apiKeys: List<String>,
         maxAttempts: Int = apiKeys.size * 4 + 8,
-        minIntervalMs: Long = MIN_INTERVAL_MS,
+        minIntervalMs: Long = OperationalTuningConfig.current().mistralMinIntervalMsDefault,
         shouldCancel: () -> Boolean = { false },
         request: suspend (apiKey: String) -> Response
     ): MistralCoordinatedResponse {

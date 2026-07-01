@@ -33,10 +33,11 @@ object GenerationSettingsPreferences {
 
     fun loadSettings(context: Context, modelName: String): GenerationSettings {
         val prefs = prefs(context)
+        val defaults = GenerationDefaultsConfig.current()
         return GenerationSettings(
-            temperature = prefs.getFloat(key(modelName, KEY_TEMPERATURE_SUFFIX), 0.0f),
-            topP = prefs.getFloat(key(modelName, KEY_TOP_P_SUFFIX), 0.0f),
-            topK = prefs.getInt(key(modelName, KEY_TOP_K_SUFFIX), 1)
+            temperature = prefs.getFloat(key(modelName, KEY_TEMPERATURE_SUFFIX), defaults.temperature),
+            topP = prefs.getFloat(key(modelName, KEY_TOP_P_SUFFIX), defaults.topP),
+            topK = prefs.getInt(key(modelName, KEY_TOP_K_SUFFIX), defaults.topK)
         )
     }
 }

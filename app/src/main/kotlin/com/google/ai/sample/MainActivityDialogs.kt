@@ -56,9 +56,10 @@ internal fun PaymentMethodDialog(
     onPayPalClick: () -> Unit,
     onGooglePlayClick: () -> Unit
 ) {
+    val ui = com.google.ai.sample.util.TrialUiConfig.current()
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Choose Payment Method") },
+        title = { Text(ui.paymentMethodDialogTitle) },
         text = {
             Column {
                 Button(
@@ -69,20 +70,20 @@ internal fun PaymentMethodDialog(
                         containerColor = Color.Gray
                     )
                 ) {
-                    Text("PayPal (2,90 €/Month)")
+                    Text(ui.paymentMethodPayPalButtonLabel)
                 }
                 Button(
                     onClick = onGooglePlayClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Google Play (2,90 €/Month)")
+                    Text(ui.paymentMethodGooglePlayButtonLabel)
                 }
             }
         },
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(ui.paymentMethodCancelButtonLabel)
             }
         }
     )
@@ -106,6 +107,7 @@ internal fun ApiKeyDialogSection(
 @Composable
 fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
     Log.d("FirstLaunchInfoDialog", "Composing FirstLaunchInfoDialog")
+    val ui = com.google.ai.sample.util.TrialUiConfig.current()
     Dialog(onDismissRequest = {
         Log.d("FirstLaunchInfoDialog", "onDismissRequest called")
         onDismiss()
@@ -123,12 +125,12 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Trial Information",
+                    text = ui.firstLaunchDialogTitle,
                     style = MaterialTheme.typography.titleLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "You can try Screen Operator for 7 days before you have to subscribe to support the development of more features.",
+                    text = ui.firstLaunchDialogBody,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
@@ -140,7 +142,7 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("OK")
+                    Text(ui.firstLaunchDialogButton)
                 }
             }
         }
@@ -155,6 +157,7 @@ fun TrialExpiredDialog(
     @Suppress("UNUSED_PARAMETER") onDismiss: () -> Unit
 ) {
     Log.d("TrialExpiredDialog", "Composing TrialExpiredDialog")
+    val ui = com.google.ai.sample.util.TrialUiConfig.current()
     Dialog(onDismissRequest = {
         Log.d("TrialExpiredDialog", "onDismissRequest called (persistent dialog - user tried to dismiss)")
     }) {
@@ -171,12 +174,12 @@ fun TrialExpiredDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Trial period expired",
+                    text = ui.trialExpiredDialogTitle,
                     style = MaterialTheme.typography.titleLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Please support the development of the app so that you can continue using it \uD83C\uDF89",
+                    text = ui.trialExpiredDialogBody,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
@@ -188,7 +191,7 @@ fun TrialExpiredDialog(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Subscribe")
+                    Text(ui.trialExpiredDialogSubscribeButton)
                 }
             }
         }
@@ -201,6 +204,7 @@ fun InfoDialog(
     onDismiss: () -> Unit
 ) {
     Log.d("InfoDialog", "Composing InfoDialog with message: $message")
+    val ui = com.google.ai.sample.util.TrialUiConfig.current()
     Dialog(onDismissRequest = {
         Log.d("InfoDialog", "onDismissRequest called")
         onDismiss()
@@ -218,7 +222,7 @@ fun InfoDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Information",
+                    text = ui.infoDialogTitle,
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -232,7 +236,7 @@ fun InfoDialog(
                     Log.d("InfoDialog", "OK button clicked")
                     onDismiss()
                 }) {
-                    Text("OK")
+                    Text(com.google.ai.sample.util.UiStringsConfig.get("apikey_dialog_ok", "OK"))
                 }
             }
         }

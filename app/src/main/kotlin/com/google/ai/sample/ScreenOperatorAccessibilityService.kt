@@ -379,6 +379,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     openApp(command.packageName)
                 }
             }
+            is Command.PinchGesture -> {
+                executePinchGesture(command)
+            }
             is Command.Retrieve -> {
                 Log.d(TAG, "Retrieve command is handled in prompt construction: ${command.heading}")
                 false
@@ -421,6 +424,34 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     toastMessage = "Trying to press Enter key"
                 ) {
                     pressEnterKey()
+                }
+            }
+            is Command.CopyToClipboard -> {
+                executeSyncCommandAction(
+                    logMessage = "Copying to clipboard: ${command.text}",
+                    toastMessage = "Copied to clipboard"
+                ) {
+                    val clipboard = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val clip = android.content.ClipData.newPlainText("Screen Operator Clipboard", command.text)
+                    clipboard.setPrimaryClip(clip)
+                    true
+                }
+            }
+            is Command.WebViewCustomAction -> {
+                // Execution is fully JS-driven: call window.onCustomAction(id, groups[]) in
+                // the WebView and let the JS handler invoke any existing Android.* bridge method.
+                executeSyncCommandAction(
+                    logMessage = "Executing WebView custom action: id=${command.id}, groups=${command.groups}",
+                    toastMessage = "Executing custom action: ${command.id}"
+                ) {
+                    val groupsJson = org.json.JSONArray(command.groups).toString()
+                    val escapedId = command.id
+                        .replace("\\", "\\\\")
+                        .replace("'", "\\'")
+                    mainHandler.post {
+                        MainActivity.getInstance()
+                            ?.evaluateWebViewJs("window.onCustomAction && window.onCustomAction('$escapedId', $groupsJson)")
+                    }
                 }
             }
         }.also {
@@ -1559,6 +1590,78 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             .build()
     }
 
+    /**
+     * Builds and dispatches a two-finger pinch gesture.
+     *
+     * Two virtual fingers are placed symmetrically on the vertical axis centered at (cx, cy).
+     * Finger 1 starts at cy - startR and moves to cy - endR (above the center).
+     * Finger 2 starts at cy + startR and moves to cy + endR (below the center).
+     * Using vertical placement keeps the math simple and produces a recognizable pinch on any
+     * content that responds to a standard scale gesture (maps, photos, browser pages, etc.).
+     *
+     * endR > startR → fingers move apart → zoom in.
+     * endR < startR → fingers move toward each other → zoom out.
+     */
+    private fun executePinchGesture(command: Command.PinchGesture): Boolean {
+        if (!ensureGestureApiAvailable("Pinch gesture")) {
+            scheduleNextCommandProcessing()
+            return false
+    }
+
+        val metrics = resources.displayMetrics
+        val cx = convertCoordinate(command.centerX, metrics.widthPixels)
+        val cy = convertCoordinate(command.centerY, metrics.heightPixels)
+        val startR = convertCoordinate(command.startDistance, metrics.heightPixels) / 2f
+        val endR = convertCoordinate(command.endDistance, metrics.heightPixels) / 2f
+        val duration = command.durationMs.coerceAtLeast(50L)
+
+        val direction = if (endR > startR) "zoom in (pinch out)" else "zoom out (pinch in)"
+        Log.d(TAG, "Pinch gesture: center=($cx,$cy), startR=$startR, endR=$endR, ${duration}ms, $direction")
+        showToast("Pinch gesture: $direction at ($cx,$cy)", false)
+
+        try {
+            // Finger 1: upper finger
+            val path1 = Path().apply {
+                moveTo(cx, cy - startR)
+                lineTo(cx, cy - endR)
+            }
+            // Finger 2: lower finger (mirror)
+            val path2 = Path().apply {
+                moveTo(cx, cy + startR)
+                lineTo(cx, cy + endR)
+            }
+
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path1, 0, duration))
+                .addStroke(GestureDescription.StrokeDescription(path2, 0, duration))
+                .build()
+
+            dispatchGestureWithCallbacks(
+                gesture = gesture,
+                onCompleted = {
+                    Log.d(TAG, "Pinch gesture completed")
+                    showToast("Pinch gesture completed", false)
+                    scheduleNextCommandProcessing()
+                },
+                onCancelled = {
+                    Log.e(TAG, "Pinch gesture cancelled")
+                    showToast("Pinch gesture cancelled", true)
+                    scheduleNextCommandProcessing()
+                },
+                onDispatchFailed = {
+                    Log.e(TAG, "Pinch gesture dispatch failed")
+                    showToast("Pinch gesture dispatch failed", true)
+                    scheduleNextCommandProcessing()
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing pinch gesture: ${e.message}", e)
+            showToast("Error executing pinch gesture: ${e.message}", true)
+            scheduleNextCommandProcessing()
+        }
+        return true
+    }
+
     fun tapAtCoordinates(x: Float, y: Float) {
         Log.d(TAG, "Tapping at coordinates: ($x, $y)")
         showToast("Tapping at coordinates: ($x, $y)", false)
@@ -1901,7 +2004,7 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         
         // Build a string with information about all interactive elements
         val screenInfo = StringBuilder()
-        screenInfo.append("Screen elements:\n")
+        screenInfo.append("${com.google.ai.sample.util.OperationalTuningConfig.current().screenElementsMarker}\n")
         
         // Find all interactive elements
         val currentRootNode = currentRootNodeOrHandleMissing(
@@ -2669,3 +2772,4 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         }
     }
 }
+

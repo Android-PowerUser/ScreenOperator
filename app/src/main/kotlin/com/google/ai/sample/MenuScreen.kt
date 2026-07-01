@@ -160,7 +160,7 @@ fun MenuScreen(
                             enabled = true, // Always enabled
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
-                            Text(text = "Change API Key")
+                            Text(text = com.google.ai.sample.util.UiStringsConfig.get("menu_change_api_key", "Change API Key"))
                         }
                     }
                 }
@@ -202,7 +202,7 @@ fun MenuScreen(
                                 onClick = { expanded = true },
                                 enabled = true // Always enabled
                             ) {
-                                Text("Change Model")
+                                Text(stringResource(R.string.change_model))
                             }
 
                             DropdownMenu(
@@ -233,7 +233,8 @@ fun MenuScreen(
                                     DropdownMenuItem(
                                         text = {
                                             // Do not actually disable these models. They must remain selectable for testing/debug purposes.
-                                            val modelText = modelOption.displayName + (modelOption.size?.let { " - $it" } ?: "")
+                                            val effectiveSize = com.google.ai.sample.util.OfflineModelOverrides.effectiveSize(modelOption)
+                                            val modelText = modelOption.displayName + (effectiveSize?.let { " - $it" } ?: "")
                                             if (STRIKETHROUGH_MODELS.contains(modelOption)) {
                                                 Text(
                                                     text = modelText,
@@ -363,7 +364,7 @@ fun MenuScreen(
                                         currentBackend.value = InferenceBackend.GPU
                                         val mainActivity = context as? MainActivity
                                         mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
-                                        Toast.makeText(context, "GPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_gpu_selected", "GPU selected \u2013 Model stopped. Will load on next generation"), Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.GPU)
@@ -372,7 +373,7 @@ fun MenuScreen(
                                         ButtonDefaults.outlinedButtonColors(),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Text("GPU")
+                                    Text(stringResource(R.string.gpu_label))
                                 }
 
                                 Button(
@@ -381,7 +382,7 @@ fun MenuScreen(
                                         currentBackend.value = InferenceBackend.CPU
                                         val mainActivity = context as? MainActivity
                                         mainActivity?.getPhotoReasoningViewModel()?.closeOfflineModel()
-                                        Toast.makeText(context, "CPU selected – Model stopped. Will load on next generation", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_cpu_selected", "CPU selected \u2013 Model stopped. Will load on next generation"), Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = if (currentBackend.value == InferenceBackend.CPU)
@@ -390,7 +391,7 @@ fun MenuScreen(
                                         ButtonDefaults.outlinedButtonColors(),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Text("CPU")
+                                    Text(stringResource(R.string.cpu_label))
                                 }
                             }
 
@@ -545,7 +546,7 @@ fun MenuScreen(
                         TextButton(
                             onClick = {
                                 if (isTrialExpired) {
-                                    Toast.makeText(context, "Please support the development of the app so that you can continue using it \uD83C\uDF89", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_support_donation_emoji", "Please support the development of the app so that you can continue using it \uD83C\uDF89"), Toast.LENGTH_LONG).show()
                                 } else {
                                     if (menuItem.routeId == "photo_reasoning") {
                                         val mainActivity = context as? MainActivity
@@ -625,7 +626,7 @@ fun MenuScreen(
                                 onClick = onDonationButtonClicked,
                                 modifier = Modifier.padding(start = 8.dp)
                             ) {
-                                Text(text = "Pro (2,90 €/Month)")
+                                Text(text = com.google.ai.sample.util.UiStringsConfig.get("menu_pro_price_label", "Pro (2,90 \u20ac/Month)"))
                             }
                         }
                     }
@@ -697,8 +698,8 @@ fun MenuScreen(
                 // Or, we can choose not to navigate if they dismiss. For now, let's navigate.
                  mainActivity?.let { onItemClicked("photo_reasoning") }
             },
-            title = { Text("Notification Permission") },
-            text = { Text("You can grant notification permission if you want to be able to stop Screen Operator via notifications.") },
+            title = { Text(stringResource(R.string.notification_permission_title)) },
+            text = { Text(stringResource(R.string.notification_permission_text)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -711,7 +712,7 @@ fun MenuScreen(
                         Log.d("MenuScreen", "Navigating to photo_reasoning after rationale OK.")
                         mainActivity?.let { onItemClicked("photo_reasoning") }
                     }
-                ) { Text("OK") }
+                ) { Text(stringResource(R.string.ok)) }
             },
             dismissButton = {
                 TextButton(
@@ -721,7 +722,7 @@ fun MenuScreen(
                         Log.d("MenuScreen", "Navigating to photo_reasoning after rationale cancel/dismiss.")
                         mainActivity?.let { onItemClicked("photo_reasoning") }
                     }
-                ) { Text("Cancel") }
+                ) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -741,15 +742,18 @@ fun MenuScreen(
                 }
                 // Don't dismiss while downloading/paused
             },
-            title = { Text("Download Model (${downloadDialogModel?.size ?: "unknown size"})") },
+            title = {
+                val effectiveSize = downloadDialogModel?.let { com.google.ai.sample.util.OfflineModelOverrides.effectiveSize(it) }
+                Text(stringResource(R.string.download_model_title, effectiveSize ?: stringResource(R.string.unknown_size)))
+            },
             text = {
                 Column {
                     when (val state = dlState) {
                         is ModelDownloadManager.DownloadState.Idle -> {
-                            Text("Should ${downloadDialogModel?.displayName ?: "this model"} be downloaded?\n\n$formattedGbAvailable GB of storage available.")
+                            Text(stringResource(R.string.download_model_confirm, downloadDialogModel?.displayName ?: stringResource(R.string.this_model), formattedGbAvailable))
                         }
                         is ModelDownloadManager.DownloadState.Downloading -> {
-                            Text("Downloading...")
+                            Text(stringResource(R.string.downloading))
                             Spacer(modifier = Modifier.height(8.dp))
                             androidx.compose.material3.LinearProgressIndicator(
                                 progress = { state.progress },
@@ -766,7 +770,7 @@ fun MenuScreen(
                             )
                         }
                         is ModelDownloadManager.DownloadState.Paused -> {
-                            Text("Download paused.")
+                            Text(stringResource(R.string.download_paused))
                             Spacer(modifier = Modifier.height(8.dp))
                             val progress = if (state.totalBytes > 0) state.bytesDownloaded.toFloat() / state.totalBytes else 0f
                             androidx.compose.material3.LinearProgressIndicator(
@@ -780,10 +784,10 @@ fun MenuScreen(
                             )
                         }
                         is ModelDownloadManager.DownloadState.Completed -> {
-                            Text("Download complete! ✅")
+                            Text(stringResource(R.string.download_complete))
                         }
                         is ModelDownloadManager.DownloadState.Error -> {
-                            Text("Error: ${state.message}")
+                            Text(stringResource(R.string.download_error, state.message))
                         }
                     }
                 }
@@ -794,7 +798,7 @@ fun MenuScreen(
                         TextButton(
                             onClick = {
                                 downloadDialogModel?.let { model ->
-                                    model.downloadUrl?.let { url ->
+                                    com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model)?.let { url ->
                                         ModelDownloadManager.downloadModel(context, model, url)
                                     }
                                     // Task 2: Request notification permission when download starts
@@ -804,21 +808,21 @@ fun MenuScreen(
                                     }
                                 }
                             }
-                        ) { Text("Download") }
+                        ) { Text(stringResource(R.string.download)) }
                     }
                     is ModelDownloadManager.DownloadState.Downloading -> {
-                        TextButton(onClick = { ModelDownloadManager.pauseDownload() }) { Text("Pause") }
+                        TextButton(onClick = { ModelDownloadManager.pauseDownload() }) { Text(stringResource(R.string.pause)) }
                     }
                     is ModelDownloadManager.DownloadState.Paused -> {
                         TextButton(
                             onClick = {
                                 downloadDialogModel?.let { model ->
-                                    model.downloadUrl?.let { url ->
+                                    com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model)?.let { url ->
                                         ModelDownloadManager.resumeDownload(context, model, url)
                                     }
                                 }
                             }
-                        ) { Text("Resume") }
+                        ) { Text(stringResource(R.string.resume)) }
                     }
                     is ModelDownloadManager.DownloadState.Completed -> {
                         TextButton(onClick = {
@@ -828,25 +832,25 @@ fun MenuScreen(
                                 GenerativeAiViewModelFactory.setModel(it, context)
                             }
                             showDownloadDialog = false
-                        }) { Text("Close") }
+                        }) { Text(stringResource(R.string.close)) }
                     }
                     is ModelDownloadManager.DownloadState.Error -> {
                         TextButton(
                             onClick = {
                                 downloadDialogModel?.let { model ->
-                                    model.downloadUrl?.let { url ->
+                                    com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model)?.let { url ->
                                         ModelDownloadManager.downloadModel(context, model, url)
                                     }
                                 }
                             }
-                        ) { Text("Retry") }
+                        ) { Text(stringResource(R.string.retry)) }
                     }
                 }
             },
             dismissButton = {
                 when (dlState) {
                     is ModelDownloadManager.DownloadState.Idle -> {
-                        TextButton(onClick = { showDownloadDialog = false }) { Text("Cancel") }
+                        TextButton(onClick = { showDownloadDialog = false }) { Text(stringResource(R.string.cancel)) }
                     }
                     is ModelDownloadManager.DownloadState.Downloading,
                     is ModelDownloadManager.DownloadState.Paused -> {
@@ -855,11 +859,11 @@ fun MenuScreen(
                                 downloadDialogModel?.let { ModelDownloadManager.cancelDownload(context, it) }
                                 showDownloadDialog = false
                             }
-                        ) { Text("Cancel Download") }
+                        ) { Text(stringResource(R.string.cancel_download)) }
                     }
                     is ModelDownloadManager.DownloadState.Completed -> { /* No dismiss button */ }
                     is ModelDownloadManager.DownloadState.Error -> {
-                        TextButton(onClick = { showDownloadDialog = false }) { Text("Close") }
+                        TextButton(onClick = { showDownloadDialog = false }) { Text(stringResource(R.string.close)) }
                     }
                 }
             }
@@ -870,9 +874,9 @@ fun MenuScreen(
     if (showHumanExpertSupportDialog) {
         AlertDialog(
             onDismissRequest = { showHumanExpertSupportDialog = false },
-            title = { Text("Human Expert") },
+            title = { Text(stringResource(R.string.human_expert_title)) },
             text = {
-                Text("To ensure that a human expert accepts the task, please support the expert.")
+                Text(stringResource(R.string.human_expert_text))
             },
             confirmButton = {
                 Button(
@@ -881,12 +885,12 @@ fun MenuScreen(
                         onDonationButtonClicked()
                     }
                 ) {
-                    Text("Support \uD83C\uDF89")
+                    Text(stringResource(R.string.support_emoji))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showHumanExpertSupportDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

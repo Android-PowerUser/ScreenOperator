@@ -33,15 +33,6 @@ A JSON array of override objects:
   construct the command. If the group count doesn't match, that particular match is
   skipped (logged), nothing crashes.
 
-## Safety boundary
-
-An override can only attach a new regex to an **existing** `commandType` — it can never
-introduce a new kind of action and can never run custom code. What each action is allowed
-to do on the device (tap, scroll, open an app, run a Termux command, ...) is always
-decided by the same native, compiled-in code; this mechanism only changes which *text*
-triggers that pre-existing action. Adding a genuinely new action still requires a native
-code change.
-
 ## Available `commandType` values
 
 `CLICK_BUTTON`, `LONG_CLICK_BUTTON`, `TAP_COORDINATES`, `TAKE_SCREENSHOT`, `COMPLETED`,

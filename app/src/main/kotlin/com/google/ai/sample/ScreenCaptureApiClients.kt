@@ -121,7 +121,7 @@ internal suspend fun callMistralApi(
         }
 
         val requestBody = ServiceMistralRequest(
-            model = modelName,
+            model = currentModelOption?.let { com.google.ai.sample.util.ModelIdentifierOverrides.resolve(it) } ?: modelName,
             messages = apiMessages
         )
 
@@ -140,7 +140,11 @@ internal suspend fun callMistralApi(
         val minIntervalMs = if (
             modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
             modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_5.modelName
-        ) 420L else 1500L
+        ) {
+            com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsFastModels
+        } else {
+            com.google.ai.sample.util.OperationalTuningConfig.current().mistralMinIntervalMsDefault
+        }
         val maxAttempts = if (
             modelName == com.google.ai.sample.ModelOption.MISTRAL_LARGE_3.modelName ||
             modelName == com.google.ai.sample.ModelOption.MISTRAL_MEDIUM_3_1.modelName ||
@@ -259,7 +263,7 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
         }
 
         val requestBody = com.google.ai.sample.network.PuterRequest(
-            model = modelName,
+            model = currentModelOption?.let { com.google.ai.sample.util.ModelIdentifierOverrides.resolve(it) } ?: modelName,
             messages = apiMessages,
             max_tokens = maxTokens
         )
@@ -357,7 +361,10 @@ internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory:
             }
         }
 
-        val requestBody = ServiceGroqRequest(model = modelName, messages = apiMessages)
+        val requestBody = ServiceGroqRequest(
+            model = currentModelOption?.let { com.google.ai.sample.util.ModelIdentifierOverrides.resolve(it) } ?: modelName,
+            messages = apiMessages
+        )
         val json = Json {
             ignoreUnknownKeys = true
             serializersModule = SerializersModule {

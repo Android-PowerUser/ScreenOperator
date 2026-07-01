@@ -29,9 +29,6 @@ object ModelDownloadManager {
     private const val TAG = "ModelDownloadManager"
     private const val TEMP_SUFFIX = ".downloading"
     private const val BUFFER_SIZE = 8192
-    private const val MAX_RETRIES = 3
-    private const val RETRY_DELAY_MS = 3000L
-    private const val PROGRESS_UPDATE_INTERVAL_MS = 500L
     
     // Notification constants
     private const val DOWNLOAD_CHANNEL_ID = "model_download_channel"
@@ -145,7 +142,7 @@ object ModelDownloadManager {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, DOWNLOAD_CHANNEL_ID)
             .setContentTitle("Model Download Complete")
-            .setContentText("The model is ready to use.")
+            .setContentText(com.google.ai.sample.util.UiStringsConfig.get("notif_model_ready_text", "The model is ready to use."))
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(false)
@@ -161,7 +158,7 @@ object ModelDownloadManager {
 
     fun downloadModel(context: Context, model: ModelOption, url: String) {
         if (isModelDownloaded(context, model)) {
-            Toast.makeText(context, "Model already downloaded.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_model_already_downloaded", "Model already downloaded."), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -202,7 +199,7 @@ object ModelDownloadManager {
         // Delete temp files for full package
         val externalFilesDir = context.getExternalFilesDir(null)
         if (externalFilesDir != null) {
-            val targets = buildDownloadTargets(context, model, model.downloadUrl ?: "")
+            val targets = buildDownloadTargets(context, model, com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model) ?: "")
             targets.forEach { target ->
                 if (target.tempFile.exists()) {
                     target.tempFile.delete()
@@ -214,7 +211,7 @@ object ModelDownloadManager {
         _downloadState.value = DownloadState.Idle
         cancelDownloadNotification(context)
         CoroutineScope(Dispatchers.Main).launch {
-            Toast.makeText(context, "Download cancelled.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_download_cancelled", "Download cancelled."), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -239,14 +236,14 @@ object ModelDownloadManager {
         _downloadState.value = DownloadState.Completed
         showDownloadCompleteNotification(context)
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Model download complete!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_model_download_complete", "Model download complete!"), Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun buildDownloadTargets(context: Context, model: ModelOption, primaryUrl: String): List<DownloadTarget> {
         val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
         val primaryFilename = model.offlineModelFilename ?: return emptyList()
-        val urls = listOf(primaryUrl) + model.additionalDownloadUrls
+        val urls = listOf(primaryUrl) + com.google.ai.sample.util.OfflineModelOverrides.effectiveAdditionalDownloadUrls(model)
         val filenames = urls.mapIndexedNotNull { idx, url ->
             if (idx == 0) primaryFilename else filenameFromUrl(url)
         }
@@ -288,8 +285,12 @@ object ModelDownloadManager {
 
         var retryCount = 0
         var bytesDownloaded = if (tempFile.exists()) tempFile.length() else 0L
+        val tuning = com.google.ai.sample.util.OperationalTuningConfig.current()
+        val maxRetries = tuning.modelDownloadMaxRetries
+        val retryDelayMs = tuning.modelDownloadRetryDelayMs
+        val progressUpdateIntervalMs = tuning.modelDownloadProgressUpdateIntervalMs
 
-        while (retryCount <= MAX_RETRIES) {
+        while (retryCount <= maxRetries) {
             if (!coroutineContext.isActive) return null // Coroutine was cancelled
 
             var connection: HttpURLConnection? = null
@@ -369,7 +370,7 @@ object ModelDownloadManager {
 
                             // Rate-limit progress updates
                             val now = System.currentTimeMillis()
-                            if (now - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL_MS) {
+                            if (now - lastProgressUpdate >= progressUpdateIntervalMs) {
                                 lastProgressUpdate = now
                                 val progress = if (totalBytes > 0) bytesDownloaded.toFloat() / totalBytes else 0f
                                 val aggregateProgress = (fileIndex + progress) / fileCount.toFloat()
@@ -399,16 +400,16 @@ object ModelDownloadManager {
             } catch (e: IOException) {
                 Log.e(TAG, "Download error (attempt ${retryCount + 1}): ${e.message}")
                 retryCount++
-                if (retryCount > MAX_RETRIES) {
-                    return "Download failed for ${target.label} after $MAX_RETRIES retries: ${e.message}"
+                if (retryCount > maxRetries) {
+                    return "Download failed for ${target.label} after $maxRetries retries: ${e.message}"
                 } else {
                     _downloadState.value = DownloadState.Downloading(
                         progress = fileIndex.toFloat() / fileCount.toFloat(),
                         bytesDownloaded = bytesDownloaded,
                         totalBytes = -1
                     )
-                    Log.d(TAG, "Retrying in ${RETRY_DELAY_MS}ms...")
-                    delay(RETRY_DELAY_MS)
+                    Log.d(TAG, "Retrying in ${retryDelayMs}ms...")
+                    delay(retryDelayMs)
                 }
             } finally {
                 connection?.disconnect()

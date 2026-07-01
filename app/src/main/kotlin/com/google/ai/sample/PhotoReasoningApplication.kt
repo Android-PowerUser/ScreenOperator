@@ -55,5 +55,85 @@ class PhotoReasoningApplication : Application() {
         com.google.ai.sample.util.CustomModelPreferences.loadActiveModelId(this)?.let { savedId ->
             com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(savedId)
         }
+
+        // Re-apply any model identifier overrides (corrected/replacement wire-level model
+        // names for existing built-in models) previously received from the WebView bundle.
+        com.google.ai.sample.util.ModelIdentifierOverridePreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.ModelIdentifierOverrides.setRemoteOverrides(savedJson)
+            Log.d(TAG, "Restored $applied model identifier override(s) from preferences")
+        }
+
+        // Re-apply any offline model download overrides (corrected URL/size/extra files for
+        // existing built-in offline models) previously received from the WebView bundle.
+        com.google.ai.sample.util.OfflineModelOverridePreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.OfflineModelOverrides.setRemoteOverrides(savedJson)
+            Log.d(TAG, "Restored $applied offline model override(s) from preferences")
+        }
+
+        // Re-apply any custom action type definitions (new action kinds with regex + JS handler)
+        // previously received from the WebView bundle, so they keep working across app restarts
+        // before the WebView has re-fetched and re-applied its config for the current session.
+        com.google.ai.sample.util.CustomActionTypePreferences.load(this)?.let { savedJson ->
+            val installed = com.google.ai.sample.util.CommandParser.setCustomActionTypes(savedJson)
+            Log.d(TAG, "Restored $installed custom action type(s) from preferences")
+        }
+
+        // Re-apply any execution policy override (max commands executed per AI response, plus
+        // the feedback wording sent back when commands get dropped for exceeding it) previously
+        // received from the WebView bundle.
+        com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.ExecutionPolicyConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored execution policy override from preferences (applied=$applied)")
+        }
+
+        // Re-apply any app-mapping overrides (new openApp() name/package entries, aliases, or a
+        // retuned fuzzy-match threshold) previously received from the WebView bundle.
+        com.google.ai.sample.util.AppMappingOverridesPreferences.load(this)?.let { savedJson ->
+            val installed = com.google.ai.sample.util.AppMappingOverridesConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored $installed app-mapping override(s) from preferences")
+        }
+
+        // Re-apply any error-classification overrides (quota/rate-limit vs. high-demand error
+        // substrings) previously received from the WebView bundle.
+        com.google.ai.sample.util.ErrorClassificationOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.ErrorClassificationConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored error classification override from preferences (applied=$applied)")
+        }
+
+        // Re-apply any trial/donation dialog text overrides previously received from the
+        // WebView bundle. Text only - trial length/entitlement logic is untouched.
+        com.google.ai.sample.util.TrialUiOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.TrialUiConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored trial UI override from preferences (applied=$applied)")
+        }
+
+        // Re-apply any operational tuning overrides (Mistral cooldown timing, model-download
+        // retry timing, the Termux completion marker) previously received from the WebView
+        // bundle.
+        com.google.ai.sample.util.OperationalTuningOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.OperationalTuningConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored operational tuning override from preferences (applied=$applied)")
+        }
+
+        // Re-apply any trial-duration override previously received from the WebView bundle.
+        // See TrialDurationOverrideConfig's doc comment for exactly what this does and does not
+        // affect, and the explicit confirmation this required.
+        com.google.ai.sample.util.TrialDurationOverridePreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.TrialDurationOverrideConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored trial duration override from preferences (applied=$applied)")
+        }
+
+        // Re-apply any generation-defaults overrides (factory temperature/topP/topK before a
+        // user customizes a model's settings) previously received from the WebView bundle.
+        com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.GenerationDefaultsConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored generation defaults override from preferences (applied=$applied)")
+        }
+
+        // Re-apply any native UI string overrides previously received from the WebView bundle.
+        com.google.ai.sample.util.UiStringsOverridesPreferences.load(this)?.let { savedJson ->
+            val applied = com.google.ai.sample.util.UiStringsConfig.setRemoteOverride(savedJson)
+            Log.d(TAG, "Restored $applied UI string override(s) from preferences")
+        }
     }
 }

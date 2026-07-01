@@ -4,7 +4,12 @@ import android.content.Context
 import com.google.ai.sample.util.SystemMessageEntryPreferences
 
 internal object PhotoReasoningTextPolicies {
-    private const val RETRIEVAL_HEADER_PREFIX = "Retrieved information ["
+    // Read live (not a const) so formatRetrievalResultForPrompt() and
+    // isHeadingAlreadyRetrievedInChat() always agree on the exact same marker - if this were
+    // overridden in only one of the two places, "already retrieved" detection would silently
+    // break (every retrieval would look new forever, or the marker would never be found again).
+    private val retrievalHeaderPrefix: String
+        get() = com.google.ai.sample.util.OperationalTuningConfig.current().retrievalHeaderPrefix
 
     data class RetrievalResult(
         val heading: String,
@@ -21,10 +26,7 @@ internal object PhotoReasoningTextPolicies {
     }
 
     fun isQuotaExceededError(message: String): Boolean {
-        return message.contains("exceeded your current quota") ||
-            message.contains("code 429") ||
-            message.contains("Too Many Requests", ignoreCase = true) ||
-            message.contains("rate_limit", ignoreCase = true)
+        return com.google.ai.sample.util.ErrorClassificationConfig.current().isQuotaExceededError(message)
     }
 
     /**
@@ -32,10 +34,7 @@ internal object PhotoReasoningTextPolicies {
      * These should NOT trigger API key switching.
      */
     fun isHighDemandError(message: String): Boolean {
-        return message.contains("Service Unavailable (503)") ||
-            message.contains("UNAVAILABLE") ||
-            message.contains("high demand") ||
-            message.contains("overloaded")
+        return com.google.ai.sample.util.ErrorClassificationConfig.current().isHighDemandError(message)
     }
 
     /**
@@ -76,14 +75,14 @@ internal object PhotoReasoningTextPolicies {
 
     fun formatRetrievalResultForPrompt(result: RetrievalResult): String {
         return if (result.available) {
-            "$RETRIEVAL_HEADER_PREFIX${result.heading}]:\n${result.content}"
+            "$retrievalHeaderPrefix${result.heading}]:\n${result.content}"
         } else {
-            "$RETRIEVAL_HEADER_PREFIX${result.heading}]:\nThe information is not available"
+            "$retrievalHeaderPrefix${result.heading}]:\nThe information is not available"
         }
     }
 
     fun isHeadingAlreadyRetrievedInChat(messages: List<PhotoReasoningMessage>, heading: String): Boolean {
-        val marker = "$RETRIEVAL_HEADER_PREFIX$heading]"
+        val marker = "$retrievalHeaderPrefix$heading]"
         return messages.any { message ->
             message.text.contains(marker, ignoreCase = true)
         }

@@ -14,7 +14,7 @@ internal class ScreenCaptureNotificationFactory(
     fun createAiOperationNotification(): Notification {
         return NotificationCompat.Builder(context, channelId)
             .setContentTitle("Screen Operator")
-            .setContentText("Processing AI request...")
+            .setContentText(com.google.ai.sample.util.UiStringsConfig.get("notif_processing_ai_request", "Processing AI request..."))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(false)
@@ -24,7 +24,7 @@ internal class ScreenCaptureNotificationFactory(
     fun createNotification(): Notification {
         return NotificationCompat.Builder(context, channelId)
             .setContentTitle("Screen Capture Active")
-            .setContentText("Ready to take screenshots")
+            .setContentText(com.google.ai.sample.util.UiStringsConfig.get("notif_ready_to_screenshot", "Ready to take screenshots"))
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)

@@ -163,7 +163,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                         // Live API models
                         val liveApiManager = LiveApiManager(
                             apiKey = apiKey,
-                            modelName = currentModel.modelName,
+                            modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                             temperature = genSettings.temperature.toDouble(),
                             topP = genSettings.topP.toDouble(),
                             topK = genSettings.topK.coerceAtLeast(1)
@@ -173,7 +173,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                         // or we use a fallback model for non-live operations
                         // Using the first non-live model as fallback
                         val fallbackModel = GenerativeModel(
-                            modelName = ModelOption.GEMINI_FLASH_PREVIEW.modelName, // Using Gemini 2.5 Flash as fallback
+                            modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(ModelOption.GEMINI_FLASH_PREVIEW), // Using Gemini 2.5 Flash as fallback
                             apiKey = apiKey,
                             generationConfig = config
                         )
@@ -190,7 +190,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     } else {
                         // Regular generative models
                         val generativeModel = GenerativeModel(
-                            modelName = currentModel.modelName,
+                            modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
                             apiKey = apiKey,
                             generationConfig = config
                         )

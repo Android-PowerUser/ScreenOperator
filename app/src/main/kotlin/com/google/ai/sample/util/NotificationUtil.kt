@@ -67,7 +67,7 @@ object NotificationUtil {
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert) // Using a standard system icon
             .setContentTitle("Screen Operator")
-            .setContentText("Stop Screen Operator")
+            .setContentText(com.google.ai.sample.util.UiStringsConfig.get("notif_stop_screen_operator", "Stop Screen Operator"))
             .setContentIntent(pendingIntent)
             .setOngoing(true) // Makes the notification persistent
             .setSilent(true)  // No sound for this notification
