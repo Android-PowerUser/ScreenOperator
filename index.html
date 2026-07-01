@@ -865,9 +865,12 @@ function onViewportResize() {
   if (!chatBottom) return;
   // Only apply when chat screen is active
   if (!document.getElementById('screen-chat').classList.contains('active')) return;
-  const keyH = window.innerHeight - vv.height - vv.offsetTop;
+  
+  // Calculate keyboard height: difference between full window height and visual viewport height
+  const keyH = window.innerHeight - vv.height;
   chatBottom.style.position = 'sticky';
   chatBottom.style.bottom = keyH > 10 ? keyH + 'px' : '0';
+  
   // Update system message textarea state
   updateSysTextareaClass();
 }
@@ -1257,19 +1260,20 @@ function isKeyboardOpen() {
 
 function updateSysTextareaClass() {
   const ta = document.getElementById('sys-msg-textarea');
-  const hasFocus = document.activeElement === ta;
+  
   const keyboardOpen = isKeyboardOpen();
   
-  // Keyboard open: always expand textarea to keyboard mode
+  // Always update based on keyboard state and current state
   if (keyboardOpen) {
+    // Keyboard is open - if we're not already in keyboard mode, switch to it
     if (sysTextareaState !== 'expanded-keyboard') {
       sysTextareaState = 'expanded-keyboard';
       ta.className = 'expanded-keyboard';
       autoGrowTextarea(ta);
     }
   } else {
-    // Keyboard closed: go directly to collapsed state (as per commit message)
-    if (sysTextareaState !== 'collapsed') {
+    // Keyboard is closed - if we're in keyboard mode, go back to collapsed
+    if (sysTextareaState === 'expanded-keyboard') {
       sysTextareaState = 'collapsed';
       ta.className = 'collapsed';
       autoGrowTextarea(ta);
@@ -1279,10 +1283,9 @@ function updateSysTextareaClass() {
 
 function onSysTextareaFocus() {
   const ta = document.getElementById('sys-msg-textarea');
-  const keyboardOpen = isKeyboardOpen();
   
   // If keyboard is open, go to keyboard mode
-  if (keyboardOpen) {
+  if (isKeyboardOpen()) {
     sysTextareaState = 'expanded-keyboard';
     ta.className = 'expanded-keyboard';
   } else {
@@ -1291,24 +1294,23 @@ function onSysTextareaFocus() {
     ta.className = 'expanded-full';
   }
   autoGrowTextarea(ta);
-  
-  // Ensure textarea is scrolled into view
-  setTimeout(() => {
-    ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, 100);
 }
 
 function onSysTextareaBlur() {
-  // When blur happens, check keyboard state after a short delay
+  // When blur happens, check keyboard state
   setTimeout(() => {
     const ta = document.getElementById('sys-msg-textarea');
     if (document.activeElement !== ta) {
-      // Keyboard closed: go directly to collapsed
-      if (!isKeyboardOpen()) {
+      // If keyboard is still open, stay in keyboard mode
+      if (isKeyboardOpen()) {
+        sysTextareaState = 'expanded-keyboard';
+        ta.className = 'expanded-keyboard';
+      } else {
+        // Keyboard is closed, go to collapsed
         sysTextareaState = 'collapsed';
         ta.className = 'collapsed';
-        autoGrowTextarea(ta);
       }
+      autoGrowTextarea(ta);
     }
   }, 150);
 }
