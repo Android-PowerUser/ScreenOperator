@@ -426,6 +426,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     pressEnterKey()
                 }
             }
+            is Command.CopyToClipboard -> {
+                executeSyncCommandAction(
+                    logMessage = "Copying to clipboard: ${command.text}",
+                    toastMessage = "Copied to clipboard"
+                ) {
+                    val clipboard = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val clip = android.content.ClipData.newPlainText("Screen Operator Clipboard", command.text)
+                    clipboard.setPrimaryClip(clip)
+                    true
+                }
+            }
             is Command.WebViewCustomAction -> {
                 // Execution is fully JS-driven: call window.onCustomAction(id, groups[]) in
                 // the WebView and let the JS handler invoke any existing Android.* bridge method.

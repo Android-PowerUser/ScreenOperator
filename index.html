@@ -588,6 +588,13 @@ const Bridge = {
      Coordinates/distances accept pixels or percentage strings like "50%". */
   pinchGesture:(cx,cy,startD,endD,durationMs)=>{ if(getInAndroid()) Android.pinchGesture(String(cx), String(cy), String(startD), String(endD), Number(durationMs)||300); },
 
+  /* Clipboard - needs no extra Android permission. copyToClipboard writes and goes through the
+     same Command/executeCommand path as the AI's own copyToClipboard("text") command;
+     getClipboardText reads back synchronously and returns a plain string (may be '' if the app
+     isn't foregrounded, per Android 10+ clipboard-read restrictions). */
+  copyToClipboard:(text)=>{ if(getInAndroid()) Android.copyToClipboard(String(text)); },
+  getClipboardText:()=> getInAndroid() ? Android.getClipboardText() : '',
+
   /* Custom models (fully JSON-defined, network call happens here in JS) */
   setCustomModelOverrides:(json)=>{ if(getInAndroid()) return Android.setCustomModelOverrides(json); },
   getCustomModelOverrides:()=> getInAndroid() ? Android.getCustomModelOverrides() : '[]',
@@ -660,6 +667,8 @@ To write text, click the textfield, thereafter: "writeText("sample text")" You n
 If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field.
 
 To show the user a brief on-screen message (e.g. a status update or a warning), use "toast("message")".
+
+To copy text to the clipboard, use "copyToClipboard("text")".
 
 To zoom in on a point, use "pinch(centerX, centerY, startDistance, endDistance, durationMs)" where endDistance > startDistance zooms in and endDistance < startDistance zooms out. Coordinates and distances can be pixels or percentages like "50%". Example for zooming into the center: "pinch("50%", "50%", "10%", "60%", 300)". Example for zooming out: "pinch("50%", "50%", "60%", "10%", 300)".
 

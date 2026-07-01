@@ -804,6 +804,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         )
     }
 
+    // ── Clipboard (no extra Android permission required) ───────────────────────
+    // Clipboard read/write is granted to every app by default, so - like the gesture/navigation
+    // methods above - the write path is routed through the same Command/executeCommand pipeline
+    // (so an AI-emitted copyToClipboard("...") text command and a custom-action-types.json
+    // entry both go through identical logic). The read path returns a value synchronously, so
+    // it talks to ClipboardManager directly rather than via the queued accessibility-command
+    // pipeline, which has no return channel back to JS.
+
+    @JavascriptInterface
+    fun copyToClipboard(text: String) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.CopyToClipboard(text)
+        )
+    }
+
+    @JavascriptInterface
+    fun getClipboardText(): String {
+        return try {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = clipboard.primaryClip
+            clip?.getItemAt(0)?.coerceToText(context)?.toString() ?: ""
+        } catch (e: Exception) {
+            Log.w(TAG, "getClipboardText error: ${e.message}")
+            ""
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {

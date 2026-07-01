@@ -48,9 +48,36 @@ All available as `Bridge.<method>(...)` in `index.html`, calling the matching `A
 | `waitSeconds(seconds)` | `Wait(seconds)` |
 | `requestScreenshot()` | `takeScreenshot()` |
 | `markCompleted()` | `completed()` |
+| `pinchGesture(centerX, centerY, startDistance, endDistance, durationMs)` | `pinch(centerX, centerY, startDistance, endDistance, durationMs)` |
+| `copyToClipboard(text)` | `copyToClipboard("text")` |
+| `getClipboardText()` → `string` | *(no AI-command equivalent - read-only helper, see below)* |
 
 `x`/`y`/`distance` accept the same formats the AI's commands do (pixels, or a percentage string
 like `"50%"`) - they're passed straight through to the same geometry resolver.
+
+## Clipboard: a permission-free action, both write and read
+
+`copyToClipboard(text)` is the first of a broader category worth calling out explicitly:
+capabilities that need **no additional Android permission** (clipboard access is granted to
+every app by default, unlike e.g. contacts or location). These are good candidates to keep
+adding here and to `custom-action-types.json`-driven AI commands, since they carry none of the
+runtime-permission-prompt friction other device features do.
+
+- `Bridge.copyToClipboard(text)` / AI command `copyToClipboard("text")` writes `text` to the
+  system clipboard. It goes through `Command.CopyToClipboard` → `executeCommand()`, exactly like
+  every other entry in the table above, so it is queued and logged the same way.
+- `Bridge.getClipboardText()` reads the current clipboard content back into JS and returns it
+  directly (a plain `string`, not a `Command`) - clipboard reads are synchronous by nature and
+  the queued `executeCommand()` pipeline has no return channel back to JS, so this one talks to
+  `ClipboardManager` directly instead. Note Android 10+ restricts clipboard reads to the
+  foreground/default-IME app in some cases; if the app isn't focused this may return `""`
+  instead of throwing.
+
+Any other no-new-permission action (e.g. reading installed-app labels, toggling flashlight-free
+settings, etc.) should follow the same split: a write/trigger action goes through
+`Command.*` + `executeCommand()` like the table above; a value that must be returned
+synchronously to JS is read directly in `WebViewBridge.kt`, same as `copyToClipboard` /
+`getClipboardText()` and the existing `getSystemMessage()` / `getSelectedModelId()` methods.
 
 ## What's deliberately not exposed this way
 

@@ -19,7 +19,7 @@ object CommandParser {
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
         OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
-        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND, PINCH_GESTURE,
+        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND, PINCH_GESTURE, COPY_TO_CLIPBOARD,
         /** Container type for all action types defined remotely via custom-action-types.json. */
         WEBVIEW_CUSTOM_ACTION
     }
@@ -98,7 +98,10 @@ object CommandParser {
             CommandType.PINCH_GESTURE),
 
         // Retrieve information patterns
-        PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandType.RETRIEVE)
+        PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandType.RETRIEVE),
+
+        // Clipboard pattern: copyToClipboard("text") - needs no Android permission
+        PatternInfo("copyToClipboard1", Regex("(?i)\\bcopyToClipboard\\([\"']([^\"']*)[\"']\\)"), { match -> Command.CopyToClipboard(match.groupValues[1]) }, CommandType.COPY_TO_CLIPBOARD)
     )
 
     // One canonical command-builder per CommandType, derived from ALL_PATTERNS above.
@@ -256,6 +259,7 @@ object CommandParser {
             is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
             is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
             is Command.TermuxCommand -> Log.d(TAG, "Command details: TermuxCommand(\"${command.command}\")")
+            is Command.CopyToClipboard -> Log.d(TAG, "Command details: CopyToClipboard(\"${command.text}\")")
             is Command.WebViewCustomAction -> Log.d(TAG, "Command details: WebViewCustomAction(id=\"${command.id}\", groups=${command.groups})")
         }
     }

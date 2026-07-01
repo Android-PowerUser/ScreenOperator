@@ -39,6 +39,14 @@ sealed class Command {
     ) : Command()
     data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
+    /**
+     * Copies [text] to the system clipboard. Requires no Android permission (clipboard access
+     * is granted to every app by default), so - like the other entries in this "no extra
+     * permission needed" group - it is exposed both as a native command (for the AI's own
+     * text commands, via CommandParser) and as a WebView bridge method (`Android.copyToClipboard`)
+     * so a custom-action-types.json entry can trigger it directly.
+     */
+    data class CopyToClipboard(val text: String) : Command()
     data class TermuxCommand(val command: String) : Command()
     object UseHighReasoningModel : Command()
     object UseLowReasoningModel : Command()

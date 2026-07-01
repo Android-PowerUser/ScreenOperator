@@ -25,6 +25,18 @@ class CommandParserTest {
     }
 
     @Test
+    fun parseCommands_extractsCopyToClipboardCommand() {
+        val input = """copyToClipboard("hello world")"""
+
+        val commands = CommandParser.parseCommands(input, clearBuffer = true)
+
+        assertEquals(1, commands.size)
+        val command = commands[0]
+        assertTrue(command is Command.CopyToClipboard)
+        assertEquals("hello world", (command as Command.CopyToClipboard).text)
+    }
+
+    @Test
     fun clearBuffer_resetsParserBufferState() {
         CommandParser.parseCommands("""click("OK")""")
         assertTrue(CommandParser.getBufferContent().isNotBlank())
