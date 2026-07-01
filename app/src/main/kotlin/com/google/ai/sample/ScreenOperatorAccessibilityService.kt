@@ -1602,8 +1602,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      * endR > startR → fingers move apart → zoom in.
      * endR < startR → fingers move toward each other → zoom out.
      */
-    private fun executePinchGesture(command: Command.PinchGesture) {
-        if (!ensureGestureApiAvailable("Pinch gesture")) return
+    private fun executePinchGesture(command: Command.PinchGesture): Boolean {
+        if (!ensureGestureApiAvailable("Pinch gesture")) {
+            scheduleNextCommandProcessing()
+            return false
+    }
 
         val metrics = resources.displayMetrics
         val cx = convertCoordinate(command.centerX, metrics.widthPixels)
@@ -1656,6 +1659,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             showToast("Error executing pinch gesture: ${e.message}", true)
             scheduleNextCommandProcessing()
         }
+        return true
     }
 
     fun tapAtCoordinates(x: Float, y: Float) {
@@ -2768,3 +2772,4 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         }
     }
 }
+
