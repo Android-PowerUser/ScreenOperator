@@ -19,7 +19,7 @@ object CommandParser {
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
         OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
-        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND,
+        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND, PINCH_GESTURE,
         /** Container type for all action types defined remotely via custom-action-types.json. */
         WEBVIEW_CUSTOM_ACTION
     }
@@ -90,6 +90,12 @@ object CommandParser {
 
         // Open app patterns
         PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandType.OPEN_APP),
+
+        // Pinch gesture pattern: pinch(centerX, centerY, startDistance, endDistance, durationMs)
+        // endDistance > startDistance = zoom in (pinch out); endDistance < startDistance = zoom out (pinch in)
+        PatternInfo("pinch1", Regex("(?i)\\bpinch\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
+            { match -> Command.PinchGesture(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4], match.groupValues[5].toLong()) },
+            CommandType.PINCH_GESTURE),
 
         // Retrieve information patterns
         PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandType.RETRIEVE)
@@ -245,6 +251,7 @@ object CommandParser {
             is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
+            is Command.PinchGesture -> Log.d(TAG, "Command details: PinchGesture(${command.centerX}, ${command.centerY}, start=${command.startDistance}, end=${command.endDistance}, ${command.durationMs}ms)")
             is Command.Retrieve -> Log.d(TAG, "Command details: Retrieve(\"${command.heading}\")")
             is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
             is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")

@@ -23,6 +23,20 @@ sealed class Command {
     data class ScrollLeftFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class OpenApp(val packageName: String) : Command()
+    /**
+     * A two-finger pinch gesture, centered at (centerX, centerY), with both fingers moving
+     * from startDistance apart to endDistance apart over durationMs. endDistance > startDistance
+     * pinches out (zoom in); endDistance < startDistance pinches in (zoom out). Coordinates and
+     * distances accept the same formats as other coordinate-based commands (pixels, or a
+     * percentage string like "50%").
+     */
+    data class PinchGesture(
+        val centerX: String,
+        val centerY: String,
+        val startDistance: String,
+        val endDistance: String,
+        val durationMs: Long
+    ) : Command()
     data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
     data class TermuxCommand(val command: String) : Command()

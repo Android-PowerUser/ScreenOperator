@@ -379,6 +379,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     openApp(command.packageName)
                 }
             }
+            is Command.PinchGesture -> {
+                executePinchGesture(command)
+            }
             is Command.Retrieve -> {
                 Log.d(TAG, "Retrieve command is handled in prompt construction: ${command.heading}")
                 false
@@ -1574,6 +1577,74 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         return GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
+    }
+
+    /**
+     * Builds and dispatches a two-finger pinch gesture.
+     *
+     * Two virtual fingers are placed symmetrically on the vertical axis centered at (cx, cy).
+     * Finger 1 starts at cy - startR and moves to cy - endR (above the center).
+     * Finger 2 starts at cy + startR and moves to cy + endR (below the center).
+     * Using vertical placement keeps the math simple and produces a recognizable pinch on any
+     * content that responds to a standard scale gesture (maps, photos, browser pages, etc.).
+     *
+     * endR > startR → fingers move apart → zoom in.
+     * endR < startR → fingers move toward each other → zoom out.
+     */
+    private fun executePinchGesture(command: Command.PinchGesture) {
+        if (!ensureGestureApiAvailable("Pinch gesture")) return
+
+        val metrics = resources.displayMetrics
+        val cx = convertCoordinate(command.centerX, metrics.widthPixels)
+        val cy = convertCoordinate(command.centerY, metrics.heightPixels)
+        val startR = convertCoordinate(command.startDistance, metrics.heightPixels) / 2f
+        val endR = convertCoordinate(command.endDistance, metrics.heightPixels) / 2f
+        val duration = command.durationMs.coerceAtLeast(50L)
+
+        val direction = if (endR > startR) "zoom in (pinch out)" else "zoom out (pinch in)"
+        Log.d(TAG, "Pinch gesture: center=($cx,$cy), startR=$startR, endR=$endR, ${duration}ms, $direction")
+        showToast("Pinch gesture: $direction at ($cx,$cy)", false)
+
+        try {
+            // Finger 1: upper finger
+            val path1 = Path().apply {
+                moveTo(cx, cy - startR)
+                lineTo(cx, cy - endR)
+            }
+            // Finger 2: lower finger (mirror)
+            val path2 = Path().apply {
+                moveTo(cx, cy + startR)
+                lineTo(cx, cy + endR)
+            }
+
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path1, 0, duration))
+                .addStroke(GestureDescription.StrokeDescription(path2, 0, duration))
+                .build()
+
+            dispatchGestureWithCallbacks(
+                gesture = gesture,
+                onCompleted = {
+                    Log.d(TAG, "Pinch gesture completed")
+                    showToast("Pinch gesture completed", false)
+                    scheduleNextCommandProcessing()
+                },
+                onCancelled = {
+                    Log.e(TAG, "Pinch gesture cancelled")
+                    showToast("Pinch gesture cancelled", true)
+                    scheduleNextCommandProcessing()
+                },
+                onDispatchFailed = {
+                    Log.e(TAG, "Pinch gesture dispatch failed")
+                    showToast("Pinch gesture dispatch failed", true)
+                    scheduleNextCommandProcessing()
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing pinch gesture: ${e.message}", e)
+            showToast("Error executing pinch gesture: ${e.message}", true)
+            scheduleNextCommandProcessing()
+        }
     }
 
     fun tapAtCoordinates(x: Float, y: Float) {

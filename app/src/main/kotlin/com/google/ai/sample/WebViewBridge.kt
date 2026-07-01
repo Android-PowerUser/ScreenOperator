@@ -797,6 +797,13 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.Completed)
     }
 
+    @JavascriptInterface
+    fun pinchGesture(centerX: String, centerY: String, startDistance: String, endDistance: String, durationMs: Long) {
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.PinchGesture(centerX, centerY, startDistance, endDistance, durationMs)
+        )
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
