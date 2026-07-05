@@ -117,7 +117,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 /* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ System message card ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 #chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
-#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:13px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:17px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
 
 #sys-msg-textarea.collapsed{height: auto; min-height: calc(3 * 1.5em + 20px); max-height: calc(3 * 1.5em + 20px)}
@@ -855,6 +855,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Back-button: listen for popstate to go back to menu
   window.addEventListener('popstate', (e) => {
+    if (sysTextareaState === 'expanded') {
+      collapseSysTextarea();
+      // Re-push the state we just consumed so the chat screen isn't left
+      // without its history entry (mirrors navigateToChat's pushState).
+      history.pushState({screen:'chat'}, '');
+      return;
+    }
     const chatActive = document.getElementById('screen-chat').classList.contains('active');
     if (chatActive) {
       navigateToMenu();
@@ -1295,6 +1302,8 @@ function onSysTextareaFocus() {
   ta.className = 'expanded-full';
   applyExpandedMaxHeight(ta);
   autoGrowTextarea(ta);
+  const chatBottom = document.getElementById('chat-bottom');
+  if (chatBottom) chatBottom.style.display = 'none';
 }
 
 function onSysTextareaBlur() {
@@ -1305,8 +1314,23 @@ function onSysTextareaBlur() {
       ta.className = 'collapsed';
       ta.style.maxHeight = '';
       autoGrowTextarea(ta);
+      const chatBottom = document.getElementById('chat-bottom');
+      if (chatBottom) chatBottom.style.display = '';
     }
   }, 150);
+}
+
+// Collapses the system message textarea (used by the back-button handler so
+// that "back" closes the expanded field instead of navigating away).
+function collapseSysTextarea() {
+  const ta = document.getElementById('sys-msg-textarea');
+  ta.blur();
+  sysTextareaState = 'collapsed';
+  ta.className = 'collapsed';
+  ta.style.maxHeight = '';
+  autoGrowTextarea(ta);
+  const chatBottom = document.getElementById('chat-bottom');
+  if (chatBottom) chatBottom.style.display = '';
 }
 
 // Android can call this when system message changes externally
@@ -1495,6 +1519,10 @@ window.onBackPressed = function() {
   }
   if (document.getElementById('popup-apikey').classList.contains('open')) {
     closePopup('popup-apikey');
+    return true;
+  }
+  if (sysTextareaState === 'expanded') {
+    collapseSysTextarea();
     return true;
   }
   if (document.getElementById('screen-chat').classList.contains('active')) {
