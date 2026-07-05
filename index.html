@@ -1258,24 +1258,39 @@ function isKeyboardOpen() {
   return window.visualViewport && (window.visualViewport.height < window.innerHeight * 0.88);
 }
 
+// Computes how much vertical space is actually visible above the keyboard
+// (or above chat-bottom) for the textarea, and clamps its max-height to that,
+// so it can never grow past what the user can actually see/scroll.
+function applyKeyboardMaxHeight(ta) {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const rect = ta.getBoundingClientRect();
+  const visibleBottom = vv.height + vv.offsetTop; // bottom edge of the visible viewport, in layout-viewport coords
+  const available = Math.floor(visibleBottom - rect.top - 12); // 12px breathing room at the bottom
+  const minH = 3 * 1.5 * 16 + 20; // roughly matches the CSS min-height (3 lines + padding)
+  ta.style.maxHeight = Math.max(minH, available) + 'px';
+}
+
 function updateSysTextareaClass() {
   const ta = document.getElementById('sys-msg-textarea');
-  
+
   const keyboardOpen = isKeyboardOpen();
-  
-  // Always update based on keyboard state and current state
+
   if (keyboardOpen) {
-    // Keyboard is open - if we're not already in keyboard mode, switch to it
+    // Keyboard is open - make sure we're in keyboard mode and re-fit to the
+    // currently visible area every time (keyboard height can change).
     if (sysTextareaState !== 'expanded-keyboard') {
       sysTextareaState = 'expanded-keyboard';
       ta.className = 'expanded-keyboard';
-      autoGrowTextarea(ta);
     }
+    applyKeyboardMaxHeight(ta);
+    autoGrowTextarea(ta);
   } else {
     // Keyboard is closed - if we're in keyboard mode, go back to collapsed
     if (sysTextareaState === 'expanded-keyboard') {
       sysTextareaState = 'collapsed';
       ta.className = 'collapsed';
+      ta.style.maxHeight = '';
       autoGrowTextarea(ta);
     }
   }
@@ -1283,15 +1298,17 @@ function updateSysTextareaClass() {
 
 function onSysTextareaFocus() {
   const ta = document.getElementById('sys-msg-textarea');
-  
+
   // If keyboard is open, go to keyboard mode
   if (isKeyboardOpen()) {
     sysTextareaState = 'expanded-keyboard';
     ta.className = 'expanded-keyboard';
+    applyKeyboardMaxHeight(ta);
   } else {
     // Keyboard is closed, go to full expanded
     sysTextareaState = 'expanded-full';
     ta.className = 'expanded-full';
+    ta.style.maxHeight = '';
   }
   autoGrowTextarea(ta);
 }
@@ -1305,10 +1322,12 @@ function onSysTextareaBlur() {
       if (isKeyboardOpen()) {
         sysTextareaState = 'expanded-keyboard';
         ta.className = 'expanded-keyboard';
+        applyKeyboardMaxHeight(ta);
       } else {
         // Keyboard is closed, go to collapsed
         sysTextareaState = 'collapsed';
         ta.className = 'collapsed';
+        ta.style.maxHeight = '';
       }
       autoGrowTextarea(ta);
     }
