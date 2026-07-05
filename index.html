@@ -1558,9 +1558,10 @@ function stopGeneration() {
   window.onGenerationStateChanged(false, false);
 }
 
-function autoGrowTextarea(el) {
+function autoGrowTextarea(el, maxPx) {
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  const h = (typeof maxPx === 'number') ? Math.min(el.scrollHeight, maxPx) : el.scrollHeight;
+  el.style.height = h + 'px';
 }
 function onTaskInput() {
   const ta = document.getElementById('task-input');
@@ -1574,7 +1575,7 @@ function onTaskInput() {
     ta.placeholder = 'Task';
   }
   
-  autoGrowTextarea(ta);
+  autoGrowTextarea(ta, 160);
 }
 function onTaskInputFocus() {
   onTaskInput();
