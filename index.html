@@ -43,6 +43,8 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
   --bubble-user-text:#21005D;
   --bubble-model-bg:#E8DEF8;
   --bubble-model-text:#1D192B;
+  --db-yellow-1:#F0A500;
+  --db-yellow-2:#F3C100;
 }
 
 /* ── App shell ──────────────────────────────────────────── */
@@ -177,12 +179,22 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
 /* ── Database entries list ───────────────────────────────── */
-.db-entry{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;cursor:pointer;border-bottom:1px solid var(--divider);min-width:0}
-.db-entry:last-child{border-bottom:none}
-.db-entry:hover{background:var(--item-hover)}
-.db-entry-title{font-size:14px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.db-entry-preview{font-size:12px;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.db-entry-del{background:none;border:none;cursor:pointer;color:var(--error);font-size:18px;padding:2px 6px;flex-shrink:0}
+.db-entry{display:flex;align-items:center;gap:8px;padding:4px 8px;min-width:0}
+.db-entry:nth-child(odd){background:var(--db-yellow-1)}
+.db-entry:nth-child(even){background:var(--db-yellow-2)}
+.db-entry-pill{flex:1;min-width:0;border:1px solid #000;border-radius:12px;padding:8px 12px;display:flex;align-items:center}
+.db-entry-title{font-size:14px;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.db-entry-menu-btn{background:none;border:none;cursor:pointer;color:#000;font-size:20px;flex-shrink:0;padding:6px 10px;line-height:1}
+.db-entry-menu{position:absolute;right:0;top:100%;background:var(--bg);border-radius:8px;box-shadow:0 2px 8px var(--shadow);min-width:120px;z-index:10;overflow:hidden;display:none}
+.db-entry-menu.open{display:block}
+.db-entry-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:14px;color:var(--text-primary);cursor:pointer;font-family:inherit}
+.db-entry-menu button:hover{background:var(--item-hover)}
+.db-new-row{display:flex;align-items:center;gap:8px;padding:8px;justify-content:flex-end}
+.db-new-row .db-hint{flex:1;font-size:13px;color:rgba(0,0,0,.6)}
+.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:85vh;display:flex;flex-direction:column}
+.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;height:70vh;display:flex;flex-direction:column}
+.db-edit-input{background:#fff;color:#000;border:1px solid #000}
+.db-edit-input::placeholder{color:#888}
 
 /* ── Hint text ───────────────────────────────────────────── */
 .model-hint{font-size:13px;color:var(--text-secondary);margin-top:8px;line-height:1.5}
@@ -397,35 +409,28 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 <!-- Database Popup -->
 <div id="popup-db" class="overlay" onclick="overlayClose(event,'popup-db')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-db')">✕</button>
-    <div class="popup-title">Database</div>
-    <div class="body-sm" style="margin-bottom:12px">Headings are sent to the AI; content is included on request.</div>
-    <div id="db-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--divider);border-radius:10px;margin-bottom:12px"></div>
-    <button class="btn btn-solid" style="width:100%" onclick="openEditEntry(null)">+ New Entry</button>
-    <div class="row" style="margin-top:10px;gap:8px">
-      <button class="btn btn-outline" style="flex:1" onclick="exportDatabase()">Export</button>
-      <button class="btn btn-outline" style="flex:1" onclick="document.getElementById('import-file').click()">Import</button>
+  <div class="popup db-popup" onclick="event.stopPropagation()">
+    <div id="db-list" style="max-height:60vh;overflow-y:auto;margin-bottom:8px"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
       <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
+      <button class="btn btn-solid" onclick="exportDatabase()">Export</button>
     </div>
   </div>
 </div>
 
 <!-- Edit Entry Popup -->
 <div id="popup-edit-entry" class="overlay" onclick="overlayClose(event,'popup-edit-entry')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-edit-entry')">✕</button>
-    <div class="popup-title" id="edit-entry-title">New Entry</div>
+  <div class="popup db-edit-popup" onclick="event.stopPropagation()">
     <div class="form-group">
-      <label class="form-label">Title</label>
-      <input type="text" id="entry-title-input" class="text-input" placeholder="App / Task">
+      <label class="form-label" style="color:rgba(0,0,0,.7)">Title</label>
+      <input type="text" id="entry-title-input" class="text-input db-edit-input" placeholder="App/Task">
     </div>
-    <div class="form-group">
-      <label class="form-label">Guide</label>
-      <textarea id="entry-guide-input" class="text-input" placeholder="Write a guide for the AI on how to perform this task…" rows="7"></textarea>
+    <div class="form-group" style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <label class="form-label" style="color:rgba(0,0,0,.7)">Guide</label>
+      <textarea id="entry-guide-input" class="text-input db-edit-input" style="flex:1;resize:none" placeholder="Write a guide for an LLM on how it should perform certain tasks to be successful"></textarea>
     </div>
-    <div class="popup-actions">
-      <button class="btn btn-text" onclick="closePopup('popup-edit-entry')">Cancel</button>
+    <div class="popup-actions" style="margin-top:12px">
       <button class="btn btn-solid" onclick="saveEntry()">Save</button>
     </div>
   </div>
@@ -1775,27 +1780,51 @@ function openDatabasePopup() {
 function renderDbList() {
   const list = document.getElementById('db-list');
   const entries = Bridge.getDatabaseEntries();
-  
+
   list.innerHTML = '';
-  if (!entries.length) {
-    list.innerHTML='<div class="body-sm" style="padding:12px">No entries yet. Tap "+ New Entry" to add one.</div>';
-    return;
-  }
-  entries.forEach(e => {
+  entries.forEach((e, i) => {
     const row = document.createElement('div');
     row.className='db-entry';
     row.innerHTML=`
-      <div style="flex:1;min-width:0;cursor:pointer">
+      <div class="db-entry-pill" style="cursor:pointer">
         <div class="db-entry-title">${escHtml(e.title)}</div>
-        <div class="db-entry-preview">${escHtml(e.guide.substring(0,60))}...</div>
       </div>
-      <div class="row align-center" style="gap:8px;flex-shrink:0">
-        <button class="btn-icon" style="font-size:16px" onclick="event.stopPropagation();copyToSystemMessage('${escAttr(e.guide)}')" title="Use">&#10148;</button>
-        <button class="db-entry-del" onclick="event.stopPropagation();deleteEntry('${escAttr(e.title)}')">✕</button>
+      <div style="position:relative;flex-shrink:0">
+        <button class="db-entry-menu-btn" title="More options">&#8942;</button>
+        <div class="db-entry-menu">
+          <button type="button" data-action="delete">Delete</button>
+        </div>
       </div>`;
-    row.querySelector('div').onclick = () => openEditEntry(e);
+    row.querySelector('.db-entry-pill').onclick = () => openEditEntry(e);
+    const menuBtn = row.querySelector('.db-entry-menu-btn');
+    const menu = row.querySelector('.db-entry-menu');
+    menuBtn.onclick = (ev) => {
+      ev.stopPropagation();
+      const wasOpen = menu.classList.contains('open');
+      document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
+      if (!wasOpen) menu.classList.add('open');
+    };
+    menu.querySelector('[data-action="delete"]').onclick = (ev) => {
+      ev.stopPropagation();
+      menu.classList.remove('open');
+      deleteEntry(e.title);
+    };
     list.appendChild(row);
   });
+
+  const newRow = document.createElement('div');
+  newRow.className = (entries.length % 2 === 0) ? 'db-entry' : 'db-entry';
+  newRow.style.background = (entries.length % 2 === 0) ? 'var(--db-yellow-1)' : 'var(--db-yellow-2)';
+  newRow.innerHTML = `
+    <div class="db-new-row" style="flex:1">
+      <div class="db-hint">The headings are sent to the AI and the content is included on request</div>
+      <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
+    </div>`;
+  list.appendChild(newRow);
+
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
+  }, { once: true });
 }
 
 function copyToSystemMessage(text) {
