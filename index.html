@@ -121,8 +121,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 #sys-msg-textarea:focus{border-color:var(--primary)}
 
 #sys-msg-textarea.collapsed{height: auto; min-height: calc(3 * 1.5em + 20px); max-height: calc(3 * 1.5em + 20px)}
-#sys-msg-textarea.expanded-keyboard{height: calc(35vh - 20px); min-height: calc(3 * 1.5em + 20px); max-height: calc(35vh - 20px)}
-#sys-msg-textarea.expanded-full{height: calc(78vh - 20px); min-height: calc(3 * 1.5em + 20px)}
+/* expanded-keyboard / expanded-full no longer use vh here - JS sets an exact
+   pixel max-height (applyExpandedMaxHeight) because vh units have been found
+   to be unreliable inside this app's WebView (they can resolve to a height
+   larger than the actual visible screen). Keep a generous px fallback only
+   in case JS hasn't run yet. */
+#sys-msg-textarea.expanded-keyboard{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
+#sys-msg-textarea.expanded-full{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
 
 /* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Chat bubbles ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
@@ -1255,24 +1260,25 @@ function onSystemMessageChange() {
   }, 600);
 }
 
-let sysTextareaState = 'collapsed'; // 'collapsed', 'expanded-full', 'expanded-keyboard'
+let sysTextareaState = 'collapsed'; // 'collapsed' or 'expanded'
 
-function isKeyboardOpen() {
-  return window.visualViewport && (window.visualViewport.height < window.innerHeight * 0.88);
-}
-
-// Computes how much vertical space is actually visible above the keyboard
-// (or above chat-bottom) for the textarea, and clamps its max-height to that,
-// so it can never grow past what the user can actually see/scroll.
-function applyKeyboardMaxHeight(ta) {
-  const vv = window.visualViewport;
-  if (!vv) return;
+// Computes the maximum pixel height the textarea may take without covering
+// chat-bottom or running off the bottom of the actual screen.
+// NOTE: this deliberately avoids vh units and window.visualViewport for the
+// limit itself - in this app's WebView, vh units were found to resolve to a
+// height noticeably larger than window.innerHeight (i.e. taller than the
+// real visible screen), and visualViewport.height never differs from
+// window.innerHeight even while the on-screen keyboard is showing. Both
+// made the field grow past what's actually visible/reachable. Real pixel
+// geometry from getBoundingClientRect()/offsetHeight is reliable everywhere.
+function applyExpandedMaxHeight(ta) {
   const rect = ta.getBoundingClientRect();
-  const visibleBottom = vv.height + vv.offsetTop; // bottom edge of the visible viewport, in layout-viewport coords
-  const available = Math.floor(visibleBottom - rect.top - 12); // 12px breathing room at the bottom
-  const minH = 3 * 1.5 * 16 + 20; // roughly matches the CSS min-height (3 lines + padding)
+  const chatBottom = document.getElementById('chat-bottom');
+  const reserveBelow = (chatBottom ? chatBottom.offsetHeight : 0) + 12; // space for input bar + gap
+  const available = Math.floor(window.innerHeight - rect.top - reserveBelow);
+  const minH = Math.ceil(3 * 1.5 * 16 + 20); // matches the CSS min-height (3 lines + padding)
   ta.style.maxHeight = Math.max(minH, available) + 'px';
-  updateSysDebugBox(ta);
+  updateSysDebugBox(ta); // TEMPORARY DEBUG
 }
 
 // TEMPORARY DEBUG HELPER - remove once the keyboard-resize issue is diagnosed
@@ -1282,6 +1288,7 @@ function updateSysDebugBox(ta) {
   const vv = window.visualViewport;
   const rect = ta.getBoundingClientRect();
   const cs = window.getComputedStyle(ta);
+  const chatBottom = document.getElementById('chat-bottom');
   box.style.display = 'block';
   box.textContent =
     'innerHeight: ' + window.innerHeight + '\n' +
@@ -1290,6 +1297,7 @@ function updateSysDebugBox(ta) {
     'ta rect.top: ' + Math.round(rect.top) + '\n' +
     'ta rect.height: ' + Math.round(rect.height) + '\n' +
     'ta scrollHeight: ' + ta.scrollHeight + '\n' +
+    'chat-bottom offsetHeight: ' + (chatBottom ? chatBottom.offsetHeight : 'n/a') + '\n' +
     'inline style.maxHeight: ' + ta.style.maxHeight + '\n' +
     'inline style.height: ' + ta.style.height + '\n' +
     'computed maxHeight: ' + cs.maxHeight + '\n' +
@@ -1299,64 +1307,32 @@ function updateSysDebugBox(ta) {
 }
 
 function updateSysTextareaClass() {
+  // Kept for compatibility with existing visualViewport resize/scroll
+  // listeners: re-fit the height if the field is currently expanded (the
+  // available space can change e.g. on rotation).
   const ta = document.getElementById('sys-msg-textarea');
-
-  const keyboardOpen = isKeyboardOpen();
-
-  if (keyboardOpen) {
-    // Keyboard is open - make sure we're in keyboard mode and re-fit to the
-    // currently visible area every time (keyboard height can change).
-    if (sysTextareaState !== 'expanded-keyboard') {
-      sysTextareaState = 'expanded-keyboard';
-      ta.className = 'expanded-keyboard';
-    }
-    applyKeyboardMaxHeight(ta);
+  if (sysTextareaState === 'expanded') {
+    applyExpandedMaxHeight(ta);
     autoGrowTextarea(ta);
-  } else {
-    // Keyboard is closed - if we're in keyboard mode, go back to collapsed
-    if (sysTextareaState === 'expanded-keyboard') {
-      sysTextareaState = 'collapsed';
-      ta.className = 'collapsed';
-      ta.style.maxHeight = '';
-      autoGrowTextarea(ta);
-    }
   }
 }
 
 function onSysTextareaFocus() {
   const ta = document.getElementById('sys-msg-textarea');
-
-  // If keyboard is open, go to keyboard mode
-  if (isKeyboardOpen()) {
-    sysTextareaState = 'expanded-keyboard';
-    ta.className = 'expanded-keyboard';
-    applyKeyboardMaxHeight(ta);
-  } else {
-    // Keyboard is closed, go to full expanded
-    sysTextareaState = 'expanded-full';
-    ta.className = 'expanded-full';
-    ta.style.maxHeight = '';
-  }
+  sysTextareaState = 'expanded';
+  ta.className = 'expanded-full';
+  applyExpandedMaxHeight(ta);
   autoGrowTextarea(ta);
   updateSysDebugBox(ta); // TEMPORARY DEBUG
 }
 
 function onSysTextareaBlur() {
-  // When blur happens, check keyboard state
   setTimeout(() => {
     const ta = document.getElementById('sys-msg-textarea');
     if (document.activeElement !== ta) {
-      // If keyboard is still open, stay in keyboard mode
-      if (isKeyboardOpen()) {
-        sysTextareaState = 'expanded-keyboard';
-        ta.className = 'expanded-keyboard';
-        applyKeyboardMaxHeight(ta);
-      } else {
-        // Keyboard is closed, go to collapsed
-        sysTextareaState = 'collapsed';
-        ta.className = 'collapsed';
-        ta.style.maxHeight = '';
-      }
+      sysTextareaState = 'collapsed';
+      ta.className = 'collapsed';
+      ta.style.maxHeight = '';
       autoGrowTextarea(ta);
     }
   }, 150);
