@@ -20,4 +20,6 @@ MOST IMPORTANT:
 
 10. For code changes only, compile only the code with ./gradlew :app:compileDebugKotlin and omit always the lint check.
 
-11. This app is production software and not a toy.
+11. Anything that can be solved via WebView should be done that way; avoid working on the native code unless absolutely necessary, as the effort increases significantly.
+
+12. This app is production software and not a toy.
