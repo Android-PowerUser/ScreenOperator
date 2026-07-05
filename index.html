@@ -172,8 +172,8 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 /* ── Overlays / Popups ───────────────────────────────────── */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
-.overlay.open{display:flex;align-items:center;justify-content:center}
-.popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative}
+.overlay.open{display:flex;align-items:flex-start;justify-content:center}
+.popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative;margin:auto}
 .popup-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:14px}
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
 .popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
@@ -428,6 +428,8 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <!-- Edit Entry Popup -->
 <div id="popup-edit-entry" class="overlay" onclick="overlayClose(event,'popup-edit-entry')">
   <div class="popup db-edit-popup" onclick="event.stopPropagation()">
+    <button class="popup-close" style="color:#000" onclick="closePopup('popup-edit-entry')">✕</button>
+    <div id="edit-entry-title" class="popup-title" style="color:#000">New Entry</div>
     <div class="form-group">
       <label class="form-label" style="color:rgba(0,0,0,.7)">Title</label>
       <input type="text" id="entry-title-input" class="text-input db-edit-input" placeholder="App/Task">
@@ -437,6 +439,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       <textarea id="entry-guide-input" class="text-input db-edit-input" style="flex:1;resize:none" placeholder="Write a guide for an LLM on how it should perform certain tasks to be successful"></textarea>
     </div>
     <div class="popup-actions" style="margin-top:12px">
+      <button class="btn btn-text" style="color:#000" onclick="closePopup('popup-edit-entry')">Cancel</button>
       <button class="btn btn-solid" onclick="saveEntry()">Save</button>
     </div>
   </div>
@@ -1839,6 +1842,12 @@ function copyToSystemMessage(text) {
   Bridge.setSystemMessage(text);
   autoGrowTextarea(ta);
   closePopup('popup-db');
+}
+function restoreSystemMessage() {
+  Bridge.restoreSystemMessage();
+  const ta = document.getElementById('sys-msg-textarea');
+  ta.value = Bridge.getSystemMessage();
+  autoGrowTextarea(ta);
 }
 function deleteEntry(title) {
   if (!confirm('Delete "'+title+'"?')) return;
