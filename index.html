@@ -330,7 +330,6 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
         </div>
       </div>
       <textarea id="sys-msg-textarea" class="collapsed" rows="3" placeholder="Enter a system message hereÃÂ¢ÃÂÃÂ¦" oninput="onSystemMessageChange()" onfocus="onSysTextareaFocus()" onblur="onSysTextareaBlur()"></textarea>
-      <div id="sys-debug-box" style="display:none;position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;background:#000;color:#0f0;font-family:monospace;font-size:11px;padding:8px;border-radius:8px;white-space:pre-line;line-height:1.4;pointer-events:none"></div>
     </div>
   </div>
 
@@ -1254,7 +1253,6 @@ function onSystemMessageChange() {
   clearTimeout(sysTimeout);
   const ta = document.getElementById('sys-msg-textarea');
   autoGrowTextarea(ta);
-  updateSysDebugBox(ta); // TEMPORARY DEBUG
   sysTimeout = setTimeout(() => {
     Bridge.setSystemMessage(document.getElementById('sys-msg-textarea').value);
   }, 600);
@@ -1278,32 +1276,6 @@ function applyExpandedMaxHeight(ta) {
   const available = Math.floor(window.innerHeight - rect.top - reserveBelow);
   const minH = Math.ceil(3 * 1.5 * 16 + 20); // matches the CSS min-height (3 lines + padding)
   ta.style.maxHeight = Math.max(minH, available) + 'px';
-  updateSysDebugBox(ta); // TEMPORARY DEBUG
-}
-
-// TEMPORARY DEBUG HELPER - remove once the keyboard-resize issue is diagnosed
-function updateSysDebugBox(ta) {
-  const box = document.getElementById('sys-debug-box');
-  if (!box) return;
-  const vv = window.visualViewport;
-  const rect = ta.getBoundingClientRect();
-  const cs = window.getComputedStyle(ta);
-  const chatBottom = document.getElementById('chat-bottom');
-  box.style.display = 'block';
-  box.textContent =
-    'innerHeight: ' + window.innerHeight + '\n' +
-    'vv.height: ' + (vv ? Math.round(vv.height) : 'n/a') + '\n' +
-    'vv.offsetTop: ' + (vv ? Math.round(vv.offsetTop) : 'n/a') + '\n' +
-    'ta rect.top: ' + Math.round(rect.top) + '\n' +
-    'ta rect.height: ' + Math.round(rect.height) + '\n' +
-    'ta scrollHeight: ' + ta.scrollHeight + '\n' +
-    'chat-bottom offsetHeight: ' + (chatBottom ? chatBottom.offsetHeight : 'n/a') + '\n' +
-    'inline style.maxHeight: ' + ta.style.maxHeight + '\n' +
-    'inline style.height: ' + ta.style.height + '\n' +
-    'computed maxHeight: ' + cs.maxHeight + '\n' +
-    'computed height: ' + cs.height + '\n' +
-    'className: ' + ta.className + '\n' +
-    'state: ' + sysTextareaState;
 }
 
 function updateSysTextareaClass() {
@@ -1323,7 +1295,6 @@ function onSysTextareaFocus() {
   ta.className = 'expanded-full';
   applyExpandedMaxHeight(ta);
   autoGrowTextarea(ta);
-  updateSysDebugBox(ta); // TEMPORARY DEBUG
 }
 
 function onSysTextareaBlur() {
