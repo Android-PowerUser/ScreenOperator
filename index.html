@@ -410,7 +410,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <!-- Database Popup -->
 <div id="popup-db" class="overlay" onclick="overlayClose(event,'popup-db')">
   <div class="popup db-popup" onclick="event.stopPropagation()">
-    <div id="db-list" style="max-height:60vh;overflow-y:auto;margin-bottom:8px"></div>
+    <button class="popup-close" style="color:#000" onclick="closePopup('popup-db')">✕</button>
+    <div class="popup-title" style="color:#000">Database</div>
+    <div id="db-list" style="min-height:80px;max-height:60vh;overflow-y:auto;margin-bottom:8px"></div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
       <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
