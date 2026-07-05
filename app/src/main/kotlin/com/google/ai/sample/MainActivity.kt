@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
@@ -759,7 +760,14 @@ class MainActivity : ComponentActivity() {
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(innerPadding),
+                                .padding(innerPadding)
+                                // Ensures the WebView is actually shrunk (real native resize) when
+                                // the soft keyboard opens, instead of just being overlaid by it.
+                                // Without this, window.innerHeight/visualViewport and CSS vh units
+                                // inside the WebView never change when the keyboard shows, which
+                                // made it impossible for the web UI to size itself correctly
+                                // relative to the keyboard (e.g. the system message textarea).
+                                .imePadding(),
                             factory = { context ->
                                 WebView(context).apply {
                                     settings.javaScriptEnabled = true
