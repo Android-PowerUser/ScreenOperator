@@ -172,7 +172,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 /* ── Overlays / Popups ───────────────────────────────────── */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
-.overlay.open{display:flex;align-items:flex-start;justify-content:center}
+.overlay.open{display:flex;align-items:center;justify-content:center}
 .popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative}
 .popup-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:14px}
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
@@ -191,7 +191,11 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .db-entry-menu button:hover{background:var(--item-hover)}
 .db-new-row{display:flex;align-items:center;gap:8px;padding:8px;justify-content:flex-end}
 .db-new-row .db-hint{flex:1;font-size:13px;color:rgba(0,0,0,.6)}
-.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:85vh;display:flex;flex-direction:column}
+.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;padding:20px}
+.db-popup #db-list{border-radius:12px;overflow:hidden;overflow-y:auto}
+.db-popup .db-entry{padding:8px 10px}
+.db-popup .db-entry:first-child{border-top-left-radius:12px;border-top-right-radius:12px}
+.db-popup .db-entry:last-child{border-bottom-left-radius:12px;border-bottom-right-radius:12px}
 .db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;height:70vh;display:flex;flex-direction:column}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000}
 .db-edit-input::placeholder{color:#888}
@@ -412,7 +416,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="popup db-popup" onclick="event.stopPropagation()">
     <button class="popup-close" style="color:#000" onclick="closePopup('popup-db')">✕</button>
     <div class="popup-title" style="color:#000">Database</div>
-    <div id="db-list" style="min-height:80px;max-height:60vh;overflow-y:auto;margin-bottom:8px"></div>
+    <div id="db-list" style="min-height:80px;max-height:60vh;overflow-y:auto;margin-top:4px;margin-bottom:12px"></div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
       <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
