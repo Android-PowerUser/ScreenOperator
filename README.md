@@ -15,7 +15,7 @@ It can now execute commands directly in Termux via API. After each update, click
 Due to a GitHub restriction, you must be logged in to view the nightly download links:
 </br>
 
-[nightly builds](https://github.com/Android-PowerUser/ScreenOperator/actions) from Github actions (You probably must reinstall the app because of different signatures) or install the </br>
+[nightly builds](https://github.com/Android-PowerUser/ScreenOperator/actions) from Github actions (You probably must reinstall the app because of different signatures and you must be logged into Github, otherwise the apks will be invisible) or install the </br>
 [Screen Operator v3.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.06.02/Screen.Operator.v3.apk) (without log in)
 
 Updates in Github are much faster than on the Play Store and have no restrictions.
