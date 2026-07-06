@@ -624,7 +624,7 @@ class MainActivity : ComponentActivity() {
 
     private fun loadWebViewContent() {
         if (webViewHtmlContent != null) return
-        val htmlUrl = "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/index.html"
+        val htmlUrl = "https://android-poweruser.github.io/ScreenOperator/index.html"
         lifecycleScope.launch(Dispatchers.IO) {
             if (webViewHtmlContent != null) return@launch
             try {
@@ -813,13 +813,13 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     // Wichtig: per loadDataWithBaseURL mit explizitem "text/html" laden,
-                                    // statt loadUrl() direkt auf raw.githubusercontent.com aufzurufen.
-                                    // Sonst liefert GitHub "Content-Type: text/plain" und der Inhalt wird
-                                    // nur als Rohtext angezeigt statt als HTML interpretiert.
+                                    // statt loadUrl() direkt aufzurufen.
+                                    // GitHub Pages liefert "text/html" korrekt; raw.githubusercontent.com
+                                    // lieferte "text/plain", was den Inhalt als Rohtext anzeigte.
                                     this@MainActivity.webViewInstance = this
                                     addJavascriptInterface(WebViewBridge(this@MainActivity), "Android")
                                     loadDataWithBaseURL(
-                                        "https://raw.githubusercontent.com/Android-PowerUser/ScreenOperator/refs/heads/main/",
+                                        "https://android-poweruser.github.io/ScreenOperator/",
                                         htmlContent,
                                         "text/html",
                                         "UTF-8",
