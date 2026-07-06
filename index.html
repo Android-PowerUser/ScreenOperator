@@ -85,9 +85,9 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
 .btn-solid.red{background:#B3261E}
 .btn-outline{background:transparent;color:var(--text-on-primary-container);border:1px solid #000;padding:6px 12px;font-size:11px;line-height:1.3;text-align:center}
 .btn-text{background:none;border:none;color:var(--primary);font-size:15px;font-weight:500;cursor:pointer;padding:4px 2px}
-.btn-icon{width:36px;height:36px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-primary);cursor:pointer;font-size:18px;flex-shrink:0}
+.btn-icon{width:48px;height:48px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-primary);cursor:pointer;font-size:22px;flex-shrink:0}
 .btn-icon:active{background:var(--item-hover)}
-.btn-circle{width:36px;height:36px;border-radius:50%;border:1px solid #000;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:11px;font-weight:500;cursor:pointer;flex-shrink:0}
+.btn-circle{width:48px;height:48px;border-radius:50%;border:1px solid #000;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0}
 
 /* ── Chips ───────────────────────────────────────────────── */
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
@@ -119,7 +119,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 /* ── System message card ─────────────────────────────────── */
 #chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
-#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:17px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:17px;font-family:inherit;background:var(--bg-primary-container);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
 
 #sys-msg-textarea.collapsed{height: auto; min-height: calc(3 * 1.5em + 20px); max-height: calc(3 * 1.5em + 20px)}
@@ -148,7 +148,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 /* ── Input area ──────────────────────────────────────────── */
 #chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
 .input-row{display:flex;align-items:flex-end;gap:6px}
-.task-input{flex:1;min-height:38px;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
+.task-input{flex:1;min-height:80px;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:17px;font-family:inherit;background:var(--bg-card);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
 .task-input:focus{border-color:var(--primary)}
 #send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .send-icon{font-size:22px;color:var(--outline)}
@@ -183,7 +183,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .db-entry:nth-child(odd){background:var(--db-yellow-1)}
 .db-entry:nth-child(even){background:var(--db-yellow-2)}
 .db-entry-pill{flex:1;min-width:0;border:1px solid #000;border-radius:12px;padding:8px 12px;display:flex;align-items:center}
-.db-entry-title{font-size:14px;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.db-entry-title{font-size:22px;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .db-entry-menu-btn{background:none;border:none;cursor:pointer;color:#000;font-size:20px;flex-shrink:0;padding:6px 10px;line-height:1}
 .db-entry-menu{position:absolute;right:0;top:100%;background:var(--bg);border-radius:8px;box-shadow:0 2px 8px var(--shadow);min-width:120px;z-index:10;overflow:hidden;display:none}
 .db-entry-menu.open{display:block}
@@ -197,6 +197,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;max-height:480px;display:flex;flex-direction:column;margin:0 auto}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000}
 .db-edit-input::placeholder{color:#888}
+#entry-title-input,#entry-guide-input{font-size:22px}
 
 /* ── Hint text ───────────────────────────────────────────── */
 .model-hint{font-size:13px;color:var(--text-secondary);margin-top:8px;line-height:1.5}
@@ -221,6 +222,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--outline-variant);border-radius:4px}
+
+/* ── Accessibility banner ────────────────────────────────── */
+#accessibility-banner{padding:0 14px;flex-shrink:0}
+#accessibility-banner-card{background:var(--bg-error-container);border-radius:12px;padding:16px;margin:8px 0 0}
+#accessibility-banner-title{color:var(--error);font-size:16px;font-weight:500;margin-bottom:8px}
+#accessibility-banner-body{color:var(--error);font-size:14px;line-height:1.5;margin-bottom:8px}
+#accessibility-banner-btn{background:none;border:none;color:var(--primary);font-size:15px;font-weight:500;cursor:pointer;padding:4px 0;font-family:inherit}
 
 /* ── Offline section toggle ──────────────────────────────── */
 .collapse-section{display:none}
@@ -345,6 +353,15 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
         </div>
       </div>
       <textarea id="sys-msg-textarea" class="collapsed" rows="3" placeholder="Enter a system message here…" oninput="onSystemMessageChange()" onfocus="onSysTextareaFocus()" onblur="onSysTextareaBlur()"></textarea>
+    </div>
+  </div>
+
+  <!-- Accessibility Service banner (shown only when service is disabled) -->
+  <div id="accessibility-banner" style="display:none">
+    <div id="accessibility-banner-card">
+      <div id="accessibility-banner-title">Accessibility Service is not enabled</div>
+      <div id="accessibility-banner-body">The click functionality requires the Accessibility Service. Please enable it in the settings.</div>
+      <button id="accessibility-banner-btn" onclick="activateAccessibilityService()">Activate Accessibility Service</button>
     </div>
   </div>
 
@@ -568,6 +585,10 @@ const Bridge = {
   /* Native (Compose-screen) UI string overrides, by stable ID - see DEFAULT_UI_STRINGS below */
   setUiStringsOverrides:(json)=>{ if(getInAndroid()) return Android.setUiStringsOverrides(json); },
   getUiStringsOverrides:()=> getInAndroid() ? Android.getUiStringsOverrides() : '{}',
+
+  /* Accessibility Service */
+  isAccessibilityServiceEnabled:()=> getInAndroid() && typeof Android.isAccessibilityServiceEnabled === 'function' ? Android.isAccessibilityServiceEnabled() : true,
+  openAccessibilitySettings:()=>{ if(getInAndroid() && typeof Android.openAccessibilitySettings === 'function') Android.openAccessibilitySettings(); },
 
   /* Show a native Android Toast - usable from window.onCustomAction handlers (see toast() example below) */
   showToast:(message, isLong)=>{ if(getInAndroid()) Android.showToast(String(message), !!isLong); else console.log('[Toast]', message); },
@@ -941,6 +962,22 @@ window.onModelRegistered = function(modelId, displayName) {
     MODELS.push({ id: modelId, displayName: displayName || modelId, modelName: modelId, apiProvider: 'GOOGLE', supportsScreenshot: true, supportsTopK: true, isOffline: false, hint: '', strike: false });
   }
   buildModelDropdown();
+};
+
+/* ════════════════════════════════════════════════════════
+   ACCESSIBILITY
+════════════════════════════════════════════════════════ */
+function updateAccessibilityBanner(isDisabled) {
+  const banner = document.getElementById('accessibility-banner');
+  if (banner) banner.style.display = isDisabled ? 'block' : 'none';
+}
+function activateAccessibilityService() {
+  Bridge.openAccessibilitySettings();
+  Bridge.showToast(DEFAULT_UI_STRINGS.toast_open_accessibility_settings, false);
+}
+// Called by native when accessibility state changes (e.g. user enables/disables service)
+window.onAccessibilityStateChanged = function(isEnabled) {
+  updateAccessibilityBanner(!isEnabled);
 };
 
 /* ════════════════════════════════════════════════════════
@@ -1401,6 +1438,9 @@ window.onAndroidReady = function() {
   // Termux background setting
   termuxBackground = Bridge.getTermuxBackground();
   document.getElementById('tb-btn').textContent = termuxBackground ? 'TB' : 'TF';
+
+  // Accessibility service state - update banner
+  updateAccessibilityBanner(!Bridge.isAccessibilityServiceEnabled());
 
   // ── Remote config (see docs/command-pattern-overrides.md, docs/model-identifier-
   // overrides.md, docs/offline-model-overrides.md) ───────────────────────────
