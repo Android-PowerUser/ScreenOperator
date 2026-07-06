@@ -831,6 +831,19 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Accessibility Service Status ──────────────────────────────────────────
+
+    @JavascriptInterface
+    fun isAccessibilityServiceEnabled(): Boolean {
+        return AccessibilityServiceStatusResolver.isServiceEnabled(context)
+    }
+
+    @JavascriptInterface
+    fun openAccessibilitySettings() {
+        val intent = (context as? MainActivity)?.getAccessibilitySettingsIntent() ?: return
+        context.startActivity(intent)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
@@ -842,3 +855,4 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
