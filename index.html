@@ -173,7 +173,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 /* ── Overlays / Popups ───────────────────────────────────── */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
 .overlay.open{display:flex;align-items:flex-start;justify-content:center}
-.popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative}
+.popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative;margin:auto}
 .popup-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:14px}
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
 .popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
@@ -191,8 +191,10 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .db-entry-menu button:hover{background:var(--item-hover)}
 .db-new-row{display:flex;align-items:center;gap:8px;padding:8px;justify-content:flex-end}
 .db-new-row .db-hint{flex:1;font-size:13px;color:rgba(0,0,0,.6)}
-.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:85vh;display:flex;flex-direction:column}
-.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;height:70vh;display:flex;flex-direction:column}
+.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;height:85vh;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;margin:0 auto}
+.db-popup #db-list{flex:1;min-height:0}
+.db-filler-row{height:56px;flex-shrink:0}
+.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;height:70vh;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;margin:0 auto}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000}
 .db-edit-input::placeholder{color:#888}
 
@@ -410,7 +412,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <!-- Database Popup -->
 <div id="popup-db" class="overlay" onclick="overlayClose(event,'popup-db')">
   <div class="popup db-popup" onclick="event.stopPropagation()">
-    <div id="db-list" style="max-height:60vh;overflow-y:auto;margin-bottom:8px"></div>
+    <div id="db-list" style="overflow-y:auto;margin-bottom:8px"></div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
       <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
@@ -1822,6 +1824,17 @@ function renderDbList() {
       <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
     </div>`;
   list.appendChild(newRow);
+
+  // Native (Compose) always renders 15 row-slots and fills unused ones with a plain
+  // alternating-color box, so the popup stays visually full instead of collapsing
+  // to a sliver when there are few/no entries. Mirror that here.
+  const MIN_ROWS = 15;
+  const rowsSoFar = entries.length + 1; // entries + the "New" row
+  for (let i = rowsSoFar; i < MIN_ROWS; i++) {
+    const filler = document.createElement('div');
+    filler.className = 'db-entry db-filler-row';
+    list.appendChild(filler);
+  }
 
   document.addEventListener('click', () => {
     document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
