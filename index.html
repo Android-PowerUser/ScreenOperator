@@ -191,10 +191,10 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .db-entry-menu button:hover{background:var(--item-hover)}
 .db-new-row{display:flex;align-items:center;gap:8px;padding:8px;justify-content:flex-end}
 .db-new-row .db-hint{flex:1;font-size:13px;color:rgba(0,0,0,.6)}
-.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;height:85vh;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;margin:0 auto}
+.db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:600px;display:flex;flex-direction:column;margin:0 auto}
 .db-popup #db-list{flex:1;min-height:0}
 .db-filler-row{height:56px;flex-shrink:0}
-.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;height:70vh;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;margin:0 auto}
+.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;max-height:480px;display:flex;flex-direction:column;margin:0 auto}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000}
 .db-edit-input::placeholder{color:#888}
 
@@ -1779,6 +1779,7 @@ function deleteApiKey(key) {
 function openDatabasePopup() {
   renderDbList();
   openPopup('popup-db');
+  fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
 function renderDbList() {
   const list = document.getElementById('db-list');
@@ -1866,11 +1867,13 @@ function openEditEntry(entry) {
   document.getElementById('entry-guide-input').value = entry ? entry.guide : '';
   closePopup('popup-db');
   openPopup('popup-edit-entry');
+  fitDbPopup(document.querySelector('#popup-edit-entry .db-edit-popup'));
 }
 function closeEditEntry() {
   closePopup('popup-edit-entry');
   renderDbList();
   openPopup('popup-db');
+  fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
 function saveEntry() {
   const title = document.getElementById('entry-title-input').value.trim();
@@ -1887,6 +1890,7 @@ function saveEntry() {
   closePopup('popup-edit-entry');
   renderDbList();
   openPopup('popup-db');
+  fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
 function exportDatabase() {
   const entries = Bridge.getDatabaseEntries();
@@ -1937,6 +1941,20 @@ function initiateDonation() {
 ════════════════════════════════════════════════════════ */
 function openPopup(id) { document.getElementById(id).classList.add('open'); }
 function closePopup(id) { document.getElementById(id).classList.remove('open'); }
+
+// vh/dvh have been found unreliable inside this app's WebView (they resolve
+// to a height larger than window.innerHeight, see commit 597b75e for the
+// sys-msg-textarea case) - so the near-full-height db popups get their
+// max-height set here in real pixels instead of via CSS vh units.
+function fitDbPopup(popupEl) {
+  if (!popupEl) return;
+  const OVERLAY_VPAD = 48; // .overlay padding:24px top + 24px bottom
+  const available = Math.floor(window.innerHeight - OVERLAY_VPAD);
+  popupEl.style.maxHeight = Math.max(200, available) + 'px';
+}
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.overlay.open .db-popup, .overlay.open .db-edit-popup').forEach(fitDbPopup);
+});
 function overlayClose(e, id) { if (e.target.id===id) closePopup(id); }
 
 /* ════════════════════════════════════════════════════════
