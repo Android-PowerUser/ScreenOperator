@@ -1094,7 +1094,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             var lastResult = ""
             for (i in 0 until steps.length()) {
                 val step = steps.optJSONObject(i) ?: continue
-                val method = step.optString("method", "").ifEmpty { continue }
+                val method = step.optString("method", ""); if (method.isEmpty()) continue
                 val args = step.optJSONObject("args") ?: JSONObject()
                 lastResult = dispatch(method, resolveArgs(args, outerArgs).toString())
             }
@@ -1194,6 +1194,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
 
 
 
