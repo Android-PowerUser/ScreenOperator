@@ -844,6 +844,345 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         context.startActivity(intent)
     }
 
+    // ── Generic Meta-Dispatcher ───────────────────────────────────────────────
+    // A single @JavascriptInterface entry-point that routes to every existing
+    // bridge method by name. Why this matters:
+    //
+    //  1. FORWARD COMPAT — a newly shipped web bundle can call
+    //       Android.dispatch("brandNewMethod", "{\"x\":1}")
+    //     on an old APK. If a macro named "brandNewMethod" has been installed via
+    //     setMacros(), it executes immediately. Otherwise dispatch returns a safe
+    //     {"error":"..."} JSON string instead of crashing.
+    //
+    //  2. BACKWARD COMPAT — all direct Android.tapByText("OK") etc. calls in
+    //     existing JS continue to work completely unchanged.
+    //
+    //  3. MACRO FALLBACK — unknown method names fall through to runMacro(), which
+    //     checks the JSON-persisted macro registry before giving up.
+    //
+    // Return value is always a String: "" for void methods, the value serialised
+    // to a String for Boolean/Int return types, or the raw String for String-
+    // returning methods. Error JSON: {"error":"<message>"}.
+
+    @JavascriptInterface
+    fun dispatch(method: String, argsJson: String): String {
+        val a = try { JSONObject(argsJson) } catch (_: Exception) { JSONObject() }
+        return try {
+            when (method) {
+                // ── System Message ────────────────────────────────────────────
+                "getSystemMessage"              -> getSystemMessage()
+                "setSystemMessage"              -> { setSystemMessage(a.getString("message")); "" }
+                "restoreSystemMessage"          -> { restoreSystemMessage(); "" }
+                // ── Model Selection ───────────────────────────────────────────
+                "getSelectedModelId"            -> getSelectedModelId()
+                "setSelectedModel"              -> { setSelectedModel(a.getString("id")); "" }
+                // ── API Keys ──────────────────────────────────────────────────
+                "getAllApiKeys"                 -> getAllApiKeys(a.getString("providerName"))
+                "addApiKey"                     -> { addApiKey(a.getString("key"), a.getString("providerName")); "" }
+                "removeApiKey"                  -> { removeApiKey(a.getString("key"), a.getString("providerName")); "" }
+                "getCurrentKeyIndex"            -> getCurrentKeyIndex(a.getString("providerName")).toString()
+                "setCurrentKeyIndex"            -> { setCurrentKeyIndex(a.getInt("index"), a.getString("providerName")); "" }
+                // ── Database Entries ──────────────────────────────────────────
+                "getDatabaseEntries"            -> getDatabaseEntries()
+                "addDatabaseEntry"              -> { addDatabaseEntry(a.getString("title"), a.getString("guide")); "" }
+                "updateDatabaseEntry"           -> { updateDatabaseEntry(a.getString("oldTitle"), a.getString("newTitle"), a.getString("guide")); "" }
+                "deleteDatabaseEntry"           -> { deleteDatabaseEntry(a.getString("title")); "" }
+                // ── Generation Settings ───────────────────────────────────────
+                "getGenerationSettings"         -> getGenerationSettings(a.getString("modelId"))
+                "saveGenerationSettings"        -> {
+                    saveGenerationSettings(
+                        a.getString("modelId"),
+                        a.getDouble("temperature").toFloat(),
+                        a.getDouble("topP").toFloat(),
+                        a.getInt("topK")
+                    ); ""
+                }
+                // ── Custom Models ─────────────────────────────────────────────
+                "setCustomModelOverrides"       -> setCustomModelOverrides(a.getString("json")).toString()
+                "getCustomModelOverrides"       -> getCustomModelOverrides()
+                "setCustomModelApiKey"          -> { setCustomModelApiKey(a.getString("modelId"), a.getString("key")); "" }
+                "getCustomModelApiKey"          -> getCustomModelApiKey(a.getString("modelId"))
+                // ── Chat Operations ───────────────────────────────────────────
+                "sendMessage"                   -> { sendMessage(a.getString("text")); "" }
+                "sendMessageWithImages"         -> { sendMessageWithImages(a.getString("text"), a.getString("urisCsv")); "" }
+                "pickImage"                     -> { pickImage(); "" }
+                "clearChatHistory"              -> { clearChatHistory(); "" }
+                "stopGeneration"                -> { stopGeneration(); "" }
+                // ── Custom Model Responses ────────────────────────────────────
+                "onCustomModelPartialResponse"  -> { onCustomModelPartialResponse(a.getString("text")); "" }
+                "onCustomModelFinalResponse"    -> { onCustomModelFinalResponse(a.getString("text")); "" }
+                "onCustomModelError"            -> { onCustomModelError(a.getString("message")); "" }
+                "isGenerationRunning"           -> isGenerationRunning().toString()
+                "isOfflineModelLoaded"          -> isOfflineModelLoaded().toString()
+                // ── Backend Preference ────────────────────────────────────────
+                "getBackendPreference"          -> getBackendPreference()
+                "setBackendPreference"          -> { setBackendPreference(a.getString("backend")); "" }
+                // ── Billing / Donation ────────────────────────────────────────
+                "initiateDonation"              -> { initiateDonation(); "" }
+                "isPurchased"                   -> isPurchased().toString()
+                // ── Termux ────────────────────────────────────────────────────
+                "setTermuxBackground"           -> { setTermuxBackground(a.getBoolean("background")); "" }
+                "getTermuxBackground"           -> getTermuxBackground().toString()
+                // ── Override Setters / Getters ────────────────────────────────
+                "setCommandPatternOverrides"        -> setCommandPatternOverrides(a.getString("json")).toString()
+                "getCommandPatternOverrides"        -> getCommandPatternOverrides()
+                "setModelIdentifierOverrides"       -> setModelIdentifierOverrides(a.getString("json")).toString()
+                "getModelIdentifierOverrides"       -> getModelIdentifierOverrides()
+                "setOfflineModelOverrides"          -> setOfflineModelOverrides(a.getString("json")).toString()
+                "getOfflineModelOverrides"          -> getOfflineModelOverrides()
+                "setCustomActionTypes"              -> setCustomActionTypes(a.getString("json")).toString()
+                "getCustomActionTypes"              -> getCustomActionTypes()
+                "setExecutionPolicyOverrides"       -> setExecutionPolicyOverrides(a.getString("json")).toString()
+                "getExecutionPolicyOverrides"       -> getExecutionPolicyOverrides()
+                "setAppMappingOverrides"            -> setAppMappingOverrides(a.getString("json")).toString()
+                "getAppMappingOverrides"            -> getAppMappingOverrides()
+                "setErrorClassificationOverrides"   -> setErrorClassificationOverrides(a.getString("json")).toString()
+                "getErrorClassificationOverrides"   -> getErrorClassificationOverrides()
+                "setTrialUiOverrides"               -> setTrialUiOverrides(a.getString("json")).toString()
+                "getTrialUiOverrides"               -> getTrialUiOverrides()
+                "setOperationalTuningOverrides"     -> setOperationalTuningOverrides(a.getString("json")).toString()
+                "getOperationalTuningOverrides"     -> getOperationalTuningOverrides()
+                "setTrialDurationOverride"          -> setTrialDurationOverride(a.getString("json")).toString()
+                "getTrialDurationOverride"          -> getTrialDurationOverride()
+                "setGenerationDefaultsOverrides"    -> setGenerationDefaultsOverrides(a.getString("json")).toString()
+                "getGenerationDefaultsOverrides"    -> getGenerationDefaultsOverrides()
+                "setUiStringsOverrides"             -> setUiStringsOverrides(a.getString("json")).toString()
+                "getUiStringsOverrides"             -> getUiStringsOverrides()
+                // ── Toast ─────────────────────────────────────────────────────
+                "showToast"                     -> { showToast(a.getString("message"), a.optBoolean("isLong", false)); "" }
+                // ── Device Control ────────────────────────────────────────────
+                "tapByText"                     -> { tapByText(a.getString("buttonText")); "" }
+                "longTapByText"                 -> { longTapByText(a.getString("buttonText")); "" }
+                "tapAtCoordinates"              -> { tapAtCoordinates(a.getString("x"), a.getString("y")); "" }
+                "pressHome"                     -> { pressHome(); "" }
+                "pressBack"                     -> { pressBack(); "" }
+                "showRecentApps"                -> { showRecentApps(); "" }
+                "pressEnterKey"                 -> { pressEnterKey(); "" }
+                "writeText"                     -> { writeText(a.getString("text")); "" }
+                "scrollDown"                    -> { scrollDown(); "" }
+                "scrollUp"                      -> { scrollUp(); "" }
+                "scrollLeft"                    -> { scrollLeft(); "" }
+                "scrollRight"                   -> { scrollRight(); "" }
+                "scrollDownFromCoordinates"     -> {
+                    scrollDownFromCoordinates(a.getString("x"), a.getString("y"), a.getString("distance"), a.getLong("durationMs")); ""
+                }
+                "scrollUpFromCoordinates"       -> {
+                    scrollUpFromCoordinates(a.getString("x"), a.getString("y"), a.getString("distance"), a.getLong("durationMs")); ""
+                }
+                "scrollLeftFromCoordinates"     -> {
+                    scrollLeftFromCoordinates(a.getString("x"), a.getString("y"), a.getString("distance"), a.getLong("durationMs")); ""
+                }
+                "scrollRightFromCoordinates"    -> {
+                    scrollRightFromCoordinates(a.getString("x"), a.getString("y"), a.getString("distance"), a.getLong("durationMs")); ""
+                }
+                "openAppByNameOrPackage"        -> { openAppByNameOrPackage(a.getString("appNameOrPackage")); "" }
+                "runTermuxCommand"              -> { runTermuxCommand(a.getString("command")); "" }
+                "waitSeconds"                   -> { waitSeconds(a.getLong("seconds")); "" }
+                "requestScreenshot"             -> { requestScreenshot(); "" }
+                "markCompleted"                 -> { markCompleted(); "" }
+                "pinchGesture"                  -> {
+                    pinchGesture(
+                        a.getString("centerX"), a.getString("centerY"),
+                        a.getString("startDistance"), a.getString("endDistance"),
+                        a.getLong("durationMs")
+                    ); ""
+                }
+                // ── Clipboard ─────────────────────────────────────────────────
+                "copyToClipboard"               -> { copyToClipboard(a.getString("text")); "" }
+                "getClipboardText"              -> getClipboardText()
+                // ── Accessibility Service Status ──────────────────────────────
+                "isAccessibilityServiceEnabled" -> isAccessibilityServiceEnabled().toString()
+                "openAccessibilitySettings"     -> { openAccessibilitySettings(); "" }
+                // ── Macros & Extension Slots (self-referential but safe) ──────
+                "setMacros"                     -> setMacros(a.getString("json")).toString()
+                "getMacros"                     -> getMacros()
+                "setExtensionHandlers"          -> setExtensionHandlers(a.getString("json")).toString()
+                "getExtensionHandlers"          -> getExtensionHandlers()
+                // ── Unknown: fall through to macro registry ───────────────────
+                else                            -> runMacro(method, a)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "dispatch('$method') error: ${e.message}")
+            """{"error":${JSONObject.quote(e.message ?: "unknown")}}"""
+        }
+    }
+
+    // ── JS-defined Macro Scripts ──────────────────────────────────────────────
+    // Macros are JSON-defined sequences of dispatch() calls. They are registered
+    // from the web bundle (e.g. fetched alongside index.html) and survive app
+    // restarts via MacroPreferences.
+    //
+    // Any new behaviour that is composable from existing bridge methods can be
+    // deployed entirely via a repo commit — no app release required.
+    //
+    // The same registry also powers the extA..extJ pre-provisioned slots below:
+    // a macro named "extA" gives Android.extA() real behaviour without touching
+    // native code.
+    //
+    // JSON format:
+    // [
+    //   {
+    //     "name": "tapOkThenScreenshot",
+    //     "steps": [
+    //       {"method": "tapByText",         "args": {"buttonText": "OK"}},
+    //       {"method": "waitSeconds",        "args": {"seconds": 1}},
+    //       {"method": "requestScreenshot",  "args": {}}
+    //     ]
+    //   }
+    // ]
+    //
+    // Step args may reference the caller's argsJson via "$outer.<key>":
+    //   {"method": "tapByText", "args": {"buttonText": "$outer.label"}}
+    // → Android.dispatch("myMacro", '{"label":"Save"}') taps the "Save" button.
+
+    @Volatile private var macroRegistry: Map<String, String> = emptyMap()
+
+    init {
+        // Pre-warm the registry from persisted JSON so dispatch("macroName", ...)
+        // works correctly before the web bundle calls setMacros() again.
+        val saved = com.google.ai.sample.util.MacroPreferences.load(context)
+        if (saved != null) {
+            try {
+                val arr = JSONArray(saved)
+                val map = mutableMapOf<String, String>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val name = obj.optString("name", "").trim()
+                    if (name.isEmpty()) continue
+                    val steps = obj.optJSONArray("steps") ?: continue
+                    map[name] = steps.toString()
+                }
+                macroRegistry = map
+                Log.d(TAG, "init: restored ${map.size} macro(s) from preferences")
+            } catch (e: Exception) {
+                Log.w(TAG, "init: could not restore macros: ${e.message}")
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun setMacros(json: String): Int {
+        return try {
+            val arr = JSONArray(json)
+            val map = mutableMapOf<String, String>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val name = obj.optString("name", "").trim()
+                if (name.isEmpty()) continue
+                val steps = obj.optJSONArray("steps") ?: continue
+                map[name] = steps.toString()
+            }
+            macroRegistry = map   // atomic reference swap (@Volatile)
+            com.google.ai.sample.util.MacroPreferences.save(context, json)
+            Log.d(TAG, "setMacros: installed ${map.size} macro(s)")
+            map.size
+        } catch (e: Exception) {
+            Log.e(TAG, "setMacros error: ${e.message}")
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun getMacros(): String =
+        com.google.ai.sample.util.MacroPreferences.load(context) ?: "[]"
+
+    private fun runMacro(name: String, outerArgs: JSONObject): String {
+        val stepsJson = macroRegistry[name]
+            ?: return """{"error":${JSONObject.quote("unknown method or macro: ${name.take(80)}")}}"""
+        return try {
+            val steps = JSONArray(stepsJson)
+            var lastResult = ""
+            for (i in 0 until steps.length()) {
+                val step = steps.optJSONObject(i) ?: continue
+                val method = step.optString("method", "").ifEmpty { continue }
+                val args = step.optJSONObject("args") ?: JSONObject()
+                lastResult = dispatch(method, resolveArgs(args, outerArgs).toString())
+            }
+            lastResult
+        } catch (e: Exception) {
+            Log.w(TAG, "runMacro('$name') error: ${e.message}")
+            """{"error":${JSONObject.quote(e.message ?: "unknown")}}"""
+        }
+    }
+
+    /**
+     * Resolves `"$outer.<key>"` placeholders in a macro step's args object against
+     * the outerArgs that were passed to the enclosing [dispatch] / [runMacro] call.
+     * Non-placeholder values are forwarded unchanged.
+     */
+    private fun resolveArgs(args: JSONObject, outer: JSONObject): JSONObject {
+        val resolved = JSONObject()
+        val keys = args.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val v = args.opt(k)
+            if (v is String && v.startsWith("\$outer.")) {
+                val outerKey = v.removePrefix("\$outer.")
+                resolved.put(k, outer.opt(outerKey) ?: v)
+            } else {
+                resolved.put(k, v)
+            }
+        }
+        return resolved
+    }
+
+    // ── Pre-provisioned Extension Slots (extA .. extJ) ────────────────────────
+    // Ten @JavascriptInterface methods that are compiled into the APK ahead of
+    // time ("auf Vorrat"). Because they are registered with the WebView host at
+    // compile time, a JS bundle can always call Android.extA("{...}") safely —
+    // even if the slot isn't wired yet (returns a stub JSON) and even if a
+    // future app release replaces the stub body with a real native
+    // implementation without breaking existing callers.
+    //
+    // HOW TO WIRE A SLOT WITHOUT A RELEASE:
+    //   Register a macro whose name matches the slot name via setExtensionHandlers
+    //   (or equivalently setMacros). The slot method delegates to runMacro() which
+    //   checks the registry:
+    //
+    //   Android.setExtensionHandlers(JSON.stringify([{
+    //     "name": "extA",
+    //     "steps": [
+    //       {"method": "tapByText", "args": {"buttonText": "$outer.label"}},
+    //       {"method": "requestScreenshot", "args": {}}
+    //     ]
+    //   }]));
+    //   // Now Android.extA('{"label":"OK"}') taps "OK" and takes a screenshot.
+    //
+    // HOW TO WIRE A SLOT WITH A FUTURE RELEASE:
+    //   Replace the runExtSlot() call body with native Kotlin code. The JS side
+    //   never needs to change because the method name and signature are stable.
+    //
+    // setExtensionHandlers / getExtensionHandlers delegate to the shared macro
+    // registry (setMacros / getMacros) so there is a single unified lookup path.
+
+    @JavascriptInterface
+    fun setExtensionHandlers(json: String): Int = setMacros(json)
+
+    @JavascriptInterface
+    fun getExtensionHandlers(): String = getMacros()
+
+    @JavascriptInterface fun extA(argsJson: String): String = runExtSlot("extA", argsJson)
+    @JavascriptInterface fun extB(argsJson: String): String = runExtSlot("extB", argsJson)
+    @JavascriptInterface fun extC(argsJson: String): String = runExtSlot("extC", argsJson)
+    @JavascriptInterface fun extD(argsJson: String): String = runExtSlot("extD", argsJson)
+    @JavascriptInterface fun extE(argsJson: String): String = runExtSlot("extE", argsJson)
+    @JavascriptInterface fun extF(argsJson: String): String = runExtSlot("extF", argsJson)
+    @JavascriptInterface fun extG(argsJson: String): String = runExtSlot("extG", argsJson)
+    @JavascriptInterface fun extH(argsJson: String): String = runExtSlot("extH", argsJson)
+    @JavascriptInterface fun extI(argsJson: String): String = runExtSlot("extI", argsJson)
+    @JavascriptInterface fun extJ(argsJson: String): String = runExtSlot("extJ", argsJson)
+
+    private fun runExtSlot(slot: String, argsJson: String): String {
+        val args = try { JSONObject(argsJson) } catch (_: Exception) { JSONObject() }
+        val result = runMacro(slot, args)
+        // Replace the generic "unknown method or macro" message with a clear stub
+        // signal so JS callers can distinguish "not wired yet" from "real error".
+        return if (result.contains("unknown method or macro"))
+            """{"status":"stub","slot":"$slot"}"""
+        else
+            result
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     companion object {
@@ -855,4 +1194,5 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
 
