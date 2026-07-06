@@ -589,6 +589,8 @@ class MainActivity : ComponentActivity() {
         if (!isEnabled) {
             Log.d(TAG, "Accessibility Service not enabled.")
         }
+        val js = "window.onAccessibilityStateChanged && window.onAccessibilityStateChanged($isEnabled)"
+        webViewInstance?.post { webViewInstance?.evaluateJavascript(js, null) }
     }
 
     internal fun requestManageExternalStoragePermission() {
