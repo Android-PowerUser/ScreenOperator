@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Screen Operator</title>
 <style>
-/* ── Reset ────────────────────────────────────────────── */
+/* ââ Reset ââââââââââââââââââââââââââââââââââââââââââââââ */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
 
-/* ── M3 Light tokens (default) ─────────────────────────── */
+/* ââ M3 Light tokens (default) âââââââââââââââââââââââââââ */
 :root{
   --bg:#FFFBFE;
   --bg-card:#E7E0EC;
@@ -47,38 +47,38 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
   --db-yellow-2:#F3C100;
 }
 
-/* ── App shell ──────────────────────────────────────────── */
+/* ââ App shell ââââââââââââââââââââââââââââââââââââââââââââ */
 #app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column}
 
-/* ── Screens ────────────────────────────────────────────── */
+/* ââ Screens ââââââââââââââââââââââââââââââââââââââââââââââ */
 .screen{display:none;flex-direction:column;flex:1;min-height:0}
 .screen.active{display:flex}
 
-/* ── MENU SCREEN ─────────────────────────────────────────── */
+/* ââ MENU SCREEN âââââââââââââââââââââââââââââââââââââââââââ */
 #screen-menu{overflow-y:auto;padding:8px 14px 32px}
 
-/* ── CHAT SCREEN ─────────────────────────────────────────── */
+/* ââ CHAT SCREEN âââââââââââââââââââââââââââââââââââââââââââ */
 #screen-chat{overflow:hidden}
 #chat-sys-wrap{flex-shrink:0;padding:8px 14px 0}
 #chat-messages-wrap{flex:1;overflow-y:auto;padding:4px 14px 4px;display:flex;flex-direction:column;gap:2px}
 #chat-bottom{flex-shrink:0;padding:0 14px 8px}
 
-/* ── Card ────────────────────────────────────────────────── */
+/* ââ Card ââââââââââââââââââââââââââââââââââââââââââââââââââ */
 .card{background:var(--bg-card);border-radius:18px;padding:16px;margin:8px 0}
 .card-accent{background:var(--bg-primary-container);border-radius:18px;padding:14px;margin:8px 0}
 
-/* ── Typography ──────────────────────────────────────────── */
+/* ââ Typography ââââââââââââââââââââââââââââââââââââââââââââ */
 .title-md{font-size:16px;font-weight:500;color:var(--text-primary)}
 .body-md{font-size:14px;color:var(--text-primary);line-height:1.55}
 .body-sm{font-size:13px;color:var(--text-secondary);line-height:1.5}
 
-/* ── Row helpers ─────────────────────────────────────────── */
+/* ââ Row helpers âââââââââââââââââââââââââââââââââââââââââââ */
 .row{display:flex;align-items:center;gap:8px}
 .row.between{justify-content:space-between}
 .row.end{justify-content:flex-end}
 .col{display:flex;flex-direction:column;gap:6px}
 
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ââ Buttons âââââââââââââââââââââââââââââââââââââââââââââââ */
 .btn{border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-weight:500;white-space:nowrap;transition:opacity .15s}
 .btn:active{opacity:.8}
 .btn-solid{background:var(--primary);color:var(--primary-btn-text);padding:9px 20px;font-size:14px}
@@ -89,35 +89,35 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
 .btn-icon:active{background:var(--item-hover)}
 .btn-circle{width:48px;height:48px;border-radius:50%;border:1px solid #000;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0}
 
-/* ── Chips ───────────────────────────────────────────────── */
+/* ââ Chips âââââââââââââââââââââââââââââââââââââââââââââââââ */
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .chip{padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:var(--chip-bg);color:var(--chip-text);transition:background .15s}
 .chip.active{background:var(--chip-selected-bg);color:var(--chip-selected-text)}
 
-/* ── Inputs ──────────────────────────────────────────────── */
+/* ââ Inputs ââââââââââââââââââââââââââââââââââââââââââââââââ */
 .text-input{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;transition:border-color .2s}
 .text-input:focus{border-color:var(--primary)}
 textarea.text-input{resize:vertical;min-height:80px;line-height:1.5}
 
-/* ── Sliders ─────────────────────────────────────────────── */
+/* ââ Sliders âââââââââââââââââââââââââââââââââââââââââââââââ */
 .slider-row{margin-bottom:10px}
 .slider-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px}
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:2px;background:var(--outline);border-radius:2px;outline:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--primary);cursor:pointer}
 input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--primary);cursor:pointer;border:none}
 
-/* ── Model dropdown ──────────────────────────────────────── */
+/* ââ Model dropdown ââââââââââââââââââââââââââââââââââââââââ */
 #model-dropdown{position:relative;display:inline-block}
-#model-dropdown-menu{display:none;position:absolute;right:0;top:42px;background:var(--bg);border:1px solid var(--outline-variant);border-radius:12px;min-width:240px;max-height:300px;overflow-y:auto;box-shadow:0 4px 16px var(--shadow);z-index:20}
+#model-dropdown-menu{display:none;position:absolute;left:0;top:42px;background:var(--primary);border:none;border-radius:12px;width:calc(100vw - 28px);max-width:500px;max-height:400px;overflow-y:auto;box-shadow:0 4px 16px var(--shadow);z-index:20}
 #model-dropdown-menu.open{display:block}
-.drop-item{padding:11px 16px;font-size:14px;cursor:pointer;color:var(--text-primary);border-bottom:1px solid var(--divider)}
+.drop-item{padding:12px 16px;font-size:14px;cursor:pointer;color:var(--text-on-primary);border-bottom:none;background:transparent}
 .drop-item:last-child{border-bottom:none}
-.drop-item:hover{background:var(--item-hover)}
-.drop-item.strikethrough span{text-decoration:line-through;color:var(--text-secondary)}
-.drop-item.drop-section{font-size:11px;font-weight:600;color:var(--text-secondary);padding:8px 16px 4px;pointer-events:none;cursor:default;background:transparent;text-transform:uppercase;letter-spacing:.6px}
+.drop-item:hover{background:rgba(255,255,255,0.15)}
+.drop-item.strikethrough span{text-decoration:line-through;color:rgba(255,255,255,0.6)}
+.drop-item.drop-section{font-size:11px;font-weight:600;color:rgba(255,255,255,0.7);padding:8px 16px 4px;pointer-events:none;cursor:default;background:transparent;text-transform:uppercase;letter-spacing:.6px}
 .drop-item.drop-section:hover{background:transparent}
 
-/* ── System message card ─────────────────────────────────── */
+/* ââ System message card âââââââââââââââââââââââââââââââââââ */
 #chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
 #sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:17px;font-family:inherit;background:var(--bg-primary-container);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
@@ -131,7 +131,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 #sys-msg-textarea.expanded-keyboard{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
 #sys-msg-textarea.expanded-full{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
 
-/* ── Chat bubbles ────────────────────────────────────────── */
+/* ââ Chat bubbles ââââââââââââââââââââââââââââââââââââââââââ */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
 .bubble-wrap.user-wrap{flex-direction:row-reverse}
 .bubble{border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.55;max-width:82%;word-break:break-word}
@@ -142,10 +142,10 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .pending-dots{display:inline-block;margin-left:6px;font-size:16px;line-height:1;animation:blink 1.2s infinite}
 @keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
 
-/* ── Command status card ─────────────────────────────────── */
+/* ââ Command status card âââââââââââââââââââââââââââââââââââ */
 .cmd-status-card{background:var(--bg-secondary-container);border-radius:12px;padding:12px 14px;margin:6px 0;font-size:13px;color:var(--text-on-secondary-container)}
 
-/* ── Input area ──────────────────────────────────────────── */
+/* ââ Input area ââââââââââââââââââââââââââââââââââââââââââââ */
 #chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
 .input-row{display:flex;align-items:flex-end;gap:6px}
 .task-input{flex:1;min-height:80px;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:17px;font-family:inherit;background:var(--bg-card);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
@@ -153,24 +153,24 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 #send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .send-icon{font-size:22px;color:var(--outline)}
 .send-icon.active{color:var(--primary)}
-/* ── Toast ───────────────────────────────────────────────── */
+/* ââ Toast âââââââââââââââââââââââââââââââââââââââââââââââââ */
 #toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .25s;z-index:200;white-space:nowrap}
 
-/* ── Stop / Unload button ────────────────────────────────── */
+/* ââ Stop / Unload button ââââââââââââââââââââââââââââââââââ */
 #stop-btn-wrap{margin-top:6px}
 #stop-btn{width:100%;padding:10px;background:#B3261E;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit}
 #stop-btn:active{opacity:.85}
-/* ── chat-bottom fixed positioning when keyboard open ────── */
+/* ââ chat-bottom fixed positioning when keyboard open ââââââ */
 #chat-bottom{transition:bottom .1s}
 
-/* ── Key list ────────────────────────────────────────────── */
+/* ââ Key list ââââââââââââââââââââââââââââââââââââââââââââââ */
 .key-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--divider)}
 .key-row:last-child{border-bottom:none}
 .key-radio{flex-shrink:0;width:18px;height:18px;cursor:pointer;accent-color:var(--primary)}
 .key-label{flex:1;font-size:13px;color:var(--text-primary);word-break:break-all}
 .key-del{background:none;border:none;cursor:pointer;color:var(--error);font-size:15px;flex-shrink:0;padding:2px 6px}
 
-/* ── Overlays / Popups ───────────────────────────────────── */
+/* ââ Overlays / Popups âââââââââââââââââââââââââââââââââââââ */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
 .overlay.open{display:flex;align-items:flex-start;justify-content:center}
 .popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative;margin:auto}
@@ -178,7 +178,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
 .popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
-/* ── Database entries list ───────────────────────────────── */
+/* ââ Database entries list âââââââââââââââââââââââââââââââââ */
 .db-entry{display:flex;align-items:center;gap:8px;padding:4px 8px;min-width:0}
 .db-entry:nth-child(odd){background:var(--db-yellow-1)}
 .db-entry:nth-child(even){background:var(--db-yellow-2)}
@@ -199,45 +199,45 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .db-edit-input::placeholder{color:#888}
 #entry-title-input,#entry-guide-input{font-size:22px}
 
-/* ── Hint text ───────────────────────────────────────────── */
+/* ââ Hint text âââââââââââââââââââââââââââââââââââââââââââââ */
 .model-hint{font-size:13px;color:var(--text-secondary);margin-top:8px;line-height:1.5}
 
-/* ── Image thumbnails row ────────────────────────────────── */
+/* ââ Image thumbnails row ââââââââââââââââââââââââââââââââââ */
 #image-preview-row{display:flex;flex-wrap:nowrap;gap:6px;padding:6px 0 2px;overflow-x:auto}
 #image-preview-row:empty{display:none}
 .img-thumb-wrap{position:relative;flex-shrink:0}
 .img-thumb{width:72px;height:72px;object-fit:cover;border-radius:8px;display:block}
 .img-thumb-del{position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#B3261E;color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
 
-/* ── Backend toggle ──────────────────────────────────────── */
+/* ââ Backend toggle ââââââââââââââââââââââââââââââââââââââââ */
 .backend-row{display:flex;gap:10px;margin-top:10px}
 .backend-btn{flex:1;padding:9px;border:1px solid var(--outline);border-radius:999px;background:transparent;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
 .backend-btn.active-btn{background:var(--primary);color:#fff;border-color:var(--primary)}
 
-/* ── Progress / spinner ──────────────────────────────────── */
+/* ââ Progress / spinner ââââââââââââââââââââââââââââââââââââ */
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--outline);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── Scrollbar thin ──────────────────────────────────────── */
+/* ââ Scrollbar thin ââââââââââââââââââââââââââââââââââââââââ */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--outline-variant);border-radius:4px}
 
-/* ── Accessibility banner ────────────────────────────────── */
+/* ââ Accessibility banner ââââââââââââââââââââââââââââââââââ */
 #accessibility-banner{padding:0 14px;flex-shrink:0}
 #accessibility-banner-card{background:var(--bg-error-container);border-radius:12px;padding:16px;margin:8px 0 0}
 #accessibility-banner-title{color:var(--error);font-size:16px;font-weight:500;margin-bottom:8px}
 #accessibility-banner-body{color:var(--error);font-size:14px;line-height:1.5;margin-bottom:8px}
 #accessibility-banner-btn{background:none;border:none;color:var(--primary);font-size:15px;font-weight:500;cursor:pointer;padding:4px 0;font-family:inherit}
 
-/* ── Offline section toggle ──────────────────────────────── */
+/* ââ Offline section toggle ââââââââââââââââââââââââââââââââ */
 .collapse-section{display:none}
 .collapse-section.visible{display:block}
 
-/* ── Pro purchased ───────────────────────────────────────── */
+/* ââ Pro purchased âââââââââââââââââââââââââââââââââââââââââ */
 .pro-thanks{text-align:center;font-size:15px;font-weight:500;color:var(--text-primary);padding:8px 0}
 
-/* ── Add model popup ─────────────────────────────────────── */
+/* ââ Add model popup âââââââââââââââââââââââââââââââââââââââ */
 .form-group{margin-bottom:14px}
 .form-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px;display:block}
 select.text-input{height:40px;padding:0 10px;cursor:pointer}
@@ -246,9 +246,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <body>
 <div id="app">
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
      MENU SCREEN
-═══════════════════════════════════════════════════════════ -->
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
 <div id="screen-menu" class="screen active">
 
   <!-- API Key Management -->
@@ -263,7 +263,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="card">
     <div class="title-md" style="margin-bottom:8px">Model Selection</div>
     <div class="body-md" style="margin-bottom:10px">Current model: <strong id="current-model-name">Qwen3.7 Plus (Puter)</strong></div>
-    <div class="row end">
+    <div class="row">
       <div id="model-dropdown">
         <button class="btn btn-solid" onclick="toggleModelDropdown()">Change Model</button>
         <div id="model-dropdown-menu"></div>
@@ -315,9 +315,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       <div>
         <div class="title-md">Support Improvements &#127881;</div>
       </div>
-      <button class="btn btn-solid" onclick="initiateDonation()">Pro (2,90 €/Month)</button>
+      <button class="btn btn-solid" onclick="initiateDonation()">Pro (2,90 â¬/Month)</button>
     </div>
-    <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
+    <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! ðð</div>
   </div>
 
   <!-- Info -->
@@ -337,9 +337,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 </div><!-- /screen-menu -->
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
      CHAT SCREEN
-═══════════════════════════════════════════════════════════ -->
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
 <div id="screen-chat" class="screen">
 
   <!-- System message -->
@@ -352,7 +352,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
           <button class="btn btn-outline" onclick="openDatabasePopup()">Database</button>
         </div>
       </div>
-      <textarea id="sys-msg-textarea" class="collapsed" rows="3" placeholder="Enter a system message here…" oninput="onSystemMessageChange()" onfocus="onSysTextareaFocus()" onblur="onSysTextareaBlur()"></textarea>
+      <textarea id="sys-msg-textarea" class="collapsed" rows="3" placeholder="Enter a system message hereâ¦" oninput="onSystemMessageChange()" onfocus="onSysTextareaFocus()" onblur="onSysTextareaBlur()"></textarea>
     </div>
   </div>
 
@@ -401,18 +401,18 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 </div><!-- /app -->
 <div id="toast"></div>
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
      POPUPS
-═══════════════════════════════════════════════════════════ -->
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
 
 <!-- API Key Popup -->
 <div id="popup-apikey" class="overlay" onclick="overlayClose(event,'popup-apikey')">
   <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-apikey')">✕</button>
+    <button class="popup-close" onclick="closePopup('popup-apikey')">â</button>
     <div class="popup-title">Manage API Keys</div>
     <div class="chips" id="provider-chips"></div>
     <div style="margin-bottom:12px">
-      <a id="get-key-link" href="#" target="_blank" class="btn-text" style="font-size:13px;display:block;margin-bottom:10px">Get API Key ↗</a>
+      <a id="get-key-link" href="#" target="_blank" class="btn-text" style="font-size:13px;display:block;margin-bottom:10px">Get API Key â</a>
       <div class="row" style="gap:8px">
         <input type="text" id="new-key-input" class="text-input" placeholder="Enter API Key" style="flex:1;height:38px">
         <button class="btn btn-solid" onclick="addApiKey()" style="padding:9px 16px">Add</button>
@@ -458,12 +458,12 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 
 <script>
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    ANDROID BRIDGE
    Android must expose window.Android via WebView.addJavascriptInterface
    with @JavascriptInterface on each method listed below.
    Falls back to localStorage when running in a browser.
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 const LS = window.localStorage;
 const getInAndroid = () => typeof window.Android !== 'undefined';
 
@@ -640,9 +640,9 @@ const Bridge = {
   onCustomModelError:(message)=>{ if(getInAndroid()) Android.onCustomModelError(message); },
 };
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    MODEL DEFINITIONS
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 const PROVIDERS = {
   PUTER:    { name:'Puter',     keyUrl:'https://puter.com/dashboard#account',       keyLabel:'Get Auth Token for Puter' },
   GOOGLE:   { name:'Google',    keyUrl:'https://makersuite.google.com/app/apikey',   keyLabel:'Get API Key for Google' },
@@ -656,7 +656,7 @@ const PROVIDERS = {
 
 const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLARE','PUTER'];
 
-// Built-in model list — matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
+// Built-in model list â matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
 let MODELS = [
   { id:'PUTER_GPT_5_4_NANO',       displayName:'GPT-5.4 Nano (Puter)',                    modelName:'openai/gpt-5.4-nano',                     apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.2/M input | $1.25/M output', strike:false },
   { id:'MISTRAL_MEDIUM_3_1',       displayName:'Mistral Medium 3.1',                       modelName:'mistral-medium-latest',                    apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
@@ -687,9 +687,9 @@ let MODELS = [
   { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'Approx. 15 responses per day are free.', strike:true },
 ];
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    DEFAULT SYSTEM MESSAGE
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 const DEFAULT_SYSTEM_MSG = `You are on an App on a Smartphone. Your app is called Screen Operator. You start from this app. Proceed step by step! DON'T USE TOOL CODE!
 You must operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" "tapAtCoordinates(x, y)" "tapAtCoordinates(x percent of screen%, y percent of screen%)" "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown(x, y, how much pixel to scroll, duration in milliseconds)" "scrollUp(x, y, how much pixel to scroll, duration in milliseconds)" "scrollLeft(x, y, how much pixel to scroll, duration in milliseconds)" "scrollRight(x, y, how much pixel to scroll, duration in milliseconds)" scroll status bar down: "scrollUp(540, 0, 1100, 50)" "Wait(seconds)"
 
@@ -714,9 +714,9 @@ Notes:
 2. If you have questions, open Screen Operator, ask your question(s), and use "completed()" until you receive a human response.
 3. After each message, you will see the screen with additional information about it.`;
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    NATIVE (Compose-screen) UI STRINGS
-   ────────────────────────────────────────────────────────
+   ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    These are the *documentation copy* of every native UI string ID Android's
    UiStringsConfig.get(id, default) recognizes. The actual built-in default
    text lives at each Kotlin call site (so the app works identically even if
@@ -726,7 +726,7 @@ Notes:
    above. Edit a value here, it gets POSTed to the app via
    setUiStringsOverrides() on next launch and overrides that one native
    string. See docs/ui-strings-overrides.md.
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 const DEFAULT_UI_STRINGS = {
   // MainActivity.kt - permission/billing toasts
   toast_screen_capture_permission_denied: "Screen capture permission denied",
@@ -737,7 +737,7 @@ const DEFAULT_UI_STRINGS = {
   toast_screenshot_service_not_active: "Screenshot service not active. Please grant permission first.",
   toast_support_cancelled: "Support cancelled.",
   toast_donation_error: "Error during donation process: {0}",
-  toast_paypal_fallback_unavailable: "PayPal ist in dieser Fallback-UI noch nicht verfügbar.",
+  toast_paypal_fallback_unavailable: "PayPal ist in dieser Fallback-UI noch nicht verfÃ¼gbar.",
   toast_subscription_deactivated: "Subscription is deactivated",
 
   // ApiKeyDialog.kt
@@ -844,18 +844,18 @@ const DEFAULT_UI_STRINGS = {
   apikey_dialog_ok: "OK",
 };
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    STATE
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 let currentModelId = '';
 let currentProviderId = 'PUTER';
 let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    INIT
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 document.addEventListener('DOMContentLoaded', () => {
   currentModelId = Bridge.getSelectedModelId();
   buildModelDropdown();
@@ -917,9 +917,9 @@ function onViewportResize() {
   updateSysTextareaClass();
 }
 
-/* ════════════════════════════════════════════════════════
-   ANDROID → JS CALLBACKS  (called by Android via evaluateJavascript)
-════════════════════════════════════════════════════════ */
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+   ANDROID â JS CALLBACKS  (called by Android via evaluateJavascript)
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 window.onAiMessage = function(text, isPending) {
   const msgs = document.getElementById('chat-messages');
   let last = msgs.querySelector('.bubble.model:last-child');
@@ -964,9 +964,9 @@ window.onModelRegistered = function(modelId, displayName) {
   buildModelDropdown();
 };
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    ACCESSIBILITY
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function updateAccessibilityBanner(isDisabled) {
   const banner = document.getElementById('accessibility-banner');
   if (banner) banner.style.display = isDisabled ? 'block' : 'none';
@@ -980,9 +980,9 @@ window.onAccessibilityStateChanged = function(isEnabled) {
   updateAccessibilityBanner(!isEnabled);
 };
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    NAVIGATION
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function navigateToChat() {
   history.pushState({screen:'chat'}, '');
   document.getElementById('screen-menu').classList.remove('active');
@@ -1005,9 +1005,9 @@ function _showMenu() {
   chatBottom.style.bottom = '';
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    MODEL DROPDOWN
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function buildModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
   menu.innerHTML = '';
@@ -1050,14 +1050,14 @@ function buildModelDropdown() {
   });
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    CUSTOM MODELS
    Optional file "custom-models.json" next to this index.html (see docs/command-pattern-
    overrides.md's sibling doc for the format). Each entry describes a genuinely new model/
    provider - id, endpoint, modelName, etc. - with no corresponding native ModelOption at
    all. They show up in the model picker like any built-in model; the actual API call for
    them is made right here in JS (see window.onCustomModelRequest below) once selected.
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function mergeCustomModelsIntoDropdown(json) {
   let entries;
   try {
@@ -1249,9 +1249,9 @@ function applyModelSelection(id) {
   }
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    GENERATION SETTINGS
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 let sliderTimeout = null;
 function onSlider(type, val) {
   if (type==='temp') { document.getElementById('temp-val').textContent=parseFloat(val).toFixed(2); }
@@ -1279,9 +1279,9 @@ function loadGenerationSettings() {
   document.getElementById('topk-val').textContent = topK;
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    BACKEND
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function loadBackendPreference() {
   const b = Bridge.getBackendPreference();
   applyBackend(b, false);
@@ -1297,9 +1297,9 @@ function applyBackend(b, notify) {
   if (notify) window.onCommandStatus?.('Backend switched to '+b+'. Model will reload on next generation.');
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    SYSTEM MESSAGE & KEYBOARD / VIEWPORT SYNC
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 let sysTimeout = null;
 
 function onSystemMessageChange() {
@@ -1442,8 +1442,8 @@ window.onAndroidReady = function() {
   // Accessibility service state - update banner
   updateAccessibilityBanner(!Bridge.isAccessibilityServiceEnabled());
 
-  // ── Remote config (see docs/command-pattern-overrides.md, docs/model-identifier-
-  // overrides.md, docs/offline-model-overrides.md) ───────────────────────────
+  // ââ Remote config (see docs/command-pattern-overrides.md, docs/model-identifier-
+  // overrides.md, docs/offline-model-overrides.md) âââââââââââââââââââââââââââ
   // Both files are optional next to this index.html, fetched relative to the WebView's
   // base URL. Missing/invalid files are ignored - the app falls back to built-in behavior.
 
@@ -1481,7 +1481,7 @@ window.onAndroidReady = function() {
 
   // Completely new action types (regex + JS handler). When the AI emits a matching command
   // the native side calls window.onCustomAction(id, groups[]) so the JS handler can invoke
-  // any existing Android.* bridge method to carry out the action — no app update needed.
+  // any existing Android.* bridge method to carry out the action â no app update needed.
   fetch('custom-action-types.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
     .then(json => { if (json) Bridge.setCustomActionTypes(json); })
@@ -1581,9 +1581,9 @@ window.onBackPressed = function() {
   return false;
 };
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    CHAT
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function addUserBubble(text) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
@@ -1595,7 +1595,7 @@ function addUserBubble(text) {
 function addModelBubble(text, isPending) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap';
-  wrap.innerHTML = `<div class="bubble model">${escHtml(text)}${isPending?'<span class="pending-dots">…</span>':''}</div>`;
+  wrap.innerHTML = `<div class="bubble model">${escHtml(text)}${isPending?'<span class="pending-dots">â¦</span>':''}</div>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
@@ -1712,12 +1712,12 @@ function renderImagePreviews() {
     wrap.className = 'img-thumb-wrap';
     if (img.isVideo) {
       wrap.innerHTML = `
-        <div class="img-thumb" style="display:flex;align-items:center;justify-content:center;background:#121212;color:#fff;font-size:28px;border-radius:8px;width:72px;height:72px;border:1px solid var(--outline-variant);">🎬</div>
-        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+        <div class="img-thumb" style="display:flex;align-items:center;justify-content:center;background:#121212;color:#fff;font-size:28px;border-radius:8px;width:72px;height:72px;border:1px solid var(--outline-variant);">ð¬</div>
+        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">Ã</button>`;
     } else {
       const src = img.objectUrl || img.uri;
       wrap.innerHTML = `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(img.name)}">
-        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">×</button>`;
+        <button class="img-thumb-del" onclick="removeImage(${i})" title="Remove">Ã</button>`;
     }
     row.appendChild(wrap);
   });
@@ -1745,9 +1745,9 @@ function toggleTermuxMode() {
   Bridge.setTermuxBackground(termuxBackground);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    API KEY POPUP
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function openApiKeyPopup() {
   // Build provider chips
   const chips = document.getElementById('provider-chips');
@@ -1771,7 +1771,7 @@ function renderApiKeyChips() {
   const p = PROVIDERS[currentProviderId];
   const link = document.getElementById('get-key-link');
   if (p && p.keyUrl) {
-    link.textContent = (p.keyLabel || 'Get API Key') + ' ↗';
+    link.textContent = (p.keyLabel || 'Get API Key') + ' â';
     link.href = p.keyUrl;
     link.style.display = 'block';
   } else {
@@ -1789,11 +1789,11 @@ function renderKeyList() {
   keys.forEach((k,i) => {
     const row = document.createElement('div');
     row.className='key-row';
-    const masked = k.length > 15 ? k.slice(0,10)+'…'+k.slice(-5) : k;
+    const masked = k.length > 15 ? k.slice(0,10)+'â¦'+k.slice(-5) : k;
     row.innerHTML = `
       <input type="radio" class="key-radio" name="keysel" ${i===curIdx?'checked':''} onchange="Bridge.setCurrentKeyIndex(${i},'${currentProviderId}')">
       <span class="key-label">${escHtml(masked)}</span>
-      <button class="key-del" onclick="deleteApiKey('${escAttr(k)}')">✕</button>`;
+      <button class="key-del" onclick="deleteApiKey('${escAttr(k)}')">â</button>`;
     list.appendChild(row);
   });
 }
@@ -1813,9 +1813,9 @@ function deleteApiKey(key) {
   renderKeyList();
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    DATABASE POPUP
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function openDatabasePopup() {
   renderDbList();
   openPopup('popup-db');
@@ -1964,9 +1964,9 @@ function importDatabase(event) {
   event.target.value = '';
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    DONATION
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function updateDonationCard() {
   const purchased = Bridge.isPurchased();
   document.getElementById('donation-row').style.display = purchased ? 'none' : 'flex';
@@ -1976,9 +1976,9 @@ function initiateDonation() {
   Bridge.initiateDonation();
 }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    POPUP HELPERS
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function openPopup(id) { document.getElementById(id).classList.add('open'); }
 function closePopup(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -1997,9 +1997,9 @@ window.addEventListener('resize', () => {
 });
 function overlayClose(e, id) { if (e.target.id===id) closePopup(id); }
 
-/* ════════════════════════════════════════════════════════
+/* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
    UTILS
-════════════════════════════════════════════════════════ */
+ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -2015,6 +2015,7 @@ function escAttr(s) {
 </script>
 </body>
 </html>
+
 
 
 
