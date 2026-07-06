@@ -20,7 +20,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     private val TAG = "WebViewBridge"
     private val context: Context get() = mainActivity.applicationContext
 
-    // ── System Message ────────────────────────────────────────────────────────
+    // ââ System Message ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun getSystemMessage(): String {
@@ -49,7 +49,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Model Selection ───────────────────────────────────────────────────────
+    // ââ Model Selection âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun getSelectedModelId(): String {
@@ -83,7 +83,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── API Keys ──────────────────────────────────────────────────────────────
+    // ââ API Keys ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun getAllApiKeys(providerName: String): String {
@@ -137,7 +137,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Database Entries ──────────────────────────────────────────────────────
+    // ââ Database Entries ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun getDatabaseEntries(): String {
@@ -170,7 +170,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Generation Settings ───────────────────────────────────────────────────
+    // ââ Generation Settings âââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun getGenerationSettings(modelId: String): String {
@@ -216,7 +216,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Custom Models (entirely JSON-defined, JS-driven - see CustomModelRegistry) ──────────
+    // ââ Custom Models (entirely JSON-defined, JS-driven - see CustomModelRegistry) ââââââââââ
     // A "custom model" never existed as a compiled ModelOption. Its API call is made by JS
     // itself (fetch()), not by native networking code, so adding one - even for a brand-new
     // provider - needs only a custom-models.json commit, no app release.
@@ -252,7 +252,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.CustomModelPreferences.loadApiKey(context, modelId) ?: ""
     }
 
-    // ── Chat Operations ───────────────────────────────────────────────────────
+    // ââ Chat Operations âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun sendMessage(text: String) {
@@ -290,7 +290,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Custom Model Responses ───────────────────────────────────────────────
+    // ââ Custom Model Responses âââââââââââââââââââââââââââââââââââââââââââââââ
     // Called by JS after it performed the actual fetch() to a custom model's endpoint. The
     // text is fed into the EXISTING, unmodified command-parsing/execution/persistence
     // pipeline (PhotoReasoningCommandProcessing, AccessibilityCommandQueue, chat history) -
@@ -327,7 +327,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return mainActivity.getPhotoReasoningViewModel()?.isOfflineGpuModelLoadedFlow?.value ?: false
     }
 
-    // ── Backend Preference ────────────────────────────────────────────────────
+    // ââ Backend Preference ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun getBackendPreference(): String {
@@ -344,7 +344,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Billing / Donation ────────────────────────────────────────────────────
+    // ââ Billing / Donation ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun initiateDonation() {
@@ -358,7 +358,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return TrialManager.isPurchased(context)
     }
 
-    // ── Termux ────────────────────────────────────────────────────────────────
+    // ââ Termux ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun setTermuxBackground(background: Boolean) {
@@ -372,7 +372,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TermuxExecutionModePreferences.executeInBackground(context)
     }
 
-    // ── Command Pattern Overrides (remote-updatable command syntax) ────────────
+    // ââ Command Pattern Overrides (remote-updatable command syntax) ââââââââââââ
     // Lets the WebView bundle teach the native command parser new/alternate ways to spell
     // an *existing* action (see CommandPatternConfig for the safety boundary). This is what
     // makes "a new model emits slightly different command syntax" fixable via a repo commit
@@ -395,7 +395,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
     }
 
-    // ── Model Identifier Overrides (remote-updatable wire-level model names) ───
+    // ââ Model Identifier Overrides (remote-updatable wire-level model names) âââ
     // Lets the WebView bundle correct the API-side model identifier string for an *existing*
     // built-in ModelOption (see ModelIdentifierOverrides for the safety boundary). This is
     // what makes "a Gemini preview model got renamed/retired" fixable via a repo commit
@@ -418,7 +418,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.ModelIdentifierOverridePreferences.load(context) ?: "[]"
     }
 
-    // ── Offline Model Overrides (remote-updatable download URL/size/extra files) ─
+    // ââ Offline Model Overrides (remote-updatable download URL/size/extra files) â
     // Lets the WebView bundle correct the download metadata for an *existing* built-in
     // offline ModelOption (see OfflineModelOverrides for the safety boundary). This is what
     // makes "a Hugging Face download link moved" fixable via a repo commit instead of an app
@@ -441,7 +441,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.OfflineModelOverridePreferences.load(context) ?: "[]"
     }
 
-    // ── Custom Action Types (remote-updatable, entirely new action kinds) ──────────────────
+    // ââ Custom Action Types (remote-updatable, entirely new action kinds) ââââââââââââââââââ
     // Lets the WebView bundle define completely new action types (regex + id) without a native
     // app release. When the command parser matches one of these, it emits a
     // Command.WebViewCustomAction and the native side calls window.onCustomAction(id, groups[])
@@ -464,7 +464,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.CustomActionTypePreferences.load(context) ?: "[]"
     }
 
-    // ── Execution Policy Overrides (remote-updatable per-message command limit) ───────────
+    // ââ Execution Policy Overrides (remote-updatable per-message command limit) âââââââââââ
     // Lets the WebView bundle cap how many commands from a single AI response are executed
     // (and customize the feedback text sent back together with the next screenshot/screen-
     // elements message when commands were dropped because too many were sent at once)
@@ -488,7 +488,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── App Mapping Overrides (remote-updatable openApp() name/package resolution) ────────
+    // ââ App Mapping Overrides (remote-updatable openApp() name/package resolution) ââââââââ
     // Lets the WebView bundle teach openApp("...") about new apps, aliases, or a retuned
     // fuzzy-match threshold without a native app release. See AppMappingOverridesConfig.
 
@@ -509,7 +509,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.AppMappingOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── Error Classification Overrides (remote-updatable AI-provider error matching) ──────
+    // ââ Error Classification Overrides (remote-updatable AI-provider error matching) ââââââ
     // Lets the WebView bundle update the substrings used to detect a quota/rate-limit error
     // (triggers API key switching + retry) vs. a high-demand/overloaded error (does not switch
     // keys) - without a native app release, in case the AI provider changes its error wording.
@@ -531,7 +531,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.ErrorClassificationOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── Trial/Donation UI Overrides (remote-updatable dialog text, not the gating logic) ──
+    // ââ Trial/Donation UI Overrides (remote-updatable dialog text, not the gating logic) ââ
     // Lets the WebView bundle change the wording of the first-launch info dialog, the trial-
     // expired dialog, and the payment-method dialog, without a native app release. Does NOT
     // touch TrialManager's trial-length/entitlement logic - see TrialUiConfig's doc comment.
@@ -553,7 +553,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TrialUiOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── Operational Tuning Overrides (remote-updatable retry/cooldown timing) ──────────────
+    // ââ Operational Tuning Overrides (remote-updatable retry/cooldown timing) ââââââââââââââ
     // Lets the WebView bundle retune Mistral request cooldowns, model-download retry timing,
     // and the Termux "process completed" marker without a native app release.
 
@@ -574,7 +574,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.OperationalTuningOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── Trial Duration Override (remote-updatable trial length only) ──────────────────────
+    // ââ Trial Duration Override (remote-updatable trial length only) ââââââââââââââââââââââ
     // See TrialDurationOverrideConfig's doc comment and docs/trial-duration-overrides.md for
     // exactly what this does and does not affect, and the explicit confirmation this required.
 
@@ -595,7 +595,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TrialDurationOverridePreferences.load(context) ?: "{}"
     }
 
-    // ── Generation Defaults Overrides (remote-updatable factory defaults, not user settings) ─
+    // ââ Generation Defaults Overrides (remote-updatable factory defaults, not user settings) â
     // Lets the WebView bundle ship a better out-of-the-box temperature/topP/topK default for
     // models the user hasn't customized yet, without a native app release. A user's own saved
     // per-model settings (via saveGenerationSettings) always take precedence over this.
@@ -617,7 +617,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── UI String Overrides (remote-updatable native Compose-screen text) ──────────────────
+    // ââ UI String Overrides (remote-updatable native Compose-screen text) ââââââââââââââââââ
     // Lets the WebView bundle override individual native (non-WebView) UI strings - toasts,
     // dialog labels, button text - by stable ID, without a native app release. Defaults always
     // live in the Kotlin call sites themselves (UiStringsConfig.get(id, default)); this can
@@ -640,7 +640,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.UiStringsOverridesPreferences.load(context) ?: "{}"
     }
 
-    // ── Toast ────────────────────────────────────────────────────────────────
+    // ââ Toast ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // Generic bridge method to show an Android Toast from JavaScript. Exists so a
     // custom-action-types.json entry (e.g. an AI-emitted toast("message") command) can show
     // the user a message without any native code change - see docs/ai-toast-command.md for a
@@ -660,7 +660,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Device Control (every native gesture/navigation capability, exposed to JS) ─────────
+    // ââ Device Control (every native gesture/navigation capability, exposed to JS) âââââââââ
     // Previously, a window.onCustomAction handler (custom-action-types.json) could only
     // *display* something via showToast - it had no way to actually trigger a click, scroll,
     // app launch, or any other accessibility-service action, even though those capabilities
@@ -804,7 +804,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         )
     }
 
-    // ── Clipboard (no extra Android permission required) ───────────────────────
+    // ââ Clipboard (no extra Android permission required) âââââââââââââââââââââââ
     // Clipboard read/write is granted to every app by default, so - like the gesture/navigation
     // methods above - the write path is routed through the same Command/executeCommand pipeline
     // (so an AI-emitted copyToClipboard("...") text command and a custom-action-types.json
@@ -831,11 +831,11 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── Accessibility Service Status ──────────────────────────────────────────
+    // ââ Accessibility Service Status ââââââââââââââââââââââââââââââââââââââââââ
 
     @JavascriptInterface
     fun isAccessibilityServiceEnabled(): Boolean {
-        return AccessibilityServiceStatusResolver.isServiceEnabled(context)
+        return AccessibilityServiceStatusResolver.isServiceEnabled(context.contentResolver, context.packageName)
     }
 
     @JavascriptInterface
@@ -844,20 +844,20 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         context.startActivity(intent)
     }
 
-    // ── Generic Meta-Dispatcher ───────────────────────────────────────────────
+    // ââ Generic Meta-Dispatcher âââââââââââââââââââââââââââââââââââââââââââââââ
     // A single @JavascriptInterface entry-point that routes to every existing
     // bridge method by name. Why this matters:
     //
-    //  1. FORWARD COMPAT — a newly shipped web bundle can call
+    //  1. FORWARD COMPAT â a newly shipped web bundle can call
     //       Android.dispatch("brandNewMethod", "{\"x\":1}")
     //     on an old APK. If a macro named "brandNewMethod" has been installed via
     //     setMacros(), it executes immediately. Otherwise dispatch returns a safe
     //     {"error":"..."} JSON string instead of crashing.
     //
-    //  2. BACKWARD COMPAT — all direct Android.tapByText("OK") etc. calls in
+    //  2. BACKWARD COMPAT â all direct Android.tapByText("OK") etc. calls in
     //     existing JS continue to work completely unchanged.
     //
-    //  3. MACRO FALLBACK — unknown method names fall through to runMacro(), which
+    //  3. MACRO FALLBACK â unknown method names fall through to runMacro(), which
     //     checks the JSON-persisted macro registry before giving up.
     //
     // Return value is always a String: "" for void methods, the value serialised
@@ -869,25 +869,25 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         val a = try { JSONObject(argsJson) } catch (_: Exception) { JSONObject() }
         return try {
             when (method) {
-                // ── System Message ────────────────────────────────────────────
+                // ââ System Message ââââââââââââââââââââââââââââââââââââââââââââ
                 "getSystemMessage"              -> getSystemMessage()
                 "setSystemMessage"              -> { setSystemMessage(a.getString("message")); "" }
                 "restoreSystemMessage"          -> { restoreSystemMessage(); "" }
-                // ── Model Selection ───────────────────────────────────────────
+                // ââ Model Selection âââââââââââââââââââââââââââââââââââââââââââ
                 "getSelectedModelId"            -> getSelectedModelId()
                 "setSelectedModel"              -> { setSelectedModel(a.getString("id")); "" }
-                // ── API Keys ──────────────────────────────────────────────────
+                // ââ API Keys ââââââââââââââââââââââââââââââââââââââââââââââââââ
                 "getAllApiKeys"                 -> getAllApiKeys(a.getString("providerName"))
                 "addApiKey"                     -> { addApiKey(a.getString("key"), a.getString("providerName")); "" }
                 "removeApiKey"                  -> { removeApiKey(a.getString("key"), a.getString("providerName")); "" }
                 "getCurrentKeyIndex"            -> getCurrentKeyIndex(a.getString("providerName")).toString()
                 "setCurrentKeyIndex"            -> { setCurrentKeyIndex(a.getInt("index"), a.getString("providerName")); "" }
-                // ── Database Entries ──────────────────────────────────────────
+                // ââ Database Entries ââââââââââââââââââââââââââââââââââââââââââ
                 "getDatabaseEntries"            -> getDatabaseEntries()
                 "addDatabaseEntry"              -> { addDatabaseEntry(a.getString("title"), a.getString("guide")); "" }
                 "updateDatabaseEntry"           -> { updateDatabaseEntry(a.getString("oldTitle"), a.getString("newTitle"), a.getString("guide")); "" }
                 "deleteDatabaseEntry"           -> { deleteDatabaseEntry(a.getString("title")); "" }
-                // ── Generation Settings ───────────────────────────────────────
+                // ââ Generation Settings âââââââââââââââââââââââââââââââââââââââ
                 "getGenerationSettings"         -> getGenerationSettings(a.getString("modelId"))
                 "saveGenerationSettings"        -> {
                     saveGenerationSettings(
@@ -897,33 +897,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                         a.getInt("topK")
                     ); ""
                 }
-                // ── Custom Models ─────────────────────────────────────────────
+                // ââ Custom Models âââââââââââââââââââââââââââââââââââââââââââââ
                 "setCustomModelOverrides"       -> setCustomModelOverrides(a.getString("json")).toString()
                 "getCustomModelOverrides"       -> getCustomModelOverrides()
                 "setCustomModelApiKey"          -> { setCustomModelApiKey(a.getString("modelId"), a.getString("key")); "" }
                 "getCustomModelApiKey"          -> getCustomModelApiKey(a.getString("modelId"))
-                // ── Chat Operations ───────────────────────────────────────────
+                // ââ Chat Operations âââââââââââââââââââââââââââââââââââââââââââ
                 "sendMessage"                   -> { sendMessage(a.getString("text")); "" }
                 "sendMessageWithImages"         -> { sendMessageWithImages(a.getString("text"), a.getString("urisCsv")); "" }
                 "pickImage"                     -> { pickImage(); "" }
                 "clearChatHistory"              -> { clearChatHistory(); "" }
                 "stopGeneration"                -> { stopGeneration(); "" }
-                // ── Custom Model Responses ────────────────────────────────────
+                // ââ Custom Model Responses ââââââââââââââââââââââââââââââââââââ
                 "onCustomModelPartialResponse"  -> { onCustomModelPartialResponse(a.getString("text")); "" }
                 "onCustomModelFinalResponse"    -> { onCustomModelFinalResponse(a.getString("text")); "" }
                 "onCustomModelError"            -> { onCustomModelError(a.getString("message")); "" }
                 "isGenerationRunning"           -> isGenerationRunning().toString()
                 "isOfflineModelLoaded"          -> isOfflineModelLoaded().toString()
-                // ── Backend Preference ────────────────────────────────────────
+                // ââ Backend Preference ââââââââââââââââââââââââââââââââââââââââ
                 "getBackendPreference"          -> getBackendPreference()
                 "setBackendPreference"          -> { setBackendPreference(a.getString("backend")); "" }
-                // ── Billing / Donation ────────────────────────────────────────
+                // ââ Billing / Donation ââââââââââââââââââââââââââââââââââââââââ
                 "initiateDonation"              -> { initiateDonation(); "" }
                 "isPurchased"                   -> isPurchased().toString()
-                // ── Termux ────────────────────────────────────────────────────
+                // ââ Termux ââââââââââââââââââââââââââââââââââââââââââââââââââââ
                 "setTermuxBackground"           -> { setTermuxBackground(a.getBoolean("background")); "" }
                 "getTermuxBackground"           -> getTermuxBackground().toString()
-                // ── Override Setters / Getters ────────────────────────────────
+                // ââ Override Setters / Getters ââââââââââââââââââââââââââââââââ
                 "setCommandPatternOverrides"        -> setCommandPatternOverrides(a.getString("json")).toString()
                 "getCommandPatternOverrides"        -> getCommandPatternOverrides()
                 "setModelIdentifierOverrides"       -> setModelIdentifierOverrides(a.getString("json")).toString()
@@ -948,9 +948,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "getGenerationDefaultsOverrides"    -> getGenerationDefaultsOverrides()
                 "setUiStringsOverrides"             -> setUiStringsOverrides(a.getString("json")).toString()
                 "getUiStringsOverrides"             -> getUiStringsOverrides()
-                // ── Toast ─────────────────────────────────────────────────────
+                // ââ Toast âââââââââââââââââââââââââââââââââââââââââââââââââââââ
                 "showToast"                     -> { showToast(a.getString("message"), a.optBoolean("isLong", false)); "" }
-                // ── Device Control ────────────────────────────────────────────
+                // ââ Device Control ââââââââââââââââââââââââââââââââââââââââââââ
                 "tapByText"                     -> { tapByText(a.getString("buttonText")); "" }
                 "longTapByText"                 -> { longTapByText(a.getString("buttonText")); "" }
                 "tapAtCoordinates"              -> { tapAtCoordinates(a.getString("x"), a.getString("y")); "" }
@@ -987,18 +987,18 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                         a.getLong("durationMs")
                     ); ""
                 }
-                // ── Clipboard ─────────────────────────────────────────────────
+                // ââ Clipboard âââââââââââââââââââââââââââââââââââââââââââââââââ
                 "copyToClipboard"               -> { copyToClipboard(a.getString("text")); "" }
                 "getClipboardText"              -> getClipboardText()
-                // ── Accessibility Service Status ──────────────────────────────
+                // ââ Accessibility Service Status ââââââââââââââââââââââââââââââ
                 "isAccessibilityServiceEnabled" -> isAccessibilityServiceEnabled().toString()
                 "openAccessibilitySettings"     -> { openAccessibilitySettings(); "" }
-                // ── Macros & Extension Slots (self-referential but safe) ──────
+                // ââ Macros & Extension Slots (self-referential but safe) ââââââ
                 "setMacros"                     -> setMacros(a.getString("json")).toString()
                 "getMacros"                     -> getMacros()
                 "setExtensionHandlers"          -> setExtensionHandlers(a.getString("json")).toString()
                 "getExtensionHandlers"          -> getExtensionHandlers()
-                // ── Unknown: fall through to macro registry ───────────────────
+                // ââ Unknown: fall through to macro registry âââââââââââââââââââ
                 else                            -> runMacro(method, a)
             }
         } catch (e: Exception) {
@@ -1007,13 +1007,13 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
-    // ── JS-defined Macro Scripts ──────────────────────────────────────────────
+    // ââ JS-defined Macro Scripts ââââââââââââââââââââââââââââââââââââââââââââââ
     // Macros are JSON-defined sequences of dispatch() calls. They are registered
     // from the web bundle (e.g. fetched alongside index.html) and survive app
     // restarts via MacroPreferences.
     //
     // Any new behaviour that is composable from existing bridge methods can be
-    // deployed entirely via a repo commit — no app release required.
+    // deployed entirely via a repo commit â no app release required.
     //
     // The same registry also powers the extA..extJ pre-provisioned slots below:
     // a macro named "extA" gives Android.extA() real behaviour without touching
@@ -1033,7 +1033,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     //
     // Step args may reference the caller's argsJson via "$outer.<key>":
     //   {"method": "tapByText", "args": {"buttonText": "$outer.label"}}
-    // → Android.dispatch("myMacro", '{"label":"Save"}') taps the "Save" button.
+    // â Android.dispatch("myMacro", '{"label":"Save"}') taps the "Save" button.
 
     @Volatile private var macroRegistry: Map<String, String> = emptyMap()
 
@@ -1126,10 +1126,10 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return resolved
     }
 
-    // ── Pre-provisioned Extension Slots (extA .. extJ) ────────────────────────
+    // ââ Pre-provisioned Extension Slots (extA .. extJ) ââââââââââââââââââââââââ
     // Ten @JavascriptInterface methods that are compiled into the APK ahead of
     // time ("auf Vorrat"). Because they are registered with the WebView host at
-    // compile time, a JS bundle can always call Android.extA("{...}") safely —
+    // compile time, a JS bundle can always call Android.extA("{...}") safely â
     // even if the slot isn't wired yet (returns a stub JSON) and even if a
     // future app release replaces the stub body with a real native
     // implementation without breaking existing callers.
@@ -1183,7 +1183,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             result
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ââ Helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     companion object {
         fun jsEscape(s: String): String =
@@ -1194,5 +1194,6 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
 
 
