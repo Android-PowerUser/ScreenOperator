@@ -843,19 +843,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun openAccessibilitySettings() {
-        // Route through AccessibilityService so the startActivity call comes from a
-        // service context, which is not subject to Android 10+ background-start
-        // restrictions that affect @JavascriptInterface threads on MainActivity.
-        val pkg = context.packageName
-        val svc = "$pkg/.ScreenOperatorAccessibilityService"
-        val extras = """{"extra_accessibility_shortcut_target_service":"$svc"}"""
-        ScreenOperatorAccessibilityService.executeCommand(
-            com.google.ai.sample.util.Command.LaunchIntent(
-                action = "android.settings.ACCESSIBILITY_SETTINGS",
-                extrasJson = extras,
-                data = ""
-            )
-        )
+        // Delegate to MainActivity.openAccessibilitySettings() which uses
+        // runOnUiThread — the same pattern as the working native Compose button.
+        (context as? MainActivity)?.openAccessibilitySettings()
     }
 
     /**
@@ -873,16 +863,21 @@ class WebViewBridge(private val mainActivity: MainActivity) {
      */
     @JavascriptInterface
     fun launchIntent(action: String, extrasJson: String, data: String): String {
-        // Route through AccessibilityService context to avoid Android 10+
-        // background activity-start restrictions on @JavascriptInterface threads.
+        // Use runOnUiThread via MainActivity — same pattern as the working native button.
+        val mainActivity = context as? MainActivity
+            ?: return """{"error":"no activity context"}"""
         return try {
-            ScreenOperatorAccessibilityService.executeCommand(
-                com.google.ai.sample.util.Command.LaunchIntent(
-                    action = action,
-                    extrasJson = if (extrasJson.isBlank()) "{}" else extrasJson,
-                    data = data
-                )
-            )
+            mainActivity.runOnUiThread {
+                val intent = Intent(action).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (data.isNotBlank()) setData(Uri.parse(data))
+                    if (extrasJson.isNotBlank() && extrasJson != "{}") {
+                        val extras = JSONObject(extrasJson)
+                        extras.keys().forEach { key -> putExtra(key, extras.getString(key)) }
+                    }
+                }
+                mainActivity.startActivity(intent)
+            }
             "ok"
         } catch (e: Exception) {
             Log.w(TAG, "launchIntent('$action') error: ${e.message}")

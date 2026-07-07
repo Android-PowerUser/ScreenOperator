@@ -618,6 +618,21 @@ class MainActivity : ComponentActivity() {
         this.photoReasoningViewModel = viewModel
     }
 
+    /**
+     * Opens the Accessibility Settings screen on the UI thread.
+     * Safe to call from any thread (e.g. @JavascriptInterface background thread).
+     */
+    fun openAccessibilitySettings() {
+        Log.d(TAG, "openAccessibilitySettings called.")
+        runOnUiThread {
+            try {
+                startActivity(getAccessibilitySettingsIntent())
+            } catch (e: Exception) {
+                Log.e(TAG, "openAccessibilitySettings: failed to start activity", e)
+            }
+        }
+    }
+
     fun getAccessibilitySettingsIntent(): Intent {
         Log.d(TAG, "getAccessibilitySettingsIntent called.")
         val componentName = "$packageName/.ScreenOperatorAccessibilityService"
