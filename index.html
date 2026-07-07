@@ -675,7 +675,7 @@ const Bridge = {
 
   /* Accessibility Service */
   isAccessibilityServiceEnabled:()=> getInAndroid() && typeof Android.isAccessibilityServiceEnabled === 'function' ? Android.isAccessibilityServiceEnabled() : true,
-  openAccessibilitySettings:()=>{ if(getInAndroid() && typeof Android.openAccessibilitySettings === 'function') Android.openAccessibilitySettings(); },
+  openAccessibilitySettings:()=>{ if(getInAndroid()) { try { Android.openAccessibilitySettings(); } catch(e) { console.warn('[Bridge.openAccessibilitySettings]', e); } } },
   /**
    * Generic intent launcher. Prefers Android.launchIntent (new builds) and
    * falls back to Android.openAccessibilitySettings for the accessibility case.
@@ -1071,17 +1071,43 @@ function updateAccessibilityBanner(isDisabled) {
   if (banner) banner.style.display = isDisabled ? 'block' : 'none';
 }
 function activateAccessibilityService() {
+  if (!getInAndroid()) {
+    Bridge.showToast('Not running in Android app', false);
+    return;
+  }
   const pkg = 'io.github.android_poweruser';
   const svc = pkg + '/.ScreenOperatorAccessibilityService';
   const extras = JSON.stringify({'extra_accessibility_shortcut_target_service': svc});
-  // launchIntent available on new builds (API 33+): opens service detail page directly.
-  // Older builds fall back to openAccessibilitySettings (general list).
-  if(getInAndroid() && typeof Android.launchIntent === 'function') {
-    Android.launchIntent('android.settings.ACCESSIBILITY_SETTINGS', extras, '');
-  } else {
-    Bridge.openAccessibilitySettings();
+  // Try strategies from best to most compatible.
+  // typeof-checks are intentionally avoided — on some Android versions
+  // @JavascriptInterface methods do not pass typeof x === 'function'.
+  let opened = false;
+  // Strategy 1: launchIntent (new builds, opens service detail page directly)
+  try {
+    if (Android.launchIntent) {
+      Android.launchIntent('android.settings.ACCESSIBILITY_SETTINGS', extras, '');
+      opened = true;
+    }
+  } catch(e) { console.warn('[activateAccessibilityService] launchIntent failed:', e); }
+  // Strategy 2: dispatch (works on all builds via the generic router)
+  if (!opened) {
+    try {
+      Android.dispatch('openAccessibilitySettings', '{}');
+      opened = true;
+    } catch(e) { console.warn('[activateAccessibilityService] dispatch failed:', e); }
   }
-  Bridge.showToast(DEFAULT_UI_STRINGS.toast_open_accessibility_settings, false);
+  // Strategy 3: direct method call
+  if (!opened) {
+    try {
+      Android.openAccessibilitySettings();
+      opened = true;
+    } catch(e) { console.warn('[activateAccessibilityService] direct call failed:', e); }
+  }
+  if (opened) {
+    Bridge.showToast(DEFAULT_UI_STRINGS.toast_open_accessibility_settings, false);
+  } else {
+    Bridge.showToast('Could not open Accessibility Settings', true);
+  }
 }
 // Called by native when accessibility state changes (e.g. user enables/disables service)
 window.onAccessibilityStateChanged = function(isEnabled) {
