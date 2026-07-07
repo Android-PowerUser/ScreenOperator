@@ -40,6 +40,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.webkit.JavascriptInterface
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -786,6 +788,15 @@ class MainActivity : ComponentActivity() {
 
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                         settings.safeBrowsingEnabled = true
+                                    }
+
+                                    // Dark mode: API 33+ uses algorithmicDarkeningAllowed,
+                                    // API 29–32 uses the (deprecated) forceDark fallback.
+                                    if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                                        WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+                                    } else if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                                        @Suppress("DEPRECATION")
+                                        WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_AUTO)
                                     }
 
                                     webViewClient = object : WebViewClient() {

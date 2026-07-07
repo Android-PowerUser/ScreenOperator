@@ -230,6 +230,9 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.5.0")
 
+    // WebView dark mode (algorithmicDarkeningAllowed API 33+, forceDark fallback API 29–32)
+    implementation("androidx.webkit:webkit:1.12.1")
+
     // Google Play Billing Library
     implementation("com.android.billingclient:billing-ktx:7.1.1") // Latest version as per documentation
 
