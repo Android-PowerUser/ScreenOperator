@@ -841,7 +841,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun openAccessibilitySettings() {
         val intent = (context as? MainActivity)?.getAccessibilitySettingsIntent() ?: return
-        context.startActivity(intent)
+        (context as? MainActivity)?.runOnUiThread {
+            context.startActivity(intent)
+        }
     }
 
     // ââ Generic Meta-Dispatcher âââââââââââââââââââââââââââââââââââââââââââââââ
