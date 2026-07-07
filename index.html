@@ -1393,6 +1393,10 @@ function applyModelSelection(id) {
     document.getElementById('try-title').textContent = 'Operate the screen with AI';
     document.getElementById('try-desc').textContent = 'A vision LLM uses automatic screenshots and operates with predefined commands';
   }
+
+  // Generation Settings card visibility
+  const genCard = document.querySelector('#screen-menu .card:has(#gen-model-name)');
+  if (genCard) genCard.style.display = (id === 'HUMAN_EXPERT') ? 'none' : '';
 }
 
 /* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -2161,6 +2165,7 @@ function escAttr(s) {
 </script>
 </body>
 </html>
+
 
 
 
