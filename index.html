@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Screen Operator</title>
 <style>
@@ -47,7 +48,9 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
   --db-yellow-2:#F3C100;
 }
 
-/* ── M3 Dark tokens (auto, follows system) ───────────────── */
+/* ── M3 Dark tokens ─────────────────────────────────────────
+   Applied via (a) CSS media query for WebViews that support it
+   AND (b) html.dark-mode class set by JS (matchMedia fallback) */
 @media (prefers-color-scheme: dark) {
   :root {
     --bg:#1C1B1F;
@@ -85,6 +88,42 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
     --db-yellow-1:#5C4A00;
     --db-yellow-2:#6E5900;
   }
+}
+html.dark-mode {
+    --bg:#1C1B1F;
+    --bg-card:#2B2930;
+    --bg-primary-container:#4F378B;
+    --bg-secondary-container:#4A4458;
+    --bg-tertiary-container:#633B48;
+    --bg-error-container:#8C1D18;
+    --bg-surface-variant:#49454F;
+    --text-primary:#E6E1E5;
+    --text-secondary:#CAC4D0;
+    --text-on-primary:#381E72;
+    --text-on-primary-container:#EADDFF;
+    --text-on-secondary-container:#E8DEF8;
+    --text-on-error-container:#F9DEDC;
+    --error:#F2B8B5;
+    --outline:#938F99;
+    --outline-variant:#49454F;
+    --primary:#D0BCFF;
+    --primary-btn-text:#381E72;
+    --shadow:rgba(0,0,0,.4);
+    --scrim:rgba(0,0,0,.6);
+    --chip-selected-bg:#D0BCFF;
+    --chip-selected-text:#381E72;
+    --chip-bg:#49454F;
+    --chip-text:#E6E1E5;
+    --input-bg:#2B2930;
+    --input-border:#938F99;
+    --item-hover:#2D2B32;
+    --divider:#49454F;
+    --bubble-user-bg:#4F378B;
+    --bubble-user-text:#EADDFF;
+    --bubble-model-bg:#4A4458;
+    --bubble-model-text:#E8DEF8;
+    --db-yellow-1:#5C4A00;
+    --db-yellow-2:#6E5900;
 }
 
 
@@ -280,6 +319,18 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .form-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px;display:block}
 select.text-input{height:40px;padding:0 10px;cursor:pointer}
 </style>
+<script>
+/* Dark mode: apply class immediately before first paint to avoid flash */
+(function(){
+  try {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.matches) document.documentElement.classList.add('dark-mode');
+    mq.addEventListener('change', function(e){
+      document.documentElement.classList.toggle('dark-mode', e.matches);
+    });
+  } catch(e) {}
+})();
+</script>
 </head>
 <body>
 <div id="app">
@@ -2051,6 +2102,7 @@ function escAttr(s) {
 </script>
 </body>
 </html>
+
 
 
 
