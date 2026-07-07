@@ -107,16 +107,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--primary);cursor:pointer;border:none}
 
 /* ââ Model dropdown ââââââââââââââââââââââââââââââââââââââââ */
-#model-dropdown{display:inline-block}
-#model-dropdown-menu{display:none;position:fixed;inset:0;background:var(--scrim);z-index:100;align-items:flex-end}
-#model-dropdown-menu.open{display:flex}
-#model-dropdown-menu-inner{background:var(--bg);border-radius:28px 28px 0 0;width:100%;max-height:500px;overflow-y:auto;padding-bottom:24px}
-#model-dropdown-menu-inner .drop-header{padding:20px 16px 8px;font-size:16px;font-weight:600;color:var(--text-primary)}
-.drop-item{padding:14px 16px;font-size:15px;cursor:pointer;color:var(--text-primary);background:transparent}
+#model-dropdown{display:inline-block;position:relative}
+#model-dropdown-menu{display:none;position:absolute;right:0;top:100%;background:var(--bg);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:100;min-width:220px;max-height:60vh;overflow-y:auto}
+#model-dropdown-menu.open{display:block}
+.drop-item{padding:12px 16px;font-size:14px;cursor:pointer;color:var(--text-primary);background:transparent;white-space:nowrap}
 .drop-item:active{background:var(--item-hover)}
 .drop-item.strikethrough span{text-decoration:line-through;color:var(--text-secondary)}
-.drop-item.drop-section{font-size:11px;font-weight:600;color:var(--text-secondary);padding:12px 16px 4px;pointer-events:none;cursor:default;background:transparent;text-transform:uppercase;letter-spacing:.6px}
-.drop-item.drop-section:hover{background:transparent}
 
 /* ââ System message card âââââââââââââââââââââââââââââââââââ */
 #chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
@@ -267,12 +263,11 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div style="margin-top:8px;display:flex;justify-content:flex-end">
       <div id="model-dropdown">
         <button class="btn btn-solid" onclick="toggleModelDropdown()">Change Model</button>
+        <div id="model-dropdown-menu"></div>
       </div>
     </div>
     <div id="model-hint" class="model-hint"></div>
   </div>
-  <!-- Model dropdown overlay (outside card, full-screen modal) -->
-  <div id="model-dropdown-menu"></div>
 
   <!-- CPU / GPU (offline only) -->
   <div id="backend-card" class="card collapse-section">
@@ -1011,20 +1006,7 @@ function _showMenu() {
 function buildModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
   menu.innerHTML = '';
-  const inner = document.createElement('div');
-  inner.id = 'model-dropdown-menu-inner';
-  const header = document.createElement('div');
-  header.className = 'drop-header';
-  header.textContent = 'Select Model';
-  inner.appendChild(header);
-  menu.appendChild(inner);
 
-  const addSection = (label) => {
-    const s = document.createElement('div');
-    s.className = 'drop-item drop-section';
-    s.textContent = label;
-    inner.appendChild(s);
-  };
   const addItem = (model) => {
     const d = document.createElement('div');
     d.className = 'drop-item' + (model.strike ? ' strikethrough' : '');
@@ -1032,10 +1014,10 @@ function buildModelDropdown() {
     const span = document.createElement('span');
     span.textContent = model.displayName;
     d.appendChild(span);
-    inner.appendChild(d);
+    menu.appendChild(d);
   };
 
-  // Group: Normal models
+  // Group: same order as native MenuScreen.kt
   const vercelIds = new Set(['GPT_5_1_CODEX_MAX','GPT_5_1_CODEX_MINI','GPT_5_NANO']);
   const strikeIds = new Set(MODELS.filter(m=>m.strike).map(m=>m.id));
   const firstIds  = new Set(['PUTER_GPT_5_4_NANO','MISTRAL_MEDIUM_3_1','MISTRAL_MEDIUM_3_5']);
@@ -1049,12 +1031,7 @@ function buildModelDropdown() {
     ...MODELS.filter(m=>strikeIds.has(m.id)),
   ];
 
-  ordered.forEach((m,i) => {
-    if (!m.strike && ordered[i-1]?.strike) addSection('Deactivated');
-    if (m.apiProvider==='VERCEL' && !m.strike && ordered[i-1]?.apiProvider!=='VERCEL') addSection('Vercel');
-    if (m.apiProvider==='CUSTOM' && !m.strike && ordered[i-1]?.apiProvider!=='CUSTOM') addSection('Custom');
-    addItem(m);
-  });
+  ordered.forEach(m => addItem(m));
 }
 
 /* ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -1216,12 +1193,7 @@ window.onCustomModelRequest = async function(payloadJsonString) {
 function toggleModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
   const isOpening = !menu.classList.contains('open');
-  if (isOpening) {
-    buildModelDropdown();
-    // Use window.innerHeight (reliable in WebView) instead of vh units
-    const inner = document.getElementById('model-dropdown-menu-inner');
-    if (inner) inner.style.maxHeight = Math.round(window.innerHeight * 0.75) + 'px';
-  }
+  if (isOpening) buildModelDropdown();
   menu.classList.toggle('open');
 }
 function closeModelDropdown() {
@@ -1229,7 +1201,7 @@ function closeModelDropdown() {
 }
 document.addEventListener('click', e => {
   const menu = document.getElementById('model-dropdown-menu');
-  if (menu.classList.contains('open') && !e.target.closest('#model-dropdown-menu-inner') && !e.target.closest('#model-dropdown')) closeModelDropdown();
+  if (menu.classList.contains('open') && !e.target.closest('#model-dropdown-menu') && !e.target.closest('#model-dropdown')) closeModelDropdown();
 });
 
 function selectModel(id) {
