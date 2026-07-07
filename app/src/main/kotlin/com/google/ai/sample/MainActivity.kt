@@ -620,6 +620,25 @@ class MainActivity : ComponentActivity() {
 
     fun getAccessibilitySettingsIntent(): Intent {
         Log.d(TAG, "getAccessibilitySettingsIntent called.")
+        val componentName = "$packageName/.ScreenOperatorAccessibilityService"
+        // On Android 13+ we can jump directly to the service's detail page
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra("extra_accessibility_shortcut_target_service", componentName)
+                }
+                // Verify something can handle this intent before returning it
+                if (packageManager.resolveActivity(intent, 0) != null) {
+                    Log.d(TAG, "getAccessibilitySettingsIntent: using targeted intent for $componentName")
+                    return intent
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "getAccessibilitySettingsIntent: targeted intent failed, falling back", e)
+            }
+        }
+        // Fallback: open the general Accessibility Settings list
+        Log.d(TAG, "getAccessibilitySettingsIntent: using general accessibility settings")
         return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
