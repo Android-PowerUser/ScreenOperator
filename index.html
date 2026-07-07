@@ -1198,7 +1198,8 @@ function toggleModelDropdown() {
     const btn = document.querySelector('#model-dropdown button');
     const rect = btn.getBoundingClientRect();
     menu.style.top = (rect.bottom + 4) + 'px';
-    menu.style.right = (window.innerWidth - rect.right) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.style.right = 'auto';
     menu.style.maxHeight = (window.innerHeight - rect.bottom - 16) + 'px';
   }
   menu.classList.toggle('open');
