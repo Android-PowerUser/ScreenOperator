@@ -790,13 +790,25 @@ class MainActivity : ComponentActivity() {
                                         settings.safeBrowsingEnabled = true
                                     }
 
-                                    // Dark mode: API 33+ uses algorithmicDarkeningAllowed,
-                                    // API 29–32 uses the (deprecated) forceDark fallback.
+                                    // Dark mode: API 33+ uses algorithmicDarkeningAllowed so that
+                                    // prefers-color-scheme CSS/matchMedia responds to the system setting.
+                                    // API 29–32: FORCE_DARK_AUTO checks the theme's isLightTheme flag,
+                                    // which is unreliable when the app theme extends a Light parent.
+                                    // We therefore read the system night-mode flag directly and use
+                                    // FORCE_DARK_ON / FORCE_DARK_OFF explicitly.
                                     if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
                                         WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
                                     } else if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                                        val isNightMode =
+                                            (resources.configuration.uiMode and
+                                                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                                            android.content.res.Configuration.UI_MODE_NIGHT_YES
                                         @Suppress("DEPRECATION")
-                                        WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_AUTO)
+                                        WebSettingsCompat.setForceDark(
+                                            settings,
+                                            if (isNightMode) WebSettingsCompat.FORCE_DARK_ON
+                                            else             WebSettingsCompat.FORCE_DARK_OFF
+                                        )
                                     }
 
                                     webViewClient = object : WebViewClient() {
