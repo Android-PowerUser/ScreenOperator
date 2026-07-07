@@ -24,6 +24,15 @@ sealed class Command {
     data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class OpenApp(val packageName: String) : Command()
     /**
+     * Starts any Android Activity via an explicit Intent action, fired from the
+     * AccessibilityService context (which is exempt from Android 10+ background
+     * activity-start restrictions that block MainActivity-context starts).
+     * @param action      Intent action, e.g. "android.settings.ACCESSIBILITY_SETTINGS"
+     * @param extrasJson  JSON object of String->String extras. Pass "{}" for none.
+     * @param data        Optional URI string. Pass "" to omit.
+     */
+    data class LaunchIntent(val action: String, val extrasJson: String, val data: String) : Command()
+    /**
      * A two-finger pinch gesture, centered at (centerX, centerY), with both fingers moving
      * from startDistance apart to endDistance apart over durationMs. endDistance > startDistance
      * pinches out (zoom in); endDistance < startDistance pinches in (zoom out). Coordinates and

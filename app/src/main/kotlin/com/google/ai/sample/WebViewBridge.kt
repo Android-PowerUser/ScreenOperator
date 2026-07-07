@@ -843,10 +843,19 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun openAccessibilitySettings() {
-        val intent = (context as? MainActivity)?.getAccessibilitySettingsIntent() ?: return
-        (context as? MainActivity)?.runOnUiThread {
-            context.startActivity(intent)
-        }
+        // Route through AccessibilityService so the startActivity call comes from a
+        // service context, which is not subject to Android 10+ background-start
+        // restrictions that affect @JavascriptInterface threads on MainActivity.
+        val pkg = context.packageName
+        val svc = "$pkg/.ScreenOperatorAccessibilityService"
+        val extras = """{"extra_accessibility_shortcut_target_service":"$svc"}"""
+        ScreenOperatorAccessibilityService.executeCommand(
+            com.google.ai.sample.util.Command.LaunchIntent(
+                action = "android.settings.ACCESSIBILITY_SETTINGS",
+                extrasJson = extras,
+                data = ""
+            )
+        )
     }
 
     /**
@@ -864,22 +873,20 @@ class WebViewBridge(private val mainActivity: MainActivity) {
      */
     @JavascriptInterface
     fun launchIntent(action: String, extrasJson: String, data: String): String {
+        // Route through AccessibilityService context to avoid Android 10+
+        // background activity-start restrictions on @JavascriptInterface threads.
         return try {
-            val intent = Intent(action).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (data.isNotBlank()) setData(Uri.parse(data))
-                if (extrasJson.isNotBlank() && extrasJson != "{}") {
-                    val extras = JSONObject(extrasJson)
-                    extras.keys().forEach { key -> putExtra(key, extras.getString(key)) }
-                }
-            }
-            (context as? MainActivity)?.runOnUiThread {
-                context.startActivity(intent)
-            } ?: return """{"error":"no activity context"}"""
+            ScreenOperatorAccessibilityService.executeCommand(
+                com.google.ai.sample.util.Command.LaunchIntent(
+                    action = action,
+                    extrasJson = if (extrasJson.isBlank()) "{}" else extrasJson,
+                    data = data
+                )
+            )
             "ok"
         } catch (e: Exception) {
-            Log.w(TAG, "launchIntent('$action') error: \${e.message}")
-            """{"error":\${JSONObject.quote(e.message ?: "unknown")}}"""
+            Log.w(TAG, "launchIntent('$action') error: ${e.message}")
+            """{"error":${JSONObject.quote(e.message ?: "unknown")}}"""
         }
     }
 

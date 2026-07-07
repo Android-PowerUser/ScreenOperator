@@ -379,6 +379,27 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     openApp(command.packageName)
                 }
             }
+            is Command.LaunchIntent -> {
+                executeSyncCommandAction(
+                    logMessage = "LaunchIntent: ${command.action}",
+                    toastMessage = "Opening settings..."
+                ) {
+                    try {
+                        val intent = android.content.Intent(command.action).apply {
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            if (command.data.isNotBlank()) setData(android.net.Uri.parse(command.data))
+                            if (command.extrasJson.isNotBlank() && command.extrasJson != "{}") {
+                                val extras = org.json.JSONObject(command.extrasJson)
+                                extras.keys().forEach { key -> putExtra(key, extras.getString(key)) }
+                            }
+                        }
+                        applicationContext.startActivity(intent)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "LaunchIntent failed: ${e.message}", e)
+                        showToast("Could not open: ${command.action}", true)
+                    }
+                }
+            }
             is Command.PinchGesture -> {
                 executePinchGesture(command)
             }
