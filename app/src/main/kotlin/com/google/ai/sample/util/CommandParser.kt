@@ -261,6 +261,7 @@ object CommandParser {
             is Command.TermuxCommand -> Log.d(TAG, "Command details: TermuxCommand(\"${command.command}\")")
             is Command.CopyToClipboard -> Log.d(TAG, "Command details: CopyToClipboard(\"${command.text}\")")
             is Command.WebViewCustomAction -> Log.d(TAG, "Command details: WebViewCustomAction(id=\"${command.id}\", groups=${command.groups})")
+            is Command.LaunchIntent -> Log.d(TAG, "Command details: LaunchIntent(action=\"${command.action}\")")
         }
     }
 
