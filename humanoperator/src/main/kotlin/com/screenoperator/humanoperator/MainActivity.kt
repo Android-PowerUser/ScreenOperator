@@ -117,11 +117,19 @@ class MainActivity : ComponentActivity() {
 
     private fun showTaskNotification(taskId: String, text: String) {
         try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                this, taskId.hashCode(), intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
             val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("New Task Available")
                 .setContentText(if (text.isNotBlank()) text.take(100) else "A new task is waiting")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .build()
             NotificationManagerCompat.from(this).notify(taskId.hashCode(), notification)
