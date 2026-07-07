@@ -1,6 +1,9 @@
 package com.google.ai.sample
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -846,6 +849,40 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    /**
+     * Generic intent launcher — callable from WebView JS via
+     *   Android.launchIntent(action, extrasJson, data)
+     * or via dispatch("launchIntent", {action:..., extrasJson:..., data:...}).
+     *
+     * Lets the WebView control which Android screen to open without a new build.
+     * Always runs on the UI thread.
+     *
+     * @param action      Android intent action, e.g. "android.settings.ACCESSIBILITY_SETTINGS"
+     * @param extrasJson  JSON object of String key→String value extras. Pass "" or "{}" for none.
+     * @param data        Optional URI string, e.g. "https://example.com". Pass "" to omit.
+     * @return "ok" on success, JSON error string on failure.
+     */
+    @JavascriptInterface
+    fun launchIntent(action: String, extrasJson: String, data: String): String {
+        return try {
+            val intent = Intent(action).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (data.isNotBlank()) setData(Uri.parse(data))
+                if (extrasJson.isNotBlank() && extrasJson != "{}") {
+                    val extras = JSONObject(extrasJson)
+                    extras.keys().forEach { key -> putExtra(key, extras.getString(key)) }
+                }
+            }
+            (context as? MainActivity)?.runOnUiThread {
+                context.startActivity(intent)
+            } ?: return """{"error":"no activity context"}"""
+            "ok"
+        } catch (e: Exception) {
+            Log.w(TAG, "launchIntent('$action') error: \${e.message}")
+            """{"error":\${JSONObject.quote(e.message ?: "unknown")}}"""
+        }
+    }
+
     // ââ Generic Meta-Dispatcher âââââââââââââââââââââââââââââââââââââââââââââââ
     // A single @JavascriptInterface entry-point that routes to every existing
     // bridge method by name. Why this matters:
@@ -995,6 +1032,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 // ââ Accessibility Service Status ââââââââââââââââââââââââââââââ
                 "isAccessibilityServiceEnabled" -> isAccessibilityServiceEnabled().toString()
                 "openAccessibilitySettings"     -> { openAccessibilitySettings(); "" }
+                "launchIntent"                  -> launchIntent(a.getString("action"), a.optString("extrasJson", "{}"), a.optString("data", ""))
                 // ââ Macros & Extension Slots (self-referential but safe) ââââââ
                 "setMacros"                     -> setMacros(a.getString("json")).toString()
                 "getMacros"                     -> getMacros()

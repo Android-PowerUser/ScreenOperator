@@ -676,6 +676,18 @@ const Bridge = {
   /* Accessibility Service */
   isAccessibilityServiceEnabled:()=> getInAndroid() && typeof Android.isAccessibilityServiceEnabled === 'function' ? Android.isAccessibilityServiceEnabled() : true,
   openAccessibilitySettings:()=>{ if(getInAndroid() && typeof Android.openAccessibilitySettings === 'function') Android.openAccessibilitySettings(); },
+  /**
+   * Generic intent launcher. Prefers Android.launchIntent (new builds) and
+   * falls back to Android.openAccessibilitySettings for the accessibility case.
+   * action:     Android intent action string
+   * extrasJson: JSON object of String→String extras, e.g. '{"key":"value"}'
+   * data:       optional URI string, pass "" to omit
+   */
+  launchIntent:(action, extrasJson='{}', data='')=>{
+    if(getInAndroid() && typeof Android.launchIntent === 'function')
+      return Android.launchIntent(action, extrasJson||'{}', data||'');
+    console.warn('[Bridge.launchIntent] not available on this build');
+  },
 
   /* Show a native Android Toast - usable from window.onCustomAction handlers (see toast() example below) */
   showToast:(message, isLong)=>{ if(getInAndroid()) Android.showToast(String(message), !!isLong); else console.log('[Toast]', message); },
@@ -1059,7 +1071,16 @@ function updateAccessibilityBanner(isDisabled) {
   if (banner) banner.style.display = isDisabled ? 'block' : 'none';
 }
 function activateAccessibilityService() {
-  Bridge.openAccessibilitySettings();
+  const pkg = 'io.github.android_poweruser';
+  const svc = pkg + '/.ScreenOperatorAccessibilityService';
+  const extras = JSON.stringify({'extra_accessibility_shortcut_target_service': svc});
+  // launchIntent available on new builds (API 33+): opens service detail page directly.
+  // Older builds fall back to openAccessibilitySettings (general list).
+  if(getInAndroid() && typeof Android.launchIntent === 'function') {
+    Android.launchIntent('android.settings.ACCESSIBILITY_SETTINGS', extras, '');
+  } else {
+    Bridge.openAccessibilitySettings();
+  }
   Bridge.showToast(DEFAULT_UI_STRINGS.toast_open_accessibility_settings, false);
 }
 // Called by native when accessibility state changes (e.g. user enables/disables service)
