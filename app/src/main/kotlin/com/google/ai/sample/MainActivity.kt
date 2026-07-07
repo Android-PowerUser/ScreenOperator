@@ -635,7 +635,7 @@ class MainActivity : ComponentActivity() {
 
     fun getAccessibilitySettingsIntent(): Intent {
         Log.d(TAG, "getAccessibilitySettingsIntent called.")
-        val componentName = "$packageName/.ScreenOperatorAccessibilityService"
+        val componentName = "$packageName/${ScreenOperatorAccessibilityService::class.java.canonicalName}"
         // On Android 13+ we can jump directly to the service's detail page
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {

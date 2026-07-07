@@ -1075,33 +1075,45 @@ function activateAccessibilityService() {
     Bridge.showToast('Not running in Android app', false);
     return;
   }
+  // Full canonical component name (package + fully-qualified class), matching
+  // AccessibilityServiceStatusResolver.kt / AccessibilityServiceStateChecker.kt
+  // on the native side. The previous 'pkg/.ScreenOperatorAccessibilityService'
+  // shorthand resolved to the wrong package (applicationId != code package,
+  // i.e. 'io.github.android_poweruser' vs 'com.google.ai.sample'), so the
+  // Settings app could not find the target service.
   const pkg = 'io.github.android_poweruser';
-  const svc = pkg + '/.ScreenOperatorAccessibilityService';
+  const svc = pkg + '/com.google.ai.sample.ScreenOperatorAccessibilityService';
   const extras = JSON.stringify({'extra_accessibility_shortcut_target_service': svc});
-  // Try strategies from best to most compatible.
+  // Try strategies from most to least reliable.
   // typeof-checks are intentionally avoided — on some Android versions
   // @JavascriptInterface methods do not pass typeof x === 'function'.
   let opened = false;
-  // Strategy 1: launchIntent (new builds, opens service detail page directly)
+  // Strategy 1: direct method call. This is the exact same code path as the
+  // native Compose button (WebViewBridge.openAccessibilitySettings() ->
+  // MainActivity.openAccessibilitySettings() -> runOnUiThread { startActivity(
+  // getAccessibilitySettingsIntent()) }), so it is the most reliable option
+  // and is tried first.
   try {
-    if (Android.launchIntent) {
-      Android.launchIntent('android.settings.ACCESSIBILITY_SETTINGS', extras, '');
-      opened = true;
-    }
-  } catch(e) { console.warn('[activateAccessibilityService] launchIntent failed:', e); }
-  // Strategy 2: dispatch (works on all builds via the generic router)
+    Android.openAccessibilitySettings();
+    opened = true;
+  } catch(e) { console.warn('[activateAccessibilityService] direct call failed:', e); }
+  // Strategy 2: dispatch (works on all builds via the generic router, routes
+  // to the same native method as Strategy 1).
   if (!opened) {
     try {
       Android.dispatch('openAccessibilitySettings', '{}');
       opened = true;
     } catch(e) { console.warn('[activateAccessibilityService] dispatch failed:', e); }
   }
-  // Strategy 3: direct method call
+  // Strategy 3: launchIntent with the corrected, fully-qualified component
+  // name (fallback only — kept for older builds without the two methods above).
   if (!opened) {
     try {
-      Android.openAccessibilitySettings();
-      opened = true;
-    } catch(e) { console.warn('[activateAccessibilityService] direct call failed:', e); }
+      if (Android.launchIntent) {
+        Android.launchIntent('android.settings.ACCESSIBILITY_SETTINGS', extras, '');
+        opened = true;
+      }
+    } catch(e) { console.warn('[activateAccessibilityService] launchIntent failed:', e); }
   }
   if (opened) {
     Bridge.showToast(DEFAULT_UI_STRINGS.toast_open_accessibility_settings, false);
