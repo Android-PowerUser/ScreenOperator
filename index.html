@@ -110,7 +110,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 #model-dropdown{display:inline-block}
 #model-dropdown-menu{display:none;position:fixed;inset:0;background:var(--scrim);z-index:100;align-items:flex-end}
 #model-dropdown-menu.open{display:flex}
-#model-dropdown-menu-inner{background:var(--bg);border-radius:28px 28px 0 0;width:100%;max-height:75vh;overflow-y:auto;padding-bottom:24px}
+#model-dropdown-menu-inner{background:var(--bg);border-radius:28px 28px 0 0;width:100%;max-height:500px;overflow-y:auto;padding-bottom:24px}
 #model-dropdown-menu-inner .drop-header{padding:20px 16px 8px;font-size:16px;font-weight:600;color:var(--text-primary)}
 .drop-item{padding:14px 16px;font-size:15px;cursor:pointer;color:var(--text-primary);background:transparent}
 .drop-item:active{background:var(--item-hover)}
@@ -1217,6 +1217,13 @@ window.onCustomModelRequest = async function(payloadJsonString) {
 
 function toggleModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
+  const isOpening = !menu.classList.contains('open');
+  if (isOpening) {
+    buildModelDropdown();
+    // Use window.innerHeight (reliable in WebView) instead of vh units
+    const inner = document.getElementById('model-dropdown-menu-inner');
+    if (inner) inner.style.maxHeight = Math.round(window.innerHeight * 0.75) + 'px';
+  }
   menu.classList.toggle('open');
 }
 function closeModelDropdown() {
