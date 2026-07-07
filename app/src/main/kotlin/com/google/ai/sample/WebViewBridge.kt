@@ -844,8 +844,12 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun openAccessibilitySettings() {
         // Delegate to MainActivity.openAccessibilitySettings() which uses
-        // runOnUiThread — the same pattern as the working native Compose button.
-        (context as? MainActivity)?.openAccessibilitySettings()
+        // runOnUiThread. NOTE: this used to do `(context as? MainActivity)?...`,
+        // but `context` is `mainActivity.applicationContext` (see the getter
+        // above), which can never be cast to MainActivity — that cast was
+        // always null, so this was a silent no-op. Use the constructor's
+        // `mainActivity` property directly instead.
+        mainActivity.openAccessibilitySettings()
     }
 
     /**
@@ -864,8 +868,11 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun launchIntent(action: String, extrasJson: String, data: String): String {
         // Use runOnUiThread via MainActivity — same pattern as the working native button.
-        val mainActivity = context as? MainActivity
-            ?: return """{"error":"no activity context"}"""
+        // NOTE: this used to do `context as? MainActivity`, but `context` is
+        // `mainActivity.applicationContext` (see the getter above), which can
+        // never be cast to MainActivity — that cast always failed, so this
+        // method always returned the error string below without ever starting
+        // an intent. Use the constructor's `mainActivity` property directly.
         return try {
             mainActivity.runOnUiThread {
                 val intent = Intent(action).apply {
