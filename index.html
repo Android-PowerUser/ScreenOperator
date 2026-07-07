@@ -47,6 +47,47 @@ html,body{height:100%;overflow:hidden;font-family:Roboto,-apple-system,BlinkMacS
   --db-yellow-2:#F3C100;
 }
 
+/* ── M3 Dark tokens (auto, follows system) ───────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#1C1B1F;
+    --bg-card:#2B2930;
+    --bg-primary-container:#4F378B;
+    --bg-secondary-container:#4A4458;
+    --bg-tertiary-container:#633B48;
+    --bg-error-container:#8C1D18;
+    --bg-surface-variant:#49454F;
+    --text-primary:#E6E1E5;
+    --text-secondary:#CAC4D0;
+    --text-on-primary:#381E72;
+    --text-on-primary-container:#EADDFF;
+    --text-on-secondary-container:#E8DEF8;
+    --text-on-error-container:#F9DEDC;
+    --error:#F2B8B5;
+    --outline:#938F99;
+    --outline-variant:#49454F;
+    --primary:#D0BCFF;
+    --primary-btn-text:#381E72;
+    --shadow:rgba(0,0,0,.4);
+    --scrim:rgba(0,0,0,.6);
+    --chip-selected-bg:#D0BCFF;
+    --chip-selected-text:#381E72;
+    --chip-bg:#49454F;
+    --chip-text:#E6E1E5;
+    --input-bg:#2B2930;
+    --input-border:#938F99;
+    --item-hover:#2D2B32;
+    --divider:#49454F;
+    --bubble-user-bg:#4F378B;
+    --bubble-user-text:#EADDFF;
+    --bubble-model-bg:#4A4458;
+    --bubble-model-text:#E8DEF8;
+    --db-yellow-1:#5C4A00;
+    --db-yellow-2:#6E5900;
+  }
+}
+
+
 /* ââ App shell ââââââââââââââââââââââââââââââââââââââââââââ */
 #app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column}
 
@@ -2010,6 +2051,7 @@ function escAttr(s) {
 </script>
 </body>
 </html>
+
 
 
 
