@@ -508,7 +508,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     </div>
     <div id="key-list" style="max-height:200px;overflow-y:auto"></div>
     <div class="popup-actions">
-      <button class="btn btn-text" onclick="closePopup('popup-apikey')">Close</button>
+      <button class="btn btn-text" id="apikey-close-btn" onclick="closePopup('popup-apikey')">Close</button>
     </div>
   </div>
 </div>
@@ -1129,7 +1129,29 @@ window.onAccessibilityStateChanged = function(isEnabled) {
 /* ════════════════════════════════════════════════════════
    NAVIGATION
 ════════════════════════════════════════════════════════ */
+// Returns true if the currently selected model can be used right away
+// (no API key required, or a key is already stored for it/its provider).
+function hasRequiredApiKeyForCurrentModel() {
+  const m = MODELS.find(x => x.id === currentModelId);
+  if (!m) return true;
+  if (m.id === 'HUMAN_EXPERT') return true;
+  if (m.isOffline) return true;
+  if (m.apiProvider === 'CUSTOM') {
+    const key = Bridge.getCustomModelApiKey(m.id);
+    return !!(key && key.trim());
+  }
+  const keys = Bridge.getAllApiKeys(m.apiProvider);
+  return !!(keys && keys.length);
+}
 function navigateToChat() {
+  if (!hasRequiredApiKeyForCurrentModel()) {
+    const m = MODELS.find(x => x.id === currentModelId);
+    // Preselect the popup on the provider that's missing a key, then bail
+    // out - the user stays on the menu screen until a key is added (or a
+    // different, already-configured model is chosen).
+    openApiKeyPopup(m && m.apiProvider !== 'CUSTOM' ? m.apiProvider : currentProviderId);
+    return;
+  }
   history.pushState({screen:'chat'}, '');
   document.getElementById('screen-menu').classList.remove('active');
   document.getElementById('screen-chat').classList.add('active');
@@ -1898,7 +1920,8 @@ function toggleTermuxMode() {
 /* ════════════════════════════════════════════════════════
    API KEY POPUP
 ════════════════════════════════════════════════════════ */
-function openApiKeyPopup() {
+function openApiKeyPopup(forceProviderId) {
+  if (forceProviderId) currentProviderId = forceProviderId;
   // Build provider chips
   const chips = document.getElementById('provider-chips');
   chips.innerHTML = '';
