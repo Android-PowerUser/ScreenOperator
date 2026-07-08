@@ -1789,8 +1789,8 @@ window.onBackPressed = function() {
 function addUserBubble(text) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
-  wrap.innerHTML = `<button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>
-    <div class="bubble user">${escHtml(text)}</div>`;
+  wrap.innerHTML = `<div class="bubble user">${escHtml(text)}</div>
+    <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
@@ -1816,6 +1816,7 @@ function undoLast(text) {
   document.getElementById('task-input').value = text;
   onTaskInput();
   clearChat();
+  window.onGenerationStateChanged(false, false);
 }
 function clearChat() {
   document.getElementById('chat-messages').innerHTML = '';
@@ -2218,6 +2219,7 @@ function escAttr(s) {
 </script>
 </body>
 </html>
+
 
 
 
