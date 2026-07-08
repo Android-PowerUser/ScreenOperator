@@ -1023,7 +1023,14 @@ function onViewportResize() {
 ════════════════════════════════════════════════════════ */
 window.onAiMessage = function(text, isPending) {
   const msgs = document.getElementById('chat-messages');
-  let last = msgs.querySelector('.bubble.model:last-child');
+  // BUGFIX: ':last-child' only matches an element that is literally the last DOM child
+  // of its parent. Since every '.bubble.model' is wrapped inside a '.bubble-wrap' div,
+  // '.bubble.model' is NEVER ':last-child' of #chat-messages (the wrapper is).
+  // This caused the selector to always return null, so a brand-new model bubble-wrap
+  // was appended on every single onAiMessage call instead of updating the pending one —
+  // flooding the chat with stray bubbles and pushing the user bubble out of view.
+  const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
+  const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
   const parentWrap = last && last.closest('.bubble-wrap');
   if (parentWrap && parentWrap.querySelector('.pending-dots')) {
     const textSpan = last.querySelector('.model-text') || last;
@@ -1058,19 +1065,13 @@ window.onChatCleared = function() {
 // Termux output). Updates the last user bubble so the WebView shows the same content as the
 // native Compose UI, which always displays the combined text in the user chat bubble.
 window.onUserMessage = function(text) {
-  // Native sends the FULL combined prompt (typed text + "\n\n" + screen-elements / Termux output).
-  // We only want to show the user's original typed text in the bubble — strip everything from the
-  // first double-newline separator onward (that separator is always inserted by performReasoning()
-  // between userInput and screenInfoForPrompt / Termux output).
-  const separatorIndex = text.indexOf('\n\n');
-  const displayText = separatorIndex !== -1 ? text.slice(0, separatorIndex).trim() : text.trim();
-
   const msgs = document.getElementById('chat-messages');
+  // ':last-of-type' matches by tag name, not by class — use querySelectorAll + take the last one.
   const allUserBubbles = [...msgs.querySelectorAll('.bubble.user')];
   const lastUserBubble = allUserBubbles.length ? allUserBubbles[allUserBubbles.length - 1] : null;
-  if (lastUserBubble && displayText) {
+  if (lastUserBubble && text) {
     // Only update if we have something to show — never blank out a bubble
-    lastUserBubble.textContent = displayText;
+    lastUserBubble.textContent = text;
   }
 };
 
