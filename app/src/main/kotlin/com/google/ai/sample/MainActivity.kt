@@ -1408,6 +1408,26 @@ class MainActivity : ComponentActivity() {
      */
     fun sendMessageFromWebView(text: String, selectedImages: List<Uri>) {
         Log.d(TAG, "sendMessageFromWebView called with ${selectedImages.size} images.")
+
+        // Mirror the native send-button logic: ask for MediaProjection permission before sending
+        // when the active model supports screenshots, unless it is the Human Expert model (which
+        // manages its own WebRTC-based projection separately).
+        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+        val modelName = currentModel.name
+        val requiresScreenCapturePermission = currentModel.supportsScreenshot && modelName != "HUMAN_EXPERT"
+        if (!_isMediaProjectionPermissionGranted.value && requiresScreenCapturePermission) {
+            Log.d(TAG, "sendMessageFromWebView: MediaProjection not yet granted. Requesting permission first.")
+            requestMediaProjectionPermission {
+                // Permission was just granted – now do the actual send.
+                doSendMessageFromWebView(text, selectedImages)
+            }
+            return
+        }
+
+        doSendMessageFromWebView(text, selectedImages)
+    }
+
+    private fun doSendMessageFromWebView(text: String, selectedImages: List<Uri>) {
         lifecycleScope.launch {
             val bitmaps = selectedImages.mapNotNull { uri ->
                 uriToBitmap(uri)
