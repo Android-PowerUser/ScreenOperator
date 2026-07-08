@@ -209,11 +209,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 #sys-msg-textarea.expanded-full{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
 
 /* ── Chat bubbles ────────────────────────────────────────── */
-.bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:6px 0}
+.bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:8px 8px}
 .bubble-wrap.user-wrap{flex-direction:row-reverse}
-.bubble{border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.55;max-width:82%;word-break:break-word}
-.bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text)}
-.bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text)}
+.bubble{border-radius:12px;padding:16px;font-size:14px;line-height:1.55;max-width:82%;word-break:break-word}
+.bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text);white-space:pre-wrap}
+.bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text);display:flex;align-items:flex-start;gap:8px}
+.model-icon{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;margin-top:1px}
+.model-text{flex:1;white-space:pre-wrap}
 .bubble.error{background:var(--bg-error-container);color:var(--text-on-error-container);width:100%;max-width:100%}
 .bubble-wrap.error-wrap{display:block}
 .pending-dots{display:inline-block;margin-left:6px;font-size:16px;line-height:1;animation:blink 1.2s infinite}
@@ -1024,8 +1026,16 @@ window.onAiMessage = function(text, isPending) {
   let last = msgs.querySelector('.bubble.model:last-child');
   const parentWrap = last && last.closest('.bubble-wrap');
   if (parentWrap && parentWrap.querySelector('.pending-dots')) {
-    last.textContent = text;
-    if (!isPending) parentWrap.querySelector('.pending-dots')?.remove();
+    const textSpan = last.querySelector('.model-text') || last;
+    // Preserve the icon span if present
+    const icon = last.querySelector('.model-icon');
+    if (icon) {
+      textSpan.textContent = text;
+      if (!isPending) parentWrap.querySelector('.pending-dots')?.remove();
+    } else {
+      last.textContent = text;
+      if (!isPending) parentWrap.querySelector('.pending-dots')?.remove();
+    }
   } else {
     addModelBubble(text, isPending);
   }
@@ -1042,6 +1052,18 @@ window.onCommandStatus = function(status) {
 window.onChatCleared = function() {
   document.getElementById('chat-messages').innerHTML = '';
   document.getElementById('cmd-status-wrap').innerHTML = '';
+};
+
+// Called by Android after assembling the full user message (typed text + screen elements +
+// Termux output). Updates the last user bubble so the WebView shows the same content as the
+// native Compose UI, which always displays the combined text in the user chat bubble.
+window.onUserMessage = function(text) {
+  const msgs = document.getElementById('chat-messages');
+  const lastUserBubble = msgs.querySelector('.bubble.user:last-of-type') ||
+    [...msgs.querySelectorAll('.bubble.user')].pop();
+  if (lastUserBubble) {
+    lastUserBubble.textContent = text;
+  }
 };
 
 window.onGenerationStateChanged = function(running, isOfflineLoaded) {
@@ -1767,7 +1789,7 @@ function addUserBubble(text) {
 function addModelBubble(text, isPending) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap';
-  wrap.innerHTML = `<div class="bubble model">${escHtml(text)}${isPending?'<span class="pending-dots">…</span>':''}</div>`;
+  wrap.innerHTML = `<div class="bubble model"><span class="model-icon">&#128100;</span><span class="model-text">${escHtml(text)}${isPending?'<span class="pending-dots">…</span>':''}</span></div>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
@@ -2188,6 +2210,7 @@ function escAttr(s) {
 </script>
 </body>
 </html>
+
 
 
 
