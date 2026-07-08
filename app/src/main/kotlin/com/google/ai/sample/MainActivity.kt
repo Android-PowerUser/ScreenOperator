@@ -819,6 +819,10 @@ class MainActivity : ComponentActivity() {
                                     settings.displayZoomControls = false
                                     settings.useWideViewPort = true
                                     settings.loadWithOverviewMode = true
+                                    // Mirror the system font scale so WebView text sizes match
+                                    // native Compose text (which scales with sp units automatically).
+                                    val fontScale = resources.configuration.fontScale
+                                    settings.textZoom = (fontScale * 100).toInt()
 
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                         settings.safeBrowsingEnabled = true
@@ -1594,6 +1598,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // Observe chat messages so the WebView user bubble is updated with the full message text
+        // (including screen elements and Termux output) once native code has assembled it.
+        // The WebView's sendMessage() adds the bubble with only the typed text; this corrects it.
+        var lastObservedUserText = ""
+        lifecycleScope.launch {
+            vm.chatMessagesFlow.collect { messages ->
+                val lastUser = messages.lastOrNull {
+                    it.participant == com.google.ai.sample.feature.multimodal.PhotoParticipant.USER && !it.isPending
+                }
+                val fullText = lastUser?.text ?: return@collect
+                if (fullText != lastObservedUserText) {
+                    lastObservedUserText = fullText
+                    val escaped = escapeForJs(fullText)
+                    wv.post {
+                        wv.evaluateJavascript("window.onUserMessage && window.onUserMessage('$escaped')", null)
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -1631,3 +1654,4 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
