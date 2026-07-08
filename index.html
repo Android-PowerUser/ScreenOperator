@@ -1058,12 +1058,19 @@ window.onChatCleared = function() {
 // Termux output). Updates the last user bubble so the WebView shows the same content as the
 // native Compose UI, which always displays the combined text in the user chat bubble.
 window.onUserMessage = function(text) {
+  // Native sends the FULL combined prompt (typed text + "\n\n" + screen-elements / Termux output).
+  // We only want to show the user's original typed text in the bubble — strip everything from the
+  // first double-newline separator onward (that separator is always inserted by performReasoning()
+  // between userInput and screenInfoForPrompt / Termux output).
+  const separatorIndex = text.indexOf('\n\n');
+  const displayText = separatorIndex !== -1 ? text.slice(0, separatorIndex).trim() : text.trim();
+
   const msgs = document.getElementById('chat-messages');
-  // :last-of-type works on element tags, not classes — use querySelectorAll + pop()
   const allUserBubbles = [...msgs.querySelectorAll('.bubble.user')];
   const lastUserBubble = allUserBubbles.length ? allUserBubbles[allUserBubbles.length - 1] : null;
-  if (lastUserBubble) {
-    lastUserBubble.textContent = text;
+  if (lastUserBubble && displayText) {
+    // Only update if we have something to show — never blank out a bubble
+    lastUserBubble.textContent = displayText;
   }
 };
 
