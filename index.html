@@ -149,8 +149,8 @@ html.dark-mode {
 
 /* ── Typography ──────────────────────────────────────────── */
 .title-md{font-size:16px;font-weight:500;color:var(--text-primary)}
-.body-md{font-size:14px;color:var(--text-primary);line-height:1.55}
-.body-sm{font-size:13px;color:var(--text-secondary);line-height:1.5}
+.body-md{font-size:17px;color:var(--text-primary);line-height:1.55}
+.body-sm{font-size:16px;color:var(--text-secondary);line-height:1.5}
 
 /* ── Row helpers ─────────────────────────────────────────── */
 .row{display:flex;align-items:center;gap:8px}
@@ -211,7 +211,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 /* ── Chat bubbles ────────────────────────────────────────── */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:8px 8px}
 .bubble-wrap.user-wrap{flex-direction:row-reverse}
-.bubble{border-radius:12px;padding:16px;font-size:14px;line-height:1.55;max-width:82%;word-break:break-word}
+.bubble{border-radius:12px;padding:16px;font-size:17px;line-height:1.55;max-width:82%;word-break:break-word}
 .bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text);white-space:pre-wrap}
 .bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text);display:flex;align-items:flex-start;gap:8px}
 .model-icon{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;margin-top:1px}
@@ -1059,8 +1059,9 @@ window.onChatCleared = function() {
 // native Compose UI, which always displays the combined text in the user chat bubble.
 window.onUserMessage = function(text) {
   const msgs = document.getElementById('chat-messages');
-  const lastUserBubble = msgs.querySelector('.bubble.user:last-of-type') ||
-    [...msgs.querySelectorAll('.bubble.user')].pop();
+  // :last-of-type works on element tags, not classes — use querySelectorAll + pop()
+  const allUserBubbles = [...msgs.querySelectorAll('.bubble.user')];
+  const lastUserBubble = allUserBubbles.length ? allUserBubbles[allUserBubbles.length - 1] : null;
   if (lastUserBubble) {
     lastUserBubble.textContent = text;
   }
