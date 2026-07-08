@@ -34,7 +34,7 @@ This app can be developed entirely by AI and therefore its development can be co
 
 To vibe coding for free I use [Claude.ai](https://claude.ai). You can connect it directly to GitHub, but only over the Website. You will have to fork the project first so that you can edit it. It has a free quota that will be every 5 hours refreshed and you can also easy switch the account to refresh the free quota. It's best to use different browsers for this. Use a GitHub access token and Claude can automatically push the changes. Sonnet 5 sometimes refuses to work with the token. In this case, use Sonnet 4.6. Add the token and perhaps the link to the repo/branch (code) to your preferences in Claude. Then you don't have to enter the same information every time. Select the branch with the latest changes. Always enter tasks, if necessary numbered, and written very precisely and in detail.
 
-You can build the apk with Github actions: Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android APK build, and start your chosen branch. After about 5 minutes, your app will be ready!
+You can build the apk with Github actions: Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android Build APK, and start your chosen branch. After about 5 minutes, your app will be ready!
 
 <br/>
 
