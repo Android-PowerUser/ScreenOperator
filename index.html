@@ -739,6 +739,12 @@ const Bridge = {
   onCustomModelPartialResponse:(text)=>{ if(getInAndroid()) Android.onCustomModelPartialResponse(text); },
   onCustomModelFinalResponse:(text)=>{ if(getInAndroid()) Android.onCustomModelFinalResponse(text); },
   onCustomModelError:(message)=>{ if(getInAndroid()) Android.onCustomModelError(message); },
+
+  /* JS-managed chat history (persisted via Kotlin SharedPreferences) */
+  saveChatHistory:(json)=>{ if(getInAndroid()) Android.saveChatHistory(json); },
+  loadChatHistory:()=> getInAndroid() ? Android.loadChatHistory() : '[]',
+  clearChatHistoryJs:()=>{ if(getInAndroid()) Android.clearChatHistoryJs(); },
+  getScreenDimensions:()=> getInAndroid() ? Android.getScreenDimensions() : '{"width":1080,"height":1920}',
 };
 
 /* ════════════════════════════════════════════════════════
@@ -2208,6 +2214,9 @@ window.onAndroidReady = function() {
     .then(json => { if (json) Bridge.setCommandPatternOverrides(json); })
     .catch(() => { /* optional file */ });
 
+  // Restore JS-managed chat history (saved by JS after each AI response)
+  _loadJsChatHistory();
+
   // Genuinely new models/providers, defined entirely in JSON. The actual API call for
   // these happens in window.onCustomModelRequest() below (fetch()), not in native code.
   fetch('custom-models.json', { cache: 'no-store' })
@@ -2374,10 +2383,12 @@ function clearChat() {
   document.getElementById('chat-messages').innerHTML = '';
   document.getElementById('cmd-status-wrap').innerHTML = '';
   Bridge.clearChatHistory();
+  Bridge.clearChatHistoryJs();
+  _jsChatHistory = [];
 }
 function stopGeneration() {
+  _stopExecution = true;  // halt JS command executor
   Bridge.stopGeneration();
-  // Custom (JS-driven) models have no native network call to cancel - abort the fetch() here.
   if (window.__customModelAbortController) {
     window.__customModelAbortController.abort();
   }
@@ -2768,6 +2779,77 @@ function escAttr(s) {
     .replace(/'/g,"\\'")
     .replace(/\n/g,'\\n');
 }
+
+
+/* ════════════════════════════════════════════════════════
+   JS CHAT HISTORY MANAGEMENT
+   Mirrors the AI conversation so it can be passed back into
+   the next AI turn and persisted across app restarts.
+════════════════════════════════════════════════════════ */
+let _jsChatHistory = [];  // [{role:'user'|'assistant', text:'...'}]
+
+/** Save current JS history to SharedPreferences via bridge */
+function _saveJsChatHistory() {
+  try {
+    Bridge.saveChatHistory(JSON.stringify(_jsChatHistory));
+  } catch(e) { console.warn('_saveJsChatHistory error:', e); }
+}
+
+/** Load persisted history from SharedPreferences and restore chat bubbles */
+function _loadJsChatHistory() {
+  try {
+    const raw = Bridge.loadChatHistory();
+    _jsChatHistory = JSON.parse(raw) || [];
+    // Restore chat bubbles for messages not yet shown by Kotlin's own restoration
+    // (Kotlin restores its own chat state; this is only needed if that diverges)
+    // For now just keep the array in sync for the next AI turn payload.
+  } catch(e) {
+    _jsChatHistory = [];
+    console.warn('_loadJsChatHistory error:', e);
+  }
+}
+
+/**
+ * Called by window.onAiMessage when a final AI message arrives.
+ * Appends it to _jsChatHistory and persists.
+ */
+function _appendAssistantToHistory(text) {
+  if (!text) return;
+  _jsChatHistory.push({ role: 'assistant', text });
+  // Keep history manageable (last 40 messages)
+  if (_jsChatHistory.length > 40) _jsChatHistory = _jsChatHistory.slice(-40);
+  _saveJsChatHistory();
+}
+
+/**
+ * Called when the user sends a message (picked up from onUserMessage callback).
+ * Appends the user turn so the history is complete.
+ */
+function _appendUserToHistory(text) {
+  if (!text) return;
+  _jsChatHistory.push({ role: 'user', text });
+}
+
+/* Hook into existing onAiMessage to track history ──────── */
+(function() {
+  const _orig = window.onAiMessage;
+  window.onAiMessage = function(text, isPending) {
+    if (_orig) _orig(text, isPending);
+    if (!isPending && text) {
+      _appendAssistantToHistory(text);
+    }
+  };
+})();
+
+/* Hook into existing onUserMessage to track history ─────── */
+(function() {
+  const _orig = window.onUserMessage;
+  window.onUserMessage = function(text) {
+    if (_orig) _orig(text);
+    _appendUserToHistory(text);
+  };
+})();
+
 </script>
 </body>
 </html>
