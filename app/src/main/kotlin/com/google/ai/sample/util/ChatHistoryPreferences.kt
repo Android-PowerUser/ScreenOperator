@@ -44,3 +44,24 @@ object ChatHistoryPreferences {
         prefs(context).edit().remove(KEY_CHAT_MESSAGES).apply()
     }
 }
+
+    /**
+     * Save raw chat history JSON string (used by JS-side chat management)
+     */
+    fun saveHistoryJson(context: Context, json: String) {
+        prefs(context).edit().putString("js_chat_history_json", json).apply()
+    }
+
+    /**
+     * Load raw chat history JSON string (used by JS-side chat management)
+     */
+    fun loadHistoryJson(context: Context): String? {
+        return prefs(context).getString("js_chat_history_json", null)
+    }
+
+    /**
+     * Clear raw chat history JSON
+     */
+    fun clearHistoryJson(context: Context) {
+        prefs(context).edit().remove("js_chat_history_json").apply()
+    }
