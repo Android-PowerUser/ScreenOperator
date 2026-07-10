@@ -1042,6 +1042,11 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "isAccessibilityServiceEnabled" -> isAccessibilityServiceEnabled().toString()
                 "openAccessibilitySettings"     -> { openAccessibilitySettings(); "" }
                 "launchIntent"                  -> launchIntent(a.getString("action"), a.optString("extrasJson", "{}"), a.optString("data", ""))
+                // ── JS-managed Chat History ───────────────────────────────────────────────
+                "saveChatHistory"               -> { saveChatHistory(a.getString("json")); "" }
+                "loadChatHistory"               -> loadChatHistory()
+                "clearChatHistoryJs"            -> { clearChatHistoryJs(); "" }
+                "getScreenDimensions"           -> getScreenDimensions()
                 // ── Macros & Extension Slots (self-referential but safe) ──────
                 "setMacros"                     -> setMacros(a.getString("json")).toString()
                 "getMacros"                     -> getMacros()
@@ -1233,6 +1238,61 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    // ── JS-managed Chat History ───────────────────────────────────────────────
+    // The WebView JS layer manages its own chat history (see index.html).
+    // These bridge methods allow JS to persist and restore it across app restarts.
+
+    @JavascriptInterface
+    fun saveChatHistory(json: String) {
+        try {
+            com.google.ai.sample.util.ChatHistoryPreferences.saveHistoryJson(context, json)
+        } catch (e: Exception) {
+            Log.w(TAG, "saveChatHistory error: ${e.message}")
+        }
+    }
+
+    @JavascriptInterface
+    fun loadChatHistory(): String {
+        return try {
+            com.google.ai.sample.util.ChatHistoryPreferences.loadHistoryJson(context) ?: "[]"
+        } catch (e: Exception) {
+            Log.w(TAG, "loadChatHistory error: ${e.message}")
+            "[]"
+        }
+    }
+
+    @JavascriptInterface
+    fun clearChatHistoryJs() {
+        try {
+            com.google.ai.sample.util.ChatHistoryPreferences.clearHistoryJson(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "clearChatHistoryJs error: ${e.message}")
+        }
+    }
+
+    // ── Screen Dimensions ─────────────────────────────────────────────────────
+    // Useful for JS-side percentage→pixel coordinate conversion if needed.
+
+    @JavascriptInterface
+    fun getScreenDimensions(): String {
+        return try {
+            val wm = context.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                val bounds = wm.currentWindowMetrics.bounds
+                org.json.JSONObject().put("width", bounds.width()).put("height", bounds.height()).toString()
+            } else {
+                @Suppress("DEPRECATION")
+                val dm = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION")
+                wm.defaultDisplay.getRealMetrics(dm)
+                org.json.JSONObject().put("width", dm.widthPixels).put("height", dm.heightPixels).toString()
+            }
+        } catch (e: Exception) {
+            "{"width":1080,"height":1920}"
+        }
+    }
+
 
     companion object {
         fun jsEscape(s: String): String =
