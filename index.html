@@ -1305,6 +1305,264 @@ function mergeCustomModelsIntoDropdown(json) {
    The WebView bridge (WebViewBridge.kt) provides Android API access only.
 ════════════════════════════════════════════════════════ */
 
+
+/* ════════════════════════════════════════════════════════
+   OPERATIONAL POLICIES – ported from Kotlin *Config objects.
+   All are remotely tunable via the SAME *-overrides.json files
+   that were already being fetched next to index.html, so no
+   app update is needed to retune any of this (same contract
+   as before, now interpreted in JS instead of Kotlin).
+════════════════════════════════════════════════════════ */
+
+/* ── OperationalTuningConfig ─────────────────────────────────── */
+const _operationalTuningDefaults = {
+  mistralMinIntervalMsDefault: 1500,
+  mistralMinIntervalMsFastModels: 420,
+  mistralMaxServerDelayMs: 5000,
+  mistralCancelCheckIntervalMs: 100,
+  modelDownloadMaxRetries: 3,
+  modelDownloadRetryDelayMs: 3000,
+  modelDownloadProgressUpdateIntervalMs: 500,
+  termuxProcessCompletedPrompt: "[Process completed - press Enter]",
+  retrievalHeaderPrefix: "Retrieved information [",
+  screenElementsMarker: "Screen elements:",
+};
+let _operationalTuning = { ..._operationalTuningDefaults };
+
+function _loadOperationalTuningOverrides() {
+  fetch('operational-tuning-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      try {
+        const obj = JSON.parse(json);
+        const merged = { ..._operationalTuning };
+        for (const key of Object.keys(_operationalTuningDefaults)) {
+          if (obj[key] === undefined) continue;
+          if (typeof _operationalTuningDefaults[key] === 'number') {
+            const v = Number(obj[key]);
+            if (!isNaN(v) && v >= 0) merged[key] = v;
+          } else if (typeof obj[key] === 'string' && obj[key].trim() !== '') {
+            merged[key] = obj[key];
+          }
+        }
+        _operationalTuning = merged;
+      } catch(e) { console.warn('operational-tuning-overrides.json parse error', e); }
+    })
+    .catch(() => { /* optional file */ });
+}
+
+/* ── ExecutionPolicyConfig ───────────────────────────────────── */
+const EXECUTION_POLICY_DEFAULT_TEMPLATE =
+  "Note: this response contained {total} commands, but only the first {executed} were " +
+  "executed because more than {limit} commands were sent in a single message " +
+  "without an intermediate screenshot. Please send at most {limit} commands per " +
+  "message, then wait for the next screenshot before continuing.";
+
+let _executionPolicy = {
+  maxCommandsPerMessage: 0,           // <=0 == unlimited
+  truncationFeedbackTemplate: EXECUTION_POLICY_DEFAULT_TEMPLATE,
+  maxRelevantScreenElementMessages: 3,
+};
+
+function _loadExecutionPolicyOverrides() {
+  fetch('execution-policy-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      try {
+        const obj = JSON.parse(json);
+        if (typeof obj.maxCommandsPerMessage === 'number') {
+          _executionPolicy.maxCommandsPerMessage = obj.maxCommandsPerMessage;
+        }
+        if (typeof obj.truncationFeedbackTemplate === 'string' && obj.truncationFeedbackTemplate.trim()) {
+          _executionPolicy.truncationFeedbackTemplate = obj.truncationFeedbackTemplate;
+        }
+        if (typeof obj.maxRelevantScreenElementMessages === 'number' && obj.maxRelevantScreenElementMessages >= 0) {
+          _executionPolicy.maxRelevantScreenElementMessages = obj.maxRelevantScreenElementMessages;
+        }
+      } catch(e) { console.warn('execution-policy-overrides.json parse error', e); }
+    })
+    .catch(() => { /* optional file */ });
+}
+
+function _fillTruncationTemplate(total, executed, limit) {
+  return _executionPolicy.truncationFeedbackTemplate
+    .replace(/\{total\}/g, String(total))
+    .replace(/\{executed\}/g, String(executed))
+    .replace(/\{limit\}/g, String(limit));
+}
+
+/**
+ * Caps how many parsed commands are executed for one AI response.
+ * Mirrors CommandExecutionLimiter.truncate().
+ */
+function _truncateCommands(commands) {
+  const limit = _executionPolicy.maxCommandsPerMessage;
+  if (limit <= 0 || commands.length <= limit) {
+    return { commandsToExecute: commands, wasTruncated: false, totalCount: commands.length, executedCount: commands.length };
+  }
+  return {
+    commandsToExecute: commands.slice(0, limit),
+    wasTruncated: true,
+    totalCount: commands.length,
+    executedCount: limit,
+  };
+}
+
+/* ── ErrorClassificationConfig ───────────────────────────────── */
+let _errorClassification = {
+  quotaExceededSubstrings: ["exceeded your current quota", "code 429", "too many requests", "rate_limit"],
+  highDemandSubstrings: ["service unavailable (503)", "unavailable", "high demand", "overloaded"],
+};
+
+function _loadErrorClassificationOverrides() {
+  fetch('error-classification-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      try {
+        const obj = JSON.parse(json);
+        if (Array.isArray(obj.quotaExceededSubstrings)) {
+          _errorClassification.quotaExceededSubstrings = obj.quotaExceededSubstrings.filter(s => typeof s === 'string');
+        }
+        if (Array.isArray(obj.highDemandSubstrings)) {
+          _errorClassification.highDemandSubstrings = obj.highDemandSubstrings.filter(s => typeof s === 'string');
+        }
+      } catch(e) { console.warn('error-classification-overrides.json parse error', e); }
+    })
+    .catch(() => { /* optional file */ });
+}
+
+function _isQuotaExceededError(message) {
+  const m = (message || '').toLowerCase();
+  return _errorClassification.quotaExceededSubstrings.some(s => m.includes(s.toLowerCase()));
+}
+
+function _isHighDemandError(message) {
+  const m = (message || '').toLowerCase();
+  return _errorClassification.highDemandSubstrings.some(s => m.includes(s.toLowerCase()));
+}
+
+/* ── CustomActionTypeConfig ──────────────────────────────────── */
+// Entirely new action types defined at runtime; when matched, calls
+// window.onCustomAction(id, groups[]) so any handler can be wired up in JS
+// directly (no need to bridge back to Android and then out to JS again).
+let _customActionTypes = [];  // [{id, regex: RegExp}]
+
+function _loadCustomActionTypeOverrides() {
+  fetch('custom-action-types.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      try {
+        const arr = JSON.parse(json);
+        const parsed = [];
+        if (Array.isArray(arr)) {
+          for (const entry of arr) {
+            if (!entry || typeof entry.id !== 'string' || !entry.id.trim()) continue;
+            if (typeof entry.regex !== 'string' || !entry.regex.trim()) continue;
+            try {
+              parsed.push({ id: entry.id.trim(), regex: new RegExp(entry.regex, 'gi') });
+            } catch(e) { console.warn('Invalid regex for custom action', entry.id, e); }
+          }
+        }
+        _customActionTypes = parsed;
+      } catch(e) { console.warn('custom-action-types.json parse error', e); }
+    })
+    .catch(() => { /* optional file */ });
+}
+
+/* ── CoordinateParser ─────────────────────────────────────────── */
+/** Parses "50%" or "540" style coordinate strings into a pixel float. */
+function _parseCoordinate(coordinateString, screenSize) {
+  const s = String(coordinateString).trim();
+  if (s.endsWith('%')) {
+    const numeric = parseFloat(s.slice(0, -1));
+    if (isNaN(numeric)) throw new Error(`Invalid coordinate string: '${coordinateString}'`);
+    return (numeric / 100.0) * screenSize;
+  }
+  const v = parseFloat(s);
+  if (isNaN(v)) throw new Error(`Invalid coordinate string: '${coordinateString}'`);
+  return v;
+}
+
+/* ── StringSimilarity ─────────────────────────────────────────── */
+function _levenshteinDistance(s1, s2) {
+  const m = s1.length, n = s2.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[m][n];
+}
+
+function _calculateMatchScore(query, target) {
+  if (query === target) return 100;
+  if (target.includes(query)) return 90;
+  if (query.includes(target)) return 80;
+  const distance = _levenshteinDistance(query, target);
+  const maxLength = Math.max(query.length, target.length);
+  if (maxLength === 0) return 100;
+  return Math.round(((maxLength - distance) / maxLength) * 100);
+}
+
+/* ── PhotoReasoningScreenElementHistoryPolicy ────────────────── */
+/**
+ * Collapses older "Screen elements:" sections in chat history to a
+ * "no longer relevant" marker, keeping only the N most recent intact
+ * (N = _executionPolicy.maxRelevantScreenElementMessages). This trims
+ * token usage for long-running sessions.
+ */
+function _sanitizeHistoryForScreenElements(historyMessages) {
+  const marker = _operationalTuning.screenElementsMarker;
+  const NO_LONGER_RELEVANT = 'no longer relevant';
+
+  function hasScreenElements(text) {
+    return (text || '').toLowerCase().includes(marker.toLowerCase());
+  }
+  function isAlreadyObsolete(text) {
+    const idx = (text || '').toLowerCase().indexOf(marker.toLowerCase());
+    if (idx < 0) return false;
+    const section = text.substring(idx + marker.length).trim();
+    return section.toLowerCase() === NO_LONGER_RELEVANT;
+  }
+  function replaceWithObsolete(text) {
+    const idx = text.toLowerCase().indexOf(marker.toLowerCase());
+    if (idx < 0) return text;
+    return text.substring(0, idx) + marker + ' ' + NO_LONGER_RELEVANT;
+  }
+
+  let remaining = _executionPolicy.maxRelevantScreenElementMessages;
+  const keepIdx = new Set();
+  for (let i = historyMessages.length - 1; i >= 0; i--) {
+    const msg = historyMessages[i];
+    if (hasScreenElements(msg.text) && !isAlreadyObsolete(msg.text)) {
+      if (remaining > 0) { remaining--; keepIdx.add(i); }
+    }
+  }
+
+  return historyMessages.map((msg, i) => {
+    if (hasScreenElements(msg.text) && !isAlreadyObsolete(msg.text) && !keepIdx.has(i)) {
+      return { ...msg, text: replaceWithObsolete(msg.text) };
+    }
+    return msg;
+  });
+}
+
+/* ── Load all remote policy overrides on startup ─────────────── */
+function _loadAllPolicyOverrides() {
+  _loadOperationalTuningOverrides();
+  _loadExecutionPolicyOverrides();
+  _loadErrorClassificationOverrides();
+  _loadCustomActionTypeOverrides();
+}
+
 /* ── PENDING STATE ───────────────────────────────────────────── */
 let _pendingScreenInfo = null;  // Retrieved info to inject into next AI turn
 
@@ -1402,9 +1660,10 @@ async function _callGemini(payload) {
   const modelName = payload.modelName;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
-  // Build contents array
+  // Build contents array (screen-element history trimmed per ExecutionPolicyConfig)
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
   const contents = [];
-  (payload.history || []).forEach(m => {
+  sanitizedHistory.forEach(m => {
     const role = m.role === 'user' ? 'user' : 'model';
     contents.push({ role, parts: [{ text: m.text || '' }] });
   });
@@ -1448,11 +1707,12 @@ async function _callGemini(payload) {
     if (!response.ok) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
-      // Quota exceeded? try next key
-      if (response.status === 429 || response.status === 403) {
+      const errMsg = 'Gemini HTTP ' + response.status + (detail ? ': ' + detail : '');
+      // Quota exceeded? try next key (mirrors ErrorClassificationConfig substring matching)
+      if (response.status === 429 || response.status === 403 || _isQuotaExceededError(errMsg)) {
         _rotateKey('GOOGLE');
       }
-      throw new Error('Gemini HTTP ' + response.status + (detail ? ': ' + detail : ''));
+      throw new Error(errMsg);
     }
 
     const reader = response.body.getReader();
@@ -1531,8 +1791,9 @@ async function _callPuter(payload) {
     if (!response.ok) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
-      if (response.status === 429 || response.status === 401) _rotateKey('PUTER');
-      throw new Error('Puter HTTP ' + response.status + (detail ? ': ' + detail : ''));
+      const errMsg = 'Puter HTTP ' + response.status + (detail ? ': ' + detail : '');
+      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('PUTER');
+      throw new Error(errMsg);
     }
 
     const reader = response.body.getReader();
@@ -1624,8 +1885,9 @@ async function _callOpenAiCompat(payload, provider) {
     if (!response.ok) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
-      if (response.status === 429 || response.status === 401) _rotateKey(provider);
-      throw new Error((provider || 'API') + ' HTTP ' + response.status + (detail ? ': ' + detail : ''));
+      const errMsg = (provider || 'API') + ' HTTP ' + response.status + (detail ? ': ' + detail : '');
+      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey(provider);
+      throw new Error(errMsg);
     }
 
     if (payload.stream !== false && response.body) {
@@ -1683,7 +1945,8 @@ function _buildOpenAiMessages(payload) {
   if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
   if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
 
-  (payload.history || []).forEach(m => {
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  sanitizedHistory.forEach(m => {
     if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
   });
 
@@ -1840,8 +2103,18 @@ let _stopExecution = false;
 
 async function _executeCommandsFromResponse(text) {
   _stopExecution = false;
-  const commands = parseCommandsFromText(text);
-  if (!commands.length) return;
+  _dispatchCustomActions(text);
+  const parsedCommands = parseCommandsFromText(text);
+  if (!parsedCommands.length) return;
+
+  // Apply ExecutionPolicyConfig cap (maxCommandsPerMessage) - mirrors CommandExecutionLimiter.
+  const trunc = _truncateCommands(parsedCommands);
+  const commands = trunc.commandsToExecute;
+
+  if (trunc.wasTruncated) {
+    _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
+      + _fillTruncationTemplate(trunc.totalCount, trunc.executedCount, _executionPolicy.maxCommandsPerMessage);
+  }
 
   // Determine if we have a screenshot or completed command
   const hasScreenshot = commands.some(c => c.type === 'SCREENSHOT');
@@ -1894,9 +2167,10 @@ async function _executeSingleCommand(cmd) {
       // Look up entry in DB; inject into next AI turn via _pendingScreenInfo
       const entries = _parseJsonArray(Bridge.getDatabaseEntries());
       const entry = entries.find(e => e.title.toLowerCase() === (cmd.title || '').toLowerCase());
-      const content = entry ? entry.guide : 'The information is not available';
+      const body = entry ? entry.guide : 'The information is not available';
+      // Uses OperationalTuningConfig.retrievalHeaderPrefix so remote overrides stay in sync.
       _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
-        + `[Retrieved: ${cmd.title}]:\n${content}`;
+        + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
       // Request screenshot to continue the loop (Kotlin will re-call onCustomModelRequest)
       Bridge.requestScreenshot();
       break;
@@ -1913,6 +2187,26 @@ async function _executeSingleCommand(cmd) {
       break;
     default:
       console.log('[ScreenOperator] Unknown command type:', cmd.type, cmd);
+  }
+}
+
+/**
+ * Checks raw AI response text against remotely configured custom action types
+ * (CustomActionTypeConfig) and dispatches to window.onCustomAction(id, groups[])
+ * for any handler wired up by the user's own JS. Called alongside the built-in
+ * command parser so new action types work without an app update.
+ */
+function _dispatchCustomActions(text) {
+  for (const def of _customActionTypes) {
+    def.regex.lastIndex = 0;
+    let m;
+    while ((m = def.regex.exec(text)) !== null) {
+      const groups = m.slice(1);
+      if (typeof window.onCustomAction === 'function') {
+        try { window.onCustomAction(def.id, groups); }
+        catch(e) { console.warn('onCustomAction handler error for', def.id, e); }
+      }
+    }
   }
 }
 
@@ -2222,6 +2516,10 @@ window.onAndroidReady = function() {
 
   // Restore JS-managed chat history (saved by JS after each AI response)
   _loadJsChatHistory();
+
+  // Load remotely tunable operational policies (execution limits, error classification,
+  // custom action types, timing) - same fetch-relative-to-index.html pattern as the others.
+  _loadAllPolicyOverrides();
 
   // Genuinely new models/providers, defined entirely in JSON. The actual API call for
   // these happens in window.onCustomModelRequest() below (fetch()), not in native code.
