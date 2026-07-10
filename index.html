@@ -1293,6 +1293,55 @@ function mergeCustomModelsIntoDropdown(json) {
  * onCustomModelError, which feed into the exact same chat/command-processing pipeline native
  * code already uses for every other model.
  */
+/* ════════════════════════════════════════════════════════
+   APP LOGIC – AI CALLS, COMMAND PARSER, COMMAND EXECUTOR
+   Loaded via index.html (GitHub Pages) – no APK rebuild needed.
+   The WebView bridge (WebViewBridge.kt) provides Android API access only.
+════════════════════════════════════════════════════════ */
+
+/* ── PENDING STATE ───────────────────────────────────────────── */
+let _pendingScreenInfo = null;  // Retrieved info to inject into next AI turn
+
+/* ── PROVIDER → ENDPOINT/AUTH LOOKUP ─────────────────────────── */
+const PROVIDER_API = {
+  GOOGLE: {
+    endpoint: (modelName) => `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse`,
+    keyHeader: null,  // key goes in URL
+    keyPrefix: '',
+  },
+  MISTRAL: {
+    endpoint: () => 'https://api.mistral.ai/v1/chat/completions',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+  PUTER: {
+    endpoint: () => 'https://api.puter.com/drivers/call',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+  CEREBRAS: {
+    endpoint: () => 'https://api.cerebras.ai/v1/chat/completions',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+  GROQ: {
+    endpoint: () => 'https://api.groq.com/openai/v1/chat/completions',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+  VERCEL: {
+    endpoint: () => 'https://sdk.vercel.ai/api/chat',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+  CLOUDFLARE: {
+    endpoint: (modelName) => `https://api.cloudflare.com/client/v4/accounts/auto/ai/v1/chat/completions`,
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+};
+
+/* ── MAIN ENTRY POINT: called by Android for every AI turn ───── */
 window.onCustomModelRequest = async function(payloadJsonString) {
   let payload;
   try {
@@ -1302,97 +1351,599 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     return;
   }
 
+  // Inject any pending retrieved DB entry info
+  if (_pendingScreenInfo) {
+    payload.userText = _pendingScreenInfo + '\n\n' + (payload.userText || '');
+    _pendingScreenInfo = null;
+  }
+
+  const provider = payload.apiProvider || 'PUTER';
+
+  try {
+    if (provider === 'GOOGLE') {
+      await _callGemini(payload);
+    } else if (provider === 'PUTER') {
+      await _callPuter(payload);
+    } else {
+      // Mistral, Cerebras, Groq, Vercel, Cloudflare, and all custom models
+      // all use an OpenAI-compatible chat completions endpoint
+      await _callOpenAiCompat(payload, provider);
+    }
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      // handled inside each caller
+    } else {
+      Bridge.onCustomModelError(e && e.message ? e.message : String(e));
+    }
+  }
+};
+
+/* ── GEMINI REST API ─────────────────────────────────────────── */
+async function _callGemini(payload) {
+  const keys = Bridge.getAllApiKeys('GOOGLE');
+  if (!keys || !keys.length) {
+    Bridge.onCustomModelError('No Google API key configured. Please add one in the menu.');
+    return;
+  }
+  const keyIdx = Bridge.getCurrentKeyIndex('GOOGLE');
+  const apiKey = keys[keyIdx] || keys[0];
+  const modelName = payload.modelName;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
+
+  // Build contents array
+  const contents = [];
+  (payload.history || []).forEach(m => {
+    const role = m.role === 'user' ? 'user' : 'model';
+    contents.push({ role, parts: [{ text: m.text || '' }] });
+  });
+
+  // Current user turn with optional images
+  const userParts = [];
+  if (payload.userText) userParts.push({ text: payload.userText });
+  (payload.images || []).forEach(dataUri => {
+    try {
+      const commaIdx = dataUri.indexOf(',');
+      const meta = dataUri.substring(0, commaIdx);
+      const data = dataUri.substring(commaIdx + 1);
+      const mimeType = meta.split(':')[1].split(';')[0];
+      userParts.push({ inlineData: { mimeType, data } });
+    } catch(e) { /* skip bad image */ }
+  });
+  if (userParts.length) contents.push({ role: 'user', parts: userParts });
+
+  // System instruction
+  const systemParts = _buildSystemParts(payload);
+
+  const genConfig = {};
+  if (payload.temperature !== undefined && payload.temperature > 0) genConfig.temperature = payload.temperature;
+  if (payload.topP !== undefined && payload.topP > 0) genConfig.topP = payload.topP;
+  if (payload.supportsTopK && payload.topK !== undefined && payload.topK > 0) genConfig.topK = payload.topK;
+
+  const requestBody = { contents };
+  if (systemParts.length) requestBody.systemInstruction = { parts: systemParts };
+  if (Object.keys(genConfig).length) requestBody.generationConfig = genConfig;
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: window.__customModelAbortController.signal,
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
+      // Quota exceeded? try next key
+      if (response.status === 429 || response.status === 403) {
+        _rotateKey('GOOGLE');
+      }
+      throw new Error('Gemini HTTP ' + response.status + (detail ? ': ' + detail : ''));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (text) { acc += text; Bridge.onCustomModelPartialResponse(acc); }
+        } catch(e2) { /* ignore bad SSE chunk */ }
+      }
+    }
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── PUTER API ───────────────────────────────────────────────── */
+async function _callPuter(payload) {
+  const keys = Bridge.getAllApiKeys('PUTER');
+  if (!keys || !keys.length) {
+    Bridge.onCustomModelError('No Puter auth token configured. Please add one in the menu.');
+    return;
+  }
+  const keyIdx = Bridge.getCurrentKeyIndex('PUTER');
+  const apiKey = keys[keyIdx] || keys[0];
+
+  const messages = _buildOpenAiMessages(payload);
+
+  const requestBody = {
+    interface: 'puter-chat-completion',
+    driver: 'openai-completion',
+    test_mode: false,
+    method: 'complete',
+    args: {
+      messages,
+      model: payload.modelName,
+      stream: true,
+    }
+  };
+  if (payload.temperature !== undefined && payload.temperature > 0) requestBody.args.temperature = payload.temperature;
+  if (payload.topP !== undefined && payload.topP > 0) requestBody.args.top_p = payload.topP;
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+  try {
+    const response = await fetch('https://api.puter.com/drivers/call', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+      },
+      body: JSON.stringify(requestBody),
+      signal: window.__customModelAbortController.signal,
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
+      if (response.status === 429 || response.status === 401) _rotateKey('PUTER');
+      throw new Error('Puter HTTP ' + response.status + (detail ? ': ' + detail : ''));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          // Puter wraps in result.message.content or delta.content
+          const delta = json.choices?.[0]?.delta?.content
+            || json.result?.message?.content
+            || json.result?.choices?.[0]?.delta?.content
+            || '';
+          if (delta) { acc += delta; Bridge.onCustomModelPartialResponse(acc); }
+        } catch(e2) { /* ignore */ }
+      }
+    }
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── OPENAI-COMPATIBLE (Mistral, Cerebras, Groq, Vercel, Cloudflare, custom) ── */
+async function _callOpenAiCompat(payload, provider) {
+  const provDef = PROVIDER_API[provider];
+  let endpoint, keyHeader, keyPrefix, apiKey;
+
+  if (provDef) {
+    endpoint = provDef.endpoint(payload.modelName);
+    keyHeader = provDef.keyHeader;
+    keyPrefix = provDef.keyPrefix || '';
+    const keys = Bridge.getAllApiKeys(provider);
+    if (!keys || !keys.length) {
+      Bridge.onCustomModelError('No API key for ' + provider + '. Please add one in the menu.');
+      return;
+    }
+    const keyIdx = Bridge.getCurrentKeyIndex(provider);
+    apiKey = keys[keyIdx] || keys[0];
+  } else {
+    // Custom model (defined in custom-models.json)
+    endpoint = payload.endpoint;
+    keyHeader = payload.apiKeyHeader;
+    keyPrefix = payload.apiKeyPrefix || '';
+    apiKey = payload.apiKey;
+  }
+
+  const messages = _buildOpenAiMessages(payload);
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (keyHeader && apiKey) headers[keyHeader] = keyPrefix + apiKey;
+
+  const body = {
+    model: payload.modelName,
+    messages,
+    stream: true,
+  };
+  if (payload.temperature !== undefined && payload.temperature > 0) body.temperature = payload.temperature;
+  if (payload.topP !== undefined && payload.topP > 0) body.top_p = payload.topP;
+  if (payload.supportsTopK && payload.topK !== undefined && payload.topK > 0) body.top_k = payload.topK;
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: window.__customModelAbortController.signal,
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
+      if (response.status === 429 || response.status === 401) _rotateKey(provider);
+      throw new Error((provider || 'API') + ' HTTP ' + response.status + (detail ? ': ' + detail : ''));
+    }
+
+    if (payload.stream !== false && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith('data:')) continue;
+          const data = t.slice(5).trim();
+          if (!data || data === '[DONE]') continue;
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices?.[0]?.delta?.content || '';
+            if (delta) { acc += delta; Bridge.onCustomModelPartialResponse(acc); }
+          } catch(e2) { /* ignore */ }
+        }
+      }
+    } else {
+      const json = await response.json();
+      acc = json.choices?.[0]?.message?.content || '';
+    }
+
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── HELPERS: Build message arrays ───────────────────────────── */
+function _buildSystemParts(payload) {
+  const parts = [];
+  if (payload.systemMessage) parts.push({ text: payload.systemMessage });
+  if (payload.databaseEntries) parts.push({ text: 'Retrievable information:\n' + payload.databaseEntries });
+  return parts;
+}
+
+function _buildOpenAiMessages(payload) {
   const messages = [];
-  const systemParts = [];
-  if (payload.systemMessage) systemParts.push(payload.systemMessage);
-  if (payload.databaseEntries) systemParts.push('Additional context from database:\n' + payload.databaseEntries);
-  if (systemParts.length) messages.push({ role: 'system', content: systemParts.join('\n\n') });
+  const sysParts = [];
+  if (payload.systemMessage) sysParts.push(payload.systemMessage);
+  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
 
   (payload.history || []).forEach(m => {
     if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
   });
 
-  if (payload.images && payload.images.length > 0) {
+  // Current user turn
+  if (payload.images && payload.images.length) {
     const content = [];
     if (payload.userText) content.push({ type: 'text', text: payload.userText });
-    payload.images.forEach(dataUri => content.push({ type: 'image_url', image_url: { url: dataUri } }));
-    messages.push({ role: 'user', content: content });
+    payload.images.forEach(uri => content.push({ type: 'image_url', image_url: { url: uri } }));
+    messages.push({ role: 'user', content });
   } else {
     messages.push({ role: 'user', content: payload.userText || '' });
   }
+  return messages;
+}
 
-  const headers = { 'Content-Type': 'application/json' };
-  if (payload.apiKeyHeader && payload.apiKey) {
-    headers[payload.apiKeyHeader] = (payload.apiKeyPrefix || '') + payload.apiKey;
-  }
-
-  const requestBody = JSON.stringify({
-    model: payload.modelName,
-    messages: messages,
-    stream: !!payload.stream,
-    temperature: payload.temperature,
-    top_p: payload.topP,
-    ...(payload.topK !== undefined ? { top_k: payload.topK } : {})
-  });
-
-  window.__customModelAbortController = new AbortController();
-  let acc = '';
-
+function _rotateKey(provider) {
   try {
-    const response = await fetch(payload.endpoint, {
-      method: 'POST',
-      headers: headers,
-      body: requestBody,
-      signal: window.__customModelAbortController.signal
-    });
+    const keys = Bridge.getAllApiKeys(provider);
+    if (!keys || keys.length < 2) return;
+    const idx = (Bridge.getCurrentKeyIndex(provider) + 1) % keys.length;
+    Bridge.setCurrentKeyIndex(idx, provider);
+  } catch(e) { /* ignore */ }
+}
 
-    if (!response.ok) {
-      let detail = '';
-      try { detail = (await response.text()).slice(0, 300); } catch (e) {}
-      throw new Error('HTTP ' + response.status + (detail ? (': ' + detail) : ''));
-    }
+/* ════════════════════════════════════════════════════════
+   COMMAND PARSER
+   Ported from CommandParser.kt – parses AI responses for action commands.
+════════════════════════════════════════════════════════ */
+function parseCommandsFromText(text) {
+  const commands = [];
+  const seenSingletons = new Set();
 
-    if (payload.stream && response.body) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const data = trimmed.slice(5).trim();
-          if (data === '[DONE]' || data === '') continue;
-          try {
-            const json = JSON.parse(data);
-            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
-            if (delta) {
-              acc += delta;
-              Bridge.onCustomModelPartialResponse(acc);
-            }
-          } catch (e) { /* ignore malformed SSE chunk */ }
-        }
-      }
-    } else {
-      const json = await response.json();
-      acc = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
-    }
+  // Each entry: { re, type, single, build }
+  // ORDER MATTERS: coordinate variants before simple variants, longer matches first.
+  const PATTERNS = [
+    // Enter
+    { re: /\benter\(\)/gi, type: 'ENTER', single: false, build: () => ({ type: 'ENTER' }) },
 
-    Bridge.onCustomModelFinalResponse(acc);
-  } catch (e) {
-    if (e && e.name === 'AbortError') {
-      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
-    } else {
-      Bridge.onCustomModelError(e && e.message ? e.message : String(e));
+    // Model switching (ignored in JS – model selection is UI-driven)
+    { re: /\bhighReasoningModel\(\)/gi, type: 'HIGH_REASONING', single: true, build: () => null },
+    { re: /\blowReasoningModel\(\)/gi, type: 'LOW_REASONING', single: true, build: () => null },
+
+    // Write text
+    { re: /\bwriteText\(["']([^"']+)["']\)/gi, type: 'WRITE_TEXT', single: false,
+      build: (m) => ({ type: 'WRITE_TEXT', text: m[1] }) },
+
+    // Termux (supports escaped quotes inside)
+    { re: /\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)/gi, type: 'TERMUX', single: false,
+      build: (m) => ({ type: 'TERMUX', command: m[2].replace(/\\(['"])/g, '$1') }) },
+
+    // Long click
+    { re: /\blongClick\(["']([^"']+)["']/gi, type: 'LONG_CLICK', single: false,
+      build: (m) => ({ type: 'LONG_CLICK', text: m[1] }) },
+
+    // Click (after longClick)
+    { re: /\bclick\(["']([^"']+)["']/gi, type: 'CLICK', single: false,
+      build: (m) => ({ type: 'CLICK', text: m[1] }) },
+
+    // Tap at coordinates
+    { re: /\btapAtCoordinates\(\s*([\d.%]+)\s*,\s*([\d.%]+)\s*\)/gi, type: 'TAP', single: false,
+      build: (m) => ({ type: 'TAP', x: m[1], y: m[2] }) },
+
+    // Screenshot
+    { re: /\btakeScreenshot\(\)/gi, type: 'SCREENSHOT', single: true, build: () => ({ type: 'SCREENSHOT' }) },
+
+    // Completed
+    { re: /\bcompleted\(\)/gi, type: 'COMPLETED', single: true, build: () => ({ type: 'COMPLETED' }) },
+
+    // Wait
+    { re: /\bWait\(\s*(\d+)\s*\)/gi, type: 'WAIT', single: false,
+      build: (m) => ({ type: 'WAIT', seconds: parseInt(m[1], 10) }) },
+
+    // Navigation
+    { re: /\bhome\(\)/gi, type: 'HOME', single: false, build: () => ({ type: 'HOME' }) },
+    { re: /\bback\(\)/gi, type: 'BACK', single: false, build: () => ({ type: 'BACK' }) },
+    { re: /\brecentApps\(\)/gi, type: 'RECENT_APPS', single: false, build: () => ({ type: 'RECENT_APPS' }) },
+
+    // Scroll with coordinates (must be before simple scroll)
+    { re: /\bscrollDown\s*\(\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*(\d+)\s*\)/gi,
+      type: 'SCROLL_DOWN_C', single: false,
+      build: (m) => ({ type: 'SCROLL_DOWN_C', x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }) },
+    { re: /\bscrollUp\s*\(\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*(\d+)\s*\)/gi,
+      type: 'SCROLL_UP_C', single: false,
+      build: (m) => ({ type: 'SCROLL_UP_C', x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }) },
+    { re: /\bscrollLeft\s*\(\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*(\d+)\s*\)/gi,
+      type: 'SCROLL_LEFT_C', single: false,
+      build: (m) => ({ type: 'SCROLL_LEFT_C', x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }) },
+    { re: /\bscrollRight\s*\(\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*(\d+)\s*\)/gi,
+      type: 'SCROLL_RIGHT_C', single: false,
+      build: (m) => ({ type: 'SCROLL_RIGHT_C', x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }) },
+
+    // Simple scrolls
+    { re: /\bscrollDown\(\)/gi, type: 'SCROLL_DOWN', single: false, build: () => ({ type: 'SCROLL_DOWN' }) },
+    { re: /\bscrollUp\(\)/gi, type: 'SCROLL_UP', single: false, build: () => ({ type: 'SCROLL_UP' }) },
+    { re: /\bscrollLeft\(\)/gi, type: 'SCROLL_LEFT', single: false, build: () => ({ type: 'SCROLL_LEFT' }) },
+    { re: /\bscrollRight\(\)/gi, type: 'SCROLL_RIGHT', single: false, build: () => ({ type: 'SCROLL_RIGHT' }) },
+
+    // Open app
+    { re: /\bopenApp\(["']([^"']+)["']\)/gi, type: 'OPEN_APP', single: false,
+      build: (m) => ({ type: 'OPEN_APP', app: m[1] }) },
+
+    // Pinch gesture: pinch(cx, cy, startD, endD, durationMs)
+    { re: /\bpinch\(\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*,\s*(\d+)\s*\)/gi,
+      type: 'PINCH', single: false,
+      build: (m) => ({ type: 'PINCH', cx: m[1], cy: m[2], sd: m[3], ed: m[4], dur: parseInt(m[5], 10) }) },
+
+    // Retrieve database entry
+    { re: /\bretrieve\(["']([^"']+)["']\)/gi, type: 'RETRIEVE', single: false,
+      build: (m) => ({ type: 'RETRIEVE', title: m[1] }) },
+
+    // Copy to clipboard
+    { re: /\bcopyToClipboard\(["']([^"']*)["']\)/gi, type: 'COPY_CLIP', single: false,
+      build: (m) => ({ type: 'COPY_CLIP', text: m[1] }) },
+
+    // Toast (built-in convenience; also handled via custom-action-types if wired)
+    { re: /\btoast\(["']([^"']*)["']\)/gi, type: 'TOAST', single: false,
+      build: (m) => ({ type: 'TOAST', msg: m[1] }) },
+  ];
+
+  // Collect all matches with position info
+  const allMatches = [];
+  for (const pat of PATTERNS) {
+    pat.re.lastIndex = 0;
+    let m;
+    while ((m = pat.re.exec(text)) !== null) {
+      const cmd = pat.build(m);
+      if (cmd === null) continue; // e.g. model-switch commands we ignore
+      allMatches.push({ start: m.index, end: m.index + m[0].length, cmd, type: pat.type, single: pat.single });
     }
-  } finally {
-    window.__customModelAbortController = null;
   }
+
+  // Sort by position in text
+  allMatches.sort((a, b) => a.start - b.start);
+
+  // Filter overlapping and duplicate singletons
+  let lastEnd = -1;
+  for (const m of allMatches) {
+    if (m.start < lastEnd) continue;
+    if (m.single && seenSingletons.has(m.type)) continue;
+    if (m.single) seenSingletons.add(m.type);
+    commands.push(m.cmd);
+    lastEnd = m.end;
+  }
+
+  return commands;
+}
+
+/* ════════════════════════════════════════════════════════
+   COMMAND EXECUTOR
+   Executes each command from an AI response via the Android bridge.
+   All Android API calls go through bridge methods (Android.tapByText, etc.).
+════════════════════════════════════════════════════════ */
+let _stopExecution = false;
+
+async function _executeCommandsFromResponse(text) {
+  _stopExecution = false;
+  const commands = parseCommandsFromText(text);
+  if (!commands.length) return;
+
+  // Determine if we have a screenshot or completed command
+  const hasScreenshot = commands.some(c => c.type === 'SCREENSHOT');
+  const hasCompleted = commands.some(c => c.type === 'COMPLETED');
+
+  // Show detected commands in status area
+  const cmdStr = commands.map(_cmdToString).join(', ');
+  if (window.onCommandStatus) window.onCommandStatus('Commands: ' + cmdStr);
+
+  // If no screenshot and no completed: auto-append a screenshot at the end
+  // so the AI always gets screen feedback (matches Kotlin behavior).
+  const cmdList = [...commands];
+  if (!hasScreenshot && !hasCompleted) {
+    cmdList.push({ type: 'SCREENSHOT' });
+  }
+
+  for (const cmd of cmdList) {
+    if (_stopExecution) break;
+    await _executeSingleCommand(cmd);
+  }
+}
+
+async function _executeSingleCommand(cmd) {
+  switch (cmd.type) {
+    case 'ENTER':        Bridge.pressEnterKey(); break;
+    case 'WRITE_TEXT':   Bridge.writeText(cmd.text); break;
+    case 'TERMUX':       Bridge.runTermuxCommand(cmd.command); break;
+    case 'CLICK':        Bridge.tapByText(cmd.text); break;
+    case 'LONG_CLICK':   Bridge.longTapByText(cmd.text); break;
+    case 'TAP':          Bridge.tapAtCoordinates(cmd.x, cmd.y); break;
+    case 'HOME':         Bridge.pressHome(); break;
+    case 'BACK':         Bridge.pressBack(); break;
+    case 'RECENT_APPS':  Bridge.showRecentApps(); break;
+    case 'SCROLL_DOWN':  Bridge.scrollDown(); break;
+    case 'SCROLL_UP':    Bridge.scrollUp(); break;
+    case 'SCROLL_LEFT':  Bridge.scrollLeft(); break;
+    case 'SCROLL_RIGHT': Bridge.scrollRight(); break;
+    case 'SCROLL_DOWN_C':  Bridge.scrollDownFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
+    case 'SCROLL_UP_C':    Bridge.scrollUpFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
+    case 'SCROLL_LEFT_C':  Bridge.scrollLeftFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
+    case 'SCROLL_RIGHT_C': Bridge.scrollRightFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
+    case 'OPEN_APP':     Bridge.openAppByNameOrPackage(cmd.app); break;
+    case 'PINCH':        Bridge.pinchGesture(cmd.cx, cmd.cy, cmd.sd, cmd.ed, cmd.dur); break;
+    case 'COPY_CLIP':    Bridge.copyToClipboard(cmd.text); break;
+    case 'TOAST':        Bridge.showToast(cmd.msg, false); break;
+    case 'WAIT':
+      await new Promise(r => setTimeout(r, (cmd.seconds || 1) * 1000));
+      break;
+    case 'RETRIEVE': {
+      // Look up entry in DB; inject into next AI turn via _pendingScreenInfo
+      const entries = Bridge.getDatabaseEntries();
+      const entry = entries.find(e => e.title.toLowerCase() === (cmd.title || '').toLowerCase());
+      const content = entry ? entry.guide : 'The information is not available';
+      _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
+        + `[Retrieved: ${cmd.title}]:\n${content}`;
+      // Request screenshot to continue the loop (Kotlin will re-call onCustomModelRequest)
+      Bridge.requestScreenshot();
+      break;
+    }
+    case 'SCREENSHOT':
+      // Kotlin pipeline: captures screen → addScreenshotToConversation → reason() → onCustomModelRequest
+      Bridge.requestScreenshot();
+      break;
+    case 'COMPLETED':
+      Bridge.markCompleted();
+      _stopExecution = true;
+      generationRunning = false;
+      if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
+      break;
+    default:
+      console.log('[ScreenOperator] Unknown command type:', cmd.type, cmd);
+  }
+}
+
+function _cmdToString(cmd) {
+  switch (cmd.type) {
+    case 'ENTER':        return 'Enter()';
+    case 'WRITE_TEXT':   return `writeText("${cmd.text}")`;
+    case 'TERMUX':       return `Termux("${cmd.command}")`;
+    case 'CLICK':        return `click("${cmd.text}")`;
+    case 'LONG_CLICK':   return `longClick("${cmd.text}")`;
+    case 'TAP':          return `tapAt(${cmd.x}, ${cmd.y})`;
+    case 'HOME':         return 'home()';
+    case 'BACK':         return 'back()';
+    case 'RECENT_APPS':  return 'recentApps()';
+    case 'SCROLL_DOWN':  return 'scrollDown()';
+    case 'SCROLL_UP':    return 'scrollUp()';
+    case 'SCROLL_LEFT':  return 'scrollLeft()';
+    case 'SCROLL_RIGHT': return 'scrollRight()';
+    case 'SCROLL_DOWN_C': return `scrollDown(${cmd.x},${cmd.y},${cmd.dist},${cmd.dur})`;
+    case 'SCROLL_UP_C':   return `scrollUp(${cmd.x},${cmd.y},${cmd.dist},${cmd.dur})`;
+    case 'SCROLL_LEFT_C': return `scrollLeft(${cmd.x},${cmd.y},${cmd.dist},${cmd.dur})`;
+    case 'SCROLL_RIGHT_C':return `scrollRight(${cmd.x},${cmd.y},${cmd.dist},${cmd.dur})`;
+    case 'OPEN_APP':     return `openApp("${cmd.app}")`;
+    case 'PINCH':        return `pinch(${cmd.cx},${cmd.cy},${cmd.sd},${cmd.ed},${cmd.dur})`;
+    case 'COPY_CLIP':    return `copyToClipboard("${cmd.text}")`;
+    case 'TOAST':        return `toast("${cmd.msg}")`;
+    case 'WAIT':         return `Wait(${cmd.seconds})`;
+    case 'RETRIEVE':     return `retrieve("${cmd.title}")`;
+    case 'SCREENSHOT':   return 'takeScreenshot()';
+    case 'COMPLETED':    return 'completed()';
+    default:             return cmd.type;
+  }
+}
+
+/* ── Hook stopGeneration to also cancel command execution ──── */
+const _origStopGeneration = window.stopGeneration;
+window.stopGeneration = function() {
+  _stopExecution = true;
+  if (_origStopGeneration) _origStopGeneration();
+  if (window.__customModelAbortController) window.__customModelAbortController.abort();
+  if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
 };
+
 
 function toggleModelDropdown() {
   const menu = document.getElementById('model-dropdown-menu');
