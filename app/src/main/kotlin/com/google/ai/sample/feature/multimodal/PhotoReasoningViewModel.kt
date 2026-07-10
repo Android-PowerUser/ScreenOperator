@@ -1058,15 +1058,10 @@ class PhotoReasoningViewModel(
             return
         }
 
-        if (routeProviderSpecificReasoning(currentModel, userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)) {
-            return
-        }
-
-        if (isLiveMode) {
-            reasonInLiveMode(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat, currentModel)
-        } else {
-            reasonInRegularMode(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat, currentModel)
-        }
+        // All online built-in models are now handled by JavaScript in the WebView.
+        // JS (index.html, fetched from GitHub Pages) makes the API call and reports back
+        // via onCustomModelPartialResponse / onCustomModelFinalResponse.
+        reasonWithBuiltInModelViaJs(currentModel, userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
     }
 
     private fun clearStaleErrorState() {
@@ -1583,7 +1578,7 @@ class PhotoReasoningViewModel(
     fun onCustomModelPartialResponse(accumulatedText: String) {
         if (!isTaskCompletedByAi) {
             replaceAiMessageText(accumulatedText, isPending = true)
-            processCommandsIncrementally(accumulatedText)
+            // Command parsing and execution is now handled by JS (index.html).
         }
     }
 
@@ -1591,8 +1586,105 @@ class PhotoReasoningViewModel(
     fun onCustomModelFinalResponse(finalText: String) {
         _uiState.value = PhotoReasoningUiState.Success(finalText)
         finalizeAiMessage(finalText)
-        processCommands(finalText)
+        // Command parsing and execution is now handled by JS (index.html).
+        // JS calls Android.tapByText(), Android.requestScreenshot(), etc. directly.
         saveChatHistory(appContext)
+    }
+
+
+    /**
+     * Routes ALL online built-in models through the WebView JavaScript layer
+     * (index.html, fetched from GitHub Pages), instead of native networking code.
+     *
+     * The JS layer handles the API call (Google Gemini REST, Mistral, Puter, Groq, etc.),
+     * parses commands from the AI response, and executes them via existing bridge methods
+     * (Android.tapByText(), Android.requestScreenshot(), etc.).
+     *
+     * Reports back via [onCustomModelPartialResponse] / [onCustomModelFinalResponse] /
+     * [onCustomModelError] – the same callbacks as the custom-model JS path – so the chat
+     * display and history management work identically for every model.
+     */
+    private fun reasonWithBuiltInModelViaJs(
+        model: ModelOption,
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String?,
+        imageUrisForChat: List<String>?
+    ) {
+        val context = appContext
+
+        val userMessageText = if (!screenInfoForPrompt.isNullOrBlank()) {
+            "$userInput\n\n$screenInfoForPrompt"
+        } else {
+            userInput
+        }
+
+        val userMessage = PhotoReasoningMessage(
+            text = userMessageText,
+            participant = PhotoParticipant.USER,
+            imageUris = if (model.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
+            isPending = false
+        )
+        appendUserAndPendingModelMessages(userMessage)
+
+        _uiState.value = PhotoReasoningUiState.Loading
+        resetStreamingCommandState()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val systemMessageText = _systemMessage.value
+                val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
+
+                val allMessages = com.google.ai.sample.feature.multimodal.PhotoReasoningScreenElementHistoryPolicy
+                    .sanitizeMessages(_chatState.getAllMessages())
+                // Exclude pending model message and the user message we just added
+                val historyMessages = allMessages
+                    .filter { !it.isPending && it.participant != PhotoParticipant.ERROR }
+                    .dropLast(1)
+
+                val historyJson = org.json.JSONArray()
+                historyMessages.forEach { message ->
+                    val role = if (message.participant == PhotoParticipant.USER) "user" else "assistant"
+                    historyJson.put(org.json.JSONObject().put("role", role).put("text", message.text))
+                }
+
+                val imagesJson = org.json.JSONArray()
+                if (model.supportsScreenshot) {
+                    for (bitmap in selectedImages) {
+                        imagesJson.put(com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(bitmap))
+                    }
+                }
+
+                val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(
+                    context, model.modelName
+                )
+
+                val payload = org.json.JSONObject().apply {
+                    put("modelId", model.name)                  // e.g. "GEMINI_PRO"
+                    put("modelName", com.google.ai.sample.util.ModelIdentifierOverrides.resolve(model))
+                    put("apiProvider", model.apiProvider.name)  // e.g. "GOOGLE"
+                    put("supportsScreenshot", model.supportsScreenshot)
+                    put("supportsTopK", model.supportsTopK)
+                    put("isBuiltIn", true)
+                    put("stream", true)
+                    put("temperature", genSettings.temperature)
+                    put("topP", genSettings.topP)
+                    if (model.supportsTopK) put("topK", genSettings.topK)
+                    put("systemMessage", systemMessageText)
+                    put("databaseEntries", formattedDbEntries)
+                    put("history", historyJson)
+                    put("userText", userMessageText)
+                    put("images", imagesJson)
+                }
+
+                _customModelRequestEvents.emit(payload.toString())
+            } catch (e: Exception) {
+                Log.e(TAG, "reasonWithBuiltInModelViaJs: failed to build request: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    onCustomModelError(e.message ?: "Unknown error building request")
+                }
+            }
+        }
     }
 
     /** Reports that the custom model's turn failed (network error, non-2xx, bad JSON, ...). */
@@ -2848,22 +2940,13 @@ private fun processCommands(text: String) {
                             _commandExecutionStatus.value = status
                         }
                         
-                        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-                        if (currentModel.apiProvider == ApiProvider.MISTRAL) {
-                            enqueueMistralAutoScreenshotRequest(
-                                bitmap = bitmap,
-                                screenshotUri = screenshotUri.toString(),
-                                screenInfo = screenInfo
-                            )
-                        } else {
-                            // Re-send the query with only the latest screenshot
-                            reason(
-                                userInput = createGenericScreenshotPrompt(),
-                                selectedImages = listOf(bitmap),
-                                screenInfoForPrompt = enrichedScreenInfo,
-                                imageUrisForChat = listOf(screenshotUri.toString())
-                            )
-                        }
+                        // Route screenshot to the JS layer via reason() -> reasonWithBuiltInModelViaJs / reasonWithCustomJsModel
+                        reason(
+                            userInput = createGenericScreenshotPrompt(),
+                            selectedImages = listOf(bitmap),
+                            screenInfoForPrompt = enrichedScreenInfo,
+                            imageUrisForChat = listOf(screenshotUri.toString())
+                        )
                         
                         PhotoReasoningScreenshotUiNotifier.showAddedToConversation(context)
                     } else {
