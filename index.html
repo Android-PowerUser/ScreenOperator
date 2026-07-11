@@ -219,8 +219,8 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .bubble.error{background:var(--bg-error-container);color:var(--text-on-error-container);width:100%;max-width:100%}
 .bubble-wrap.error-wrap{display:block}
 /* pending-dots removed – replaced by spinner on model-icon */
-.model-icon.loading{background:transparent;font-size:0}
-.model-icon.loading::after{content:'';display:block;width:18px;height:18px;border:2.5px solid var(--outline);border-top-color:var(--primary);border-radius:50%;animation:ai-spin 1.4s linear infinite}
+.model-icon.loading{font-size:0}
+.model-icon.loading::after{content:'';display:block;width:16px;height:16px;border:2.5px solid #C4C4C4;border-top-color:#6650A4;border-radius:50%;animation:ai-spin 1.4s linear infinite}
 /* Use CSS-driven keyframe – unaffected by Android animator duration scale */
 @keyframes ai-spin{to{transform:rotate(360deg)}}
 
