@@ -1058,7 +1058,16 @@ class PhotoReasoningViewModel(
             return
         }
 
-        // All online built-in models are now handled by JavaScript in the WebView.
+        // Live API (real-time voice/video streaming over a persistent WebSocket) cannot be
+        // routed through a WebView fetch()-based JS caller - it needs bidirectional low-latency
+        // audio/video streaming infrastructure that only exists natively here (LiveApiManager).
+        // This is the one online model category that intentionally stays native.
+        if (isLiveMode) {
+            reasonInLiveMode(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat, currentModel)
+            return
+        }
+
+        // All other online built-in models are handled by JavaScript in the WebView.
         // JS (index.html, fetched from GitHub Pages) makes the API call and reports back
         // via onCustomModelPartialResponse / onCustomModelFinalResponse.
         reasonWithBuiltInModelViaJs(currentModel, userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
