@@ -43,7 +43,6 @@ object ChatHistoryPreferences {
     fun clearChatMessages(context: Context) {
         prefs(context).edit().remove(KEY_CHAT_MESSAGES).apply()
     }
-}
 
     /**
      * Save raw chat history JSON string (used by JS-side chat management)
@@ -65,3 +64,4 @@ object ChatHistoryPreferences {
     fun clearHistoryJson(context: Context) {
         prefs(context).edit().remove("js_chat_history_json").apply()
     }
+}

@@ -1289,7 +1289,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 org.json.JSONObject().put("width", dm.widthPixels).put("height", dm.heightPixels).toString()
             }
         } catch (e: Exception) {
-            "{"width":1080,"height":1920}"
+            "{\"width\":1080,\"height\":1920}"
         }
     }
 
