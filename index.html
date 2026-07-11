@@ -1754,9 +1754,16 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       await _callPuter(payload);
     } else if (provider === 'MISTRAL') {
       await _callMistral(payload);
+    } else if (provider === 'CEREBRAS') {
+      await _callCerebras(payload);
+    } else if (provider === 'GROQ') {
+      await _callGroq(payload);
+    } else if (provider === 'VERCEL') {
+      await _callVercel(payload);
+    } else if (provider === 'CLOUDFLARE') {
+      await _callCloudflareUnsupported(payload);
     } else {
-      // Cerebras, Groq, Vercel, Cloudflare, and all custom models use a plain
-      // (single-key, no coordinator) OpenAI-compatible chat completions endpoint.
+      // Only genuinely custom models (defined in custom-models.json) reach here.
       await _callOpenAiCompat(payload, provider);
     }
   } catch(e) {
@@ -2186,6 +2193,276 @@ async function _callMistral(payload) {
   } finally {
     window.__customModelAbortController = null;
   }
+}
+
+
+
+/* ── CEREBRAS API (dedicated - matches reasonWithCerebras() exactly) ──
+   Quirks that differ from a "plain" OpenAI-compatible call:
+   - System message + DB entries are each added as their own role:"user" message
+     (NOT role:"system" - this is exactly what the native code does).
+   - No image/screenshot support at all (GPT_OSS_120B has supportsScreenshot=false).
+   - Uses max_completion_tokens (not max_tokens), fixed at 1024.
+   - Simple single-retry-on-429 key switch (no full cooldown coordinator like Mistral). */
+async function _callCerebras(payload) {
+  const keys = _parseJsonArray(Bridge.getAllApiKeys('CEREBRAS'));
+  if (!keys.length) {
+    Bridge.onCustomModelError('Cerebras API key not found.');
+    return;
+  }
+  let keyIdx = Bridge.getCurrentKeyIndex('CEREBRAS') || 0;
+  let apiKey = keys[keyIdx] || keys[0];
+
+  const apiMessages = [];
+  if (payload.systemMessage) apiMessages.push({ role: 'user', content: payload.systemMessage });
+  if (payload.databaseEntries) apiMessages.push({ role: 'user', content: payload.databaseEntries });
+
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
+  mergedHistory.forEach(m => {
+    if (m && m.text) apiMessages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
+  });
+  if (payload.userText) apiMessages.push({ role: 'user', content: payload.userText });
+  // Cerebras models here never supportsScreenshot=true, so images are intentionally never sent.
+
+  const requestBody = {
+    model: payload.modelName,
+    messages: apiMessages,
+    max_completion_tokens: 1024,
+    temperature: payload.temperature || 0,
+    top_p: payload.topP || 0,
+    stream: true,
+  };
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+  try {
+    let response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify(requestBody),
+      signal: window.__customModelAbortController.signal,
+    });
+
+    // Single retry with the next key on 429 (matches reasonWithCerebras exactly - not a full
+    // cooldown coordinator, just one switch-and-retry).
+    if (response.status === 429 && keys.length > 1) {
+      const nextIdx = (keyIdx + 1) % keys.length;
+      const nextKey = keys[nextIdx];
+      if (nextKey && nextKey !== apiKey) {
+        Bridge.setCurrentKeyIndex(nextIdx, 'CEREBRAS');
+        apiKey = nextKey;
+        response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+          body: JSON.stringify(requestBody),
+          signal: window.__customModelAbortController.signal,
+        });
+      } else {
+        throw new Error('Cerebras rate limit reached. Please add another API key.');
+      }
+    }
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error('Unexpected code ' + response.status + ' - ' + errBody.slice(0, 400));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) { acc += delta; Bridge.onCustomModelPartialResponse(acc); }
+        } catch(e2) { /* ignore bad SSE chunk */ }
+      }
+    }
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── GROQ API (dedicated - array-based content, matches callGroqApi in ScreenCaptureApiClients.kt) ──
+   Array-based message content ({type:"text"|"image_url"}), non-streaming, single-key
+   (no coordinator - native ScreenCaptureService path doesn't retry/rotate for Groq either). */
+async function _callGroq(payload) {
+  const keys = _parseJsonArray(Bridge.getAllApiKeys('GROQ'));
+  if (!keys.length) {
+    Bridge.onCustomModelError('No Groq API key configured. Please add one in the menu.');
+    return;
+  }
+  const keyIdx = Bridge.getCurrentKeyIndex('GROQ') || 0;
+  const apiKey = keys[keyIdx] || keys[0];
+
+  const apiMessages = [];
+  const sysParts = [];
+  if (payload.systemMessage) sysParts.push(payload.systemMessage);
+  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (sysParts.length) apiMessages.push({ role: 'system', content: [{ type: 'text', text: sysParts.join('\n\n') }] });
+
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
+  mergedHistory.forEach(m => {
+    if (m && m.text) apiMessages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: [{ type: 'text', text: m.text }] });
+  });
+
+  const userContent = [];
+  if (payload.userText) userContent.push({ type: 'text', text: payload.userText });
+  (payload.images || []).forEach(uri => userContent.push({ type: 'image_url', image_url: { url: uri } }));
+  apiMessages.push({ role: 'user', content: userContent });
+
+  const requestBody = { model: payload.modelName, messages: apiMessages, stream: false };
+
+  window.__customModelAbortController = new AbortController();
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify(requestBody),
+      signal: window.__customModelAbortController.signal,
+    });
+
+    const responseBodyString = await response.text();
+    if (!response.ok) {
+      const errMsg = 'Groq Error ' + response.status + ': ' + responseBodyString.slice(0, 400);
+      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('GROQ');
+      throw new Error(errMsg);
+    }
+
+    let acc = '';
+    try {
+      const json = JSON.parse(responseBodyString);
+      acc = json.choices?.[0]?.message?.content || '';
+    } catch(e2) {
+      throw new Error('Groq: failed to parse response JSON');
+    }
+    if (!acc) throw new Error('No response from model');
+
+    Bridge.onCustomModelPartialResponse(acc);
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse('[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── VERCEL API (dedicated - matches callVercelApi in ScreenCaptureVercelClient.kt) ──
+   NOTE: this is NOT the general Vercel AI Gateway - it's this project's own proxy at
+   v0-screen-operator-clon-pi.vercel.app, authenticated with an "x-api-key" header
+   (not "Authorization: Bearer"), plain string message content, streaming SSE. */
+async function _callVercel(payload) {
+  const keys = _parseJsonArray(Bridge.getAllApiKeys('VERCEL'));
+  if (!keys.length) {
+    Bridge.onCustomModelError('No Vercel API key configured. Please add one in the menu.');
+    return;
+  }
+  const keyIdx = Bridge.getCurrentKeyIndex('VERCEL') || 0;
+  const apiKey = keys[keyIdx] || keys[0];
+
+  const messages = [];
+  const sysParts = [];
+  if (payload.systemMessage) sysParts.push(payload.systemMessage);
+  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
+
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
+  mergedHistory.forEach(m => {
+    if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
+  });
+  if (payload.userText) messages.push({ role: 'user', content: payload.userText });
+  // Note: the native Vercel client (ScreenCaptureVercelClient.kt) has no image support at all.
+
+  const requestBody = { model: payload.modelName, messages, stream: true };
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+  try {
+    const response = await fetch('https://v0-screen-operator-clon-pi.vercel.app/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify(requestBody),
+      signal: window.__customModelAbortController.signal,
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
+      throw new Error('Vercel API error ' + response.status + ': ' + detail);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) { acc += delta; Bridge.onCustomModelPartialResponse(acc); }
+        } catch(e2) { /* ignore bad SSE chunk */ }
+      }
+    }
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse(acc + (acc ? '\n\n' : '') + '[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── CLOUDFLARE ────────────────────────────────────────────────
+   IMPORTANT: unlike every other provider here, Cloudflare has NO API-client implementation
+   anywhere in the native codebase (checked PhotoReasoningViewModel.kt, ScreenCaptureService.kt,
+   ScreenCaptureApiClients.kt) even though CLOUDFLARE_KIMI_K2_6 exists as a ModelOption. Selecting
+   it natively would have sent the request through Google's Gemini SDK with an incompatible model
+   name/key and failed. Rather than inventing an unverified endpoint, this surfaces that clearly
+   instead of silently guessing at a request format that might send credentials somewhere unintended. */
+async function _callCloudflareUnsupported(payload) {
+  Bridge.onCustomModelError(
+    'Cloudflare models are not yet implemented (no working API integration exists in this app for ' +
+    'this provider). Please choose a different model.'
+  );
 }
 
 /* ── OPENAI-COMPATIBLE (Mistral, Cerebras, Groq, Vercel, Cloudflare, custom) ── */
