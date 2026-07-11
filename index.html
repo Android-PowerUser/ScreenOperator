@@ -1561,6 +1561,132 @@ function _loadAllPolicyOverrides() {
   _loadExecutionPolicyOverrides();
   _loadErrorClassificationOverrides();
   _loadCustomActionTypeOverrides();
+  _loadAppMappingOverrides();
+  _loadCommandPatternOverrides();
+}
+
+
+/* ════════════════════════════════════════════════════════
+   APP MAPPINGS – ported from AppMappings.kt (static table)
+   Provides a fast, native-call-free resolution for well-known apps.
+   Anything NOT in this table still falls back to the native
+   Bridge.openAppByNameOrPackage(), which fuzzy-matches against the
+   device's actually-installed apps via PackageManager (JS cannot
+   enumerate installed apps - that part must stay native).
+════════════════════════════════════════════════════════ */
+const _appDefinitions = [
+  { name: "whatsapp",   pkg: "com.whatsapp",                                variations: ["whats app","whats","wa"] },
+  { name: "facebook",   pkg: "com.facebook.katana",                         variations: ["fb","face book"] },
+  { name: "messenger",  pkg: "com.facebook.orca",                           variations: [] },
+  { name: "instagram",  pkg: "com.instagram.android",                       variations: ["insta","ig"] },
+  { name: "youtube",    pkg: "com.google.android.youtube",                  variations: ["yt","you tube"] },
+  { name: "twitter",    pkg: "com.twitter.android",                         variations: ["x","tweet"], aliases: ["x"] },
+  { name: "telegram",   pkg: "org.telegram.messenger",                      variations: ["tg"] },
+  { name: "tiktok",     pkg: "com.zhiliaoapp.musically",                    variations: ["tik tok"] },
+  { name: "snapchat",   pkg: "com.snapchat.android",                        variations: ["snap"] },
+  { name: "netflix",    pkg: "com.netflix.mediaclient",                     variations: ["nflx"] },
+  { name: "spotify",    pkg: "com.spotify.music",                           variations: ["music"] },
+  { name: "chrome",     pkg: "com.android.chrome",                          variations: ["google chrome","browser"] },
+  { name: "gmail",      pkg: "com.google.android.gm",                       variations: ["google mail","email","mail"] },
+  { name: "maps",       pkg: "com.google.android.apps.maps",                variations: ["google maps","navigation"] },
+  { name: "calendar",   pkg: "com.google.android.calendar",                 variations: ["google calendar"] },
+  { name: "photos",     pkg: "com.google.android.apps.photos",              variations: ["google photos","gallery"] },
+  { name: "drive",      pkg: "com.google.android.apps.docs",                variations: ["google drive"] },
+  { name: "docs",       pkg: "com.google.android.apps.docs.editors.docs",   variations: ["google docs","documents"] },
+  { name: "sheets",     pkg: "com.google.android.apps.docs.editors.sheets", variations: ["google sheets","spreadsheets"] },
+  { name: "slides",     pkg: "com.google.android.apps.docs.editors.slides", variations: ["google slides","presentations"] },
+  { name: "keep",       pkg: "com.google.android.keep",                     variations: ["google keep","notes"] },
+  { name: "amazon",     pkg: "com.amazon.mShop.android.shopping",           variations: ["amazon shopping","shop"] },
+  { name: "uber",       pkg: "com.ubercab",                                 variations: ["uber driver"] },
+  { name: "lyft",       pkg: "me.lyft.android",                             variations: ["ride"] },
+  { name: "doordash",   pkg: "com.dd.doordash",                             variations: ["food delivery"] },
+  { name: "ubereats",   pkg: "com.ubercab.eats",                            variations: ["uber eats","food"] },
+  { name: "grubhub",    pkg: "com.grubhub.android",                         variations: ["food delivery"] },
+  { name: "instacart",  pkg: "com.instacart.client",                        variations: ["grocery"] },
+  { name: "zoom",       pkg: "us.zoom.videomeetings",                       variations: ["zoom meeting"] },
+  { name: "teams",      pkg: "com.microsoft.teams",                         variations: ["microsoft teams"] },
+  { name: "skype",      pkg: "com.skype.raider",                            variations: ["microsoft skype"] },
+  { name: "outlook",    pkg: "com.microsoft.office.outlook",                variations: ["microsoft outlook","email"] },
+  { name: "word",       pkg: "com.microsoft.office.word",                   variations: ["microsoft word","documents"] },
+  { name: "excel",      pkg: "com.microsoft.office.excel",                  variations: ["microsoft excel","spreadsheets"] },
+  { name: "powerpoint", pkg: "com.microsoft.office.powerpoint",             variations: ["microsoft powerpoint","presentations"] },
+  { name: "onedrive",   pkg: "com.microsoft.skydrive",                      variations: ["microsoft onedrive","cloud"] },
+  { name: "onenote",    pkg: "com.microsoft.office.onenote",                variations: ["microsoft onenote","notes"] },
+  { name: "linkedin",   pkg: "com.linkedin.android",                        variations: ["linked in"] },
+  { name: "pinterest",  pkg: "com.pinterest",                               variations: ["pin"] },
+  { name: "reddit",     pkg: "com.reddit.frontpage",                        variations: ["reddit app"] },
+  { name: "discord",    pkg: "com.discord",                                 variations: ["chat"] },
+  { name: "slack",      pkg: "com.Slack",                                   variations: ["work chat"] },
+  { name: "twitch",     pkg: "tv.twitch.android.app",                       variations: ["streaming"] },
+  { name: "venmo",      pkg: "com.venmo",                                   variations: ["payment"] },
+  { name: "paypal",     pkg: "com.paypal.android.p2pmobile",                variations: ["payment"] },
+  { name: "cashapp",    pkg: "com.squareup.cash",                           variations: ["cash app","payment"] },
+  { name: "zelle",      pkg: "com.zellepay.zelle",                          variations: ["payment"] },
+  { name: "robinhood",  pkg: "com.robinhood.android",                       variations: ["stocks"] },
+  { name: "coinbase",   pkg: "com.coinbase.android",                        variations: ["crypto"] },
+  { name: "binance",    pkg: "com.binance.dev",                             variations: ["crypto"] },
+  { name: "wechat",     pkg: "com.tencent.mm",                              variations: ["we chat"] },
+  { name: "line",       pkg: "jp.naver.line.android",                       variations: ["line messenger"] },
+  { name: "viber",      pkg: "com.viber.voip",                              variations: ["viber messenger"] },
+  { name: "signal",     pkg: "org.thoughtcrime.securesms",                  variations: ["signal messenger"] },
+  { name: "threema",    pkg: "ch.threema.app",                              variations: ["threema messenger"] },
+  { name: "settings",   pkg: "com.android.settings",                        variations: ["system settings","preferences"] },
+];
+
+/* ── AppMappingOverridesConfig (remote JSON, same file/pattern) ─ */
+let _appMappingOverrides = { matchThreshold: 70, apps: [] };
+
+function _loadAppMappingOverrides() {
+  fetch('app-mappings-overrides.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      try {
+        const obj = JSON.parse(json);
+        const threshold = Number(obj.matchThreshold);
+        _appMappingOverrides.matchThreshold =
+          (!isNaN(threshold) && threshold >= 0 && threshold <= 100) ? threshold : 70;
+        _appMappingOverrides.apps = Array.isArray(obj.apps)
+          ? obj.apps
+              .filter(a => a && typeof a.canonicalName === 'string' && a.canonicalName.trim()
+                        && typeof a.packageName === 'string' && a.packageName.trim())
+              .map(a => ({
+                name: a.canonicalName.trim(),
+                pkg: a.packageName.trim(),
+                variations: Array.isArray(a.variations) ? a.variations.filter(v => typeof v === 'string' && v.trim()) : [],
+                aliases: Array.isArray(a.aliasesForPackageLookup) ? a.aliasesForPackageLookup.filter(v => typeof v === 'string' && v.trim()) : [],
+              }))
+          : [];
+      } catch(e) { console.warn('app-mappings-overrides.json parse error', e); }
+    })
+    .catch(() => { /* optional file */ });
+}
+
+/**
+ * Fast, native-call-free lookup: normalized name/variation/alias → package name.
+ * Overrides win on a canonicalName clash (merged on top of built-ins), mirroring
+ * AppMappings.kt's `builtIn + overrides` behavior.
+ */
+function _resolveKnownAppPackage(rawName) {
+  const normalize = (s) => (s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  const norm = normalize(rawName);
+  if (!norm) return null;
+  if (norm.includes('.')) return norm; // already looks like a package name
+
+  const table = new Map();
+  for (const def of _appDefinitions) {
+    table.set(normalize(def.name), def.pkg);
+    (def.aliases || []).forEach(a => table.set(normalize(a), def.pkg));
+    (def.variations || []).forEach(v => table.set(normalize(v), def.pkg));
+  }
+  // Overrides win on clash
+  for (const def of _appMappingOverrides.apps) {
+    table.set(normalize(def.name), def.pkg);
+    (def.aliases || []).forEach(a => table.set(normalize(a), def.pkg));
+    (def.variations || []).forEach(v => table.set(normalize(v), def.pkg));
+  }
+
+  return table.get(norm) || null;
 }
 
 /* ── PENDING STATE ───────────────────────────────────────────── */
@@ -1975,7 +2101,86 @@ function _rotateKey(provider) {
    COMMAND PARSER
    Ported from CommandParser.kt – parses AI responses for action commands.
 ════════════════════════════════════════════════════════ */
-function parseCommandsFromText(text) {
+/**
+ * Mirrors CommandParser.kt's normalizeText(): collapses whitespace runs and
+ * normalizes line breaks before pattern matching, so multi-line / oddly
+ * formatted AI responses are recognized the same way as the native parser was.
+ */
+function _normalizeCommandText(text) {
+  return text.replace(/\s+/g, ' ').replace(/\r\n|\r/g, '\n').trim();
+}
+
+/* ── CommandPatternConfig (remote regex overrides for EXISTING command types) ── */
+// Maps a CommandType name (as used in command-patterns.json) to a builder function
+// compatible with the JS command shape used by _executeSingleCommand/_cmdToString.
+const _COMMAND_TYPE_BUILDERS = {
+  CLICK_BUTTON:                   (m) => ({ type: 'CLICK', text: m[1] }),
+  LONG_CLICK_BUTTON:              (m) => ({ type: 'LONG_CLICK', text: m[1] }),
+  TAP_COORDINATES:                (m) => ({ type: 'TAP', x: m[1], y: m[2] }),
+  TAKE_SCREENSHOT:                () => ({ type: 'SCREENSHOT' }),
+  COMPLETED:                      () => ({ type: 'COMPLETED' }),
+  WAIT:                           (m) => ({ type: 'WAIT', seconds: parseInt(m[1], 10) }),
+  PRESS_HOME:                     () => ({ type: 'HOME' }),
+  PRESS_BACK:                     () => ({ type: 'BACK' }),
+  SHOW_RECENT_APPS:               () => ({ type: 'RECENT_APPS' }),
+  SCROLL_DOWN:                    () => ({ type: 'SCROLL_DOWN' }),
+  SCROLL_UP:                      () => ({ type: 'SCROLL_UP' }),
+  SCROLL_LEFT:                    () => ({ type: 'SCROLL_LEFT' }),
+  SCROLL_RIGHT:                   () => ({ type: 'SCROLL_RIGHT' }),
+  SCROLL_DOWN_FROM_COORDINATES:   (m) => ({ type: 'SCROLL_DOWN_C',  x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
+  SCROLL_UP_FROM_COORDINATES:     (m) => ({ type: 'SCROLL_UP_C',    x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
+  SCROLL_LEFT_FROM_COORDINATES:   (m) => ({ type: 'SCROLL_LEFT_C',  x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
+  SCROLL_RIGHT_FROM_COORDINATES:  (m) => ({ type: 'SCROLL_RIGHT_C', x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
+  OPEN_APP:                       (m) => ({ type: 'OPEN_APP', app: m[1] }),
+  WRITE_TEXT:                     (m) => ({ type: 'WRITE_TEXT', text: m[1] }),
+  USE_HIGH_REASONING_MODEL:       () => null,  // model switching ignored in JS, same as built-in patterns
+  USE_LOW_REASONING_MODEL:        () => null,
+  PRESS_ENTER_KEY:                () => ({ type: 'ENTER' }),
+  RETRIEVE:                       (m) => ({ type: 'RETRIEVE', title: m[1] }),
+  TERMUX_COMMAND:                 (m) => ({ type: 'TERMUX', command: m[2] ? m[2].replace(/\\(['"])/g, '$1') : m[1] }),
+  PINCH_GESTURE:                  (m) => ({ type: 'PINCH', cx: m[1], cy: m[2], sd: m[3], ed: m[4], dur: parseInt(m[5], 10) }),
+  COPY_TO_CLIPBOARD:              (m) => ({ type: 'COPY_CLIP', text: m[1] }),
+};
+
+// Remote pattern overrides installed via command-patterns.json - same file/contract as the
+// native CommandPatternConfig. Each entry attaches a new regex to an EXISTING command type's
+// builder above; it can never introduce new logic, matching the native safety boundary.
+let _remoteCommandPatterns = [];  // [{id, commandType, regex}]
+
+function _loadCommandPatternOverrides() {
+  fetch('command-patterns.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : null)
+    .then(json => {
+      if (!json) return;
+      try {
+        const arr = JSON.parse(json);
+        const parsed = [];
+        if (Array.isArray(arr)) {
+          for (let i = 0; i < arr.length; i++) {
+            const entry = arr[i];
+            if (!entry || typeof entry.regex !== 'string' || !entry.regex.trim()) continue;
+            const typeName = entry.commandType;
+            if (!_COMMAND_TYPE_BUILDERS[typeName]) {
+              console.warn('Skipping command-patterns.json override: unknown commandType', typeName);
+              continue;
+            }
+            try {
+              parsed.push({
+                id: entry.id || ('remote_' + i),
+                commandType: typeName,
+                regex: new RegExp(entry.regex, 'gi'),
+              });
+            } catch(e) { console.warn('Invalid regex in command-patterns.json for', typeName, e); }
+          }
+        }
+        _remoteCommandPatterns = parsed;
+      } catch(e) { console.warn('command-patterns.json parse error', e); }
+    })
+    .catch(() => { /* optional file */ });
+}
+
+function parseCommandsFromText(rawText) {
+  const text = _normalizeCommandText(rawText);
   const commands = [];
   const seenSingletons = new Set();
 
@@ -2078,6 +2283,21 @@ function parseCommandsFromText(text) {
     }
   }
 
+  // Remote pattern overrides (command-patterns.json) - extra regex syntaxes for EXISTING
+  // command types, using the same builder functions as the built-in patterns above.
+  for (const override of _remoteCommandPatterns) {
+    const builder = _COMMAND_TYPE_BUILDERS[override.commandType];
+    if (!builder) continue;
+    override.regex.lastIndex = 0;
+    let m;
+    while ((m = override.regex.exec(text)) !== null) {
+      const cmd = builder(m);
+      if (cmd === null) continue;
+      const single = (override.commandType === 'TAKE_SCREENSHOT' || override.commandType === 'COMPLETED');
+      allMatches.push({ start: m.index, end: m.index + m[0].length, cmd, type: override.commandType, single });
+    }
+  }
+
   // Sort by position in text
   allMatches.sort((a, b) => a.start - b.start);
 
@@ -2156,7 +2376,14 @@ async function _executeSingleCommand(cmd) {
     case 'SCROLL_UP_C':    Bridge.scrollUpFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
     case 'SCROLL_LEFT_C':  Bridge.scrollLeftFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
     case 'SCROLL_RIGHT_C': Bridge.scrollRightFromCoordinates(cmd.x, cmd.y, cmd.dist, cmd.dur); break;
-    case 'OPEN_APP':     Bridge.openAppByNameOrPackage(cmd.app); break;
+    case 'OPEN_APP': {
+      // Fast path: resolve well-known apps (AppMappings.kt table + remote overrides) without
+      // a native PackageManager round-trip. Anything unrecognized still falls back to the
+      // native fuzzy-match against actually-installed apps (JS cannot enumerate those).
+      const resolvedPkg = _resolveKnownAppPackage(cmd.app);
+      Bridge.openAppByNameOrPackage(resolvedPkg || cmd.app);
+      break;
+    }
     case 'PINCH':        Bridge.pinchGesture(cmd.cx, cmd.cy, cmd.sd, cmd.ed, cmd.dur); break;
     case 'COPY_CLIP':    Bridge.copyToClipboard(cmd.text); break;
     case 'TOAST':        Bridge.showToast(cmd.msg, false); break;
