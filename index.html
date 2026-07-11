@@ -1739,6 +1739,27 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     return;
   }
 
+  // System message and database entry headings are deliberately NOT part of the
+  // native payload. Fetching them here, live, via the Bridge keeps this logic in the
+  // WebView (as intended) and always reflects the current persisted value instead of
+  // a value the native side may have snapshotted before it was loaded. Order matters:
+  // system message first, then database headings, then (below, per-provider) the chat
+  // history - each _call* function already places databaseEntries right after
+  // systemMessage and before the history/user turn.
+  try {
+    payload.systemMessage = Bridge.getSystemMessage() || '';
+  } catch (e) {
+    payload.systemMessage = '';
+  }
+  try {
+    const dbEntries = Bridge.getDatabaseEntries() || [];
+    payload.databaseEntries = dbEntries.length
+      ? 'Retrievable information: ' + dbEntries.map(e => e.title).join(',\n') + ','
+      : '';
+  } catch (e) {
+    payload.databaseEntries = '';
+  }
+
   // Inject any pending retrieved DB entry info
   if (_pendingScreenInfo) {
     payload.userText = _pendingScreenInfo + '\n\n' + (payload.userText || '');

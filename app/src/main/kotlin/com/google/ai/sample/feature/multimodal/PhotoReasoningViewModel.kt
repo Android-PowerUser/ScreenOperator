@@ -1518,10 +1518,6 @@ class PhotoReasoningViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                ensureInitialized(context)
-                val systemMessageText = _systemMessage.value
-                val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
-
                 val allMessages = PhotoReasoningScreenElementHistoryPolicy.sanitizeMessages(_chatState.getAllMessages())
                 // Exclude the pending AI message and the user message we just added above -
                 // both get sent separately/explicitly in the payload below.
@@ -1562,8 +1558,12 @@ class PhotoReasoningViewModel(
                     if (customModel.supportsTopK) {
                         put("topK", genSettings.topK)
                     }
-                    put("systemMessage", systemMessageText)
-                    put("databaseEntries", formattedDbEntries)
+                    // systemMessage/databaseEntries are intentionally NOT included here.
+                    // JS (onCustomModelRequest in index.html) fetches them itself via
+                    // Bridge.getSystemMessage()/Bridge.getDatabaseEntries() right before
+                    // building the request, so that logic stays in the WebView and always
+                    // reads the live, persisted value instead of a value snapshotted here
+                    // from a native StateFlow that may not be initialized yet.
                     put("history", historyJson)
                     put("userText", userMessageText)
                     put("images", imagesJson)
@@ -1642,10 +1642,6 @@ class PhotoReasoningViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                ensureInitialized(context)
-                val systemMessageText = _systemMessage.value
-                val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
-
                 val allMessages = com.google.ai.sample.feature.multimodal.PhotoReasoningScreenElementHistoryPolicy
                     .sanitizeMessages(_chatState.getAllMessages())
                 // Exclude pending model message and the user message we just added
@@ -1681,8 +1677,12 @@ class PhotoReasoningViewModel(
                     put("temperature", genSettings.temperature)
                     put("topP", genSettings.topP)
                     if (model.supportsTopK) put("topK", genSettings.topK)
-                    put("systemMessage", systemMessageText)
-                    put("databaseEntries", formattedDbEntries)
+                    // systemMessage/databaseEntries are intentionally NOT included here.
+                    // JS (onCustomModelRequest in index.html) fetches them itself via
+                    // Bridge.getSystemMessage()/Bridge.getDatabaseEntries() right before
+                    // building the request, so that logic stays in the WebView and always
+                    // reads the live, persisted value instead of a value snapshotted here
+                    // from a native StateFlow that may not be initialized yet.
                     put("history", historyJson)
                     put("userText", userMessageText)
                     put("images", imagesJson)
