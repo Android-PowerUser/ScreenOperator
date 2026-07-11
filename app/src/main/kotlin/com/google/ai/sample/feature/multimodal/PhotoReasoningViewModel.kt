@@ -1518,6 +1518,7 @@ class PhotoReasoningViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                ensureInitialized(context)
                 val systemMessageText = _systemMessage.value
                 val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
 
@@ -1641,6 +1642,7 @@ class PhotoReasoningViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                ensureInitialized(context)
                 val systemMessageText = _systemMessage.value
                 val formattedDbEntries = PhotoReasoningTextPolicies.formatDatabaseEntriesAsText(context)
 
