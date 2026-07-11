@@ -1783,7 +1783,7 @@ function _parseJsonArray(str) {
 
 /* ── GEMINI REST API ─────────────────────────────────────────── */
 async function _callGemini(payload) {
-  const keys = _parseJsonArray(Bridge.getAllApiKeys('GOOGLE'));
+  const keys = Bridge.getAllApiKeys('GOOGLE');
   if (!keys.length) {
     Bridge.onCustomModelError('No Google API key configured. Please add one in the menu.');
     return;
@@ -1889,7 +1889,7 @@ async function _callGemini(payload) {
 // (Kotlin's PuterRequest.stream was always hardcoded false), array-based message
 // content ({type:"text"|"image_url", ...}), response parsed from choices[0].message.content.
 async function _callPuter(payload) {
-  const keys = _parseJsonArray(Bridge.getAllApiKeys('PUTER'));
+  const keys = Bridge.getAllApiKeys('PUTER');
   if (!keys.length) {
     Bridge.onCustomModelError('No Puter auth token configured. Please add one in the menu.');
     return;
@@ -2090,7 +2090,7 @@ async function _mistralCoordinatedFetch(apiKeys, maxAttempts, minIntervalMs, sho
    images appended only to the last user message, SSE streaming response parsing,
    and per-key cooldown/backoff coordination across all configured API keys. */
 async function _callMistral(payload) {
-  const apiKeys = _parseJsonArray(Bridge.getAllApiKeys('MISTRAL'))
+  const apiKeys = Bridge.getAllApiKeys('MISTRAL')
     .filter(k => k && k.trim())
     .filter((k, i, arr) => arr.indexOf(k) === i); // distinct
   if (!apiKeys.length) {
@@ -2205,7 +2205,7 @@ async function _callMistral(payload) {
    - Uses max_completion_tokens (not max_tokens), fixed at 1024.
    - Simple single-retry-on-429 key switch (no full cooldown coordinator like Mistral). */
 async function _callCerebras(payload) {
-  const keys = _parseJsonArray(Bridge.getAllApiKeys('CEREBRAS'));
+  const keys = Bridge.getAllApiKeys('CEREBRAS');
   if (!keys.length) {
     Bridge.onCustomModelError('Cerebras API key not found.');
     return;
@@ -2306,7 +2306,7 @@ async function _callCerebras(payload) {
    Array-based message content ({type:"text"|"image_url"}), non-streaming, single-key
    (no coordinator - native ScreenCaptureService path doesn't retry/rotate for Groq either). */
 async function _callGroq(payload) {
-  const keys = _parseJsonArray(Bridge.getAllApiKeys('GROQ'));
+  const keys = Bridge.getAllApiKeys('GROQ');
   if (!keys.length) {
     Bridge.onCustomModelError('No Groq API key configured. Please add one in the menu.');
     return;
@@ -2377,7 +2377,7 @@ async function _callGroq(payload) {
    v0-screen-operator-clon-pi.vercel.app, authenticated with an "x-api-key" header
    (not "Authorization: Bearer"), plain string message content, streaming SSE. */
 async function _callVercel(payload) {
-  const keys = _parseJsonArray(Bridge.getAllApiKeys('VERCEL'));
+  const keys = Bridge.getAllApiKeys('VERCEL');
   if (!keys.length) {
     Bridge.onCustomModelError('No Vercel API key configured. Please add one in the menu.');
     return;
@@ -2474,7 +2474,7 @@ async function _callOpenAiCompat(payload, provider) {
     endpoint = provDef.endpoint(payload.modelName);
     keyHeader = provDef.keyHeader;
     keyPrefix = provDef.keyPrefix || '';
-    const keys = _parseJsonArray(Bridge.getAllApiKeys(provider));
+    const keys = Bridge.getAllApiKeys(provider);
     if (!keys.length) {
       Bridge.onCustomModelError('No API key for ' + provider + '. Please add one in the menu.');
       return;
@@ -2617,7 +2617,7 @@ function _buildOpenAiMessages(payload) {
 
 function _rotateKey(provider) {
   try {
-    const keys = _parseJsonArray(Bridge.getAllApiKeys(provider));
+    const keys = Bridge.getAllApiKeys(provider);
     if (keys.length < 2) return;
     const idx = ((Bridge.getCurrentKeyIndex(provider) || 0) + 1) % keys.length;
     Bridge.setCurrentKeyIndex(idx, provider);
@@ -2925,7 +2925,7 @@ async function _executeSingleCommand(cmd) {
       const alreadyRetrieved = _jsChatHistory.some(m => (m.text || '').toLowerCase().includes(marker));
 
       if (!alreadyRetrieved) {
-        const entries = _parseJsonArray(Bridge.getDatabaseEntries());
+        const entries = Bridge.getDatabaseEntries();
         const entry = entries.find(e => e.title.toLowerCase() === (cmd.title || '').toLowerCase());
         const body = entry ? entry.guide : 'The information is not available';
         _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
