@@ -1704,11 +1704,9 @@ const PROVIDER_API = {
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
-  PUTER: {
-    endpoint: () => 'https://api.puter.com/drivers/call',
-    keyHeader: 'Authorization',
-    keyPrefix: 'Bearer ',
-  },
+  // PUTER and MISTRAL have dedicated _callPuter()/_callMistral() implementations below
+  // (correct array-based content format + Mistral's multi-key coordinator) and no longer
+  // use this generic OpenAI-compat table.
   CEREBRAS: {
     endpoint: () => 'https://api.cerebras.ai/v1/chat/completions',
     keyHeader: 'Authorization',
@@ -1754,9 +1752,11 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       await _callGemini(payload);
     } else if (provider === 'PUTER') {
       await _callPuter(payload);
+    } else if (provider === 'MISTRAL') {
+      await _callMistral(payload);
     } else {
-      // Mistral, Cerebras, Groq, Vercel, Cloudflare, and all custom models
-      // all use an OpenAI-compatible chat completions endpoint
+      // Cerebras, Groq, Vercel, Cloudflare, and all custom models use a plain
+      // (single-key, no coordinator) OpenAI-compatible chat completions endpoint.
       await _callOpenAiCompat(payload, provider);
     }
   } catch(e) {
@@ -1786,10 +1786,12 @@ async function _callGemini(payload) {
   const modelName = payload.modelName;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
-  // Build contents array (screen-element history trimmed per ExecutionPolicyConfig)
+  // Build contents array (screen-element history trimmed, then consecutive same-role
+  // messages merged - mirrors PhotoReasoningHistoryBuilder.kt exactly).
   const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
   const contents = [];
-  sanitizedHistory.forEach(m => {
+  mergedHistory.forEach(m => {
     const role = m.role === 'user' ? 'user' : 'model';
     contents.push({ role, parts: [{ text: m.text || '' }] });
   });
@@ -1876,6 +1878,9 @@ async function _callGemini(payload) {
 }
 
 /* ── PUTER API ───────────────────────────────────────────────── */
+// Matches PuterApiClient.kt exactly: OpenAI-compatible endpoint, NON-streaming
+// (Kotlin's PuterRequest.stream was always hardcoded false), array-based message
+// content ({type:"text"|"image_url", ...}), response parsed from choices[0].message.content.
 async function _callPuter(payload) {
   const keys = _parseJsonArray(Bridge.getAllApiKeys('PUTER'));
   if (!keys.length) {
@@ -1885,26 +1890,39 @@ async function _callPuter(payload) {
   const keyIdx = Bridge.getCurrentKeyIndex('PUTER') || 0;
   const apiKey = keys[keyIdx] || keys[0];
 
-  const messages = _buildOpenAiMessages(payload);
+  // Build array-based content per message (PuterMessage.content: List<PuterContent>)
+  const messages = [];
+  const sysParts = [];
+  if (payload.systemMessage) sysParts.push(payload.systemMessage);
+  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (sysParts.length) {
+    messages.push({ role: 'system', content: [{ type: 'text', text: sysParts.join('\n\n') }] });
+  }
+
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
+  mergedHistory.forEach(m => {
+    if (m && m.text) {
+      messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: [{ type: 'text', text: m.text }] });
+    }
+  });
+
+  const userContent = [];
+  if (payload.userText) userContent.push({ type: 'text', text: payload.userText });
+  (payload.images || []).forEach(uri => userContent.push({ type: 'image_url', image_url: { url: uri } }));
+  messages.push({ role: 'user', content: userContent });
 
   const requestBody = {
-    interface: 'puter-chat-completion',
-    driver: 'openai-completion',
-    test_mode: false,
-    method: 'complete',
-    args: {
-      messages,
-      model: payload.modelName,
-      stream: true,
-    }
+    model: payload.modelName,
+    messages,
+    stream: false,  // Puter's native client always hardcodes this to false
   };
-  if (payload.temperature !== undefined && payload.temperature > 0) requestBody.args.temperature = payload.temperature;
-  if (payload.topP !== undefined && payload.topP > 0) requestBody.args.top_p = payload.topP;
+  if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
+  if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
 
   window.__customModelAbortController = new AbortController();
-  let acc = '';
   try {
-    const response = await fetch('https://api.puter.com/drivers/call', {
+    const response = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1914,12 +1932,226 @@ async function _callPuter(payload) {
       signal: window.__customModelAbortController.signal,
     });
 
+    const responseBodyString = await response.text();
+
+    if (!response.ok) {
+      const errMsg = 'Puter API Error (' + response.status + '): ' + responseBodyString.slice(0, 400);
+      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('PUTER');
+      throw new Error(errMsg);
+    }
+
+    let acc = '';
+    try {
+      const json = JSON.parse(responseBodyString);
+      acc = json.choices?.[0]?.message?.content || '';
+    } catch(e2) {
+      throw new Error('Puter: failed to parse response JSON');
+    }
+    if (!acc) throw new Error('No response from model');
+
+    Bridge.onCustomModelPartialResponse(acc);
+    Bridge.onCustomModelFinalResponse(acc);
+    await _executeCommandsFromResponse(acc);
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      Bridge.onCustomModelFinalResponse('[stopped by user]');
+    } else {
+      throw e;
+    }
+  } finally {
+    window.__customModelAbortController = null;
+  }
+}
+
+/* ── MISTRAL REQUEST COORDINATOR ──────────────────────────────
+   Ports MistralRequestCoordinator.kt: per-key cooldown tracking across
+   concurrent calls, Retry-After / x-ratelimit-reset header parsing, and
+   adaptive exponential backoff on 429/5xx - so multiple API keys are used
+   round-robin without hammering a rate-limited one. ─────────────────── */
+const _mistralNextAllowedAtByKey = new Map();
+
+function _mistralKeyFingerprint(key) {
+  return key.length <= 8 ? key : key.slice(0, 4) + '…' + key.slice(-4);
+}
+
+function _mistralMarkCooldown(key, referenceTimeMs, minIntervalMs, extraDelayMs) {
+  const nextAllowedAt = referenceTimeMs + Math.max(Math.max(minIntervalMs, 0), Math.max(extraDelayMs || 0, 0));
+  const existing = _mistralNextAllowedAtByKey.get(key) || 0;
+  _mistralNextAllowedAtByKey.set(key, Math.max(existing, nextAllowedAt));
+}
+
+function _mistralRemainingWait(key, nowMs) {
+  const nextAllowedAt = _mistralNextAllowedAtByKey.get(key) || 0;
+  return Math.max(nextAllowedAt - nowMs, 0);
+}
+
+function _mistralParseRetryAfterMs(headerValue) {
+  if (!headerValue) return null;
+  const seconds = parseFloat(headerValue.trim());
+  if (isNaN(seconds)) return null;
+  return Math.max(Math.round(seconds * 1000), 0);
+}
+
+function _mistralParseRateLimitResetDelayMs(response, nowMs) {
+  const resetHeader = response.headers.get('x-ratelimit-reset');
+  if (!resetHeader) return null;
+  const raw = parseInt(resetHeader.trim(), 10);
+  if (isNaN(raw)) return null;
+  let delayMs;
+  if (raw >= 1_000_000_000_000) delayMs = raw - nowMs;               // epoch ms
+  else if (raw >= 1_000_000_000) delayMs = (raw * 1000) - nowMs;     // epoch seconds
+  else if (raw >= 0) delayMs = raw * 1000;                            // relative seconds
+  else return null;
+  return Math.min(Math.max(delayMs, 0), _operationalTuning.mistralMaxServerDelayMs);
+}
+
+function _mistralAdaptiveRetryDelayMs(failureCount) {
+  const cappedExponent = Math.min(Math.max(failureCount - 1, 0), 5);
+  return 1000 * Math.pow(2, cappedExponent);
+}
+
+function _mistralIsRetryableFailure(code) {
+  return code === 429 || code >= 500;
+}
+
+async function _mistralDelayUntilReady(waitMs, shouldCancel) {
+  let remaining = waitMs;
+  while (remaining > 0) {
+    if (shouldCancel()) throw new DOMException('Mistral request cancelled by user', 'AbortError');
+    const nextDelay = Math.min(remaining, _operationalTuning.mistralCancelCheckIntervalMs);
+    await new Promise(r => setTimeout(r, nextDelay));
+    remaining -= nextDelay;
+  }
+  if (shouldCancel()) throw new DOMException('Mistral request cancelled by user', 'AbortError');
+}
+
+/**
+ * Coordinates a Mistral request across multiple API keys with per-key cooldowns and
+ * server-driven rate-limit backoff. `requestFn(apiKey)` must return a Response (or throw).
+ */
+async function _mistralCoordinatedFetch(apiKeys, maxAttempts, minIntervalMs, shouldCancel, requestFn) {
+  if (!apiKeys.length) throw new Error('No Mistral API keys provided.');
+  let consecutiveFailures = 0;
+  let blockedKeysThisRound = new Set();
+
+  while (consecutiveFailures < maxAttempts) {
+    const now = Date.now();
+    let keyPool = apiKeys.filter(k => !blockedKeysThisRound.has(k));
+    if (!keyPool.length) { blockedKeysThisRound.clear(); keyPool = apiKeys; }
+
+    let selectedKey = apiKeys[0];
+    let waitMs = Infinity;
+    for (const candidate of keyPool) {
+      const candidateWait = _mistralRemainingWait(candidate, now);
+      if (candidateWait < waitMs) { waitMs = candidateWait; selectedKey = candidate; }
+    }
+    await _mistralDelayUntilReady(waitMs, shouldCancel);
+
+    try {
+      if (shouldCancel()) throw new DOMException('Mistral request cancelled by user', 'AbortError');
+      const response = await requestFn(selectedKey);
+      const requestEndMs = Date.now();
+      const retryAfterMs = _mistralParseRetryAfterMs(response.headers.get('retry-after'));
+      const resetDelayMs = _mistralParseRateLimitResetDelayMs(response, requestEndMs);
+      const serverRequestedDelayMs = Math.max(retryAfterMs || 0, resetDelayMs || 0);
+      _mistralMarkCooldown(selectedKey, requestEndMs, minIntervalMs, serverRequestedDelayMs);
+
+      if (response.ok || !_mistralIsRetryableFailure(response.status)) {
+        return { response, apiKey: selectedKey };
+      }
+
+      blockedKeysThisRound.add(selectedKey);
+      consecutiveFailures++;
+      const adaptiveDelay = _mistralAdaptiveRetryDelayMs(consecutiveFailures);
+      _mistralMarkCooldown(selectedKey, requestEndMs, minIntervalMs, Math.max(serverRequestedDelayMs, adaptiveDelay));
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw e;
+      const requestEndMs = Date.now();
+      blockedKeysThisRound.add(selectedKey);
+      consecutiveFailures++;
+      _mistralMarkCooldown(selectedKey, requestEndMs, minIntervalMs, _mistralAdaptiveRetryDelayMs(consecutiveFailures));
+      if (consecutiveFailures >= maxAttempts) throw e;
+    }
+  }
+  throw new Error(`Mistral request failed after ${maxAttempts} attempts.`);
+}
+
+/* ── MISTRAL API (dedicated - array-based content, multi-key coordinator) ──
+   Ports reasonWithMistral() + MistralRequestCoordinator.kt exactly: array-based
+   message content ({type:"text"|"image_url"}), temperature/top_p floored at 0.01,
+   max_tokens=50000, "Additional context from database:" system-message wording,
+   images appended only to the last user message, SSE streaming response parsing,
+   and per-key cooldown/backoff coordination across all configured API keys. */
+async function _callMistral(payload) {
+  const apiKeys = _parseJsonArray(Bridge.getAllApiKeys('MISTRAL'))
+    .filter(k => k && k.trim())
+    .filter((k, i, arr) => arr.indexOf(k) === i); // distinct
+  if (!apiKeys.length) {
+    Bridge.onCustomModelError('Mistral API key not found.');
+    return;
+  }
+
+  // Build array-based messages (MistralMessage.content: List<MistralContent>)
+  const apiMessages = [];
+  const systemContent = [];
+  if (payload.systemMessage) systemContent.push({ type: 'text', text: payload.systemMessage });
+  if (payload.databaseEntries) {
+    systemContent.push({ type: 'text', text: 'Additional context from database:\n' + payload.databaseEntries });
+  }
+  if (systemContent.length) apiMessages.push({ role: 'system', content: systemContent });
+
+  const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
+  mergedHistory.forEach(m => {
+    if (m && m.text) {
+      apiMessages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: [{ type: 'text', text: m.text }] });
+    }
+  });
+  // Current user turn
+  apiMessages.push({ role: 'user', content: [{ type: 'text', text: payload.userText || '' }] });
+
+  // Images append to the LAST user message only (matches reasonWithMistral exactly)
+  if (payload.images && payload.images.length) {
+    const lastMsg = apiMessages[apiMessages.length - 1];
+    if (lastMsg.role === 'user') {
+      payload.images.forEach(uri => lastMsg.content.push({ type: 'image_url', image_url: uri }));
+    }
+  }
+
+  const requestBody = {
+    model: payload.modelName,
+    messages: apiMessages,
+    temperature: Math.max(payload.temperature || 0, 0.01),
+    top_p: Math.max(payload.topP || 0, 0.01),
+    max_tokens: 50000,
+    stream: true,
+  };
+
+  const isFastModel = payload.modelId === 'MISTRAL_MEDIUM_3_1' || payload.modelId === 'MISTRAL_MEDIUM_3_5';
+  const minIntervalMs = isFastModel
+    ? _operationalTuning.mistralMinIntervalMsFastModels
+    : _operationalTuning.mistralMinIntervalMsDefault;
+  const isLargeOrMedium = payload.modelId === 'MISTRAL_LARGE_3' || isFastModel;
+  const maxAttempts = isLargeOrMedium ? 3 : (apiKeys.length * 4 + 8);
+
+  window.__customModelAbortController = new AbortController();
+  let acc = '';
+  try {
+    const { response } = await _mistralCoordinatedFetch(
+      apiKeys, maxAttempts, minIntervalMs,
+      () => _stopExecution,
+      (key) => fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        body: JSON.stringify(requestBody),
+        signal: window.__customModelAbortController.signal,
+      })
+    );
+
     if (!response.ok) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
-      const errMsg = 'Puter HTTP ' + response.status + (detail ? ': ' + detail : '');
-      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('PUTER');
-      throw new Error(errMsg);
+      throw new Error('Mistral Error ' + response.status + ': ' + detail);
     }
 
     const reader = response.body.getReader();
@@ -1938,13 +2170,9 @@ async function _callPuter(payload) {
         if (!data || data === '[DONE]') continue;
         try {
           const json = JSON.parse(data);
-          // Puter wraps in result.message.content or delta.content
-          const delta = json.choices?.[0]?.delta?.content
-            || json.result?.message?.content
-            || json.result?.choices?.[0]?.delta?.content
-            || '';
+          const delta = json.choices?.[0]?.delta?.content || '';
           if (delta) { acc += delta; Bridge.onCustomModelPartialResponse(acc); }
-        } catch(e2) { /* ignore */ }
+        } catch(e2) { /* ignore bad SSE chunk */ }
       }
     }
     Bridge.onCustomModelFinalResponse(acc);
@@ -2056,6 +2284,27 @@ async function _callOpenAiCompat(payload, provider) {
   }
 }
 
+
+/**
+ * Merges consecutive same-role messages into a single entry, exactly like
+ * PhotoReasoningHistoryBuilder.buildHistoryFromMessages() did natively. Needed because the
+ * Gemini API requires strictly alternating user/model roles in `contents`; without this,
+ * two USER messages in a row (e.g. after an ERROR message was filtered out of the history)
+ * would make the request invalid.
+ */
+function _mergeConsecutiveSameRole(historyMessages) {
+  const merged = [];
+  for (const msg of historyMessages) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === msg.role) {
+      last.text = last.text ? (last.text + '\n\n' + (msg.text || '')) : (msg.text || '');
+    } else {
+      merged.push({ role: msg.role, text: msg.text || '' });
+    }
+  }
+  return merged;
+}
+
 /* ── HELPERS: Build message arrays ───────────────────────────── */
 function _buildSystemParts(payload) {
   const parts = [];
@@ -2072,7 +2321,8 @@ function _buildOpenAiMessages(payload) {
   if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
 
   const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
-  sanitizedHistory.forEach(m => {
+  const mergedHistory = _mergeConsecutiveSameRole(sanitizedHistory);
+  mergedHistory.forEach(m => {
     if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
   });
 
@@ -2391,14 +2641,19 @@ async function _executeSingleCommand(cmd) {
       await new Promise(r => setTimeout(r, (cmd.seconds || 1) * 1000));
       break;
     case 'RETRIEVE': {
-      // Look up entry in DB; inject into next AI turn via _pendingScreenInfo
-      const entries = _parseJsonArray(Bridge.getDatabaseEntries());
-      const entry = entries.find(e => e.title.toLowerCase() === (cmd.title || '').toLowerCase());
-      const body = entry ? entry.guide : 'The information is not available';
-      // Uses OperationalTuningConfig.retrievalHeaderPrefix so remote overrides stay in sync.
-      _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
-        + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
-      // Request screenshot to continue the loop (Kotlin will re-call onCustomModelRequest)
+      // Skip if this heading was already retrieved earlier in the chat (mirrors
+      // PhotoReasoningTextPolicies.isHeadingAlreadyRetrievedInChat) - avoids re-injecting the
+      // same information repeatedly if the AI asks for it again.
+      const marker = `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]`.toLowerCase();
+      const alreadyRetrieved = _jsChatHistory.some(m => (m.text || '').toLowerCase().includes(marker));
+
+      if (!alreadyRetrieved) {
+        const entries = _parseJsonArray(Bridge.getDatabaseEntries());
+        const entry = entries.find(e => e.title.toLowerCase() === (cmd.title || '').toLowerCase());
+        const body = entry ? entry.guide : 'The information is not available';
+        _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
+          + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
+      }
       Bridge.requestScreenshot();
       break;
     }
