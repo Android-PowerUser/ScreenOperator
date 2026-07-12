@@ -3586,7 +3586,14 @@ function onTaskInput() {
     ta.placeholder = '';
   }
   
-  autoGrowTextarea(ta, 160);
+  if (!focused && !val) {
+    // Collapsed: single line height
+    const lineH = parseFloat(getComputedStyle(ta).lineHeight) || 16 * 1.45;
+    const padV = parseFloat(getComputedStyle(ta).paddingTop) + parseFloat(getComputedStyle(ta).paddingBottom);
+    ta.style.height = (lineH + padV) + 'px';
+  } else {
+    autoGrowTextarea(ta, 160);
+  }
 }
 function onTaskInputFocus() {
   onTaskInput();
