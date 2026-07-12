@@ -231,8 +231,80 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 /* ── Input area ──────────────────────────────────────────── */
 #chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
 .input-row{display:flex;align-items:flex-start;gap:6px}
-.task-input{flex:1;min-height:0;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:17px;font-family:inherit;background:var(--bg-card);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
-.task-input:focus{border-color:var(--primary)}
+/* ── M3 Outlined TextField (Task input) ─────────────────────
+   Mirrors androidx.compose.material3.OutlinedTextField: 56.dp min
+   height, 16.dp horizontal content padding, floating label that
+   shrinks into the border notch (bodySmall) on focus/non-empty,
+   border color + label color switch to primary on focus. */
+.m3-outlined-field{position:relative;flex:1;min-width:0;min-height:56px;display:flex}
+.task-input{
+  width:100%;
+  min-height:0;
+  max-height:160px;
+  border:none;
+  border-radius:4px;
+  padding:16px 16px 8px 16px;
+  font-size:16px;
+  font-family:inherit;
+  background:transparent;
+  color:var(--text-primary);
+  outline:none;
+  resize:none;
+  overflow-y:auto;
+  line-height:1.45;
+  box-sizing:border-box;
+  position:relative;
+  z-index:1;
+  display:block;
+}
+.m3-field-outline{
+  position:absolute;
+  inset:0;
+  margin:0;
+  padding:0 8px;
+  border:1px solid var(--input-border);
+  border-radius:4px;
+  pointer-events:none;
+  min-width:0;
+  text-align:left;
+}
+.m3-field-outline legend{
+  font-size:12px;
+  padding:0;
+  height:0;
+  visibility:hidden;
+  max-width:0.01px;
+  white-space:nowrap;
+  transition:max-width .15s cubic-bezier(0,0,0.2,1);
+}
+.m3-field-outline legend span{padding:0 4px;display:inline-block}
+.m3-field-label{
+  position:absolute;
+  left:16px;
+  top:16px;
+  font-size:16px;
+  line-height:1.45;
+  color:var(--outline);
+  pointer-events:none;
+  transform-origin:left top;
+  transition:transform .15s cubic-bezier(0.4,0,0.2,1),color .15s cubic-bezier(0.4,0,0.2,1),top .15s cubic-bezier(0.4,0,0.2,1);
+  z-index:2;
+  background:transparent;
+  max-width:calc(100% - 32px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+/* Floating (shrunk into notch) state: set via JS by toggling .floating */
+.m3-field-label.floating{
+  top:0;
+  transform:translateY(-50%) scale(0.75);
+  color:var(--outline);
+}
+.m3-outlined-field.focused .m3-field-label.floating{color:var(--primary)}
+.m3-outlined-field.focused .m3-field-outline{border-color:var(--primary);border-width:2px;padding:0 7px}
+.m3-outlined-field.focused .m3-field-outline legend{max-width:1000px}
+.m3-outlined-field.has-notch .m3-field-outline legend{max-width:1000px}
 #send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .send-icon{font-size:22px;color:var(--outline)}
 .send-icon.active{color:var(--primary)}
@@ -475,8 +547,14 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
           <button class="btn-icon" onclick="pickImage()" title="Add image">+</button>
           <button class="btn-circle" onclick="clearChat()">New</button>
         </div>
-        <textarea id="task-input" class="task-input" rows="1" placeholder="Task"
-          oninput="onTaskInput()" onkeydown="onTaskKey(event)" onfocus="onTaskInputFocus()" onblur="onTaskInputBlur()"></textarea>
+        <div id="task-field-wrap" class="m3-outlined-field">
+          <textarea id="task-input" class="task-input" rows="1" placeholder=""
+            oninput="onTaskInput()" onkeydown="onTaskKey(event)" onfocus="onTaskInputFocus()" onblur="onTaskInputBlur()"></textarea>
+          <label for="task-input" id="task-input-label" class="m3-field-label">Task</label>
+          <fieldset class="m3-field-outline" aria-hidden="true">
+            <legend id="task-label-legend"><span>Task</span></legend>
+          </fieldset>
+        </div>
         <div class="col" style="flex-shrink:0;gap:4px">
           <button class="btn-circle" id="tb-btn" onclick="toggleTermuxMode()" title="Termux background/foreground">TB</button>
           <button id="send-btn" class="btn-icon" onclick="sendMessage()" title="Send">
@@ -3489,25 +3567,26 @@ function autoGrowTextarea(el, maxPx) {
 }
 function onTaskInput() {
   const ta = document.getElementById('task-input');
+  const wrap = document.getElementById('task-field-wrap');
+  const label = document.getElementById('task-input-label');
   const val = ta.value.trim();
   const icon = document.getElementById('send-icon');
   icon.className = val ? 'send-icon active' : 'send-icon';
   
   const focused = document.activeElement === ta;
+  wrap.classList.toggle('focused', focused);
+  
+  const floating = focused || val.length > 0;
+  label.classList.toggle('floating', floating);
+  wrap.classList.toggle('has-notch', floating);
+  
   if (focused) {
-    ta.placeholder = val ? 'Task' : 'Describe step by step if complicated tasks have to be solved';
+    ta.placeholder = val ? '' : 'Describe step by step if complicated tasks have to be solved';
   } else {
-    ta.placeholder = 'Task';
+    ta.placeholder = '';
   }
   
-  if (!focused && !val) {
-    // Collapsed: single line height
-    const lineH = parseFloat(getComputedStyle(ta).lineHeight) || 17 * 1.45;
-    const padV = parseFloat(getComputedStyle(ta).paddingTop) + parseFloat(getComputedStyle(ta).paddingBottom);
-    ta.style.height = (lineH + padV) + 'px';
-  } else {
-    autoGrowTextarea(ta, 160);
-  }
+  autoGrowTextarea(ta, 160);
 }
 function onTaskInputFocus() {
   onTaskInput();
