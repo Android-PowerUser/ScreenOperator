@@ -7,7 +7,7 @@
 <title>Screen Operator</title>
 <style>
 /* ── Reset ────────────────────────────────────────────── */
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-synthesis:weight}
 html,body{height:100%;overflow:hidden;font-family:Roboto,sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial}
 
 /* ── M3 Light tokens (default) ─────────────────────────── */
@@ -148,10 +148,10 @@ html.dark-mode {
 .card-accent{background:var(--bg-primary-container);border-radius:18px;padding:14px;margin:8px 0}
 
 /* ── Typography ──────────────────────────────────────────── */
-.title-md{font-size:16px;font-weight:bold;color:var(--text-primary)}
+.title-md{font-size:16px;font-weight:bold;color:var(--text-primary);-webkit-text-stroke:0.4px currentColor}
 .body-md{font-size:14px;color:var(--text-primary);line-height:1.55}
 .body-sm{font-size:15px;color:var(--text-secondary);line-height:1.5;font-weight:normal}
-strong{font-weight:bold!important}
+strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
 
 /* ── Row helpers ─────────────────────────────────────────── */
 .row{display:flex;align-items:center;gap:8px}
