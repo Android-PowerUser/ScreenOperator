@@ -148,10 +148,10 @@ html.dark-mode {
 .card-accent{background:var(--bg-primary-container);border-radius:18px;padding:14px;margin:8px 0}
 
 /* ── Typography ──────────────────────────────────────────── */
-.title-md{font-size:16px;font-weight:500;color:var(--text-primary)}
+.title-md{font-size:16px;font-weight:bold;color:var(--text-primary)}
 .body-md{font-size:14px;color:var(--text-primary);line-height:1.55}
 .body-sm{font-size:15px;color:var(--text-secondary);line-height:1.5;font-weight:normal}
-strong{font-weight:bold}
+strong{font-weight:bold!important}
 
 /* ── Row helpers ─────────────────────────────────────────── */
 .row{display:flex;align-items:center;gap:8px}
@@ -407,7 +407,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <!-- Pro / Donation -->
   <div class="card" id="donation-card">
     <div class="row between" id="donation-row">
-      <div class="title-md" style="flex:1;display:flex;flex-direction:column;align-items:center">Support Improvements<br>🎉</div>
+      <div class="title-md" style="flex:1">Support Improvements<br><span style="display:inline-block;margin-left:9ch">🎉</span></div>
       <button class="btn btn-solid" onclick="initiateDonation()" style="margin-left:8px">Pro (2,90 €/Month)</button>
     </div>
     <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
