@@ -231,7 +231,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 /* ── Input area ──────────────────────────────────────────── */
 #chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
 .input-row{display:flex;align-items:flex-end;gap:6px}
-.task-input{flex:1;min-height:80px;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:17px;font-family:inherit;background:var(--bg-card);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
+.task-input{flex:1;min-height:0;max-height:160px;border:1px solid var(--input-border);border-radius:8px;padding:8px 10px;font-size:17px;font-family:inherit;background:var(--bg-card);color:var(--text-primary);outline:none;resize:none;overflow-y:auto;line-height:1.45;box-sizing:border-box}
 .task-input:focus{border-color:var(--primary)}
 #send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .send-icon{font-size:22px;color:var(--outline)}
@@ -1197,6 +1197,8 @@ function navigateToChat() {
   const msg = Bridge.getSystemMessage();
   document.getElementById('sys-msg-textarea').value = msg;
   scrollToBottom();
+  // Ensure task input starts collapsed (1 line) when not focused
+  onTaskInput();
 }
 function navigateToMenu() {
   _showMenu();
@@ -3491,13 +3493,21 @@ function onTaskInput() {
   const icon = document.getElementById('send-icon');
   icon.className = val ? 'send-icon active' : 'send-icon';
   
-  if (document.activeElement === ta) {
+  const focused = document.activeElement === ta;
+  if (focused) {
     ta.placeholder = val ? 'Task' : 'Describe step by step if complicated tasks have to be solved';
   } else {
     ta.placeholder = 'Task';
   }
   
-  autoGrowTextarea(ta, 160);
+  if (!focused && !val) {
+    // Collapsed: single line height
+    const lineH = parseFloat(getComputedStyle(ta).lineHeight) || 17 * 1.45;
+    const padV = parseFloat(getComputedStyle(ta).paddingTop) + parseFloat(getComputedStyle(ta).paddingBottom);
+    ta.style.height = (lineH + padV) + 'px';
+  } else {
+    autoGrowTextarea(ta, 160);
+  }
 }
 function onTaskInputFocus() {
   onTaskInput();
