@@ -1047,7 +1047,7 @@ window.onAiMessage = function(text, isPending) {
     if (!isPending) {
       // Swap spinner icon → real avatar icon
       const icon = last.querySelector('.model-icon');
-      if (icon) { icon.classList.remove('loading'); icon.innerHTML = '&#10024;'; }
+      if (icon) { icon.classList.remove('loading'); }
     }
   } else {
     addModelBubble(text, isPending);
@@ -3442,7 +3442,7 @@ function addUserBubble(text) {
 function addModelBubble(text, isPending) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap';
-  wrap.innerHTML = `<div class="bubble model"><span class="model-icon${isPending?' loading':''}">&#${isPending?'0':10024};</span><span class="model-text">${escHtml(text)}</span></div>`;
+  wrap.innerHTML = `<div class="bubble model"><span class="model-icon${isPending?' loading':''}"></span><span class="model-text">${escHtml(text)}</span></div>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
