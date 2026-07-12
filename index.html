@@ -229,8 +229,8 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .cmd-status-card{background:var(--bg-secondary-container);border-radius:12px;padding:12px 14px;margin:6px 0;font-size:13px;color:var(--text-on-secondary-container)}
 
 /* ── Input area ──────────────────────────────────────────── */
-#chat-input-card{background:var(--bg-card);border-radius:16px;padding:10px 12px;margin-top:6px}
-.input-row{display:flex;align-items:flex-start;gap:6px}
+#chat-input-card{background:var(--bg-card);border-radius:16px;padding:16px 12px 10px 12px;margin-top:6px}
+.input-row{display:flex;align-items:flex-start;gap:8px}
 /* ── M3 Outlined TextField (Task input) ─────────────────────
    Mirrors androidx.compose.material3.OutlinedTextField: 56.dp min
    height, 16.dp horizontal content padding, floating label that
@@ -305,8 +305,8 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .m3-outlined-field.focused .m3-field-outline{border-color:var(--primary);border-width:2px;padding:0 7px}
 .m3-outlined-field.focused .m3-field-outline legend{max-width:1000px}
 .m3-outlined-field.has-notch .m3-field-outline legend{max-width:1000px}
-#send-btn{width:36px;height:36px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.send-icon{font-size:22px;color:var(--outline)}
+#send-btn{width:48px;height:48px;flex-shrink:0;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.send-icon{color:var(--outline)}
 .send-icon.active{color:var(--primary)}
 /* ── Toast ───────────────────────────────────────────────── */
 #toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .25s;z-index:200;white-space:nowrap}
@@ -558,7 +558,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
         <div class="col" style="flex-shrink:0;gap:4px">
           <button class="btn-circle" id="tb-btn" onclick="toggleTermuxMode()" title="Termux background/foreground">TB</button>
           <button id="send-btn" class="btn-icon" onclick="sendMessage()" title="Send">
-            <span class="send-icon" id="send-icon">&#10148;</span>
+            <svg id="send-icon" class="send-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
           </button>
         </div>
       </div>
@@ -3571,7 +3571,7 @@ function onTaskInput() {
   const label = document.getElementById('task-input-label');
   const val = ta.value.trim();
   const icon = document.getElementById('send-icon');
-  icon.className = val ? 'send-icon active' : 'send-icon';
+  icon.classList.toggle('active', !!val);
   
   const focused = document.activeElement === ta;
   wrap.classList.toggle('focused', focused);
