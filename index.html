@@ -396,6 +396,20 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .form-group{margin-bottom:14px}
 .form-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px;display:block}
 select.text-input{height:40px;padding:0 10px;cursor:pointer}
+
+/* ── Trial dialogs ────────────────────────────────────────────── */
+/* Persistent (non-dismissable) backdrop for the expired dialog */
+#trial-expired-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:center;justify-content:center;padding:24px}
+#trial-expired-overlay.open{display:flex}
+.trial-dialog{background:var(--bg);border-radius:18px;padding:24px;width:100%;max-width:440px;display:flex;flex-direction:column;gap:16px;align-items:stretch}
+.trial-dialog-title{font-size:20px;font-weight:600;color:var(--text-primary);text-align:center}
+.trial-dialog-body{font-size:15px;color:var(--text-secondary);line-height:1.6;text-align:center}
+/* Info dialog (dismissable, e.g. first-launch) */
+#trial-info-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:990;align-items:center;justify-content:center;padding:24px}
+#trial-info-overlay.open{display:flex}
+/* Payment method dialog */
+#payment-method-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:995;align-items:center;justify-content:center;padding:24px}
+#payment-method-overlay.open{display:flex}
 </style>
 <script>
 /* Dark mode: apply class immediately before first paint to avoid flash */
@@ -626,7 +640,33 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     </div>
   </div>
 </div>
+<!-- Trial Expired Dialog (persistent - not dismissable) -->
+<div id="trial-expired-overlay">
+  <div class="trial-dialog">
+    <div class="trial-dialog-title" id="trial-expired-title">Trial period expired</div>
+    <div class="trial-dialog-body" id="trial-expired-body">Please support the development of the app so that you can continue using it 🎉</div>
+    <button class="btn btn-solid" id="trial-expired-subscribe-btn" onclick="openPaymentMethodDialog()">Subscribe</button>
+  </div>
+</div>
 
+<!-- Trial Info Dialog (dismissable: first-launch / internet unavailable) -->
+<div id="trial-info-overlay" onclick="if(event.target.id==='trial-info-overlay')closeTrialInfoDialog()">
+  <div class="trial-dialog">
+    <div class="trial-dialog-title" id="trial-info-title">Information</div>
+    <div class="trial-dialog-body" id="trial-info-body"></div>
+    <button class="btn btn-solid" id="trial-info-btn" onclick="closeTrialInfoDialog()">OK</button>
+  </div>
+</div>
+
+<!-- Payment Method Dialog -->
+<div id="payment-method-overlay" onclick="if(event.target.id==='payment-method-overlay')closePaymentMethodDialog()">
+  <div class="trial-dialog">
+    <div class="trial-dialog-title" id="payment-method-title">Choose Payment Method</div>
+    <button class="btn btn-solid" id="payment-paypal-btn" onclick="initiatePayPal()" style="background:#003087;margin-top:8px">PayPal (2,90 €/Month)</button>
+    <button class="btn btn-solid" id="payment-googleplay-btn" onclick="initiateGooglePlay()">Google Play (2,90 €/Month)</button>
+    <button class="btn btn-text" id="payment-cancel-btn" onclick="closePaymentMethodDialog()" style="text-align:center">Cancel</button>
+  </div>
+</div>
 
 <script>
 /* ════════════════════════════════════════════════════════
@@ -3309,10 +3349,141 @@ window.onSystemMessageChanged = function(msg) {
   }
 };
 
-window.onTrialStateChanged = function(isExpired, isPurchased, message) {
-  // Refresh the donation card (show/hide the Pro button).
-  updateDonationCard();
+/* ════════════════════════════════════════════════════════
+   TRIAL UI CONFIG
+   Mirrors TrialUiConfig.kt – remote-updatable dialog text only.
+   All text defaults match the Kotlin Policy defaults exactly.
+   Load order: fetch trial-ui-overrides.json → _applyTrialUiOverrides()
+   (called in onAndroidReady alongside the other config fetches).
+════════════════════════════════════════════════════════ */
+const _trialUiDefaults = {
+  firstLaunchDialogTitle: 'Trial Information',
+  firstLaunchDialogBody:  'You can try Screen Operator for 7 days before you have to subscribe to support the development of more features.',
+  firstLaunchDialogButton: 'OK',
+  trialExpiredDialogTitle: 'Trial period expired',
+  trialExpiredDialogBody:  'Please support the development of the app so that you can continue using it \uD83C\uDF89',
+  trialExpiredDialogSubscribeButton: 'Subscribe',
+  paymentMethodDialogTitle: 'Choose Payment Method',
+  paymentMethodPayPalButtonLabel: 'PayPal (2,90 \u20ac/Month)',
+  paymentMethodGooglePlayButtonLabel: 'Google Play (2,90 \u20ac/Month)',
+  paymentMethodCancelButtonLabel: 'Cancel',
+  infoDialogTitle: 'Information',
 };
+let _trialUi = { ..._trialUiDefaults };
+
+function _applyTrialUiOverrides(json) {
+  try {
+    const obj = JSON.parse(json);
+    for (const key of Object.keys(_trialUiDefaults)) {
+      if (typeof obj[key] === 'string' && obj[key].trim()) {
+        _trialUi[key] = obj[key];
+      }
+    }
+  } catch(e) { console.warn('trial-ui-overrides.json parse error', e); }
+}
+
+/** Injects the current _trialUi texts into the visible DOM elements. */
+function _refreshTrialDialogTexts() {
+  const setT = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  setT('trial-expired-title',        _trialUi.trialExpiredDialogTitle);
+  setT('trial-expired-body',         _trialUi.trialExpiredDialogBody);
+  setT('trial-expired-subscribe-btn',_trialUi.trialExpiredDialogSubscribeButton);
+  setT('trial-info-title',           _trialUi.infoDialogTitle);
+  setT('trial-info-btn',             _trialUi.firstLaunchDialogButton);
+  setT('payment-method-title',       _trialUi.paymentMethodDialogTitle);
+  setT('payment-paypal-btn',         _trialUi.paymentMethodPayPalButtonLabel);
+  setT('payment-googleplay-btn',     _trialUi.paymentMethodGooglePlayButtonLabel);
+  setT('payment-cancel-btn',         _trialUi.paymentMethodCancelButtonLabel);
+}
+
+/* ── Trial dialog show/hide helpers ──────────────────── */
+function showTrialExpiredDialog() {
+  _refreshTrialDialogTexts();
+  document.getElementById('trial-expired-overlay').classList.add('open');
+  // Close any other trial dialog that might be open
+  document.getElementById('trial-info-overlay').classList.remove('open');
+}
+
+function showTrialInfoDialog(body) {
+  _refreshTrialDialogTexts();
+  const bodyEl = document.getElementById('trial-info-body');
+  if (bodyEl) bodyEl.textContent = body || _trialUi.firstLaunchDialogBody;
+  document.getElementById('trial-info-overlay').classList.add('open');
+}
+
+function closeTrialInfoDialog() {
+  document.getElementById('trial-info-overlay').classList.remove('open');
+}
+
+function openPaymentMethodDialog() {
+  _refreshTrialDialogTexts();
+  document.getElementById('payment-method-overlay').classList.add('open');
+}
+
+function closePaymentMethodDialog() {
+  document.getElementById('payment-method-overlay').classList.remove('open');
+}
+
+function initiatePayPal() {
+  closePaymentMethodDialog();
+  Bridge.initiateDonation();
+}
+
+function initiateGooglePlay() {
+  closePaymentMethodDialog();
+  Bridge.initiateDonation();
+}
+
+/* ── Trial state tracking (mirrors TrialManager.TrialState) ─────── */
+let _currentTrialState = 'NOT_YET_STARTED_AWAITING_INTERNET';
+
+/**
+ * Called by Android (MainActivity.updateTrialState via evaluateJavascript) whenever
+ * the trial state changes. Replaces the native Compose TrialStateDialogs composable.
+ *
+ * States that need WebView UI:
+ *  EXPIRED_INTERNET_TIME_CONFIRMED  → persistent (non-dismissable) trial-expired dialog
+ *  NOT_YET_STARTED_AWAITING_INTERNET / INTERNET_UNAVAILABLE_CANNOT_VERIFY
+ *                                   → dismissable info dialog (if message is non-empty)
+ *  ACTIVE_INTERNET_TIME_CONFIRMED / PURCHASED → close any open trial dialog
+ */
+window.onTrialStateChanged = function(isExpired, isPurchased, message) {
+  // Refresh the donation card (hide Pro button after purchase).
+  updateDonationCard();
+
+  if (isExpired) {
+    _currentTrialState = 'EXPIRED_INTERNET_TIME_CONFIRMED';
+    showTrialExpiredDialog();
+  } else if (isPurchased) {
+    _currentTrialState = 'PURCHASED';
+    // Close any open trial dialogs
+    document.getElementById('trial-expired-overlay').classList.remove('open');
+    document.getElementById('trial-info-overlay').classList.remove('open');
+  } else {
+    // Active or awaiting-internet states – show info dialog if there is a message
+    _currentTrialState = 'ACTIVE_OR_WAITING';
+    document.getElementById('trial-expired-overlay').classList.remove('open');
+    if (message && message.trim()) {
+      showTrialInfoDialog(message);
+    }
+  }
+};
+
+/**
+ * Called once during onAndroidReady to check the initial trial state, in case
+ * onTrialStateChanged was fired before the WebView finished loading.
+ */
+function _initTrialState() {
+  const purchased = Bridge.isPurchased();
+  if (purchased) {
+    updateDonationCard();
+    return;
+  }
+  // If already expired (confirmed expired flag is set in SharedPreferences), the
+  // native side will call onTrialStateChanged again shortly; nothing extra needed here.
+  // updateDonationCard handles the initial donation-card state.
+  updateDonationCard();
+}
 
 /**
  * Called by the native accessibility service when a Command.WebViewCustomAction is
@@ -3352,6 +3523,7 @@ window.onAndroidReady = function() {
   loadGenerationSettings();
   loadBackendPreference();
   updateDonationCard();
+  _initTrialState();
 
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
@@ -3447,7 +3619,12 @@ window.onAndroidReady = function() {
   // See docs/trial-ui-overrides.md.
   fetch('trial-ui-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
-    .then(json => { if (json) Bridge.setTrialUiOverrides(json); })
+    .then(json => {
+      if (!json) return;
+      Bridge.setTrialUiOverrides(json);
+      _applyTrialUiOverrides(json);  // also update JS-side trial dialog texts
+      _refreshTrialDialogTexts();
+    })
     .catch(() => { /* optional file */ });
 
   // Retunes Mistral request cooldown/backoff timing, model-download retry timing, and the
