@@ -749,6 +749,19 @@ const Bridge = {
   initiateDonation:()=>{ if(getInAndroid()) Android.initiateDonation(); else alert('Subscription flow would open here'); },
   isPurchased:()=> getInAndroid() ? Android.isPurchased() : false,
 
+  /* Trial state - backed by TrialManager's real SharedPreferences store when running in
+     Android, so the JS trial engine and native code share one single source of truth.
+     Falls back to localStorage only when running outside Android (browser testing). */
+  getTrialEndTime:()=> getInAndroid() ? Android.getTrialEndTime() : parseInt(LS.getItem('trialEndTime')||'-1',10),
+  setTrialEndTime:(ms)=>{ getInAndroid() ? Android.setTrialEndTime(ms) : LS.setItem('trialEndTime',String(ms)); },
+  hasConfirmedExpired:()=> getInAndroid() ? Android.hasConfirmedExpired() : (LS.getItem('trialConfirmedExpired')==='true'),
+  setConfirmedExpired:(v)=>{ getInAndroid() ? Android.setConfirmedExpired(v) : LS.setItem('trialConfirmedExpired',String(v)); },
+  isAwaitingFirstInternetTime:()=> getInAndroid() ? Android.isAwaitingFirstInternetTime() : (LS.getItem('trialAwaitingInternet')===null ? true : LS.getItem('trialAwaitingInternet')==='true'),
+  setAwaitingFirstInternetTime:(v)=>{ getInAndroid() ? Android.setAwaitingFirstInternetTime(v) : LS.setItem('trialAwaitingInternet',String(v)); },
+  getTrialDurationMs:()=> getInAndroid() ? Android.getTrialDurationMs() : parseInt(LS.getItem('trialDurationMsOverride')||'604800000',10),
+  isFirstLaunchInfoShown:()=> getInAndroid() ? Android.isFirstLaunchInfoShown() : (LS.getItem('trial_first_launch_info_shown')==='true'),
+  setFirstLaunchInfoShown:(v)=>{ getInAndroid() ? Android.setFirstLaunchInfoShown(v) : LS.setItem('trial_first_launch_info_shown',String(v)); },
+
   /* Command pattern overrides (remote-updatable command syntax for new models) */
   setCommandPatternOverrides:(json)=>{ if(getInAndroid()) return Android.setCommandPatternOverrides(json); },
   getCommandPatternOverrides:()=> getInAndroid() ? Android.getCommandPatternOverrides() : '[]',
@@ -3412,9 +3425,10 @@ function showTrialInfoDialogUI(body) {
 
 function closeTrialInfoDialog() {
   document.getElementById('trial-info-overlay').classList.remove('open');
-  // Mirror PREF_KEY_FIRST_LAUNCH_INFO_SHOWN from the old native code: once dismissed,
-  // never show the plain first-launch info dialog again (independent of trial expiry).
-  try { LS.setItem('trial_first_launch_info_shown', 'true'); } catch(e) {}
+  // Mirror PREF_KEY_FIRST_LAUNCH_INFO_SHOWN from the native code: once dismissed, never show
+  // the plain first-launch info dialog again (independent of trial expiry). Backed by the same
+  // native AppPrefs store as MainActivity's fallback UI, not a separate WebView-only flag.
+  try { Bridge.setFirstLaunchInfoShown(true); } catch(e) {}
 }
 
 function openPaymentMethodDialog() {
@@ -3452,11 +3466,6 @@ function initiateGooglePlay() {
    Bridge.isPurchased() / Bridge.initiateDonation(). This engine only
    decides the free-trial window and reflects native purchase state.
 ════════════════════════════════════════════════════════ */
-const TRIAL_LS_KEY_END_TIME        = 'aos_cfg_ts_val';           // trial UTC end time (ms)
-const TRIAL_LS_KEY_CONFIRMED_EXP   = 'aos_cfg_st_val';           // confirmed-expired flag
-const TRIAL_LS_KEY_AWAITING_INIT   = 'aos_initial_setup_pending';// awaiting first internet time
-const TRIAL_LS_KEY_DURATION_MS     = 'aos_trial_duration_ms';    // remote-overridable duration
-
 const TRIAL_DEFAULT_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, matches DEFAULT_TRIAL_DURATION_MS
 const TRIAL_TIME_API_URL = 'https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC';
 const TRIAL_CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes, matches CHECK_INTERVAL_MS
@@ -3476,49 +3485,62 @@ let _currentTrialState = TrialState.NOT_YET_STARTED_AWAITING_INTERNET;
 let _trialTimerHandle = null;
 let _trialTimerRunning = false;
 
+/*
+ * All trial state below is read/written through Bridge, which - when running inside the
+ * Android WebView - is backed by TrialManager's real SharedPreferences file
+ * ("AccessibilityService", same obfuscation as before). This keeps the JS trial engine and
+ * any native code that reads TrialManager directly (billing flows on resume/purchase, etc.)
+ * as a single synchronized source of truth. Previously this used WebView localStorage, which
+ * is a *different* on-disk store than the app's SharedPreferences and was never written to by
+ * native code, so the two could disagree (e.g. native purchase/restore logic updating
+ * SharedPreferences while the JS engine kept reading its own, stale localStorage copy).
+ * Only the browser-testing fallback path (getInAndroid() === false) still uses localStorage,
+ * since there is no native side to synchronize with there.
+ */
 function _trialDurationMs() {
-  const v = parseInt(LS.getItem(TRIAL_LS_KEY_DURATION_MS) || '', 10);
+  const v = Bridge.getTrialDurationMs();
   return (Number.isFinite(v) && v > 0) ? v : TRIAL_DEFAULT_DURATION_MS;
 }
 
 /** Applies a {"trialDurationMs": N} override, mirrors TrialDurationOverrideConfig.setRemoteOverride. */
 function _applyTrialDurationOverride(json) {
+  // On Android this is already applied natively via Bridge.setTrialDurationOverride(json)
+  // (see the trial-duration-overrides.json fetch below); Bridge.getTrialDurationMs() then
+  // reads the same TrialDurationOverrideConfig value. Nothing further to do here except keep
+  // the browser-testing fallback in sync.
+  if (getInAndroid()) return;
   try {
     const obj = JSON.parse(json);
     const ms = obj.trialDurationMs;
     if (typeof ms === 'number' && ms > 0) {
-      LS.setItem(TRIAL_LS_KEY_DURATION_MS, String(ms));
+      LS.setItem('trialDurationMsOverride', String(ms));
     }
   } catch(e) { /* ignore - keep previous/default duration */ }
 }
 
 function _getTrialEndTime() {
-  const v = LS.getItem(TRIAL_LS_KEY_END_TIME);
-  if (v == null) return null;
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : null;
+  const n = Bridge.getTrialEndTime();
+  return (Number.isFinite(n) && n >= 0) ? n : null;
 }
 
 function _setTrialEndTime(ms) {
-  LS.setItem(TRIAL_LS_KEY_END_TIME, String(ms));
+  Bridge.setTrialEndTime(ms);
 }
 
 function _hasConfirmedExpired() {
-  return LS.getItem(TRIAL_LS_KEY_CONFIRMED_EXP) === 'true';
+  return Bridge.hasConfirmedExpired();
 }
 
 function _setConfirmedExpired(v) {
-  LS.setItem(TRIAL_LS_KEY_CONFIRMED_EXP, v ? 'true' : 'false');
+  Bridge.setConfirmedExpired(v);
 }
 
 function _isAwaitingFirstInternetTime() {
-  // Mirrors KEY_INITIAL_SETUP_FLAG default = true (unset means "true").
-  const v = LS.getItem(TRIAL_LS_KEY_AWAITING_INIT);
-  return v === null ? true : v === 'true';
+  return Bridge.isAwaitingFirstInternetTime();
 }
 
 function _setAwaitingFirstInternetTime(v) {
-  LS.setItem(TRIAL_LS_KEY_AWAITING_INIT, v ? 'true' : 'false');
+  Bridge.setAwaitingFirstInternetTime(v);
 }
 
 /** Mirrors TrialManager.startTrialIfNecessaryWithInternetTime. */
@@ -3570,11 +3592,18 @@ function _computeTrialState(currentUtcTimeMsFromInternet) {
   }
 }
 
-/** One-time flag init, mirrors TrialManager.initializeTrialStateFlagsIfNecessary. */
+/**
+ * One-time flag init, mirrors TrialManager.initializeTrialStateFlagsIfNecessary. On Android
+ * this is redundant with the native MainActivity.onCreate call to the same Kotlin function
+ * (both ultimately read/write the same SharedPreferences file), but harmless - it only acts
+ * when literally no trial flags exist yet. Kept so the browser-testing fallback also gets a
+ * sane initial state.
+ */
 function _initializeTrialStateFlagsIfNecessary() {
-  const awaitingExists = LS.getItem(TRIAL_LS_KEY_AWAITING_INIT) !== null;
-  const endTimeExists  = LS.getItem(TRIAL_LS_KEY_END_TIME) !== null;
-  const confirmedExists= LS.getItem(TRIAL_LS_KEY_CONFIRMED_EXP) !== null;
+  if (getInAndroid()) return; // native MainActivity.onCreate already does this on the same store
+  const awaitingExists = LS.getItem('trialAwaitingInternet') !== null;
+  const endTimeExists  = LS.getItem('trialEndTime') !== null;
+  const confirmedExists= LS.getItem('trialConfirmedExpired') !== null;
   if (!awaitingExists && !endTimeExists && !confirmedExists && !Bridge.isPurchased()) {
     _setAwaitingFirstInternetTime(true);
   }
@@ -3600,7 +3629,7 @@ function _applyTrialState(newState, infoMessage) {
     document.getElementById('trial-expired-overlay').classList.remove('open');
     // Show the dismissable info dialog only once per state-transition-into-info, and only
     // if the user hasn't already permanently dismissed the first-launch info before.
-    const alreadyDismissedFirstLaunch = LS.getItem('trial_first_launch_info_shown') === 'true';
+    const alreadyDismissedFirstLaunch = Bridge.isFirstLaunchInfoShown();
     const isInfoState = (newState === TrialState.NOT_YET_STARTED_AWAITING_INTERNET ||
                           newState === TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY);
     if (isInfoState && !alreadyDismissedFirstLaunch && infoMessage && infoMessage.trim()) {
@@ -3731,6 +3760,14 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
   if (isPurchased) {
     _setConfirmedExpired(false);
     _applyTrialState(TrialState.PURCHASED, '');
+    _stopTrialTimer();
+    return;
+  }
+  if (isExpired) {
+    // Trust the native signal directly as a safety net: native TrialManager is the ultimate
+    // authority here (it's the same SharedPreferences store JS now reads via Bridge, but this
+    // guards against any transient mismatch instead of silently un-blocking the app).
+    _applyTrialState(TrialState.EXPIRED_INTERNET_TIME_CONFIRMED, '');
     _stopTrialTimer();
     return;
   }
