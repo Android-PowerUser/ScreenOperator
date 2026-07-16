@@ -287,4 +287,42 @@ object TrialManager {
             Log.d(TAG, "One or more core trial-related flags (camouflaged) already exist. No initialization needed for KEY_INITIAL_SETUP_FLAG.")
         }
     }
+
+    // --- START: WebView bridge accessors ---
+    // Comment for future AI: These expose the exact same SharedPreferences-backed state
+    // (same file "AccessibilityService", same obfuscation for the timestamp/expired flag) to
+    // the WebView JS trial engine via WebViewBridge, so the JS trial engine and any native
+    // code reading TrialManager directly (billing flows, TrialTimerService, etc.) always see
+    // one single source of truth instead of two independent, unsynchronized stores.
+
+    /** Raw trial end time in epoch ms, or -1 if not yet set. For WebViewBridge use. */
+    fun getTrialUtcEndTimeForBridge(context: Context): Long {
+        return getTrialUtcEndTime(context) ?: -1L
+    }
+
+    /** Sets the trial end time (epoch ms). For WebViewBridge use. */
+    fun setTrialUtcEndTimeForBridge(context: Context, utcEndTimeMs: Long) {
+        saveTrialUtcEndTime(context, utcEndTimeMs)
+    }
+
+    /** Whether trial expiry has already been confirmed (persisted, sticky). For WebViewBridge use. */
+    fun hasConfirmedExpiredForBridge(context: Context): Boolean {
+        return hasConfirmedExpiredFlag(context)
+    }
+
+    /** Persists the confirmed-expired flag. For WebViewBridge use. */
+    fun setConfirmedExpiredForBridge(context: Context, expired: Boolean) {
+        saveConfirmedExpiredFlag(context, expired)
+    }
+
+    /** Whether the app is still awaiting its first internet-time sync to start the trial. For WebViewBridge use. */
+    fun isAwaitingFirstInternetTimeForBridge(context: Context): Boolean {
+        return getSharedPreferences(context).getBoolean(KEY_INITIAL_SETUP_FLAG, true)
+    }
+
+    /** Sets the awaiting-first-internet-time flag. For WebViewBridge use. */
+    fun setAwaitingFirstInternetTimeForBridge(context: Context, awaiting: Boolean) {
+        getSharedPreferences(context).edit().putBoolean(KEY_INITIAL_SETUP_FLAG, awaiting).apply()
+    }
+    // --- END: WebView bridge accessors ---
 }
