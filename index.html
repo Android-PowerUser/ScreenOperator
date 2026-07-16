@@ -3400,11 +3400,10 @@ function _refreshTrialDialogTexts() {
 function showTrialExpiredDialog() {
   _refreshTrialDialogTexts();
   document.getElementById('trial-expired-overlay').classList.add('open');
-  // Close any other trial dialog that might be open
   document.getElementById('trial-info-overlay').classList.remove('open');
 }
 
-function showTrialInfoDialog(body) {
+function showTrialInfoDialogUI(body) {
   _refreshTrialDialogTexts();
   const bodyEl = document.getElementById('trial-info-body');
   if (bodyEl) bodyEl.textContent = body || _trialUi.firstLaunchDialogBody;
@@ -3413,6 +3412,9 @@ function showTrialInfoDialog(body) {
 
 function closeTrialInfoDialog() {
   document.getElementById('trial-info-overlay').classList.remove('open');
+  // Mirror PREF_KEY_FIRST_LAUNCH_INFO_SHOWN from the old native code: once dismissed,
+  // never show the plain first-launch info dialog again (independent of trial expiry).
+  try { LS.setItem('trial_first_launch_info_shown', 'true'); } catch(e) {}
 }
 
 function openPaymentMethodDialog() {
@@ -3434,56 +3436,313 @@ function initiateGooglePlay() {
   Bridge.initiateDonation();
 }
 
-/* ── Trial state tracking (mirrors TrialManager.TrialState) ─────── */
-let _currentTrialState = 'NOT_YET_STARTED_AWAITING_INTERNET';
+/* ════════════════════════════════════════════════════════
+   TRIAL ENGINE (full logic, mirrors TrialManager.kt +
+   TrialTimerService.kt).
+
+   Storage: localStorage, so it persists across app restarts inside the
+   WebView's own storage (domStorageEnabled=true, stable origin via
+   loadDataWithBaseURL). Kept intentionally under unobtrusive-looking
+   keys, mirroring the original native camouflage intent (not real
+   security - a determined user can still find these devtools-side -
+   but avoids advertising "trial" in casual inspection).
+
+   Native side note: the real purchase-state check (Google Play Billing /
+   PayPal server confirmation) still happens natively - see
+   Bridge.isPurchased() / Bridge.initiateDonation(). This engine only
+   decides the free-trial window and reflects native purchase state.
+════════════════════════════════════════════════════════ */
+const TRIAL_LS_KEY_END_TIME        = 'aos_cfg_ts_val';           // trial UTC end time (ms)
+const TRIAL_LS_KEY_CONFIRMED_EXP   = 'aos_cfg_st_val';           // confirmed-expired flag
+const TRIAL_LS_KEY_AWAITING_INIT   = 'aos_initial_setup_pending';// awaiting first internet time
+const TRIAL_LS_KEY_DURATION_MS     = 'aos_trial_duration_ms';    // remote-overridable duration
+
+const TRIAL_DEFAULT_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, matches DEFAULT_TRIAL_DURATION_MS
+const TRIAL_TIME_API_URL = 'https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC';
+const TRIAL_CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes, matches CHECK_INTERVAL_MS
+const TRIAL_CONNECT_TIMEOUT_MS = 30000;
+const TRIAL_MAX_RETRIES = 3;
+const TRIAL_RETRY_DELAYS_MS = [5000, 15000, 30000];
+
+const TrialState = Object.freeze({
+  NOT_YET_STARTED_AWAITING_INTERNET: 'NOT_YET_STARTED_AWAITING_INTERNET',
+  ACTIVE_INTERNET_TIME_CONFIRMED:    'ACTIVE_INTERNET_TIME_CONFIRMED',
+  EXPIRED_INTERNET_TIME_CONFIRMED:   'EXPIRED_INTERNET_TIME_CONFIRMED',
+  PURCHASED:                         'PURCHASED',
+  INTERNET_UNAVAILABLE_CANNOT_VERIFY:'INTERNET_UNAVAILABLE_CANNOT_VERIFY',
+});
+
+let _currentTrialState = TrialState.NOT_YET_STARTED_AWAITING_INTERNET;
+let _trialTimerHandle = null;
+let _trialTimerRunning = false;
+
+function _trialDurationMs() {
+  const v = parseInt(LS.getItem(TRIAL_LS_KEY_DURATION_MS) || '', 10);
+  return (Number.isFinite(v) && v > 0) ? v : TRIAL_DEFAULT_DURATION_MS;
+}
+
+/** Applies a {"trialDurationMs": N} override, mirrors TrialDurationOverrideConfig.setRemoteOverride. */
+function _applyTrialDurationOverride(json) {
+  try {
+    const obj = JSON.parse(json);
+    const ms = obj.trialDurationMs;
+    if (typeof ms === 'number' && ms > 0) {
+      LS.setItem(TRIAL_LS_KEY_DURATION_MS, String(ms));
+    }
+  } catch(e) { /* ignore - keep previous/default duration */ }
+}
+
+function _getTrialEndTime() {
+  const v = LS.getItem(TRIAL_LS_KEY_END_TIME);
+  if (v == null) return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function _setTrialEndTime(ms) {
+  LS.setItem(TRIAL_LS_KEY_END_TIME, String(ms));
+}
+
+function _hasConfirmedExpired() {
+  return LS.getItem(TRIAL_LS_KEY_CONFIRMED_EXP) === 'true';
+}
+
+function _setConfirmedExpired(v) {
+  LS.setItem(TRIAL_LS_KEY_CONFIRMED_EXP, v ? 'true' : 'false');
+}
+
+function _isAwaitingFirstInternetTime() {
+  // Mirrors KEY_INITIAL_SETUP_FLAG default = true (unset means "true").
+  const v = LS.getItem(TRIAL_LS_KEY_AWAITING_INIT);
+  return v === null ? true : v === 'true';
+}
+
+function _setAwaitingFirstInternetTime(v) {
+  LS.setItem(TRIAL_LS_KEY_AWAITING_INIT, v ? 'true' : 'false');
+}
+
+/** Mirrors TrialManager.startTrialIfNecessaryWithInternetTime. */
+function _startTrialIfNecessaryWithInternetTime(currentUtcTimeMs) {
+  if (Bridge.isPurchased()) return;
+  const existingEndTime = _getTrialEndTime();
+  const awaiting = _isAwaitingFirstInternetTime();
+  if (existingEndTime === null && awaiting) {
+    const endTime = currentUtcTimeMs + _trialDurationMs();
+    _setTrialEndTime(endTime);
+    _setAwaitingFirstInternetTime(false);
+  }
+}
 
 /**
- * Called by Android (MainActivity.updateTrialState via evaluateJavascript) whenever
- * the trial state changes. Replaces the native Compose TrialStateDialogs composable.
- *
- * States that need WebView UI:
- *  EXPIRED_INTERNET_TIME_CONFIRMED  → persistent (non-dismissable) trial-expired dialog
- *  NOT_YET_STARTED_AWAITING_INTERNET / INTERNET_UNAVAILABLE_CANNOT_VERIFY
- *                                   → dismissable info dialog (if message is non-empty)
- *  ACTIVE_INTERNET_TIME_CONFIRMED / PURCHASED → close any open trial dialog
+ * Mirrors TrialManager.getTrialState. `currentUtcTimeMsFromInternet` is null when no
+ * internet time is available for this check (falls back to local device clock, matching
+ * the Kotlin implementation exactly - including its anti-tampering behavior of also
+ * expiring on local time alone once the window has passed).
  */
-window.onTrialStateChanged = function(isExpired, isPurchased, message) {
-  // Refresh the donation card (hide Pro button after purchase).
+function _computeTrialState(currentUtcTimeMsFromInternet) {
+  if (Bridge.isPurchased()) return TrialState.PURCHASED;
+
+  const awaiting = _isAwaitingFirstInternetTime();
+  const endTime = _getTrialEndTime();
+  const confirmedExpired = _hasConfirmedExpired();
+  const localNow = Date.now();
+
+  if (confirmedExpired) return TrialState.EXPIRED_INTERNET_TIME_CONFIRMED;
+
+  if (endTime === null) {
+    return awaiting
+      ? TrialState.NOT_YET_STARTED_AWAITING_INTERNET
+      : TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY;
+  }
+
+  if (currentUtcTimeMsFromInternet != null) {
+    if (currentUtcTimeMsFromInternet >= endTime || localNow >= endTime) {
+      _setConfirmedExpired(true);
+      return TrialState.EXPIRED_INTERNET_TIME_CONFIRMED;
+    }
+    return TrialState.ACTIVE_INTERNET_TIME_CONFIRMED;
+  } else {
+    if (localNow >= endTime) {
+      _setConfirmedExpired(true);
+      return TrialState.EXPIRED_INTERNET_TIME_CONFIRMED;
+    }
+    return TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY;
+  }
+}
+
+/** One-time flag init, mirrors TrialManager.initializeTrialStateFlagsIfNecessary. */
+function _initializeTrialStateFlagsIfNecessary() {
+  const awaitingExists = LS.getItem(TRIAL_LS_KEY_AWAITING_INIT) !== null;
+  const endTimeExists  = LS.getItem(TRIAL_LS_KEY_END_TIME) !== null;
+  const confirmedExists= LS.getItem(TRIAL_LS_KEY_CONFIRMED_EXP) !== null;
+  if (!awaitingExists && !endTimeExists && !confirmedExists && !Bridge.isPurchased()) {
+    _setAwaitingFirstInternetTime(true);
+  }
+}
+
+/**
+ * Applies a newly computed trial state: persists as needed (handled by _computeTrialState
+ * itself for the expiry flag), updates the dialogs, and returns whether the app content
+ * should be considered usable (i.e. not blocked).
+ */
+function _applyTrialState(newState, infoMessage) {
+  const oldState = _currentTrialState;
+  _currentTrialState = newState;
+
   updateDonationCard();
 
-  if (isExpired) {
-    _currentTrialState = 'EXPIRED_INTERNET_TIME_CONFIRMED';
+  if (newState === TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
     showTrialExpiredDialog();
-  } else if (isPurchased) {
-    _currentTrialState = 'PURCHASED';
-    // Close any open trial dialogs
+  } else if (newState === TrialState.PURCHASED) {
     document.getElementById('trial-expired-overlay').classList.remove('open');
     document.getElementById('trial-info-overlay').classList.remove('open');
   } else {
-    // Active or awaiting-internet states – show info dialog if there is a message
-    _currentTrialState = 'ACTIVE_OR_WAITING';
     document.getElementById('trial-expired-overlay').classList.remove('open');
-    if (message && message.trim()) {
-      showTrialInfoDialog(message);
+    // Show the dismissable info dialog only once per state-transition-into-info, and only
+    // if the user hasn't already permanently dismissed the first-launch info before.
+    const alreadyDismissedFirstLaunch = LS.getItem('trial_first_launch_info_shown') === 'true';
+    const isInfoState = (newState === TrialState.NOT_YET_STARTED_AWAITING_INTERNET ||
+                          newState === TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY);
+    if (isInfoState && !alreadyDismissedFirstLaunch && infoMessage && infoMessage.trim()) {
+      showTrialInfoDialogUI(infoMessage);
     }
+  }
+
+  if (oldState !== newState) {
+    console.log('[Trial] state changed', oldState, '->', newState);
+  }
+}
+
+/** Info message shown for the two non-blocking "awaiting/unavailable" states. */
+function _infoMessageFor(state) {
+  if (state === TrialState.NOT_YET_STARTED_AWAITING_INTERNET) {
+    return _trialUi.firstLaunchDialogBody;
+  }
+  if (state === TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY) {
+    return _trialUi.firstLaunchDialogBody;
+  }
+  return '';
+}
+
+/** True while the trial-expired dialog should block the rest of the app UI. */
+function isTrialBlocking() {
+  return _currentTrialState === TrialState.EXPIRED_INTERNET_TIME_CONFIRMED;
+}
+
+/**
+ * Fetches current UTC time from timeapi.io with retry/backoff, mirrors
+ * TrialTimerService.startTimerLogic's single fetch attempt (one "round" of up to
+ * MAX_RETRIES attempts with increasing delay, returns null if all attempts fail).
+ */
+async function _fetchInternetUtcTimeMsWithRetry() {
+  for (let attempt = 0; attempt < TRIAL_MAX_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TRIAL_CONNECT_TIMEOUT_MS);
+      const resp = await fetch(TRIAL_TIME_API_URL, { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timeoutId);
+      if (resp.ok) {
+        const data = await resp.json();
+        const dateTimeStr = data.dateTime; // e.g. "2026-07-16T12:34:56.789012"
+        // Parse as UTC (the API endpoint itself is pinned to Etc/UTC).
+        const isoUtc = dateTimeStr.endsWith('Z') ? dateTimeStr : dateTimeStr + 'Z';
+        const ms = Date.parse(isoUtc);
+        if (Number.isFinite(ms)) return ms;
+      }
+    } catch (e) {
+      // fall through to retry
+    }
+    if (attempt < TRIAL_MAX_RETRIES - 1) {
+      const delayMs = TRIAL_RETRY_DELAYS_MS[attempt] || TRIAL_RETRY_DELAYS_MS[TRIAL_RETRY_DELAYS_MS.length - 1];
+      await new Promise(res => setTimeout(res, delayMs));
+    }
+  }
+  return null; // all attempts failed
+}
+
+/** One full check cycle: fetch internet time, update state, refresh dialogs. */
+async function _trialCheckCycle() {
+  const internetTimeMs = await _fetchInternetUtcTimeMsWithRetry();
+
+  if (internetTimeMs != null) {
+    _startTrialIfNecessaryWithInternetTime(internetTimeMs);
+  }
+
+  const newState = _computeTrialState(internetTimeMs);
+  _applyTrialState(newState, _infoMessageFor(newState));
+
+  // Matches TrialTimerService: stop polling once purchased or confirmed expired.
+  if (newState === TrialState.PURCHASED || newState === TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+    _stopTrialTimer();
+  }
+}
+
+function _stopTrialTimer() {
+  _trialTimerRunning = false;
+  if (_trialTimerHandle) {
+    clearTimeout(_trialTimerHandle);
+    _trialTimerHandle = null;
+  }
+}
+
+/** Starts the repeating 10-minute check loop, matches TrialTimerService.startTimerLogic. */
+function _startTrialTimerLoop() {
+  if (_trialTimerRunning) return;
+  _trialTimerRunning = true;
+
+  const loop = async () => {
+    if (!_trialTimerRunning) return;
+    await _trialCheckCycle();
+    if (!_trialTimerRunning) return; // may have been stopped inside _trialCheckCycle
+    _trialTimerHandle = setTimeout(loop, TRIAL_CHECK_INTERVAL_MS);
+  };
+  loop();
+}
+
+/**
+ * Entry point, called once from onAndroidReady. Mirrors the combination of
+ * MainActivity.onCreate's trial setup + TrialTimerService start decision
+ * (MainActivityBillingStateEvaluator.shouldStartTrialService).
+ */
+function _initTrialState() {
+  _initializeTrialStateFlagsIfNecessary();
+
+  // Immediate state check using only the local clock/flags (no network yet), so the UI
+  // reflects something sensible instantly, same as MainActivity.onCreate's first
+  // `TrialManager.getTrialState(this, null)` call before any internet time exists.
+  const initialState = _computeTrialState(null);
+  _applyTrialState(initialState, _infoMessageFor(initialState));
+
+  // Start the polling loop unless already purchased or already confirmed expired -
+  // mirrors MainActivityBillingStateEvaluator.shouldStartTrialService.
+  if (initialState !== TrialState.PURCHASED && initialState !== TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+    _startTrialTimerLoop();
+  }
+}
+
+/**
+ * Called by Android (MainActivity.updateTrialState via evaluateJavascript) when native
+ * billing code changes purchase state (e.g. right after a successful purchase, or when a
+ * subscription is found to be no longer active on resume). The trial engine above is the
+ * source of truth for trial timing; this hook just re-syncs immediately instead of waiting
+ * for the next 10-minute poll.
+ */
+window.onTrialStateChanged = function(isExpired, isPurchased, message) {
+  if (isPurchased) {
+    _setConfirmedExpired(false);
+    _applyTrialState(TrialState.PURCHASED, '');
+    _stopTrialTimer();
+    return;
+  }
+  // Re-derive fully from stored state/local clock; a real internet re-check happens on the
+  // next poll tick (or immediately if the app was just reopened - see _initTrialState).
+  const newState = _computeTrialState(null);
+  _applyTrialState(newState, message || _infoMessageFor(newState));
+  if (newState !== TrialState.EXPIRED_INTERNET_TIME_CONFIRMED && !_trialTimerRunning) {
+    _startTrialTimerLoop();
   }
 };
 
-/**
- * Called once during onAndroidReady to check the initial trial state, in case
- * onTrialStateChanged was fired before the WebView finished loading.
- */
-function _initTrialState() {
-  const purchased = Bridge.isPurchased();
-  if (purchased) {
-    updateDonationCard();
-    return;
-  }
-  // If already expired (confirmed expired flag is set in SharedPreferences), the
-  // native side will call onTrialStateChanged again shortly; nothing extra needed here.
-  // updateDonationCard handles the initial donation-card state.
-  updateDonationCard();
-}
 
 /**
  * Called by the native accessibility service when a Command.WebViewCustomAction is
@@ -3641,7 +3900,11 @@ window.onAndroidReady = function() {
   // docs/trial-duration-overrides.md.
   fetch('trial-duration-overrides.json', { cache: 'no-store' })
     .then(r => r.ok ? r.text() : null)
-    .then(json => { if (json) Bridge.setTrialDurationOverride(json); })
+    .then(json => {
+      if (!json) return;
+      Bridge.setTrialDurationOverride(json);
+      _applyTrialDurationOverride(json); // keep JS-side trial engine in sync too
+    })
     .catch(() => { /* optional file */ });
 
   // Better out-of-the-box temperature/topP/topK for a model the user hasn't customized yet -
