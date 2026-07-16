@@ -660,11 +660,60 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    /**
+     * On-disk cache file for the remote WebView `index.html`, so the next app start can show
+     * the WebView UI immediately (from cache) instead of waiting for a network round trip,
+     * while a fresh copy is fetched in the background and swapped in - replacing the cache -
+     * as soon as it successfully arrives. If the network fetch fails, the cached copy (and
+     * whatever is currently displayed) is left untouched.
+     */
+    private val webViewCacheFile: File
+        get() = File(filesDir, "webview_index_cache.html")
+
+    private fun readWebViewCache(): String? {
+        return try {
+            val f = webViewCacheFile
+            if (f.exists() && f.length() > 0) {
+                val content = f.readText(Charsets.UTF_8)
+                Log.d(TAG, "readWebViewCache: Loaded cached HTML ({} Zeichen).".format(content.length))
+                content
+            } else {
+                Log.d(TAG, "readWebViewCache: No cache file present yet.")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "readWebViewCache: Failed to read cache file", e)
+            null
+        }
+    }
+
+    private fun writeWebViewCache(content: String) {
+        try {
+            webViewCacheFile.writeText(content, Charsets.UTF_8)
+            Log.d(TAG, "writeWebViewCache: Cache file updated ({} Zeichen).".format(content.length))
+        } catch (e: Exception) {
+            Log.e(TAG, "writeWebViewCache: Failed to write cache file", e)
+        }
+    }
+
     private fun loadWebViewContent() {
-        if (webViewHtmlContent != null) return
         val htmlUrl = "https://android-poweruser.github.io/ScreenOperator/index.html"
+
+        // 1) Show the cached copy immediately, if any, so the WebView appears instantly on
+        //    every start after the first successful load - without waiting on the network.
+        if (webViewHtmlContent == null) {
+            readWebViewCache()?.let { cached ->
+                webViewHtmlContent = cached
+            }
+        }
+
+        // 2) Always attempt a fresh network fetch in the background (regardless of whether a
+        //    cached/in-memory copy is already showing), so a newly published index.html
+        //    replaces the cached one for this session and for the next app start. This is the
+        //    same "always try network, replace cache on success" behavior loadWebViewContent
+        //    had before, just no longer gated on webViewHtmlContent being null so the swap can
+        //    still happen after the cache has already been shown.
         lifecycleScope.launch(Dispatchers.IO) {
-            if (webViewHtmlContent != null) return@launch
             try {
                 val client = OkHttpClient()
                 val request = Request.Builder().url(htmlUrl).build()
@@ -675,14 +724,25 @@ class MainActivity : ComponentActivity() {
 
                 if (response.isSuccessful && !body.isNullOrBlank()) {
                     Log.d(TAG, "loadWebViewContent: HTML erfolgreich geladen ({} Zeichen).".format(body.length))
+                    // Persist to disk first so the cache is updated even if this is the very
+                    // first successful load of the app (nothing to compare against yet).
+                    writeWebViewCache(body)
                     withContext(Dispatchers.Main) {
-                        webViewHtmlContent = body
+                        // Only trigger a (re)load of the WebView if the content actually
+                        // changed, to avoid an unnecessary reload/flash when the fetched HTML
+                        // is identical to what's already showing (e.g. cache hit + unchanged
+                        // remote file).
+                        if (webViewHtmlContent != body) {
+                            webViewHtmlContent = body
+                        }
                     }
                 } else {
                     Log.e(TAG, "loadWebViewContent: Laden fehlgeschlagen. responseCode={}".format(responseCode))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "loadWebViewContent: Exception beim Laden des HTML-Inhalts", e)
+                // Network/parse failure: intentionally leave the cache file and the currently
+                // displayed webViewHtmlContent (cached or null) untouched.
             }
         }
     }
@@ -760,36 +820,68 @@ class MainActivity : ComponentActivity() {
             GenerativeAISample {
                 Scaffold { innerPadding ->
                     val htmlContent = webViewHtmlContent
-                    // ── Dialogs: always rendered so they float above WebView too ──────────
-                    TrialStateDialogs(
-                        trialState = currentTrialState,
-                        showTrialInfoDialog = showTrialInfoDialog,
-                        trialInfoMessage = trialInfoMessage,
-                        onDismissTrialInfo = {
-                            showTrialInfoDialog = false
-                            prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                        },
-                        onPurchaseClick = { initiateDonationPurchase() }
-                    )
-
-                    // PaymentMethodDialog must also float above the WebView UI: it can be
-                    // triggered by TrialExpiredDialog's "Subscribe" button above, which is
-                    // itself rendered unconditionally. Previously this dialog lived only in
-                    // the `else` branch below, so when the WebView UI was active
-                    // (htmlContent != null) setting showPaymentMethodDialog = true had no
-                    // visible effect at all — the "Subscribe" button appeared to do nothing.
-                    if (showPaymentMethodDialog) {
-                        PaymentMethodDialog(
-                            onDismiss = { showPaymentMethodDialog = false },
-                            onPayPalClick = {
-                                showPaymentMethodDialog = false
-                                Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_paypal_fallback_unavailable", "PayPal ist in dieser Fallback-UI noch nicht verfügbar."), Toast.LENGTH_LONG).show()
+                    // ── Trial/payment dialogs (native Compose) ─────────────────────────────
+                    // NOTE: This native dialog UI has been superseded by the WebView JS trial
+                    // engine (see index.html: TrialState machine, _initTrialState,
+                    // window.onTrialStateChanged, showTrialExpiredDialog / showTrialInfoDialogUI /
+                    // openPaymentMethodDialog). Rendering both at once showed the dialogs twice
+                    // whenever the WebView UI was active. Commented out rather than deleted so
+                    // it stays available as the dialog UI for the `htmlContent == null` fallback
+                    // path below, in case remote WebView content ever fails to load - see that
+                    // branch's own (still-active) FirstLaunchInfoDialog/PaymentMethodDialog calls
+                    // further down in this file.
+                    //
+                    // TrialStateDialogs(
+                    //     trialState = currentTrialState,
+                    //     showTrialInfoDialog = showTrialInfoDialog,
+                    //     trialInfoMessage = trialInfoMessage,
+                    //     onDismissTrialInfo = {
+                    //         showTrialInfoDialog = false
+                    //         prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
+                    //     },
+                    //     onPurchaseClick = { initiateDonationPurchase() }
+                    // )
+                    //
+                    // if (showPaymentMethodDialog) {
+                    //     PaymentMethodDialog(
+                    //         onDismiss = { showPaymentMethodDialog = false },
+                    //         onPayPalClick = {
+                    //             showPaymentMethodDialog = false
+                    //             Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_paypal_fallback_unavailable", "PayPal ist in dieser Fallback-UI noch nicht verfügbar."), Toast.LENGTH_LONG).show()
+                    //         },
+                    //         onGooglePlayClick = {
+                    //             showPaymentMethodDialog = false
+                    //             launchGooglePlayBilling()
+                    //         }
+                    //     )
+                    // }
+                    // Only show these dialogs natively when the WebView content itself hasn't
+                    // loaded yet (fallback UI branch), so there is no chance of double-rendering
+                    // once the WebView is showing its own JS-driven trial dialogs.
+                    if (htmlContent == null) {
+                        TrialStateDialogs(
+                            trialState = currentTrialState,
+                            showTrialInfoDialog = showTrialInfoDialog,
+                            trialInfoMessage = trialInfoMessage,
+                            onDismissTrialInfo = {
+                                showTrialInfoDialog = false
+                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
                             },
-                            onGooglePlayClick = {
-                                showPaymentMethodDialog = false
-                                launchGooglePlayBilling()
-                            }
+                            onPurchaseClick = { initiateDonationPurchase() }
                         )
+                        if (showPaymentMethodDialog) {
+                            PaymentMethodDialog(
+                                onDismiss = { showPaymentMethodDialog = false },
+                                onPayPalClick = {
+                                    showPaymentMethodDialog = false
+                                    Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_paypal_fallback_unavailable", "PayPal ist in dieser Fallback-UI noch nicht verfügbar."), Toast.LENGTH_LONG).show()
+                                },
+                                onGooglePlayClick = {
+                                    showPaymentMethodDialog = false
+                                    launchGooglePlayBilling()
+                                }
+                            )
+                        }
                     }
                     // ─────────────────────────────────────────────────────────────────────
 
@@ -881,7 +973,31 @@ class MainActivity : ComponentActivity() {
                                     // lieferte "text/plain", was den Inhalt als Rohtext anzeigte.
                                     this@MainActivity.webViewInstance = this
                                     addJavascriptInterface(WebViewBridge(this@MainActivity), "Android")
+                                    // Tag remembers which HTML string is currently loaded, so `update`
+                                    // below can detect when a background network refresh has replaced
+                                    // the (possibly cached) content that was shown at factory-time.
+                                    tag = htmlContent
                                     loadDataWithBaseURL(
+                                        "https://android-poweruser.github.io/ScreenOperator/",
+                                        htmlContent,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
+                                }
+                            },
+                            update = { webView ->
+                                // Called on every recomposition with the latest `htmlContent`.
+                                // If it differs from what's currently loaded (e.g. the initial
+                                // cache-based load was just replaced by a fresh network fetch in
+                                // loadWebViewContent()), reload the WebView with the new content
+                                // so the cached version gets visibly replaced, per the caching
+                                // behavior: show cache instantly, then swap in network content
+                                // once it successfully arrives.
+                                if (webView.tag != htmlContent) {
+                                    Log.d(TAG, "AndroidView.update: webViewHtmlContent changed, reloading WebView with fresh content.")
+                                    webView.tag = htmlContent
+                                    webView.loadDataWithBaseURL(
                                         "https://android-poweruser.github.io/ScreenOperator/",
                                         htmlContent,
                                         "text/html",
