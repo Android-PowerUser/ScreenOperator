@@ -645,7 +645,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="trial-dialog">
     <div class="trial-dialog-title" id="trial-expired-title">Trial period expired</div>
     <div class="trial-dialog-body" id="trial-expired-body">Please support the development of the app so that you can continue using it 🎉</div>
-    <button class="btn btn-solid" id="trial-expired-subscribe-btn" onclick="openPaymentMethodDialog()">Subscribe</button>
+    <button class="btn btn-solid" id="trial-expired-subscribe-btn" onclick="initiateGooglePlay()">Subscribe</button>
   </div>
 </div>
 
@@ -658,7 +658,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   </div>
 </div>
 
-<!-- Payment Method Dialog -->
+<!-- Payment Method Dialog - commented out: PayPal not yet functional, Subscribe button now
+     goes directly to Google Play billing (see initiateGooglePlay() below). Kept here, not
+     deleted, so it can be re-enabled once PayPal is wired up.
 <div id="payment-method-overlay" onclick="if(event.target.id==='payment-method-overlay')closePaymentMethodDialog()">
   <div class="trial-dialog">
     <div class="trial-dialog-title" id="payment-method-title">Choose Payment Method</div>
@@ -667,6 +669,8 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <button class="btn btn-text" id="payment-cancel-btn" onclick="closePaymentMethodDialog()" style="text-align:center">Cancel</button>
   </div>
 </div>
+-->
+
 
 <script>
 /* ════════════════════════════════════════════════════════
@@ -3431,6 +3435,10 @@ function closeTrialInfoDialog() {
   try { Bridge.setFirstLaunchInfoShown(true); } catch(e) {}
 }
 
+/* Payment method chooser dialog - commented out: PayPal not yet functional, Subscribe goes
+   straight to Google Play billing now. Kept here, not deleted, so it can be re-enabled once
+   PayPal is wired up (also re-enable the matching HTML block above and the Subscribe button's
+   onclick="openPaymentMethodDialog()").
 function openPaymentMethodDialog() {
   _refreshTrialDialogTexts();
   document.getElementById('payment-method-overlay').classList.add('open');
@@ -3444,9 +3452,9 @@ function initiatePayPal() {
   closePaymentMethodDialog();
   Bridge.initiateDonation();
 }
+*/
 
 function initiateGooglePlay() {
-  closePaymentMethodDialog();
   Bridge.initiateDonation();
 }
 
