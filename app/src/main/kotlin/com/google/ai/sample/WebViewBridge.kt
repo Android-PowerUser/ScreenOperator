@@ -361,6 +361,62 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return TrialManager.isPurchased(context)
     }
 
+    // ── Trial state (backs the WebView JS trial engine with TrialManager's real,
+    //    obfuscated SharedPreferences store - file "AccessibilityService" - instead of a
+    //    separate WebView localStorage store that would otherwise be a second, unsynchronized
+    //    source of truth for the same trial state) ────────────────────────────────────────
+
+    @JavascriptInterface
+    fun getTrialEndTime(): Long {
+        return TrialManager.getTrialUtcEndTimeForBridge(context)
+    }
+
+    @JavascriptInterface
+    fun setTrialEndTime(utcEndTimeMs: Long) {
+        TrialManager.setTrialUtcEndTimeForBridge(context, utcEndTimeMs)
+    }
+
+    @JavascriptInterface
+    fun hasConfirmedExpired(): Boolean {
+        return TrialManager.hasConfirmedExpiredForBridge(context)
+    }
+
+    @JavascriptInterface
+    fun setConfirmedExpired(expired: Boolean) {
+        TrialManager.setConfirmedExpiredForBridge(context, expired)
+    }
+
+    @JavascriptInterface
+    fun isAwaitingFirstInternetTime(): Boolean {
+        return TrialManager.isAwaitingFirstInternetTimeForBridge(context)
+    }
+
+    @JavascriptInterface
+    fun setAwaitingFirstInternetTime(awaiting: Boolean) {
+        TrialManager.setAwaitingFirstInternetTimeForBridge(context, awaiting)
+    }
+
+    @JavascriptInterface
+    fun getTrialDurationMs(): Long {
+        return com.google.ai.sample.util.TrialDurationOverrideConfig.current()
+    }
+
+    // Backed by the same "AppPrefs" SharedPreferences file / "firstLaunchInfoShown" key that
+    // MainActivity's native fallback UI (htmlContent == null branch) uses, so dismissing the
+    // WebView's info dialog and the native FirstLaunchInfoDialog agree on whether it's been
+    // shown already, instead of the WebView tracking this separately in localStorage.
+    @JavascriptInterface
+    fun isFirstLaunchInfoShown(): Boolean {
+        return context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+            .getBoolean("firstLaunchInfoShown", false)
+    }
+
+    @JavascriptInterface
+    fun setFirstLaunchInfoShown(shown: Boolean) {
+        context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("firstLaunchInfoShown", shown).apply()
+    }
+
     // ── Termux ────────────────────────────────────────────────────────────────
 
     @JavascriptInterface
