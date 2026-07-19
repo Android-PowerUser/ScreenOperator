@@ -2027,7 +2027,11 @@ async function _callGemini(payload) {
         if (!data || data === '[DONE]') continue;
         try {
           const json = JSON.parse(data);
-          const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const parts = json.candidates?.[0]?.content?.parts || [];
+          let text = '';
+          for (const part of parts) {
+            if (!part.thought && part.text) text += part.text;
+          }
           if (text) { acc += text; Bridge.onCustomModelPartialResponse(acc); }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
@@ -4529,6 +4533,7 @@ function _appendUserToHistory(text) {
 </script>
 </body>
 </html>
+
 
 
 
