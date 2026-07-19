@@ -2862,6 +2862,8 @@ private fun processCommands(text: String) {
             ChatHistoryPreferences.clearChatMessages(it)
             AppOpenFeedbackPreferences.consumeAppNotFound(it)
             TermuxFeedbackPreferences.consumeTermuxNotFound(it)
+            // Discard any pending Termux output so it is not carried over into the next turn
+            TermuxOutputPreferences.consumeOutput(it)
         }
 
         // WICHTIG: LiveApiManager auch aktualisieren!
