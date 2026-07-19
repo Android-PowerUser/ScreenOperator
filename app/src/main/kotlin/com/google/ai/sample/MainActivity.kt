@@ -1,12 +1,10 @@
 package com.google.ai.sample
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.ConnectivityManager
@@ -46,44 +44,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
@@ -95,7 +63,6 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.PendingPurchasesParams
-import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.ui.theme.GenerativeAISample
@@ -132,8 +99,6 @@ class MainActivity : ComponentActivity() {
 
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
     internal lateinit var apiKeyManager: ApiKeyManager
-    private var showApiKeyDialog by mutableStateOf(false)
-    private var apiKeyDialogInitialProvider by mutableStateOf<ApiProvider?>(null)
 
     // Google Play Billing
     private lateinit var billingClient: BillingClient
@@ -157,7 +122,6 @@ class MainActivity : ComponentActivity() {
 
     private var currentScreenInfoForScreenshot: String? = null
 
-    private lateinit var navController: NavHostController
     private var isProcessingExplicitScreenshotRequest: Boolean = false
     private var onMediaProjectionPermissionGranted: (() -> Unit)? = null
     private var onWebRtcMediaProjectionResult: ((Int, Intent) -> Unit)? = null
@@ -165,9 +129,6 @@ class MainActivity : ComponentActivity() {
     private val mediaProjectionServiceStarter by lazy { MediaProjectionServiceStarter(this) }
 
     // Payment dialog state
-    private var showPaymentMethodDialog by mutableStateOf(false)
-    private var showPayPalWebViewDialog by mutableStateOf(false)
-    private var paypalSubscriptionId by mutableStateOf("")
 
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -490,9 +451,6 @@ class MainActivity : ComponentActivity() {
     private val _isMediaProjectionPermissionGranted = MutableStateFlow(false)
     val isMediaProjectionPermissionGrantedFlow: StateFlow<Boolean> = _isMediaProjectionPermissionGranted.asStateFlow()
 
-    // SharedPreferences for first launch info
-    private lateinit var prefs: SharedPreferences
-    private var showFirstLaunchInfoDialog by mutableStateOf(false)
 
     private val trialStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -788,19 +746,6 @@ class MainActivity : ComponentActivity() {
         Log.i(TAG, "onCreate: Initial trial state from TrialManager: $initialTrialState. Updating local state.")
         updateTrialState(initialTrialState) // This sets currentTrialState
 
-        // Initialize SharedPreferences and check for first launch info dialog
-        prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val isFirstLaunchInfoShown = prefs.getBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, false)
-
-        if (!isFirstLaunchInfoShown && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
-            Log.d(TAG, "onCreate: This is the first launch where info hasn't been shown and trial is not expired. Setting showFirstLaunchInfoDialog to true.")
-            showFirstLaunchInfoDialog = true
-        } else if (isFirstLaunchInfoShown) {
-            Log.d(TAG, "onCreate: First launch info dialog has already been shown.")
-        } else { // !isFirstLaunchInfoShown && currentTrialState == EXPIRED
-            Log.d(TAG, "onCreate: First launch info not shown, but trial is already expired. Not showing FirstLaunchInfoDialog.")
-        }
-
         Log.d(TAG, "onCreate: Calling startTrialServiceIfNeeded based on current state: $currentTrialState")
         startTrialServiceIfNeeded()
 
@@ -820,16 +765,6 @@ class MainActivity : ComponentActivity() {
             GenerativeAISample {
                 Scaffold { innerPadding ->
                     val htmlContent = webViewHtmlContent
-                    // ── Trial/payment dialogs (native Compose) ─────────────────────────────
-                    // NOTE: This native dialog UI has been superseded by the WebView JS trial
-                    // engine (see index.html: TrialState machine, _initTrialState,
-                    // window.onTrialStateChanged, showTrialExpiredDialog / showTrialInfoDialogUI /
-                    // openPaymentMethodDialog). Rendering both at once showed the dialogs twice
-                    // whenever the WebView UI was active. Commented out rather than deleted so
-                    // it stays available as the dialog UI for the `htmlContent == null` fallback
-                    // path below, in case remote WebView content ever fails to load - see that
-                    // branch's own (still-active) FirstLaunchInfoDialog/PaymentMethodDialog calls
-                    // further down in this file.
                     //
                     // TrialStateDialogs(
                     //     trialState = currentTrialState,
@@ -858,32 +793,6 @@ class MainActivity : ComponentActivity() {
                     // Only show these dialogs natively when the WebView content itself hasn't
                     // loaded yet (fallback UI branch), so there is no chance of double-rendering
                     // once the WebView is showing its own JS-driven trial dialogs.
-                    if (htmlContent == null) {
-                        TrialStateDialogs(
-                            trialState = currentTrialState,
-                            showTrialInfoDialog = showTrialInfoDialog,
-                            trialInfoMessage = trialInfoMessage,
-                            onDismissTrialInfo = {
-                                showTrialInfoDialog = false
-                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                            },
-                            onPurchaseClick = { initiateDonationPurchase() }
-                        )
-                        if (showPaymentMethodDialog) {
-                            PaymentMethodDialog(
-                                onDismiss = { showPaymentMethodDialog = false },
-                                onPayPalClick = {
-                                    showPaymentMethodDialog = false
-                                    Toast.makeText(this@MainActivity, com.google.ai.sample.util.UiStringsConfig.get("toast_paypal_fallback_unavailable", "PayPal ist in dieser Fallback-UI noch nicht verfügbar."), Toast.LENGTH_LONG).show()
-                                },
-                                onGooglePlayClick = {
-                                    showPaymentMethodDialog = false
-                                    launchGooglePlayBilling()
-                                }
-                            )
-                        }
-                    }
-                    // ─────────────────────────────────────────────────────────────────────
 
                     if (htmlContent != null) {
                         Log.d(TAG, "setContent: Remote content available, showing WebView.")
@@ -1007,29 +916,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         )
-                    } else {
-                        Log.d(TAG, "setContent: Remote content not ready yet, showing normal app UI.")
-                        navController = rememberNavController()
-                        AppNavigation(navController = navController, innerPadding = innerPadding)
 
-                        if (showFirstLaunchInfoDialog) {
-                            FirstLaunchInfoDialog(onDismiss = {
-                                showFirstLaunchInfoDialog = false
-                                prefs.edit().putBoolean(PREF_KEY_FIRST_LAUNCH_INFO_SHOWN, true).apply()
-                            })
-                        }
-
-                        if (showApiKeyDialog) {
-                            ApiKeyDialogSection(
-                                apiKeyManager = apiKeyManager,
-                                isFirstLaunch = false,
-                                initialProvider = apiKeyDialogInitialProvider,
-                                onDismiss = {
-                                    showApiKeyDialog = false
-                                    apiKeyDialogInitialProvider = null
-                                }
-                            )
-                        }
                     }
                 }
             }
@@ -1078,59 +965,6 @@ class MainActivity : ComponentActivity() {
 
     fun setNotificationRationaleShown(shown: Boolean) {
         NotificationPermissionPreferences.setNotificationRationaleShown(this, shown)
-    }
-
-    @Composable
-    fun AppNavigation(navController: NavHostController, innerPadding: PaddingValues) {  // Füge Parameter innerPadding hinzu
-        val isAppEffectivelyUsable = currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
-        Log.d(TAG, "AppNavigation: isAppEffectivelyUsable = $isAppEffectivelyUsable (currentTrialState: $currentTrialState)")
-
-        val alwaysAvailableRoutes = listOf("ApiKeyDialog", "ChangeModel")
-
-        NavHost(navController = navController, startDestination = "menu") {
-            composable("menu") {
-                Log.d(TAG, "AppNavigation: Composing 'menu' screen.")
-                MenuScreen(
-                    innerPadding = innerPadding,  // Übergebe innerPadding an MenuScreen
-                    onItemClicked = { routeId ->
-                        Log.d(TAG, "MenuScreen onItemClicked: routeId='$routeId', isAppEffectivelyUsable=$isAppEffectivelyUsable")
-                        if (alwaysAvailableRoutes.contains(routeId) || isAppEffectivelyUsable) {
-                            if (routeId == "SHOW_API_KEY_DIALOG_ACTION") {
-                                Log.d(TAG, "MenuScreen: Navigating to show ApiKeyDialog directly.")
-                                showApiKeyDialog = true
-                            } else {
-                                Log.d(TAG, "MenuScreen: Navigating to route: $routeId")
-                                navController.navigate(routeId)
-                            }
-                        } else {
-                            Log.w(TAG, "MenuScreen: Navigation to '$routeId' blocked due to trial state.")
-                        }
-                    },
-                    onApiKeyButtonClicked = { provider ->
-                        Log.d(TAG, "MenuScreen onApiKeyButtonClicked: Showing ApiKeyDialog. Provider: $provider")
-                        apiKeyDialogInitialProvider = provider
-                        showApiKeyDialog = true
-                    },
-                    onDonationButtonClicked = {
-                        Log.d(TAG, "MenuScreen onDonationButtonClicked: Initiating subscription purchase.")
-                        initiateDonationPurchase()
-                    },
-                    isPurchased = (currentTrialState == TrialManager.TrialState.PURCHASED),
-                    isTrialExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
-                )
-            }
-            composable("photo_reasoning") {
-                Log.d(TAG, "AppNavigation: Composing 'photo_reasoning' screen. isAppEffectivelyUsable=$isAppEffectivelyUsable")
-                if (isAppEffectivelyUsable) {
-                    PhotoReasoningRoute(innerPadding = innerPadding)  // Übergebe innerPadding an PhotoReasoningRoute
-                } else {
-                    Log.w(TAG, "AppNavigation: 'photo_reasoning' blocked. Popping back stack.")
-                    LaunchedEffect(Unit) {
-                        navController.popBackStack()
-                    }
-                }
-            }
-        }
     }
 
     private fun startTrialServiceIfNeeded() {
@@ -1221,8 +1055,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initiateDonationPurchase() {
-        Log.d(TAG, "initiateDonationPurchase called. Showing Payment Method Dialog.")
-        showPaymentMethodDialog = true
+        Log.d(TAG, "initiateDonationPurchase called. Launching billing directly.")
+        launchGooglePlayBilling()
     }
 
     private fun launchGooglePlayBilling() {
@@ -1480,8 +1314,6 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "getInstance() called. Returning instance: ${if(instance == null) "null" else "not null"}")
             return instance
         }
-        private const val PREFS_NAME = "AppPrefs"
-        private const val PREF_KEY_FIRST_LAUNCH_INFO_SHOWN = "firstLaunchInfoShown"
         private const val TERMUX_RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND"
         private const val REQUEST_CODE_TERMUX_RUN_COMMAND_PERMISSION = 1001
 
@@ -1620,7 +1452,7 @@ class MainActivity : ComponentActivity() {
      * purchase from the WebView UI.
      */
     fun initiateDonationFromWebView() {
-        Log.d(TAG, "initiateDonationFromWebView called. Launching Google Play billing directly (PaymentMethodDialog lives in the non-WebView branch).")
+        Log.d(TAG, "initiateDonationFromWebView called. Launching Google Play billing directly.")
         launchGooglePlayBilling()
     }
 
