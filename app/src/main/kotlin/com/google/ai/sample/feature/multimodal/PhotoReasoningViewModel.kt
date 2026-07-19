@@ -834,7 +834,8 @@ class PhotoReasoningViewModel(
                  isPending = false
              )
              _chatState.addMessage(userMessage)
-             
+             _chatMessagesFlow.value = _chatState.getAllMessages()
+
              _uiState.value = PhotoReasoningUiState.Loading
              
              // We need to ensure we have MediaProjection permission.
@@ -1185,7 +1186,6 @@ class PhotoReasoningViewModel(
         @Suppress("UNUSED_PARAMETER") selectedImages: List<Bitmap>,
         screenInfoForPrompt: String? = null
     ) {
-        _uiState.value = PhotoReasoningUiState.Loading
         val context = appContext
         val apiKeyManager = ApiKeyManager.getInstance(context)
 
@@ -1204,6 +1204,8 @@ class PhotoReasoningViewModel(
                 isPending = false
             )
         )
+
+        _uiState.value = PhotoReasoningUiState.Loading
 
         resetStreamingCommandState()
 
@@ -1311,7 +1313,6 @@ class PhotoReasoningViewModel(
             TAG,
             "reasonWithMistral: start, images=${selectedImages.size}, screenInfo=${!screenInfoForPrompt.isNullOrBlank()}, chatSize=${_chatState.getAllMessages().size}"
         )
-        _uiState.value = PhotoReasoningUiState.Loading
         _showStopNotificationFlow.value = true
         val context = appContext
         val apiKeyManager = ApiKeyManager.getInstance(context)
@@ -1333,6 +1334,8 @@ class PhotoReasoningViewModel(
             isPending = false
         )
     )
+
+    _uiState.value = PhotoReasoningUiState.Loading
 
     resetStreamingCommandState()
 

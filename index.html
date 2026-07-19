@@ -4199,7 +4199,13 @@ function sendMessage() {
   selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
   selectedImages = [];
   renderImagePreviews();
-  addModelBubble('', true);
+  // NOTE: do NOT create the pending model bubble here. Bridge.sendMessage /
+  // Bridge.sendMessageWithImages return immediately (the Android side dispatches to
+  // the UI thread asynchronously), so any bubble created synchronously at this point
+  // would always land in the DOM before the native onUserMessage/onAiMessage callbacks
+  // fire — showing the spinner above the user's own message. The pending model bubble
+  // is created by window.onAiMessage('', true) once Android actually starts generating,
+  // which is guaranteed to happen after onUserMessage has added the user bubble.
   window.onGenerationStateChanged(true, false);
 }
 
