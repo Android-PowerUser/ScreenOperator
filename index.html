@@ -4178,7 +4178,13 @@ function sendMessage() {
   const input = document.getElementById('task-input');
   const text = input.value.trim();
   if (!text && selectedImages.length === 0) return;
-  addUserBubble(text || "(attached images)");
+  // In Android mode, onUserMessage() will add the user bubble after Android
+  // has assembled the full message (text + screen context + Termux output).
+  // Adding it here too would cause the bubble to appear twice.
+  // In demo/browser mode there is no Android callback, so we add it directly.
+  if (!getInAndroid()) {
+    addUserBubble(text || "(attached images)");
+  }
   input.value = '';
   input.style.height = '';
   onTaskInput();
