@@ -197,7 +197,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 /* ── System message card ─────────────────────────────────── */
 #chat-sys-wrap .card-accent{transition:all .3s ease;overflow:hidden}
-#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:17px;font-family:inherit;background:var(--bg-primary-container);color:var(--text-primary);outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
+#sys-msg-textarea{width:100%;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:17px;font-family:inherit;background:var(--bg-primary-container);color:#1C1B1F;outline:none;resize:none;line-height:1.5;overflow-y:auto;display:block;transition:height .3s ease}
 #sys-msg-textarea:focus{border-color:var(--primary)}
 
 #sys-msg-textarea.collapsed{height: auto; min-height: calc(3 * 1.5em + 20px); max-height: calc(3 * 1.5em + 20px)}
@@ -208,6 +208,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
    in case JS hasn't run yet. */
 #sys-msg-textarea.expanded-keyboard{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
 #sys-msg-textarea.expanded-full{min-height: calc(3 * 1.5em + 20px); max-height: 320px}
+
+@media (prefers-color-scheme: dark) {
+  #sys-msg-textarea { color: var(--text-primary); }
+  .task-input { color: var(--text-primary); }
+}
+html.dark-mode #sys-msg-textarea { color: var(--text-primary); }
+html.dark-mode .task-input { color: var(--text-primary); }
 
 /* ── Chat bubbles ────────────────────────────────────────── */
 .bubble-wrap{display:flex;align-items:flex-start;gap:6px;margin:8px 8px}
@@ -247,7 +254,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   font-size:16px;
   font-family:inherit;
   background:transparent;
-  color:var(--text-primary);
+  color:#1C1B1F;
   outline:none;
   resize:none;
   overflow-y:auto;
@@ -525,7 +532,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div id="chat-sys-wrap">
     <div class="card-accent">
       <div class="row between" style="align-items:flex-start;gap:8px">
-        <span class="title-md" style="color:var(--text-on-primary-container);padding-top:2px">System Message</span>
+        <span class="title-md" style="color:var(--primary);padding-top:2px">System Message</span>
         <div class="row" style="gap:6px;flex-shrink:0">
           <button class="btn btn-outline" onclick="restoreSystemMessage()">Restore<br>System Message</button>
           <button class="btn btn-outline" onclick="openDatabasePopup()">Database</button>
