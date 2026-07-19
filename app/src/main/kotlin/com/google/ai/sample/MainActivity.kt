@@ -47,7 +47,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -888,7 +891,7 @@ class MainActivity : ComponentActivity() {
                                     tag = htmlContent
                                     loadDataWithBaseURL(
                                         "https://android-poweruser.github.io/ScreenOperator/",
-                                        htmlContent,
+                                        htmlContent ?: "",
                                         "text/html",
                                         "UTF-8",
                                         null
@@ -908,7 +911,7 @@ class MainActivity : ComponentActivity() {
                                     webView.tag = htmlContent
                                     webView.loadDataWithBaseURL(
                                         "https://android-poweruser.github.io/ScreenOperator/",
-                                        htmlContent,
+                                        htmlContent ?: "",
                                         "text/html",
                                         "UTF-8",
                                         null
@@ -1602,4 +1605,5 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
 
