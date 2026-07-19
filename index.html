@@ -1222,11 +1222,14 @@ window.onGenerationStateChanged = function(running, isOfflineLoaded) {
   generationRunning = running;
   const wrap = document.getElementById('stop-btn-wrap');
   const btn  = document.getElementById('stop-btn');
+  const inputCard = document.getElementById('chat-input-card');
   if (running || isOfflineLoaded) {
     wrap.style.display = 'block';
     btn.textContent = running ? 'Stop' : 'Model Unload';
+    if (inputCard) inputCard.style.display = 'none';
   } else {
     wrap.style.display = 'none';
+    if (inputCard) inputCard.style.display = '';
   }
 };
 
@@ -2111,7 +2114,7 @@ async function _callPuter(payload) {
   const requestBody = {
     model: payload.modelName,
     messages,
-    stream: false,  // Puter's native client always hardcodes this to false
+    stream: true,
   };
   if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
@@ -2128,30 +2131,44 @@ async function _callPuter(payload) {
       signal: window.__customModelAbortController.signal,
     });
 
-    const responseBodyString = await response.text();
-
     if (!response.ok) {
-      const errMsg = 'Puter API Error (' + response.status + '): ' + responseBodyString.slice(0, 400);
+      let errBody = '';
+      try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
+      const errMsg = 'Puter API Error (' + response.status + '): ' + errBody;
       if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('PUTER');
       throw new Error(errMsg);
     }
 
     let acc = '';
     let thinkingAcc = '';
-    try {
-      const json = JSON.parse(responseBodyString);
-      const msg = json.choices?.[0]?.message || {};
-      acc = msg.content || '';
-      // Different OpenAI-compatible reasoning models expose their thinking under
-      // different keys - check the common ones.
-      thinkingAcc = msg.reasoning_content || msg.reasoning || '';
-    } catch(e2) {
-      throw new Error('Puter: failed to parse response JSON');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const d = json.choices?.[0]?.delta || {};
+          const thinkingDelta = d.reasoning_content || d.reasoning || '';
+          const delta = d.content || '';
+          if (thinkingDelta) thinkingAcc += thinkingDelta;
+          if (delta) acc += delta;
+          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+        } catch(e2) { /* ignore bad SSE chunk */ }
+      }
     }
     if (!acc && !thinkingAcc) throw new Error('No response from model');
 
     const composed = _composeThinkingAndAnswer(thinkingAcc, acc);
-    Bridge.onCustomModelPartialResponse(composed);
     Bridge.onCustomModelFinalResponse(composed);
     await _executeCommandsFromResponse(acc);
   } catch(e) {
@@ -2542,7 +2559,7 @@ async function _callGroq(payload) {
   (payload.images || []).forEach(uri => userContent.push({ type: 'image_url', image_url: { url: uri } }));
   apiMessages.push({ role: 'user', content: userContent });
 
-  const requestBody = { model: payload.modelName, messages: apiMessages, stream: false };
+  const requestBody = { model: payload.modelName, messages: apiMessages, stream: true };
 
   window.__customModelAbortController = new AbortController();
   try {
@@ -2553,30 +2570,44 @@ async function _callGroq(payload) {
       signal: window.__customModelAbortController.signal,
     });
 
-    const responseBodyString = await response.text();
     if (!response.ok) {
-      const errMsg = 'Groq Error ' + response.status + ': ' + responseBodyString.slice(0, 400);
+      let errBody = '';
+      try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
+      const errMsg = 'Groq Error ' + response.status + ': ' + errBody;
       if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('GROQ');
       throw new Error(errMsg);
     }
 
     let acc = '';
     let thinkingAcc = '';
-    try {
-      const json = JSON.parse(responseBodyString);
-      const msg = json.choices?.[0]?.message || {};
-      acc = msg.content || '';
-      // Groq's reasoning models (e.g. deepseek-r1, qwen3) expose thinking under
-      // reasoning_content or reasoning.
-      thinkingAcc = msg.reasoning_content || msg.reasoning || '';
-    } catch(e2) {
-      throw new Error('Groq: failed to parse response JSON');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const d = json.choices?.[0]?.delta || {};
+          const thinkingDelta = d.reasoning_content || d.reasoning || '';
+          const delta = d.content || '';
+          if (thinkingDelta) thinkingAcc += thinkingDelta;
+          if (delta) acc += delta;
+          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+        } catch(e2) { /* ignore bad SSE chunk */ }
+      }
     }
     if (!acc && !thinkingAcc) throw new Error('No response from model');
 
-    const composed = _composeThinkingAndAnswer(thinkingAcc, acc);
-    Bridge.onCustomModelPartialResponse(composed);
-    Bridge.onCustomModelFinalResponse(composed);
+    Bridge.onCustomModelFinalResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
     await _executeCommandsFromResponse(acc);
   } catch(e) {
     if (e && e.name === 'AbortError') {
