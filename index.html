@@ -1211,19 +1211,10 @@ window.onChatCleared = function() {
 };
 
 // Called by Android after assembling the full user message (typed text + screen elements +
-// Termux output). Updates the last user bubble so the WebView shows the same content as the
-// native Compose UI, which always displays the combined text in the user chat bubble.
+// Termux output). Appends a new user bubble so every message appears in order at the bottom.
 window.onUserMessage = function(text) {
-  const msgs = document.getElementById('chat-messages');
-  // ':last-of-type' matches by tag name, not by class — use querySelectorAll + take the last one.
-  const allUserBubbles = [...msgs.querySelectorAll('.bubble.user')];
-  const lastUserBubble = allUserBubbles.length ? allUserBubbles[allUserBubbles.length - 1] : null;
-  if (lastUserBubble && text) {
-    // Only update if we have something to show — never blank out a bubble
-    lastUserBubble.textContent = text;
-    // After updating text content the bubble may grow, shifting all subsequent
-    // messages and making earlier ones scroll off the top. Re-anchor to bottom.
-    scrollToBottom();
+  if (text) {
+    addUserBubble(text);
   }
 };
 
