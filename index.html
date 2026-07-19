@@ -1499,7 +1499,7 @@ const EXECUTION_POLICY_DEFAULT_TEMPLATE =
   "message, then wait for the next screenshot before continuing.";
 
 let _executionPolicy = {
-  maxCommandsPerMessage: 0,           // <=0 == unlimited
+  maxCommandsPerMessage: 2,           // default: max 2 commands per AI response
   truncationFeedbackTemplate: EXECUTION_POLICY_DEFAULT_TEMPLATE,
   maxRelevantScreenElementMessages: 3,
 };
@@ -3020,8 +3020,8 @@ async function _executeCommandsFromResponse(text) {
   const commands = trunc.commandsToExecute;
 
   if (trunc.wasTruncated) {
-    _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
-      + _fillTruncationTemplate(trunc.totalCount, trunc.executedCount, _executionPolicy.maxCommandsPerMessage);
+    const _warningMsg = 'Only two commands may be executed at a time. The first two commands were executed, and the rest were ignored.';
+    _pendingScreenInfo = _warningMsg + (_pendingScreenInfo ? '\n\n' + _pendingScreenInfo : '');
   }
 
   // Determine if we have a screenshot or completed command
