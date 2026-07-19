@@ -1869,6 +1869,7 @@ const PROVIDER_API = {
 
 /* ── MAIN ENTRY POINT: called by Android for every AI turn ───── */
 window.onCustomModelRequest = async function(payloadJsonString) {
+  _stopExecution = false;  // reset stop flag so new requests always run
   let payload;
   try {
     payload = JSON.parse(payloadJsonString);
