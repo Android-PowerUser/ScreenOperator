@@ -1221,6 +1221,9 @@ window.onUserMessage = function(text) {
   if (lastUserBubble && text) {
     // Only update if we have something to show — never blank out a bubble
     lastUserBubble.textContent = text;
+    // After updating text content the bubble may grow, shifting all subsequent
+    // messages and making earlier ones scroll off the top. Re-anchor to bottom.
+    scrollToBottom();
   }
 };
 
@@ -4029,7 +4032,15 @@ function addErrorBubble(text) {
 }
 function scrollToBottom() {
   const w = document.getElementById('chat-messages-wrap');
-  requestAnimationFrame(() => { w.scrollTop = w.scrollHeight; });
+  // Double rAF: the first frame lets the browser finish any pending layout/reflow
+  // (e.g. after textContent changes or new bubbles are appended), the second frame
+  // reads the updated scrollHeight and applies the scroll. Using only a single rAF
+  // can read a stale scrollHeight measured before the reflow completes, causing the
+  // chat to scroll to the wrong position and making earlier messages disappear off
+  // the top instead of staying anchored at the bottom.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { w.scrollTop = w.scrollHeight; });
+  });
 }
 function undoLast(text) {
   document.getElementById('task-input').value = text;
