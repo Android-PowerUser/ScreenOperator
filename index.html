@@ -2010,6 +2010,60 @@ function _composeThinkingAndAnswer(thinking, answer) {
   return '🧠 Thinking:\n' + t + '\n\n💬 Antwort:\n' + a;
 }
 
+/*
+ * OpenAI-compatible gateways do not agree on the shape of reasoning output.
+ * Puter can forward both a provider's `reasoning_content` and OpenRouter's
+ * `reasoning_details` format. Keep the normal answer and the reasoning trace
+ * separate, so a gateway cannot silently make a thinking-capable model look as
+ * though it did not think.
+ */
+function _reasoningText(value) {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(_reasoningText).join('');
+  if (!value || typeof value !== 'object') return '';
+  // ReasoningDetails entries use `text`; some compatible providers use one of
+  // the other text-bearing fields below. Deliberately do not stringify unknown
+  // objects: that would expose signatures/metadata in the chat bubble.
+  return _reasoningText(value.text) || _reasoningText(value.content) ||
+    _reasoningText(value.reasoning_content) || _reasoningText(value.reasoning) ||
+    _reasoningText(value.summary);
+}
+
+function _thinkingFromOpenAiDelta(delta) {
+  if (!delta || typeof delta !== 'object') return '';
+  return _reasoningText(delta.reasoning_content) || _reasoningText(delta.reasoning) ||
+    _reasoningText(delta.reasoning_details);
+}
+
+/* Some gateways put <think>…</think> directly in delta.content instead of in a
+ * reasoning field. Re-parse the accumulated content on every update, which is
+ * safe for SSE chunks split in the middle of either tag. */
+function _separateInlineThinking(content) {
+  const source = typeof content === 'string' ? content : _reasoningText(content);
+  let thinking = '';
+  let answer = '';
+  let cursor = 0;
+  const openTag = /<think(?:ing)?>/ig;
+  let open;
+  while ((open = openTag.exec(source))) {
+    answer += source.slice(cursor, open.index);
+    const closeTag = /<\/think(?:ing)?>/ig;
+    closeTag.lastIndex = openTag.lastIndex;
+    const close = closeTag.exec(source);
+    if (!close) {
+      // An unfinished thinking block is still reasoning, not an answer.
+      thinking += source.slice(openTag.lastIndex);
+      cursor = source.length;
+      break;
+    }
+    thinking += source.slice(openTag.lastIndex, close.index);
+    cursor = closeTag.lastIndex;
+    openTag.lastIndex = cursor;
+  }
+  if (cursor < source.length) answer += source.slice(cursor);
+  return { thinking, answer };
+}
+
 async function _callGemini(payload) {
   const keys = Bridge.getAllApiKeys('GOOGLE');
   if (!keys.length) {
@@ -2172,12 +2226,17 @@ async function _callPuter(payload) {
   };
   if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
-  // Enable thinking tokens for Qwen3 / Mimo / MiniMax and other reasoning-capable models
-  // routed through Puter (OpenRouter-compatible). The parameter is ignored harmlessly by
-  // models that don't support it.
+  // Keep the provider-native flags for all reasoning-capable Puter models.
+  // Mimo uses this convention, while Qwen3.5 is also routed in OpenRouter's
+  // format: it sends reasoning_details only when the OpenRouter reasoning
+  // option is enabled and not excluded. Limit that option to Qwen, so models
+  // with a stricter provider schema keep their existing request unchanged.
   if (payload.supportsThinking) {
     requestBody.enable_thinking = true;
     requestBody.thinking_budget = 16000;
+    if (String(payload.modelName || '').startsWith('qwen/')) {
+      requestBody.reasoning = { enabled: true, exclude: false, max_tokens: 16000 };
+    }
   }
 
   window.__customModelAbortController = new AbortController();
@@ -2200,8 +2259,8 @@ async function _callPuter(payload) {
       throw new Error(errMsg);
     }
 
-    let acc = '';
-    let thinkingAcc = '';
+    let rawContentAcc = '';
+    let structuredThinkingAcc = '';
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -2219,14 +2278,22 @@ async function _callPuter(payload) {
         try {
           const json = JSON.parse(data);
           const d = json.choices?.[0]?.delta || {};
-          const thinkingDelta = d.reasoning_content || d.reasoning || '';
-          const delta = d.content || '';
-          if (thinkingDelta) thinkingAcc += thinkingDelta;
-          if (delta) acc += delta;
-          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+          const thinkingDelta = _thinkingFromOpenAiDelta(d);
+          const delta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
+          if (thinkingDelta) structuredThinkingAcc += thinkingDelta;
+          if (delta) rawContentAcc += delta;
+          if (thinkingDelta || delta) {
+            const inline = _separateInlineThinking(rawContentAcc);
+            Bridge.onCustomModelPartialResponse(
+              _composeThinkingAndAnswer(structuredThinkingAcc + inline.thinking, inline.answer)
+            );
+          }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
     }
+    const inline = _separateInlineThinking(rawContentAcc);
+    const thinkingAcc = structuredThinkingAcc + inline.thinking;
+    const acc = inline.answer;
     if (!acc && !thinkingAcc) throw new Error('No response from model');
 
     const composed = _composeThinkingAndAnswer(thinkingAcc, acc);
@@ -2234,7 +2301,9 @@ async function _callPuter(payload) {
     await _executeCommandsFromResponse(acc);
   } catch(e) {
     if (e && e.name === 'AbortError') {
-      Bridge.onCustomModelFinalResponse('[stopped by user]');
+      const inline = _separateInlineThinking(rawContentAcc);
+      const stoppedText = _composeThinkingAndAnswer(structuredThinkingAcc + inline.thinking, inline.answer);
+      Bridge.onCustomModelFinalResponse(stoppedText + (stoppedText ? '\n\n' : '') + '[stopped by user]');
     } else {
       throw e;
     }
