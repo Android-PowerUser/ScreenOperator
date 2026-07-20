@@ -1552,19 +1552,45 @@ class MainActivity : ComponentActivity() {
         // Observe chat messages so the WebView user bubble is updated with the full message text
         // (including screen elements and Termux output) once native code has assembled it.
         // The WebView's sendMessage() adds the bubble with only the typed text; this corrects it.
+        // Also forwards pending AI messages (offline model streaming chunks) to the WebView so
+        // that offline models stream token-by-token just like online models do.
         var lastObservedUserMessageId: String? = null
+        var lastObservedAiText: String? = null
         lifecycleScope.launch {
             vm.chatMessagesFlow.collect { messages ->
+                // ── User bubble ──────────────────────────────────────────────
                 val lastUser = messages.lastOrNull {
                     it.participant == com.google.ai.sample.feature.multimodal.PhotoParticipant.USER && !it.isPending
                 }
-                if (lastUser == null) return@collect
-                if (lastUser.id != lastObservedUserMessageId) {
+                if (lastUser != null && lastUser.id != lastObservedUserMessageId) {
                     lastObservedUserMessageId = lastUser.id
                     val escaped = escapeForJs(lastUser.text)
                     wv.post {
                         wv.evaluateJavascript("window.onUserMessage && window.onUserMessage('$escaped')", null)
                     }
+                }
+
+                // ── Offline model streaming: pending AI bubble ────────────────
+                // The uiState collector only fires on Loading/Success/Error/Stopped, so it
+                // cannot deliver intra-turn streaming chunks.  replaceAiMessageText() updates
+                // _chatMessagesFlow directly; we pick those up here and forward them to the
+                // WebView so offline models stream token-by-token.
+                val lastAi = messages.lastOrNull {
+                    it.participant == com.google.ai.sample.feature.multimodal.PhotoParticipant.MODEL
+                }
+                if (lastAi != null && lastAi.isPending) {
+                    val currentText = lastAi.text
+                    if (currentText != lastObservedAiText) {
+                        lastObservedAiText = currentText
+                        val escaped = escapeForJs(currentText)
+                        wv.post {
+                            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', true)", null)
+                        }
+                    }
+                } else {
+                    // Reset tracker when the pending message is finalized or cleared so the
+                    // next turn starts fresh (avoids skipping the first chunk of the next turn).
+                    lastObservedAiText = null
                 }
             }
         }
