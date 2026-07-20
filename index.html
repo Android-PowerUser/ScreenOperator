@@ -1183,8 +1183,8 @@ window.onAiMessage = function(text, isPending) {
   // flooding the chat with stray bubbles and pushing the user bubble out of view.
   const lastWrap = msgs.lastElementChild;
   const last = lastWrap && lastWrap.classList.contains('bubble-wrap')
-    ? lastWrap.querySelector('.bubble.model')
-    : null;
+  const last = (lastWrap && lastWrap.classList.contains('bubble-wrap'))
+    ? (lastWrap.querySelector('.bubble.model'))
   if (last && last.querySelector('.model-icon.loading')) {
     const textSpan = last.querySelector('.model-text') || last;
     textSpan.textContent = text;
