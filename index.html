@@ -1214,9 +1214,42 @@ window.onChatCleared = function() {
 // Termux output). Appends a new user bubble so every message appears in order at the bottom.
 window.onUserMessage = function(text) {
   if (text) {
+    text = _applyPendingTruncationWarning(text);
     addUserBubble(text);
   }
 };
+
+/**
+ * Inserts any pending "Only two commands..." truncation warning directly above the
+ * "Screen elements:"/"Termux output:" section of the given text (the start of the actual
+ * command-output part of the message), rather than above the whole message (which could
+ * also contain typed user text preceding the output). Falls back to prepending at the very
+ * top if neither marker is present. Does NOT clear the pending warning - both the visible
+ * chat bubble (onUserMessage) and the outgoing API payload (onCustomModelRequest) need to
+ * see it for the same turn; call _consumePendingTruncationWarning() once both are done.
+ */
+function _applyPendingTruncationWarning(text) {
+  if (!_pendingTruncationWarning) return text;
+  const warning = _pendingTruncationWarning;
+
+  const screenMarker = _operationalTuning.screenElementsMarker;
+  const termuxMarker = 'Termux output:';
+  const screenIdx = text.indexOf(screenMarker);
+  const termuxIdx = text.indexOf(termuxMarker);
+  let insertIdx = -1;
+  if (screenIdx >= 0 && termuxIdx >= 0) insertIdx = Math.min(screenIdx, termuxIdx);
+  else if (screenIdx >= 0) insertIdx = screenIdx;
+  else if (termuxIdx >= 0) insertIdx = termuxIdx;
+
+  if (insertIdx < 0) {
+    return warning + (text ? '\n\n' + text : '');
+  }
+  return text.slice(0, insertIdx) + warning + '\n\n' + text.slice(insertIdx);
+}
+
+function _consumePendingTruncationWarning() {
+  _pendingTruncationWarning = null;
+}
 
 window.onGenerationStateChanged = function(running, isOfflineLoaded) {
   generationRunning = running;
@@ -1833,6 +1866,11 @@ function _resolveKnownAppPackage(rawName) {
 
 /* ── PENDING STATE ───────────────────────────────────────────── */
 let _pendingScreenInfo = null;  // Retrieved info to inject into next AI turn
+// Set when a response is truncated to maxCommandsPerMessage; consumed once by the very next
+// user-message bubble AND the very next outgoing API payload, always positioned directly above
+// the "Screen elements:"/"Termux output:" section (see _applyPendingTruncationWarning), not
+// above the whole message.
+let _pendingTruncationWarning = null;
 
 /* ── PROVIDER → ENDPOINT/AUTH LOOKUP ─────────────────────────── */
 const PROVIDER_API = {
@@ -1908,6 +1946,11 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     payload.userText = _pendingScreenInfo + '\n\n' + (payload.userText || '');
     _pendingScreenInfo = null;
   }
+
+  // Inject any pending command-truncation warning, positioned directly above the
+  // "Screen elements:"/"Termux output:" section rather than above the whole message.
+  payload.userText = _applyPendingTruncationWarning(payload.userText || '');
+  _consumePendingTruncationWarning();
 
   // Enrich payload with supportsThinking from the JS MODELS list.
   // The native side doesn't know this flag, so we look it up here so every
@@ -3186,8 +3229,7 @@ async function _executeCommandsFromResponse(text) {
   const commands = trunc.commandsToExecute;
 
   if (trunc.wasTruncated) {
-    const _warningMsg = 'Only two commands may be executed at a time. The first two commands were executed, and the rest were ignored.';
-    _pendingScreenInfo = _warningMsg + (_pendingScreenInfo ? '\n\n' + _pendingScreenInfo : '');
+    _pendingTruncationWarning = 'Only two commands may be executed at a time. The first two commands were executed, and the rest were ignored.';
   }
 
   // Determine if we have a screenshot or completed command
