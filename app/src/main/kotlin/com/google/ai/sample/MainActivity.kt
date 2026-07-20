@@ -854,7 +854,36 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     webViewClient = object : WebViewClient() {
-                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
+                                        override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                                            val uri = request?.url ?: return false
+                                            val scheme = uri.scheme
+                                            // Links im externen Browser öffnen (http/https/mailto/tel etc.)
+                                            return try {
+                                                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                view?.context?.startActivity(intent)
+                                                true
+                                            } catch (e: Exception) {
+                                                android.util.Log.w(TAG, "shouldOverrideUrlLoading: could not open $uri externally: ${e.message}")
+                                                false
+                                            }
+                                        }
+
+                                        @Suppress("OVERRIDE_DEPRECATION")
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                            if (url == null) return false
+                                            return try {
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                view?.context?.startActivity(intent)
+                                                true
+                                            } catch (e: Exception) {
+                                                android.util.Log.w(TAG, "shouldOverrideUrlLoading(String): could not open $url externally: ${e.message}")
+                                                false
+                                            }
+                                        }
 
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
@@ -1631,5 +1660,6 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
 
 
