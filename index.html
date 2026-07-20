@@ -1181,10 +1181,11 @@ window.onAiMessage = function(text, isPending) {
   // This caused the selector to always return null, so a brand-new model bubble-wrap
   // was appended on every single onAiMessage call instead of updating the pending one —
   // flooding the chat with stray bubbles and pushing the user bubble out of view.
-  const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
-  const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
-  const parentWrap = last && last.closest('.bubble-wrap');
-  if (parentWrap && last.querySelector('.model-icon.loading')) {
+  const lastWrap = msgs.lastElementChild;
+  const last = lastWrap && lastWrap.classList.contains('bubble-wrap')
+    ? lastWrap.querySelector('.bubble.model')
+    : null;
+  if (last && last.querySelector('.model-icon.loading')) {
     const textSpan = last.querySelector('.model-text') || last;
     textSpan.textContent = text;
     if (!isPending) {
@@ -1574,14 +1575,31 @@ function _fillTruncationTemplate(total, executed, limit) {
  */
 function _truncateCommands(commands) {
   const limit = _executionPolicy.maxCommandsPerMessage;
-  if (limit <= 0 || commands.length <= limit) {
+  if (limit <= 0) {
     return { commandsToExecute: commands, wasTruncated: false, totalCount: commands.length, executedCount: commands.length };
   }
+
+  const countedCommands = commands.filter(c => c.type !== 'COMPLETED');
+  const wasTruncated = countedCommands.length > limit;
+  if (!wasTruncated) {
+    return { commandsToExecute: commands, wasTruncated: false, totalCount: countedCommands.length, executedCount: countedCommands.length };
+  }
+
+  let executedCount = 0;
+  const commandsToExecute = [];
+  for (const command of commands) {
+    if (command.type === 'COMPLETED') continue;
+    if (executedCount >= limit) continue;
+    commandsToExecute.push(command);
+    executedCount++;
+  }
+
   return {
-    commandsToExecute: commands.slice(0, limit),
+    commandsToExecute,
     wasTruncated: true,
-    totalCount: commands.length,
-    executedCount: limit,
+    totalCount: countedCommands.length,
+    executedCount,
+    hadCompleted: commands.some(c => c.type === 'COMPLETED'),
   };
 }
 
@@ -3224,7 +3242,8 @@ async function _executeCommandsFromResponse(text) {
   const parsedCommands = parseCommandsFromText(text);
   if (!parsedCommands.length) return;
 
-  // Apply ExecutionPolicyConfig cap (maxCommandsPerMessage) - mirrors CommandExecutionLimiter.
+  // Apply ExecutionPolicyConfig cap (maxCommandsPerMessage). completed() is a terminal
+  // marker, not an action command, so it does not consume one of the two action slots.
   const trunc = _truncateCommands(parsedCommands);
   const commands = trunc.commandsToExecute;
 
@@ -3232,9 +3251,12 @@ async function _executeCommandsFromResponse(text) {
     _pendingTruncationWarning = 'Only two commands may be executed at a time. The first two commands were executed, and the rest were ignored.';
   }
 
-  // Determine if we have a screenshot or completed command
+  // Determine if we have a screenshot or completed command. A truncated response that
+  // also contained completed() must not auto-request screen/Termux feedback; the only
+  // feedback for that turn is the truncation warning.
   const hasScreenshot = commands.some(c => c.type === 'SCREENSHOT');
   const hasCompleted = commands.some(c => c.type === 'COMPLETED');
+  const suppressAutoFeedback = !!(trunc.wasTruncated && trunc.hadCompleted);
 
   // Show detected commands in status area
   const cmdStr = commands.map(_cmdToString).join(', ');
@@ -3243,7 +3265,7 @@ async function _executeCommandsFromResponse(text) {
   // If no screenshot and no completed: auto-append a screenshot at the end
   // so the AI always gets screen feedback (matches Kotlin behavior).
   const cmdList = [...commands];
-  if (!hasScreenshot && !hasCompleted) {
+  if (!hasScreenshot && !hasCompleted && !suppressAutoFeedback) {
     cmdList.push({ type: 'SCREENSHOT' });
   }
 
