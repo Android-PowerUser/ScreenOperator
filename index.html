@@ -911,33 +911,33 @@ const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLAR
 
 // Built-in model list — matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
 let MODELS = [
-  { id:'PUTER_GPT_5_4_NANO',       displayName:'GPT-5.4 Nano (Puter)',                    modelName:'openai/gpt-5.4-nano',                     apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.2/M input | $1.25/M output', strike:false },
-  { id:'MISTRAL_MEDIUM_3_1',       displayName:'Mistral Medium 3.1',                       modelName:'mistral-medium-latest',                    apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
-  { id:'MISTRAL_MEDIUM_3_5',       displayName:'Mistral Medium 3.5',                       modelName:'mistral-medium-3-5',                       apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'This is a reasoning model',     strike:false },
-  { id:'PUTER_MIMO_V2_5',          displayName:'Mimo-V2.5 (Puter)',                        modelName:'xiaomi/mimo-v2.5',                         apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.14/M input | $0.28/M output',strike:false },
-  { id:'PUTER_QWEN3_5_FLASH',      displayName:'Qwen3.5-Flash (Puter)',                    modelName:'qwen/qwen3.5-flash-02-23',                 apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.07/M input | $0.26/M output',strike:false },
-  { id:'PUTER_AUTOGLM',            displayName:'AutoGLM Phone Multilingual 9B (Puter)',    modelName:'z-ai/autoglm-phone-multilingual',          apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'free',                          strike:false },
-  { id:'PUTER_MINIMAX_M3',         displayName:'MiniMax M3 (Puter)',                       modelName:'minimax/minimax-m3',                       apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'$0.3/M input | $1.2/M output',  strike:false },
-  { id:'PUTER_QWEN2_5_VL_72B',     displayName:'Qwen3.7 Plus (Puter)',                     modelName:'qwen/qwen3.7-plus',                        apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
-  { id:'GROQ_LLAMA_4_SCOUT_17B',   displayName:'Llama 4 Scout 109B (Groq)',               modelName:'meta-llama/llama-4-scout-17b-16e-instruct',apiProvider:'GROQ',      supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'30 requests per min',           strike:false },
-  { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, isOffline:false, hint:'',                              strike:false },
-  { id:'GPT_OSS_120B',             displayName:'GPT-OSS 120B (Cerebras)',                  modelName:'gpt-oss-120b',                             apiProvider:'CEREBRAS',  supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Text-only model. Cerebras may restrict free access or change rate limits.', strike:false },
-  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3 Flash',                           modelName:'gemini-3-flash-preview',                   apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'Google often rejects requests with a 503 "Model is exhausted" error.', strike:false },
-  { id:'GEMINI_PRO',               displayName:'Gemini 2.5 Pro',                           modelName:'gemini-2.5-pro',                           apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
-  { id:'GEMINI_FLASH_PREVIEW',     displayName:'Gemini 2.5 Flash',                         modelName:'gemini-2.5-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
-  { id:'GEMINI_FLASH',             displayName:'Gemini 2.0 Flash',                         modelName:'gemini-2.0-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
-  { id:'GEMINI_FLASH_LITE',        displayName:'Gemini 2.0 Flash Lite',                    modelName:'gemini-2.0-flash-lite',                    apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:false },
-  { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:true,  hint:'4.92 GB download required.',    strike:false },
-  { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  isOffline:true,  hint:'3.40 GB download required.',    strike:false },
-  { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
-  { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
-  { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
-  { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
-  { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
-  { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 2.5 Flash Live Preview',            modelName:'gemini-live-2.5-flash-native-audio',       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:true },
-  { id:'GEMINI_FLASH_LITE_PREVIEW',displayName:'Gemini 2.5 Flash Lite Preview',            modelName:'gemini-2.5-flash-lite-preview-06-17',      apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'',                              strike:true },
-  { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  isOffline:true,  hint:'6.3 GB download required.',     strike:true },
-  { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  isOffline:false, hint:'Approx. 15 responses per day are free.', strike:true },
+  { id:'PUTER_GPT_5_4_NANO',       displayName:'GPT-5.4 Nano (Puter)',                    modelName:'openai/gpt-5.4-nano',                     apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'$0.2/M input | $1.25/M output', strike:false },
+  { id:'MISTRAL_MEDIUM_3_1',       displayName:'Mistral Medium 3.1',                       modelName:'mistral-medium-latest',                    apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'',                              strike:false },
+  { id:'MISTRAL_MEDIUM_3_5',       displayName:'Mistral Medium 3.5',                       modelName:'mistral-medium-3-5',                       apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Reasoning model – thinking tokens enabled',     strike:false },
+  { id:'PUTER_MIMO_V2_5',          displayName:'Mimo-V2.5 (Puter)',                        modelName:'xiaomi/mimo-v2.5',                         apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'$0.14/M input | $0.28/M output – thinking enabled',strike:false },
+  { id:'PUTER_QWEN3_5_FLASH',      displayName:'Qwen3.5-Flash (Puter)',                    modelName:'qwen/qwen3.5-flash-02-23',                 apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'$0.07/M input | $0.26/M output – thinking enabled',strike:false },
+  { id:'PUTER_AUTOGLM',            displayName:'AutoGLM Phone Multilingual 9B (Puter)',    modelName:'z-ai/autoglm-phone-multilingual',          apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'free',                          strike:false },
+  { id:'PUTER_MINIMAX_M3',         displayName:'MiniMax M3 (Puter)',                       modelName:'minimax/minimax-m3',                       apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'$0.3/M input | $1.2/M output – thinking enabled',  strike:false },
+  { id:'PUTER_QWEN2_5_VL_72B',     displayName:'Qwen3.7 Plus (Puter)',                     modelName:'qwen/qwen3.7-plus',                        apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'thinking enabled',                              strike:false },
+  { id:'GROQ_LLAMA_4_SCOUT_17B',   displayName:'Llama 4 Scout 109B (Groq)',               modelName:'meta-llama/llama-4-scout-17b-16e-instruct',apiProvider:'GROQ',      supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'30 requests per min',           strike:false },
+  { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'',                              strike:false },
+  { id:'GPT_OSS_120B',             displayName:'GPT-OSS 120B (Cerebras)',                  modelName:'gpt-oss-120b',                             apiProvider:'CEREBRAS',  supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Text-only model. Cerebras may restrict free access or change rate limits.', strike:false },
+  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3 Flash',                           modelName:'gemini-3-flash-preview',                   apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Google often rejects requests with a 503 "Model is exhausted" error.', strike:false },
+  { id:'GEMINI_PRO',               displayName:'Gemini 2.5 Pro',                           modelName:'gemini-2.5-pro',                           apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'',                              strike:false },
+  { id:'GEMINI_FLASH_PREVIEW',     displayName:'Gemini 2.5 Flash',                         modelName:'gemini-2.5-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'',                              strike:false },
+  { id:'GEMINI_FLASH',             displayName:'Gemini 2.0 Flash',                         modelName:'gemini-2.0-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'',                              strike:false },
+  { id:'GEMINI_FLASH_LITE',        displayName:'Gemini 2.0 Flash Lite',                    modelName:'gemini-2.0-flash-lite',                    apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'',                              strike:false },
+  { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'4.92 GB download required.',    strike:false },
+  { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'3.40 GB download required.',    strike:false },
+  { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
+  { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
+  { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
+  { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Vercel requires a credit card.',strike:false },
+  { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
+  { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 2.5 Flash Live Preview',            modelName:'gemini-live-2.5-flash-native-audio',       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'',                              strike:true },
+  { id:'GEMINI_FLASH_LITE_PREVIEW',displayName:'Gemini 2.5 Flash Lite Preview',            modelName:'gemini-2.5-flash-lite-preview-06-17',      apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'',                              strike:true },
+  { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'6.3 GB download required.',     strike:true },
+  { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Approx. 15 responses per day are free.', strike:true },
 ];
 
 /* ════════════════════════════════════════════════════════
@@ -1909,6 +1909,14 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     _pendingScreenInfo = null;
   }
 
+  // Enrich payload with supportsThinking from the JS MODELS list.
+  // The native side doesn't know this flag, so we look it up here so every
+  // _call* function can read payload.supportsThinking without extra lookups.
+  if (payload.supportsThinking === undefined) {
+    const modelDef = MODELS.find(m => m.id === payload.modelId);
+    payload.supportsThinking = modelDef ? !!modelDef.supportsThinking : false;
+  }
+
   const provider = payload.apiProvider || 'PUTER';
 
   try {
@@ -2001,9 +2009,12 @@ async function _callGemini(payload) {
   if (payload.temperature !== undefined && payload.temperature > 0) genConfig.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) genConfig.topP = payload.topP;
   if (payload.supportsTopK && payload.topK !== undefined && payload.topK > 0) genConfig.topK = payload.topK;
-  // Ask Gemini to include its thought summaries in the stream (supported by the
-  // 2.5-series "thinking" models; ignored harmlessly by models that don't support it).
-  genConfig.thinkingConfig = { includeThoughts: true };
+  // Ask Gemini 2.5-series models to include their thought summaries in the stream.
+  // Only set for models explicitly marked as supportsThinking=true to avoid sending
+  // unsupported config to Gemini 2.0 Flash, Gemma, or other non-thinking models.
+  if (payload.supportsThinking) {
+    genConfig.thinkingConfig = { includeThoughts: true };
+  }
 
   const requestBody = { contents };
   if (systemParts.length) requestBody.systemInstruction = { parts: systemParts };
@@ -2118,6 +2129,13 @@ async function _callPuter(payload) {
   };
   if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
+  // Enable thinking tokens for Qwen3 / Mimo / MiniMax and other reasoning-capable models
+  // routed through Puter (OpenRouter-compatible). The parameter is ignored harmlessly by
+  // models that don't support it.
+  if (payload.supportsThinking) {
+    requestBody.enable_thinking = true;
+    requestBody.thinking_budget = 16000;
+  }
 
   window.__customModelAbortController = new AbortController();
   try {
@@ -2345,6 +2363,13 @@ async function _callMistral(payload) {
     max_tokens: 50000,
     stream: true,
   };
+  // Enable thinking tokens for reasoning-capable Mistral models (mistral-medium-3-5,
+  // mistral-small-latest). The Mistral API uses `reasoning_effort` — NOT a `thinking`
+  // block. "high" is recommended for agentic/code tasks and produces a full ThinkChunk
+  // before the final answer. Models that don't support this parameter ignore it harmlessly.
+  if (payload.supportsThinking) {
+    requestBody.reasoning_effort = 'high';
+  }
 
   const isFastModel = payload.modelId === 'MISTRAL_MEDIUM_3_1' || payload.modelId === 'MISTRAL_MEDIUM_3_5';
   const minIntervalMs = isFastModel
@@ -2391,10 +2416,35 @@ async function _callMistral(payload) {
         try {
           const json = JSON.parse(data);
           const d = json.choices?.[0]?.delta || {};
-          // Magistral / reasoning-capable Mistral models stream their thinking
-          // under delta.reasoning_content (or delta.reasoning) alongside delta.content.
-          const thinkingDelta = d.reasoning_content || d.reasoning || '';
-          const delta = d.content || '';
+          // Mistral Medium 3.5 / mistral-small-latest with reasoning_effort="high" stream
+          // thinking in a special ThinkChunk format: delta.content becomes a list of chunk
+          // objects with type="thinking" (ThinkChunk, containing a `thinking` array of
+          // TextChunks) and type="text" (TextChunk). After the thinking phase ends,
+          // delta.content reverts to a plain string for the final answer.
+          // Older/non-reasoning Mistral models still send a plain string in delta.content
+          // and may also use delta.reasoning_content / delta.reasoning (legacy Magistral).
+          let thinkingDelta = '';
+          let delta = '';
+          if (Array.isArray(d.content)) {
+            // ThinkChunk/TextChunk list format (mistral-medium-3-5 with reasoning_effort)
+            for (const chunk of d.content) {
+              if (chunk.type === 'thinking') {
+                // ThinkChunk: thinking is a list of TextChunks
+                const inner = chunk.thinking;
+                if (Array.isArray(inner)) {
+                  thinkingDelta += inner.map(c => (c && c.text) || '').join('');
+                } else if (typeof inner === 'string') {
+                  thinkingDelta += inner;
+                }
+              } else if (chunk.type === 'text') {
+                delta += chunk.text || '';
+              }
+            }
+          } else {
+            // Plain string format (non-reasoning models or legacy Magistral)
+            thinkingDelta = d.reasoning_content || d.reasoning || '';
+            delta = (typeof d.content === 'string' ? d.content : '') || '';
+          }
           if (thinkingDelta) thinkingAcc += thinkingDelta;
           if (delta) acc += delta;
           if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
@@ -2648,6 +2698,10 @@ async function _callVercel(payload) {
   // Note: the native Vercel client (ScreenCaptureVercelClient.kt) has no image support at all.
 
   const requestBody = { model: payload.modelName, messages, stream: true };
+  // Enable extended reasoning for Codex and other reasoning-capable models via Vercel proxy.
+  if (payload.supportsThinking) {
+    requestBody.reasoning_effort = 'high';
+  }
 
   window.__customModelAbortController = new AbortController();
   let acc = '';
@@ -2758,6 +2812,12 @@ async function _callOpenAiCompat(payload, provider) {
   if (payload.temperature !== undefined && payload.temperature > 0) body.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) body.top_p = payload.topP;
   if (payload.supportsTopK && payload.topK !== undefined && payload.topK > 0) body.top_k = payload.topK;
+  // For custom models declared as supportsThinking, send enable_thinking so
+  // OpenRouter-compatible and Qwen3-style endpoints activate their reasoning mode.
+  if (payload.supportsThinking) {
+    body.enable_thinking = true;
+    body.thinking_budget = 16000;
+  }
 
   window.__customModelAbortController = new AbortController();
   let acc = '';
