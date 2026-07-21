@@ -4765,12 +4765,26 @@ function _loadJsChatHistory() {
   try {
     const raw = Bridge.loadChatHistory();
     _jsChatHistory = JSON.parse(raw) || [];
-    // Restore chat bubbles for messages not yet shown by Kotlin's own restoration
-    // (Kotlin restores its own chat state; this is only needed if that diverges)
-    // For now just keep the array in sync for the next AI turn payload.
   } catch(e) {
     _jsChatHistory = [];
     console.warn('_loadJsChatHistory error:', e);
+  }
+  // Render bubbles for the restored history. Kotlin only persists the history
+  // for the next AI-turn payload; it never replays onUserMessage/onAiMessage
+  // into the WebView on startup, so without this the chat area is empty after
+  // the app is closed and reopened even though the history itself survived.
+  _renderRestoredChatBubbles();
+}
+
+/** Rebuilds the visible chat bubbles from _jsChatHistory (e.g. after an app restart). */
+function _renderRestoredChatBubbles() {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const m of _jsChatHistory) {
+    if (!m || !m.text) continue;
+    if (m.role === 'user') addUserBubble(m.text);
+    else addModelBubble(m.text, false);
   }
 }
 
