@@ -122,6 +122,27 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
 
         /**
+         * Shows a focusable accessibility overlay above the currently open app. The WebView
+         * owns the question state; this native layer is only used when that WebView is hidden.
+         */
+        fun showQuestionOverlay(
+            question: String,
+            answers: List<String>,
+            onAnswer: (String) -> Unit
+        ): Boolean {
+            val instance = serviceInstance
+            if (!isServiceConnected.get() || instance == null) return false
+            mainHandler.post {
+                try {
+                    instance.showQuestionOverlayInternal(question, answers, onAnswer)
+                } catch (error: Exception) {
+                    Log.e(TAG, "Could not show question accessibility overlay", error)
+                }
+            }
+            return true
+        }
+
+        /**
          * Show a toast message on the main thread
          */
         private fun showToast(message: String, isError: Boolean) {
@@ -148,6 +169,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private var pendingScreenshotDelayMillis: Long = 0L
     private var pendingDelayedScreenshotRunnable: Runnable? = null
     private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
+    private var questionOverlay: AccessibilityQuestionOverlay? = null
+
+    private fun showQuestionOverlayInternal(
+        question: String,
+        answers: List<String>,
+        onAnswer: (String) -> Unit
+    ) {
+        val overlay = questionOverlay ?: AccessibilityQuestionOverlay(this).also {
+            questionOverlay = it
+        }
+        overlay.show(question, answers, onAnswer)
+    }
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
@@ -860,6 +893,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     override fun onDestroy() {
+        questionOverlay?.dismiss()
+        questionOverlay = null
         super.onDestroy()
         Log.d(TAG, "Accessibility service destroyed")
         

@@ -699,6 +699,36 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.UiStringsOverridesPreferences.load(context) ?: "{}"
     }
 
+    // ── Background question overlay ─────────────────────────────────────────
+    // Question parsing, queueing, and AI handoff remain in the WebView. This bridge only asks
+    // the accessibility service for a native presentation surface when the WebView is hidden.
+
+    @JavascriptInterface
+    fun showQuestionOverlay(question: String, answersJson: String): Boolean {
+        val safeQuestion = question.take(2_000).trim()
+        if (safeQuestion.isEmpty()) return false
+        val answers = try {
+            val array = JSONArray(answersJson)
+            buildList<String> {
+                for (index in 0 until minOf(array.length(), 50)) {
+                    val answer = array.optString(index, "").take(1_000).trim()
+                    if (answer.isNotEmpty()) add(answer)
+                }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "showQuestionOverlay: invalid answers JSON", error)
+            return false
+        }
+        if (answers.isEmpty()) return false
+
+        return ScreenOperatorAccessibilityService.showQuestionOverlay(safeQuestion, answers) { answer ->
+            val quotedAnswer = JSONObject.quote(answer)
+            mainActivity.evaluateWebViewJs(
+                "window.onNativeAiQuestionAnswer && window.onNativeAiQuestionAnswer($quotedAnswer)"
+            )
+        }
+    }
+
     // ── Toast ────────────────────────────────────────────────────────────────
     // Generic bridge method to show an Android Toast from JavaScript. Exists so a
     // custom-action-types.json entry (e.g. an AI-emitted toast("message") command) can show
@@ -1052,7 +1082,10 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "getGenerationDefaultsOverrides"    -> getGenerationDefaultsOverrides()
                 "setUiStringsOverrides"             -> setUiStringsOverrides(a.getString("json")).toString()
                 "getUiStringsOverrides"             -> getUiStringsOverrides()
-                // ── Toast ─────────────────────────────────────────────────────
+                // ── Background question overlay / Toast ──────────────────────
+                "showQuestionOverlay"           -> showQuestionOverlay(
+                    a.getString("question"), a.getString("answersJson")
+                ).toString()
                 "showToast"                     -> { showToast(a.getString("message"), a.optBoolean("isLong", false)); "" }
                 // ── Device Control ────────────────────────────────────────────
                 "tapByText"                     -> { tapByText(a.getString("buttonText")); "" }

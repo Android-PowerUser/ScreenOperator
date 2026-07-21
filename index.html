@@ -859,6 +859,15 @@ const Bridge = {
     console.warn('[Bridge.launchIntent] not available on this build');
   },
 
+  /* Focusable accessibility overlay used only while this WebView is backgrounded. */
+  showQuestionOverlay:(question, answers)=>{
+    if (getInAndroid() && typeof Android.showQuestionOverlay === 'function') {
+      try { return !!Android.showQuestionOverlay(String(question), JSON.stringify(answers || [])); }
+      catch(e) { console.warn('[Bridge.showQuestionOverlay]', e); }
+    }
+    return false;
+  },
+
   /* Show a native Android Toast - usable from window.onCustomAction handlers (see toast() example below) */
   showToast:(message, isLong)=>{ if(getInAndroid()) Android.showToast(String(message), !!isLong); else console.log('[Toast]', message); },
 
@@ -4135,6 +4144,7 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
  * custom-action-types.json (this file alone does nothing - the regex has to be installed too).
  */
 let _activeAiQuestion = null;
+let _aiQuestionShownNatively = false;
 const _aiQuestionQueue = [];
 let _lastAiQuestionSignature = '';
 let _lastAiQuestionAt = 0;
@@ -4206,19 +4216,44 @@ function _showNextAiQuestion() {
     }
   });
   options.appendChild(custom);
-  overlay.classList.add('visible');
+  _presentActiveAiQuestion();
+}
 
-  // A background WebView cannot be seen. Re-open this app through the already available
-  // accessibility bridge; the actual popup and all answer logic remain WebView-owned.
-  if (getInAndroid() && (document.hidden || !document.hasFocus())) {
-    Bridge.openAppByNameOrPackage('io.github.android_poweruser');
+function _presentActiveAiQuestion() {
+  if (!_activeAiQuestion) return;
+  const overlay = document.getElementById('ai-question-overlay');
+  const isBackgrounded = getInAndroid() && (document.hidden || !document.hasFocus());
+  if (isBackgrounded) {
+    overlay?.classList.remove('visible');
+    if (!_aiQuestionShownNatively) {
+      _aiQuestionShownNatively = Bridge.showQuestionOverlay(
+        _activeAiQuestion.question,
+        _activeAiQuestion.answers
+      );
+    }
+    // Backward compatibility for an older APK that has not received the native overlay bridge.
+    if (!_aiQuestionShownNatively) {
+      overlay?.classList.add('visible');
+      Bridge.openAppByNameOrPackage('io.github.android_poweruser');
+    }
+  } else if (!_aiQuestionShownNatively) {
+    overlay?.classList.add('visible');
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && _activeAiQuestion) _presentActiveAiQuestion();
+});
+
+window.onNativeAiQuestionAnswer = function(answer) {
+  if (_aiQuestionShownNatively) _submitAiQuestionAnswer(String(answer || ''));
+};
 
 function _submitAiQuestionAnswer(answer) {
   if (!_activeAiQuestion || !answer) return;
   document.getElementById('ai-question-overlay')?.classList.remove('visible');
   _activeAiQuestion = null;
+  _aiQuestionShownNatively = false;
   Bridge.sendMessage(String(answer));
   window.onGenerationStateChanged(true, false);
   setTimeout(_showNextAiQuestion, 0);
