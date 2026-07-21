@@ -485,7 +485,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun executeTakeScreenshotCommand(): Boolean {
         val delayMillis = pendingScreenshotDelayMillis
         pendingScreenshotDelayMillis = 0L
-        val onlyTermuxContext = !sawNonTermuxCommandSinceLastScreenshot
         fun buildScreenInfoPayload(rawScreenInfo: String?): String? {
             val termuxOutput = TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
             if (termuxOutput.isBlank()) {
@@ -503,7 +502,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // info every time, regardless of "supportsScreenshot" in custom-models.json).
             val effectiveSupportsScreenshot = com.google.ai.sample.util.CustomModelRegistry.getActiveModel()
                 ?.supportsScreenshot ?: currentModel.supportsScreenshot
-            if (!effectiveSupportsScreenshot || onlyTermuxContext) {
+            if (!effectiveSupportsScreenshot) {
                 Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
                 showToast("Capturing screen info...", false)
                 val screenInfo = buildScreenInfoPayload(captureScreenInformation())
