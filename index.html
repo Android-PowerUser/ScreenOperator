@@ -342,6 +342,17 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .popup-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:14px}
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
 .popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+/* AI-requested question popup. Kept in the WebView so its behaviour can be updated remotely. */
+#ai-question-overlay{z-index:1100;align-items:center;justify-content:center}
+#ai-question-overlay.visible{display:flex}
+.ai-question-popup{max-height:min(82vh,680px);display:flex;flex-direction:column}
+#ai-question-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px}
+#ai-answer-options{display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding:2px}
+.ai-answer-option{width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--outline);border-radius:12px;background:var(--bg);color:var(--text-primary);font:inherit;text-align:left;cursor:pointer}
+.ai-answer-option:active{background:var(--item-hover)}
+.ai-answer-custom{cursor:text;outline:none}
+.ai-answer-custom::placeholder{color:var(--text-secondary);opacity:.72}
+.ai-answer-custom:focus{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 
 /* ── Database entries list ───────────────────────────────── */
 .db-entry{display:flex;align-items:center;gap:8px;padding:4px 8px;min-width:0}
@@ -599,6 +610,14 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <!-- ═══════════════════════════════════════════════════════
      POPUPS
 ═══════════════════════════════════════════════════════════ -->
+
+<!-- AI question popup. It deliberately has no dismiss button: an answer is required. -->
+<div id="ai-question-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="ai-question-text">
+  <div class="popup ai-question-popup" onclick="event.stopPropagation()">
+    <div class="popup-title" id="ai-question-text"></div>
+    <div id="ai-answer-options"></div>
+  </div>
+</div>
 
 <!-- API Key Popup -->
 <div id="popup-apikey" class="overlay" onclick="overlayClose(event,'popup-apikey')">
@@ -958,6 +977,7 @@ To write text, click the textfield, thereafter: "writeText("sample text")" You n
 If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field.
 
 To show the user a brief on-screen message (e.g. a status update or a warning), use "toast("message")".
+To ask the user a question with selectable answers, use "popUp("Question", "Answer option", "Answer option")". You may provide more than two answer options.
 
 To copy text to the clipboard, use "copyToClipboard("text")".
 
@@ -1643,7 +1663,17 @@ function _loadCustomActionTypeOverrides() {
             if (!entry || typeof entry.id !== 'string' || !entry.id.trim()) continue;
             if (typeof entry.regex !== 'string' || !entry.regex.trim()) continue;
             try {
-              parsed.push({ id: entry.id.trim(), regex: new RegExp(entry.regex, 'gi') });
+              // Kotlin regex supports leading inline flags such as (?i). JavaScript does not,
+              // so translate the flags before compiling the same remotely supplied pattern.
+              let pattern = entry.regex;
+              let flags = 'g';
+              const inlineFlags = pattern.match(/^\(\?([ims]+)\)/i);
+              if (inlineFlags) {
+                pattern = pattern.slice(inlineFlags[0].length);
+                for (const flag of inlineFlags[1].toLowerCase()) if (!flags.includes(flag)) flags += flag;
+              }
+              if (!flags.includes('i')) flags += 'i';
+              parsed.push({ id: entry.id.trim(), regex: new RegExp(pattern, flags) });
             } catch(e) { console.warn('Invalid regex for custom action', entry.id, e); }
           }
         }
@@ -4104,10 +4134,125 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
  * command - see docs/ai-toast-command.md. It only fires once you add the matching entry to
  * custom-action-types.json (this file alone does nothing - the regex has to be installed too).
  */
+let _activeAiQuestion = null;
+const _aiQuestionQueue = [];
+let _lastAiQuestionSignature = '';
+let _lastAiQuestionAt = 0;
+
+/** Parse the quoted, comma-separated arguments captured from popUp(...). */
+function _parsePopupArguments(source) {
+  const values = [];
+  let i = 0;
+  const skipWhitespace = () => { while (i < source.length && /\s/.test(source[i])) i++; };
+  skipWhitespace();
+  while (i < source.length) {
+    const quote = source[i];
+    if (quote !== '"' && quote !== "'") return [];
+    i++;
+    let value = '';
+    let closed = false;
+    while (i < source.length) {
+      const ch = source[i++];
+      if (ch === quote) { closed = true; break; }
+      if (ch === '\\' && i < source.length) {
+        const escaped = source[i++];
+        value += ({ n:'\n', r:'\r', t:'\t', b:'\b', f:'\f' })[escaped] ?? escaped;
+      } else {
+        value += ch;
+      }
+    }
+    if (!closed) return [];
+    values.push(value);
+    skipWhitespace();
+    if (i >= source.length) break;
+    if (source[i] !== ',') return [];
+    i++;
+    skipWhitespace();
+  }
+  return values;
+}
+
+function _showNextAiQuestion() {
+  if (_activeAiQuestion || !_aiQuestionQueue.length) return;
+  _activeAiQuestion = _aiQuestionQueue.shift();
+  const overlay = document.getElementById('ai-question-overlay');
+  const question = document.getElementById('ai-question-text');
+  const options = document.getElementById('ai-answer-options');
+  if (!overlay || !question || !options) { _activeAiQuestion = null; return; }
+
+  question.textContent = _activeAiQuestion.question;
+  options.replaceChildren();
+  for (const answer of _activeAiQuestion.answers) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-answer-option';
+    button.textContent = answer;
+    button.addEventListener('click', () => _submitAiQuestionAnswer(answer));
+    options.appendChild(button);
+  }
+
+  // The final option is always free text and starts empty.
+  const custom = document.createElement('input');
+  custom.type = 'text';
+  custom.className = 'ai-answer-option ai-answer-custom';
+  custom.placeholder = 'Enter something else';
+  custom.setAttribute('aria-label', 'Enter something else');
+  custom.autocomplete = 'off';
+  custom.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      const answer = custom.value.trim();
+      if (answer) _submitAiQuestionAnswer(answer);
+    }
+  });
+  options.appendChild(custom);
+  overlay.classList.add('visible');
+
+  // A background WebView cannot be seen. Re-open this app through the already available
+  // accessibility bridge; the actual popup and all answer logic remain WebView-owned.
+  if (getInAndroid() && (document.hidden || !document.hasFocus())) {
+    Bridge.openAppByNameOrPackage('io.github.android_poweruser');
+  }
+}
+
+function _submitAiQuestionAnswer(answer) {
+  if (!_activeAiQuestion || !answer) return;
+  document.getElementById('ai-question-overlay')?.classList.remove('visible');
+  _activeAiQuestion = null;
+  Bridge.sendMessage(String(answer));
+  window.onGenerationStateChanged(true, false);
+  setTimeout(_showNextAiQuestion, 0);
+}
+
+function _enqueueAiQuestion(rawArguments) {
+  const args = _parsePopupArguments(rawArguments || '');
+  if (args.length < 2 || !args[0].trim()) {
+    console.warn('[ScreenOperator] Ignoring malformed popUp arguments:', rawArguments);
+    return;
+  }
+  const item = { question: args[0], answers: args.slice(1).filter(answer => answer.trim()) };
+  if (!item.answers.length) return;
+
+  // Android's native parser and the WebView parser may both report the same command. Avoid
+  // showing it twice while still allowing an identical question in a later AI turn.
+  const signature = JSON.stringify(item);
+  const now = Date.now();
+  if (signature === _lastAiQuestionSignature && now - _lastAiQuestionAt < 10000) return;
+  _lastAiQuestionSignature = signature;
+  _lastAiQuestionAt = now;
+  _aiQuestionQueue.push(item);
+  _showNextAiQuestion();
+}
+
 window.onCustomAction = window.onCustomAction || function(id, groups) {
   if (id === 'TOAST') {
     // groups[0] = the message text captured from toast("...") / toast('...')
     Bridge.showToast(groups[0] || '', false);
+    return;
+  }
+  if (id === 'POPUP_QUESTION') {
+    // groups[0] contains all quoted arguments, allowing any number of answer options.
+    _enqueueAiQuestion(groups[0] || '');
     return;
   }
   console.log('[ScreenOperator] onCustomAction: id=' + id + ', groups=' + JSON.stringify(groups));
@@ -4264,6 +4409,10 @@ window.onAndroidReady = function() {
 
 // Android System Back Button Handler (returns Boolean to WebViewBridge)
 window.onBackPressed = function() {
+  // The AI question is intentionally modal and can only be closed by submitting an answer.
+  if (document.getElementById('ai-question-overlay').classList.contains('visible')) {
+    return true;
+  }
   if (document.getElementById('popup-edit-entry').classList.contains('open')) {
     closeEditEntry();
     return true;
