@@ -4793,6 +4793,12 @@ function _appendAssistantToHistory(text) {
 function _appendUserToHistory(text) {
   if (!text) return;
   _jsChatHistory.push({ role: 'user', text });
+  // Persist immediately so the user's turn survives an app kill that happens
+  // before the assistant reply arrives (previously only the assistant append
+  // path saved, so a user message sent right before the app was closed could
+  // be lost from the history used for the next AI turn).
+  if (_jsChatHistory.length > 40) _jsChatHistory = _jsChatHistory.slice(-40);
+  _saveJsChatHistory();
 }
 
 /* Hook into existing onAiMessage to track history ──────── */
