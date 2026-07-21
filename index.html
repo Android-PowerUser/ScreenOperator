@@ -221,7 +221,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .bubble-wrap.user-wrap{flex-direction:row-reverse}
 .bubble{border-radius:12px;padding:16px;font-size:17px;line-height:1.55;max-width:82%;word-break:break-word}
 .bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text);white-space:pre-wrap}
-.bubble-thumb{display:block;max-width:160px;max-height:160px;border-radius:8px;margin-top:8px;cursor:pointer;object-fit:cover}
+.bubble-thumb{display:block;max-width:112px;max-height:112px;border-radius:8px;margin-top:8px;cursor:pointer;object-fit:cover}
 .thumb-lightbox{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px;box-sizing:border-box}
 .thumb-lightbox img{max-width:100%;max-height:100%;border-radius:8px}
 .bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text);display:flex;align-items:flex-start;gap:8px}
@@ -1203,7 +1203,7 @@ window.onAiMessage = function(text, isPending) {
 
 window.onCommandStatus = function(status) {
   const wrap = document.getElementById('cmd-status-wrap');
-  if (!status) { wrap.innerHTML=''; return; }
+  if (!status || status === 'Processing screenshot...') { wrap.innerHTML=''; return; }
   wrap.innerHTML = `<div class="cmd-status-card">${escHtml(status)}</div>`;
   scrollToBottom();
 };
