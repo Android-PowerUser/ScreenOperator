@@ -221,7 +221,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .bubble-wrap.user-wrap{flex-direction:row-reverse}
 .bubble{border-radius:12px;padding:16px;font-size:17px;line-height:1.55;max-width:82%;word-break:break-word}
 .bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text);white-space:pre-wrap}
-.bubble-thumb{display:block;max-width:160px;max-height:160px;border-radius:8px;margin-bottom:8px;cursor:pointer;object-fit:cover}
+.bubble-thumb{display:block;max-width:160px;max-height:160px;border-radius:8px;margin-top:8px;cursor:pointer;object-fit:cover}
 .thumb-lightbox{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px;box-sizing:border-box}
 .thumb-lightbox img{max-width:100%;max-height:100%;border-radius:8px}
 .bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text);display:flex;align-items:flex-start;gap:8px}
@@ -1218,8 +1218,8 @@ window.onChatCleared = function() {
 // imageDataUri (optional) is a base64 data: URI of the screenshot just sent to the AI; when
 // present it's rendered as a small thumbnail inside the bubble instead of a separate toast.
 window.onUserMessage = function(text, imageDataUri) {
-  if (text) {
-    text = _applyPendingTruncationWarning(text);
+  if (text || imageDataUri) {
+    text = _applyPendingTruncationWarning(text || '');
     addUserBubble(text, imageDataUri);
   }
 };
@@ -4296,7 +4296,7 @@ function addUserBubble(text, imageDataUri) {
   const thumbHtml = imageDataUri
     ? `<img class="bubble-thumb" src="${escAttr(imageDataUri)}" alt="Screenshot" onclick="_showThumbLightbox('${escAttr(imageDataUri)}')" />`
     : '';
-  wrap.innerHTML = `<div class="bubble user">${thumbHtml}${escHtml(text)}</div>
+  wrap.innerHTML = `<div class="bubble user">${escHtml(text)}${thumbHtml}</div>
     <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
@@ -4808,8 +4808,8 @@ function _renderRestoredChatBubbles() {
   if (!container) return;
   container.innerHTML = '';
   for (const m of _jsChatHistory) {
-    if (!m || !m.text) continue;
-    if (m.role === 'user') addUserBubble(m.text);
+    if (!m || (!m.text && !m.imageDataUri)) continue;
+    if (m.role === 'user') addUserBubble(m.text || '', m.imageDataUri);
     else addModelBubble(m.text, false);
   }
 }
@@ -4830,9 +4830,11 @@ function _appendAssistantToHistory(text) {
  * Called when the user sends a message (picked up from onUserMessage callback).
  * Appends the user turn so the history is complete.
  */
-function _appendUserToHistory(text) {
-  if (!text) return;
-  _jsChatHistory.push({ role: 'user', text });
+function _appendUserToHistory(text, imageDataUri) {
+  if (!text && !imageDataUri) return;
+  const entry = { role: 'user', text: text || '' };
+  if (imageDataUri) entry.imageDataUri = imageDataUri;
+  _jsChatHistory.push(entry);
   // Persist immediately so the user's turn survives an app kill that happens
   // before the assistant reply arrives (previously only the assistant append
   // path saved, so a user message sent right before the app was closed could
@@ -4855,9 +4857,9 @@ function _appendUserToHistory(text) {
 /* Hook into existing onUserMessage to track history ─────── */
 (function() {
   const _orig = window.onUserMessage;
-  window.onUserMessage = function(text) {
-    if (_orig) _orig(text);
-    _appendUserToHistory(text);
+  window.onUserMessage = function(text, imageDataUri) {
+    if (_orig) _orig(text, imageDataUri);
+    _appendUserToHistory(text, imageDataUri);
   };
 })();
 
