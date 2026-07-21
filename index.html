@@ -2226,18 +2226,19 @@ async function _callPuter(payload) {
   };
   if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
-  // Keep the provider-native flags for all reasoning-capable Puter models.
-  // Mimo uses this convention, while Qwen3.5 is also routed in OpenRouter's
-  // format: it sends reasoning_details only when the OpenRouter reasoning
-  // option is enabled and not excluded. Limit that option to Qwen, so models
-  // with a stricter provider schema keep their existing request unchanged.
-  if (payload.supportsThinking) {
-    requestBody.enable_thinking = true;
-    requestBody.thinking_budget = 16000;
-    if (String(payload.modelName || '').startsWith('qwen/')) {
-      requestBody.reasoning = { enabled: true, exclude: false, max_tokens: 16000 };
-    }
-  }
+  // Puter's documented /v1/chat/completions options are only: model, stream,
+  // max_tokens, temperature, tools, reasoning_effort/reasoning.effort (OpenAI
+  // models only per Puter's docs), verbosity, compaction. There is no
+  // enable_thinking/thinking_budget parameter, and reasoning.enabled/exclude
+  // is an OpenRouter-only convention Puter does not document. Sending those
+  // undocumented fields risks being silently ignored (or rejected) by
+  // non-OpenAI providers, which is why Mimo/Qwen3.5 never returned any
+  // reasoning content. These hybrid-thinking models reason automatically when
+  // they judge it useful and surface it via reasoning_content/reasoning in
+  // the delta, which _thinkingFromOpenAiDelta already parses - no extra flag
+  // needed for them. Kept commented for reference in case Puter later
+  // documents a working switch for non-OpenAI models:
+  // if (payload.supportsThinking) { requestBody.reasoning_effort = 'high'; }
 
   window.__customModelAbortController = new AbortController();
   try {
