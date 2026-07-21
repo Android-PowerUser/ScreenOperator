@@ -15,6 +15,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.ImagePart // For instance check
 import com.google.ai.client.generativeai.type.GenerationConfig
@@ -1052,6 +1053,42 @@ class PhotoReasoningViewModel(
     private fun clearStaleErrorState() {
         if (_uiState.value is PhotoReasoningUiState.Error) {
             _uiState.value = PhotoReasoningUiState.Initial
+        }
+    }
+
+    private fun reasonInLiveMode(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String?,
+        imageUrisForChat: List<String>?,
+        currentModel: ModelOption
+    ) {
+        viewModelScope.launch {
+            try {
+                if (liveApiManager?.connectionState?.value != LiveApiManager.ConnectionState.CONNECTED) {
+                    liveApiManager?.connect()
+                    delay(2000)
+                }
+
+                val combinedPromptText = PhotoReasoningTextPolicies.buildPromptWithScreenInfo(userInput, screenInfoForPrompt)
+                val userMessage = PhotoReasoningMessage(
+                    text = combinedPromptText,
+                    participant = PhotoParticipant.USER,
+                    imageUris = if (currentModel.supportsScreenshot) (imageUrisForChat ?: emptyList()) else emptyList(),
+                    isPending = false
+                )
+                appendUserAndPendingModelMessages(userMessage)
+                _uiState.value = PhotoReasoningUiState.Loading
+
+                val imageDataList = selectedImages.map { PhotoReasoningSerialization.bitmapToBase64(it) }
+                val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $combinedPromptText"
+                liveApiManager?.sendMessage(prompt, imageDataList.ifEmpty { null })
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in live mode reasoning", e)
+                _uiState.value = PhotoReasoningUiState.Error(e.message ?: "Unknown error")
+                appendErrorMessage("Error: ${e.message}")
+                saveChatHistoryForApplication()
+            }
         }
     }
 
