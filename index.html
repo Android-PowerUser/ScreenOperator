@@ -3292,7 +3292,15 @@ async function _executeCommandsFromResponse(text) {
   _stopExecution = false;
   _dispatchCustomActions(text);
   const parsedCommands = parseCommandsFromText(text);
-  if (!parsedCommands.length) return;
+  if (!parsedCommands.length) {
+    // AI response contained no recognized command: nothing to execute, and no
+    // further SCREENSHOT/COMPLETED will arrive to flip the UI back. Without this,
+    // the Stop button stays shown forever even though generation has ended.
+    _stopExecution = true;
+    generationRunning = false;
+    if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
+    return;
+  }
 
   // Apply ExecutionPolicyConfig cap (maxCommandsPerMessage) - mirrors CommandExecutionLimiter.
   const trunc = _truncateCommands(parsedCommands);
