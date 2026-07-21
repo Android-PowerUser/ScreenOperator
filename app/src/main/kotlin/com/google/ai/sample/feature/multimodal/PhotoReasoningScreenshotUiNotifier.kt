@@ -10,11 +10,13 @@ internal object PhotoReasoningScreenshotUiNotifier {
     }
 
     fun showSendingToAi(context: Context, onStatus: (String) -> Unit) {
-        onStatus("Screenshot added, sending to AI...")
-        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_screenshot_sending", "Screenshot added, sending to AI..."), Toast.LENGTH_SHORT).show()
+        // No-op Toast: the screenshot now appears as a thumbnail directly inside the user
+        // bubble in the WebView (see index.html addUserBubble), so this separate native
+        // notification is no longer needed. onStatus() is kept for any other status-area
+        // consumers, but intentionally left blank here.
     }
 
     fun showAddedToConversation(context: Context) {
-        Toast.makeText(context, com.google.ai.sample.util.UiStringsConfig.get("toast_screenshot_added", "Screenshot added to conversation"), Toast.LENGTH_SHORT).show()
+        // No-op: superseded by the in-bubble screenshot thumbnail in the WebView.
     }
 }

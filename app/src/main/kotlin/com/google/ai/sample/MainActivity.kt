@@ -1594,8 +1594,31 @@ class MainActivity : ComponentActivity() {
                 if (lastUser != null && lastUser.id != lastObservedUserMessageId) {
                     lastObservedUserMessageId = lastUser.id
                     val escaped = escapeForJs(lastUser.text)
+                    // Load the first attached image (e.g. the screenshot just sent to the AI), if
+                    // any, as a base64 data URI so the WebView can render a small thumbnail
+                    // directly inside the user bubble instead of relying on a separate native
+                    // Toast ("Screenshot added, sending to AI...").
+                    val imageDataUri = lastUser.imageUris.firstOrNull()?.let { uriString ->
+                        try {
+                            val uri = Uri.parse(uriString)
+                            contentResolver.openInputStream(uri)?.use { input ->
+                                val bytes = input.readBytes()
+                                val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                bitmap?.let { com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(it) }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to load image for chat thumbnail: ${e.message}")
+                            null
+                        }
+                    }
+                    val escapedImage = imageDataUri?.let { escapeForJs(it) }
                     wv.post {
-                        wv.evaluateJavascript("window.onUserMessage && window.onUserMessage('$escaped')", null)
+                        val js = if (escapedImage != null) {
+                            "window.onUserMessage && window.onUserMessage('$escaped', '$escapedImage')"
+                        } else {
+                            "window.onUserMessage && window.onUserMessage('$escaped')"
+                        }
+                        wv.evaluateJavascript(js, null)
                     }
                 }
 

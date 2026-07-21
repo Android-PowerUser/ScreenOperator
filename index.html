@@ -221,6 +221,9 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .bubble-wrap.user-wrap{flex-direction:row-reverse}
 .bubble{border-radius:12px;padding:16px;font-size:17px;line-height:1.55;max-width:82%;word-break:break-word}
 .bubble.user{background:var(--bubble-user-bg);color:var(--bubble-user-text);white-space:pre-wrap}
+.bubble-thumb{display:block;max-width:160px;max-height:160px;border-radius:8px;margin-bottom:8px;cursor:pointer;object-fit:cover}
+.thumb-lightbox{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px;box-sizing:border-box}
+.thumb-lightbox img{max-width:100%;max-height:100%;border-radius:8px}
 .bubble.model{background:var(--bubble-model-bg);color:var(--bubble-model-text);display:flex;align-items:flex-start;gap:8px}
 .model-icon{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;margin-top:1px}
 .model-text{flex:1;white-space:pre-wrap}
@@ -1212,10 +1215,12 @@ window.onChatCleared = function() {
 
 // Called by Android after assembling the full user message (typed text + screen elements +
 // Termux output). Appends a new user bubble so every message appears in order at the bottom.
-window.onUserMessage = function(text) {
+// imageDataUri (optional) is a base64 data: URI of the screenshot just sent to the AI; when
+// present it's rendered as a small thumbnail inside the bubble instead of a separate toast.
+window.onUserMessage = function(text, imageDataUri) {
   if (text) {
     text = _applyPendingTruncationWarning(text);
-    addUserBubble(text);
+    addUserBubble(text, imageDataUri);
   }
 };
 
@@ -4285,13 +4290,24 @@ window.onBackPressed = function() {
 /* ════════════════════════════════════════════════════════
    CHAT
 ════════════════════════════════════════════════════════ */
-function addUserBubble(text) {
+function addUserBubble(text, imageDataUri) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
-  wrap.innerHTML = `<div class="bubble user">${escHtml(text)}</div>
+  const thumbHtml = imageDataUri
+    ? `<img class="bubble-thumb" src="${escAttr(imageDataUri)}" alt="Screenshot" onclick="_showThumbLightbox('${escAttr(imageDataUri)}')" />`
+    : '';
+  wrap.innerHTML = `<div class="bubble user">${thumbHtml}${escHtml(text)}</div>
     <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
+}
+// Tapping a screenshot thumbnail opens it full-size in a simple lightbox overlay.
+function _showThumbLightbox(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'thumb-lightbox';
+  overlay.onclick = () => overlay.remove();
+  overlay.innerHTML = `<img src="${escAttr(src)}" alt="Screenshot" />`;
+  document.body.appendChild(overlay);
 }
 function addModelBubble(text, isPending) {
   const wrap = document.createElement('div');
@@ -4394,7 +4410,8 @@ function sendMessage() {
   // Adding it here too would cause the bubble to appear twice.
   // In demo/browser mode there is no Android callback, so we add it directly.
   if (!getInAndroid()) {
-    addUserBubble(text || "(attached images)");
+    const firstThumb = selectedImages.find(img => !img.isVideo && img.objectUrl);
+    addUserBubble(text || "(attached images)", firstThumb ? firstThumb.objectUrl : null);
   }
   input.value = '';
   input.style.height = '';
