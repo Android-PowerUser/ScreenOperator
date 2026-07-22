@@ -4917,11 +4917,20 @@ function renderKeyList() {
   keys.forEach((k,i) => {
     const row = document.createElement('div');
     row.className='key-row';
+    row.style.cursor='pointer';
     const masked = k.length > 15 ? k.slice(0,10)+'…'+k.slice(-5) : k;
     row.innerHTML = `
       <input type="radio" class="key-radio" name="keysel" ${i===curIdx?'checked':''} onchange="Bridge.setCurrentKeyIndex(${i},'${currentProviderId}')">
       <span class="key-label">${escHtml(masked)}</span>
-      <button class="key-del" onclick="deleteApiKey('${escAttr(k)}')">✕</button>`;
+      <button class="key-del" onclick="event.stopPropagation();deleteApiKey('${escAttr(k)}')">✕</button>`;
+    row.addEventListener('click', function(e) {
+      if (e.target.classList.contains('key-del')) return;
+      const radio = row.querySelector('.key-radio');
+      if (radio && !radio.checked) {
+        radio.checked = true;
+        Bridge.setCurrentKeyIndex(i, currentProviderId);
+      }
+    });
     list.appendChild(row);
   });
 }
