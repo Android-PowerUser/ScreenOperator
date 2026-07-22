@@ -2016,6 +2016,12 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       // handled inside each caller
     } else {
       Bridge.onCustomModelError(e && e.message ? e.message : String(e));
+      // Without this, the Stop button stays shown forever after an API error,
+      // since no further SCREENSHOT/COMPLETED command will arrive to flip the
+      // UI back to the Task input. Mirrors the "no recognized command" reset
+      // in _executeCommandsFromResponse.
+      generationRunning = false;
+      if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
     }
   }
 };
@@ -2294,6 +2300,15 @@ async function _callPuter(payload) {
   // needed for them. Kept commented for reference in case Puter later
   // documents a working switch for non-OpenAI models:
   // if (payload.supportsThinking) { requestBody.reasoning_effort = 'high'; }
+  //
+  // Some Puter-routed providers (e.g. qwen/qwen3.7-plus) reject requests that
+  // omit max_tokens with "400 InvalidParameter: Range of max_tokens should be
+  // [1, 131072]" because Puter's own server-side default for that provider
+  // falls outside its accepted range. Always send an explicit, in-range value
+  // so every Puter model gets a valid max_tokens regardless of upstream
+  // provider defaults.
+  const PUTER_MAX_TOKENS_CEILING = 131072;
+  requestBody.max_tokens = Math.min(PUTER_MAX_TOKENS_CEILING, 50000);
 
   window.__customModelAbortController = new AbortController();
   try {
