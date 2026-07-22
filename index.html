@@ -860,14 +860,7 @@ const Bridge = {
     console.warn('[Bridge.launchIntent] not available on this build');
   },
 
-  /* Question presentation: WebView while MainActivity is visible, accessibility overlay otherwise. */
-  isAppInForeground:()=>{
-    if (getInAndroid() && typeof Android.isAppInForeground === 'function') {
-      try { return !!Android.isAppInForeground(); }
-      catch(e) { console.warn('[Bridge.isAppInForeground]', e); }
-    }
-    return !document.hidden;
-  },
+  /* Focusable accessibility overlay used for questions throughout the Android app. */
   showQuestionOverlay:(question, answers)=>{
     if (getInAndroid() && typeof Android.showQuestionOverlay === 'function') {
       try { return !!Android.showQuestionOverlay(String(question), JSON.stringify(answers || [])); }
@@ -4207,10 +4200,10 @@ function _showNextAiQuestion() {
 function _presentActiveAiQuestion() {
   if (!_activeAiQuestion) return;
   const overlay = document.getElementById('ai-question-overlay');
-  // document.hasFocus() reports false when the WebView itself is not focused even though
-  // MainActivity is visible. Use the Activity window state so foreground questions stay in JS.
-  const isBackgrounded = getInAndroid() && !Bridge.isAppInForeground();
-  if (isBackgrounded) {
+
+  // Use the same proven accessibility overlay both above Screen Operator and above other apps.
+  // Keeping one presentation path avoids WebView-specific flex/viewport rendering differences.
+  if (getInAndroid()) {
     overlay?.classList.remove('visible');
     if (!_aiQuestionShownNatively) {
       _aiQuestionShownNatively = Bridge.showQuestionOverlay(
@@ -4218,14 +4211,15 @@ function _presentActiveAiQuestion() {
         _activeAiQuestion.answers
       );
     }
-    // Backward compatibility for an older APK that has not received the native overlay bridge.
-    if (!_aiQuestionShownNatively) {
-      overlay?.classList.add('visible');
-      Bridge.openAppByNameOrPackage('io.github.android_poweruser');
-    }
-  } else if (!_aiQuestionShownNatively) {
+    if (_aiQuestionShownNatively) return;
+
+    // Backward compatibility for APKs from before the accessibility-overlay bridge existed.
     overlay?.classList.add('visible');
+    if (document.hidden) Bridge.openAppByNameOrPackage('io.github.android_poweruser');
+    return;
   }
+
+  overlay?.classList.add('visible');
 }
 
 document.addEventListener('visibilitychange', () => {
