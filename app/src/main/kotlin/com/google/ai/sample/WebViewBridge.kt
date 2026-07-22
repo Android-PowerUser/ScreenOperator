@@ -704,6 +704,13 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     // the accessibility service for a native presentation surface when the WebView is hidden.
 
     @JavascriptInterface
+    fun isAppInForeground(): Boolean {
+        return !mainActivity.isFinishing &&
+            !mainActivity.isDestroyed &&
+            mainActivity.hasWindowFocus()
+    }
+
+    @JavascriptInterface
     fun showQuestionOverlay(question: String, answersJson: String): Boolean {
         val safeQuestion = question.take(2_000).trim()
         if (safeQuestion.isEmpty()) return false
@@ -721,12 +728,21 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
         if (answers.isEmpty()) return false
 
-        return ScreenOperatorAccessibilityService.showQuestionOverlay(safeQuestion, answers) { answer ->
-            val quotedAnswer = JSONObject.quote(answer)
-            mainActivity.evaluateWebViewJs(
-                "window.onNativeAiQuestionAnswer && window.onNativeAiQuestionAnswer($quotedAnswer)"
-            )
-        }
+        return ScreenOperatorAccessibilityService.showQuestionOverlay(
+            safeQuestion,
+            answers,
+            onAnswer = { answer ->
+                val quotedAnswer = JSONObject.quote(answer)
+                mainActivity.evaluateWebViewJs(
+                    "window.onNativeAiQuestionAnswer && window.onNativeAiQuestionAnswer($quotedAnswer)"
+                )
+            },
+            onDismiss = {
+                mainActivity.evaluateWebViewJs(
+                    "window.onNativeAiQuestionDismissed && window.onNativeAiQuestionDismissed()"
+                )
+            }
+        )
     }
 
     // ── Toast ────────────────────────────────────────────────────────────────
@@ -1083,6 +1099,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "setUiStringsOverrides"             -> setUiStringsOverrides(a.getString("json")).toString()
                 "getUiStringsOverrides"             -> getUiStringsOverrides()
                 // ── Background question overlay / Toast ──────────────────────
+                "isAppInForeground"             -> isAppInForeground().toString()
                 "showQuestionOverlay"           -> showQuestionOverlay(
                     a.getString("question"), a.getString("answersJson")
                 ).toString()

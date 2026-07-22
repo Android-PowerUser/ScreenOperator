@@ -25,7 +25,12 @@ internal class AccessibilityQuestionOverlay(private val context: Context) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: View? = null
 
-    fun show(question: String, answers: List<String>, onAnswer: (String) -> Unit) {
+    fun show(
+        question: String,
+        answers: List<String>,
+        onAnswer: (String) -> Unit,
+        onDismiss: () -> Unit
+    ) {
         dismiss()
 
         val dark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -35,10 +40,26 @@ internal class AccessibilityQuestionOverlay(private val context: Context) {
         val outline = if (dark) Color.rgb(147, 143, 153) else Color.rgb(121, 116, 126)
         val primary = if (dark) Color.rgb(208, 188, 255) else Color.rgb(103, 80, 164)
 
+        var finished = false
+        fun dismissByUser() {
+            if (finished) return
+            finished = true
+            dismiss()
+            onDismiss()
+        }
+        fun submit(rawAnswer: String) {
+            val answer = rawAnswer.trim()
+            if (finished || answer.isEmpty()) return
+            finished = true
+            dismiss()
+            onAnswer(answer)
+        }
+
         val root = FrameLayout(context).apply {
             setBackgroundColor(Color.argb(110, 0, 0, 0))
             isClickable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setOnClickListener { dismissByUser() }
         }
         val scroll = ScrollView(context).apply {
             isFillViewport = false
@@ -46,31 +67,43 @@ internal class AccessibilityQuestionOverlay(private val context: Context) {
         }
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+            setPadding(dp(20), dp(12), dp(12), dp(20))
             background = roundedBackground(backgroundColor, dp(20).toFloat())
+            isClickable = true // Consume taps so only the scrim dismisses the popup.
+        }
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         val title = TextView(context).apply {
             text = question
             setTextColor(foreground)
             textSize = 20f
             setLineSpacing(0f, 1.08f)
-            setPadding(0, 0, 0, dp(14))
+            setPadding(dp(8), dp(8), dp(8), dp(14))
             setTextIsSelectable(false)
             contentDescription = question
         }
-        card.addView(title, LinearLayout.LayoutParams(
+        val close = TextView(context).apply {
+            text = "×"
+            setTextColor(foreground)
+            textSize = 28f
+            gravity = Gravity.CENTER
+            contentDescription = "Close"
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { dismissByUser() }
+        }
+        header.addView(title, LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        ))
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
+        card.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
-
-        var submitted = false
-        fun submit(rawAnswer: String) {
-            val answer = rawAnswer.trim()
-            if (submitted || answer.isEmpty()) return
-            submitted = true
-            dismiss()
-            onAnswer(answer)
-        }
 
         answers.forEach { answer ->
             val button = Button(context).apply {

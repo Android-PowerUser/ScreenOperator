@@ -343,12 +343,12 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
 .popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 /* AI-requested question popup. Kept in the WebView so its behaviour can be updated remotely. */
-#ai-question-overlay{z-index:1100;align-items:center;justify-content:center}
+#ai-question-overlay{z-index:1100;align-items:center;justify-content:center;overflow:hidden}
 #ai-question-overlay.visible{display:flex}
-.ai-question-popup{max-height:min(82vh,680px);display:flex;flex-direction:column}
-#ai-question-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px}
-#ai-answer-options{display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding:2px}
-.ai-answer-option{width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--outline);border-radius:12px;background:var(--bg);color:var(--text-primary);font:inherit;text-align:left;cursor:pointer}
+.ai-question-popup{width:min(480px,calc(100vw - 28px));max-height:calc(100dvh - 48px);margin:0;display:flex;flex-direction:column;overflow:hidden}
+#ai-question-text{flex:0 0 auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px;padding-right:38px}
+#ai-answer-options{min-height:0;display:flex;flex:0 1 auto;flex-direction:column;gap:10px;overflow-y:auto;padding:2px}
+.ai-answer-option{display:block;flex:0 0 auto;width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--outline);border-radius:12px;background:var(--bg);color:var(--text-primary);font:inherit;text-align:left;cursor:pointer}
 .ai-answer-option:active{background:var(--item-hover)}
 .ai-answer-custom{cursor:text;outline:none}
 .ai-answer-custom::placeholder{color:var(--text-secondary);opacity:.72}
@@ -611,9 +611,10 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
      POPUPS
 ═══════════════════════════════════════════════════════════ -->
 
-<!-- AI question popup. It deliberately has no dismiss button: an answer is required. -->
-<div id="ai-question-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="ai-question-text">
+<!-- AI question popup. Clicking the scrim, close button, or system Back dismisses it. -->
+<div id="ai-question-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="ai-question-text" onclick="_dismissAiQuestion()">
   <div class="popup ai-question-popup" onclick="event.stopPropagation()">
+    <button type="button" class="popup-close" aria-label="Close" onclick="_dismissAiQuestion()">✕</button>
     <div class="popup-title" id="ai-question-text"></div>
     <div id="ai-answer-options"></div>
   </div>
@@ -859,7 +860,14 @@ const Bridge = {
     console.warn('[Bridge.launchIntent] not available on this build');
   },
 
-  /* Focusable accessibility overlay used only while this WebView is backgrounded. */
+  /* Question presentation: WebView while MainActivity is visible, accessibility overlay otherwise. */
+  isAppInForeground:()=>{
+    if (getInAndroid() && typeof Android.isAppInForeground === 'function') {
+      try { return !!Android.isAppInForeground(); }
+      catch(e) { console.warn('[Bridge.isAppInForeground]', e); }
+    }
+    return !document.hidden;
+  },
   showQuestionOverlay:(question, answers)=>{
     if (getInAndroid() && typeof Android.showQuestionOverlay === 'function') {
       try { return !!Android.showQuestionOverlay(String(question), JSON.stringify(answers || [])); }
@@ -4199,7 +4207,9 @@ function _showNextAiQuestion() {
 function _presentActiveAiQuestion() {
   if (!_activeAiQuestion) return;
   const overlay = document.getElementById('ai-question-overlay');
-  const isBackgrounded = getInAndroid() && (document.hidden || !document.hasFocus());
+  // document.hasFocus() reports false when the WebView itself is not focused even though
+  // MainActivity is visible. Use the Activity window state so foreground questions stay in JS.
+  const isBackgrounded = getInAndroid() && !Bridge.isAppInForeground();
   if (isBackgrounded) {
     overlay?.classList.remove('visible');
     if (!_aiQuestionShownNatively) {
@@ -4226,14 +4236,27 @@ window.onNativeAiQuestionAnswer = function(answer) {
   if (_aiQuestionShownNatively) _submitAiQuestionAnswer(String(answer || ''));
 };
 
-function _submitAiQuestionAnswer(answer) {
-  if (!_activeAiQuestion || !answer) return;
+window.onNativeAiQuestionDismissed = function() {
+  if (_aiQuestionShownNatively) _dismissAiQuestion();
+};
+
+function _clearActiveAiQuestion() {
   document.getElementById('ai-question-overlay')?.classList.remove('visible');
   _activeAiQuestion = null;
   _aiQuestionShownNatively = false;
+  setTimeout(_showNextAiQuestion, 0);
+}
+
+function _dismissAiQuestion() {
+  if (!_activeAiQuestion) return;
+  _clearActiveAiQuestion();
+}
+
+function _submitAiQuestionAnswer(answer) {
+  if (!_activeAiQuestion || !answer) return;
+  _clearActiveAiQuestion();
   Bridge.sendMessage(String(answer));
   window.onGenerationStateChanged(true, false);
-  setTimeout(_showNextAiQuestion, 0);
 }
 
 function _enqueueAiQuestion(rawArguments) {
@@ -4421,8 +4444,8 @@ window.onAndroidReady = function() {
 
 // Android System Back Button Handler (returns Boolean to WebViewBridge)
 window.onBackPressed = function() {
-  // The AI question is intentionally modal and can only be closed by submitting an answer.
   if (document.getElementById('ai-question-overlay').classList.contains('visible')) {
+    _dismissAiQuestion();
     return true;
   }
   if (document.getElementById('popup-edit-entry').classList.contains('open')) {

@@ -128,13 +128,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         fun showQuestionOverlay(
             question: String,
             answers: List<String>,
-            onAnswer: (String) -> Unit
+            onAnswer: (String) -> Unit,
+            onDismiss: () -> Unit
         ): Boolean {
             val instance = serviceInstance
             if (!isServiceConnected.get() || instance == null) return false
             mainHandler.post {
                 try {
-                    instance.showQuestionOverlayInternal(question, answers, onAnswer)
+                    instance.showQuestionOverlayInternal(question, answers, onAnswer, onDismiss)
                 } catch (error: Exception) {
                     Log.e(TAG, "Could not show question accessibility overlay", error)
                 }
@@ -174,12 +175,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun showQuestionOverlayInternal(
         question: String,
         answers: List<String>,
-        onAnswer: (String) -> Unit
+        onAnswer: (String) -> Unit,
+        onDismiss: () -> Unit
     ) {
         val overlay = questionOverlay ?: AccessibilityQuestionOverlay(this).also {
             questionOverlay = it
         }
-        overlay.show(question, answers, onAnswer)
+        overlay.show(question, answers, onAnswer, onDismiss)
     }
 
     // App name to package mapper
