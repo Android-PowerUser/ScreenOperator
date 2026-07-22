@@ -2,6 +2,14 @@ package com.google.ai.sample.util
 
 /**
  * Sealed class representing different types of commands.
+ *
+ * Commands are now fully JSON-configurable via command-builtins.json.
+ * The CommandParser loads its patterns from JSON, not from hardcoded Kotlin.
+ *
+ * The only commands that remain as sealed subtypes are those that the native
+ * AccessibilityService needs to handle with platform-specific code.
+ * WebView-only actions (Retrieve, model switching, popUp) are now handled
+ * exclusively through Command.WebViewCustomAction via custom-action-types.json.
  */
 sealed class Command {
     data class ClickButton(val buttonText: String) : Command()
@@ -23,22 +31,9 @@ sealed class Command {
     data class ScrollLeftFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: String, val duration: Long) : Command()
     data class OpenApp(val packageName: String) : Command()
-    /**
-     * Starts any Android Activity via an explicit Intent action, fired from the
-     * AccessibilityService context (which is exempt from Android 10+ background
-     * activity-start restrictions that block MainActivity-context starts).
-     * @param action      Intent action, e.g. "android.settings.ACCESSIBILITY_SETTINGS"
-     * @param extrasJson  JSON object of String->String extras. Pass "{}" for none.
-     * @param data        Optional URI string. Pass "" to omit.
-     */
+    /** Starts any Android Activity via an explicit Intent */
     data class LaunchIntent(val action: String, val extrasJson: String, val data: String) : Command()
-    /**
-     * A two-finger pinch gesture, centered at (centerX, centerY), with both fingers moving
-     * from startDistance apart to endDistance apart over durationMs. endDistance > startDistance
-     * pinches out (zoom in); endDistance < startDistance pinches in (zoom out). Coordinates and
-     * distances accept the same formats as other coordinate-based commands (pixels, or a
-     * percentage string like "50%").
-     */
+    /** Two-finger pinch gesture */
     data class PinchGesture(
         val centerX: String,
         val centerY: String,
@@ -46,27 +41,15 @@ sealed class Command {
         val endDistance: String,
         val durationMs: Long
     ) : Command()
-    data class Retrieve(val heading: String) : Command()
     data class WriteText(val text: String) : Command()
-    /**
-     * Copies [text] to the system clipboard. Requires no Android permission (clipboard access
-     * is granted to every app by default), so - like the other entries in this "no extra
-     * permission needed" group - it is exposed both as a native command (for the AI's own
-     * text commands, via CommandParser) and as a WebView bridge method (`Android.copyToClipboard`)
-     * so a custom-action-types.json entry can trigger it directly.
-     */
+    /** Copies text to system clipboard. No Android permission needed. */
     data class CopyToClipboard(val text: String) : Command()
     data class TermuxCommand(val command: String) : Command()
-    object UseHighReasoningModel : Command()
-    object UseLowReasoningModel : Command()
+    // ── REMOVED: UseHighReasoningModel, UseLowReasoningModel (redundant – JS uses setSelectedModel)
+    // ── REMOVED: Retrieve (now handled via WebViewCustomAction in JS)
     /**
-     * A custom action type defined entirely in the remote WebView bundle
-     * (`custom-action-types.json`). When executed, the native accessibility service calls
-     * `window.onCustomAction(id, groups[])` in JavaScript so the WebView handler can carry
-     * out the actual work using existing `Android.*` bridge methods.
-     *
-     * @param id     The `id` field from the matching custom-action-types entry.
-     * @param groups The regex capture groups (index 0 = first capture group).
+     * A custom action defined in the remote WebView bundle (custom-action-types.json or command-builtins.json).
+     * When executed, the native accessibility service calls window.onCustomAction(id, groups[]) in JS.
      */
     data class WebViewCustomAction(val id: String, val groups: List<String>) : Command()
 }

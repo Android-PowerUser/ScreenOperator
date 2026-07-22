@@ -1,0 +1,43 @@
+{
+  "_comment": "Prompt templates for ScreenOperator. Each template defines how the AI prompt is built from system message, database entries, history, user text, and screen info.",
+
+  "defaultTemplate": "default",
+  "templates": {
+    "default": {
+      "name": "Standard",
+      "systemSection": "System instruction:\n{SYSTEM_MESSAGE}",
+      "databaseSection": "\n\n{DATABASE_ENTRIES}",
+      "historyUserPrefix": "User: ",
+      "historyAssistantPrefix": "Assistant: ",
+      "historySeparator": "\n\n",
+      "userTurnPrefix": "FOLLOW THE INSTRUCTIONS STRICTLY: ",
+      "screenInfoSeparator": "\n\n",
+      "maxHistoryMessages": 40,
+      "mergeConsecutiveSameRole": true
+    },
+    "verbose": {
+      "name": "Verbose (more context)",
+      "systemSection": "=== SYSTEM CONTEXT ===\n{SYSTEM_MESSAGE}",
+      "databaseSection": "\n=== AVAILABLE REFERENCE DATA ===\n{DATABASE_ENTRIES}",
+      "historyUserPrefix": "### User Message:\n",
+      "historyAssistantPrefix": "### Your Previous Response:\n",
+      "historySeparator": "\n---\n",
+      "userTurnPrefix": "### NEW TASK (execute exactly as instructed):\n",
+      "screenInfoSeparator": "\n### CURRENT SCREEN STATE:\n",
+      "maxHistoryMessages": 20,
+      "mergeConsecutiveSameRole": true
+    },
+    "minimal": {
+      "name": "Minimal (fast models)",
+      "systemSection": "{SYSTEM_MESSAGE}",
+      "databaseSection": "",
+      "historyUserPrefix": "U:",
+      "historyAssistantPrefix": "A:",
+      "historySeparator": "\n",
+      "userTurnPrefix": "",
+      "screenInfoSeparator": "\n",
+      "maxHistoryMessages": 10,
+      "mergeConsecutiveSameRole": true
+    }
+  }
+}

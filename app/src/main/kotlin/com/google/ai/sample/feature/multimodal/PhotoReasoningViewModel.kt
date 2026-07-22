@@ -2069,7 +2069,7 @@ private fun processCommands(text: String) {
             val commandsToExecute = commands.mapIndexedNotNull { index, command ->
                 when {
                     command is Command.Completed -> null
-                    command is Command.Retrieve -> null
+                    command is Command.WebViewCustomAction && command.id == "RETRIEVE" -> null
                     index < incrementalCommandCount && command !is Command.TakeScreenshot -> null
                     else -> command
                 }
@@ -2157,12 +2157,18 @@ private fun processCommands(text: String) {
         val requestedCandidates = mutableListOf<RetrievalCandidate>()
         commands.forEach { command ->
             when (command) {
-                is Command.Retrieve -> requestedCandidates.add(
-                    RetrievalCandidate(
-                        heading = command.heading.trim(),
-                        includeUnavailableMessage = true
-                    )
-                )
+                // Retrieve is now handled as WebViewCustomAction by the JS layer.
+                // If it still comes through the native pipeline, handle it here as a fallback.
+                is Command.WebViewCustomAction -> {
+                    if (command.id == "RETRIEVE" && command.groups.isNotEmpty()) {
+                        requestedCandidates.add(
+                            RetrievalCandidate(
+                                heading = command.groups[0].trim(),
+                                includeUnavailableMessage = true
+                            )
+                        )
+                    }
+                }
                 is Command.OpenApp -> requestedCandidates.add(
                     RetrievalCandidate(
                         heading = command.packageName.trim(),

@@ -438,10 +438,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             is Command.PinchGesture -> {
                 executePinchGesture(command)
             }
-            is Command.Retrieve -> {
-                Log.d(TAG, "Retrieve command is handled in prompt construction: ${command.heading}")
-                false
-            }
+            // Retrieve is now handled as a WebViewCustomAction via custom-action-types.json.
+            // JS calls Bridge.getDatabaseEntries() and injects the result into the next AI prompt.
             is Command.WriteText -> {
                 executeSyncCommandAction(
                     logMessage = "Writing text: ${command.text}",
@@ -458,22 +456,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     executeTermuxCommand(command.command)
                 }
             }
-            is Command.UseHighReasoningModel -> {
-                executeSyncCommandAction(
-                    logMessage = "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)",
-                    toastMessage = "Switching to more powerful model (gemini-2.5-pro-preview-03-25)"
-                ) {
-                    GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_PRO)
-                }
-            }
-            is Command.UseLowReasoningModel -> {
-                executeSyncCommandAction(
-                    logMessage = "Switching to low reasoning model (gemini-2.0-flash-lite)",
-                    toastMessage = "Switching to faster model (gemini-2.0-flash-lite)"
-                ) {
-                    GenerativeAiViewModelFactory.setModel(ModelOption.GEMINI_FLASH_LITE)
-                }
-            }
+            // UseHighReasoningModel / UseLowReasoningModel removed.
+            // Model switching is now done via JS Bridge.setSelectedModel() directly.
             is Command.PressEnterKey -> {
                 executeAsyncCommandAction(
                     logMessage = "Pressing Enter key",

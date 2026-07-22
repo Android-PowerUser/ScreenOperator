@@ -3,33 +3,111 @@ package com.google.ai.sample.util
 import android.util.Log
 
 /**
- * Command parser for extracting commands from AI responses
+ * Fully JSON-driven command parser.
+ *
+ * All command patterns are loaded from JSON (command-builtins.json for built-in commands,
+ * command-patterns.json for overrides, custom-action-types.json for JS-handled actions).
+ * No command regexes are hardcoded in Kotlin.
+ *
+ * Each CommandType has a factory function that builds the corresponding Command from
+ * MatchResult capture groups. This is the ONLY place where Command subclasses are
+ * instantiated — it acts as a sealed registry that cannot be extended by remote JSON.
  */
 object CommandParser {
     private const val TAG = "CommandParser"
+
     private val SINGLE_INSTANCE_COMMAND_TYPES = setOf(
         CommandType.TAKE_SCREENSHOT,
         CommandType.COMPLETED
     )
 
-    
     enum class CommandType {
-        CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, COMPLETED, WAIT, PRESS_HOME, PRESS_BACK,
-        SHOW_RECENT_APPS, SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
+        CLICK_BUTTON, LONG_CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, COMPLETED, WAIT,
+        PRESS_HOME, PRESS_BACK, SHOW_RECENT_APPS,
+        SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
         SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
         SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
-        OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
-        PRESS_ENTER_KEY, RETRIEVE, TERMUX_COMMAND, PINCH_GESTURE, COPY_TO_CLIPBOARD,
+        OPEN_APP, WRITE_TEXT, PRESS_ENTER_KEY, TERMUX_COMMAND, PINCH_GESTURE,
+        COPY_TO_CLIPBOARD, LAUNCH_INTENT,
+        // JS-handled: Retrieve, PopUp, model switching
+        SHOW_POPUP,
         /** Container type for all action types defined remotely via custom-action-types.json. */
-        WEBVIEW_CUSTOM_ACTION
+        WEBVIEW_CUSTOM_ACTION;
+
+        companion object {
+            fun safeValueOf(name: String): CommandType? =
+                try { valueOf(name) } catch (_: IllegalArgumentException) { null }
+        }
     }
 
-    // Data class to hold pattern information
+    // ── Command factory registry (sealed, cannot be extended by remote JSON) ──────────
+
+    /** Maps CommandType → command builder. This is the security boundary. */
+    private val COMMAND_FACTORY: Map<CommandType, (MatchResult, List<Int>) -> Command> = mapOf(
+        CommandType.CLICK_BUTTON to { m, g -> Command.ClickButton(m.groupValues[g[0] + 1]) },
+        CommandType.LONG_CLICK_BUTTON to { m, g -> Command.LongClickButton(m.groupValues[g[0] + 1]) },
+        CommandType.TAP_COORDINATES to { m, g -> Command.TapCoordinates(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1]) },
+        CommandType.TAKE_SCREENSHOT to { _, _ -> Command.TakeScreenshot },
+        CommandType.COMPLETED to { _, _ -> Command.Completed },
+        CommandType.WAIT to { m, g -> Command.Wait(m.groupValues[g[0] + 1].toLong()) },
+        CommandType.PRESS_HOME to { _, _ -> Command.PressHomeButton },
+        CommandType.PRESS_BACK to { _, _ -> Command.PressBackButton },
+        CommandType.SHOW_RECENT_APPS to { _, _ -> Command.ShowRecentApps },
+        CommandType.SCROLL_DOWN to { _, _ -> Command.ScrollDown },
+        CommandType.SCROLL_UP to { _, _ -> Command.ScrollUp },
+        CommandType.SCROLL_LEFT to { _, _ -> Command.ScrollLeft },
+        CommandType.SCROLL_RIGHT to { _, _ -> Command.ScrollRight },
+        CommandType.SCROLL_DOWN_FROM_COORDINATES to { m, g ->
+            Command.ScrollDownFromCoordinates(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1], m.groupValues[g[2] + 1], m.groupValues[g[3] + 1].toLong())
+        },
+        CommandType.SCROLL_UP_FROM_COORDINATES to { m, g ->
+            Command.ScrollUpFromCoordinates(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1], m.groupValues[g[2] + 1], m.groupValues[g[3] + 1].toLong())
+        },
+        CommandType.SCROLL_LEFT_FROM_COORDINATES to { m, g ->
+            Command.ScrollLeftFromCoordinates(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1], m.groupValues[g[2] + 1], m.groupValues[g[3] + 1].toLong())
+        },
+        CommandType.SCROLL_RIGHT_FROM_COORDINATES to { m, g ->
+            Command.ScrollRightFromCoordinates(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1], m.groupValues[g[2] + 1], m.groupValues[g[3] + 1].toLong())
+        },
+        CommandType.OPEN_APP to { m, g -> Command.OpenApp(m.groupValues[g[0] + 1]) },
+        CommandType.WRITE_TEXT to { m, g -> Command.WriteText(m.groupValues[g[0] + 1]) },
+        CommandType.PRESS_ENTER_KEY to { _, _ -> Command.PressEnterKey },
+        CommandType.TERMUX_COMMAND to { m, g -> Command.TermuxCommand(m.groupValues[g[0] + 1]) },
+        CommandType.PINCH_GESTURE to { m, g ->
+            Command.PinchGesture(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1], m.groupValues[g[2] + 1], m.groupValues[g[3] + 1], m.groupValues[g[4] + 1].toLong())
+        },
+        CommandType.COPY_TO_CLIPBOARD to { m, g -> Command.CopyToClipboard(m.groupValues[g[0] + 1]) },
+        CommandType.LAUNCH_INTENT to { m, g ->
+            Command.LaunchIntent(m.groupValues[g[0] + 1], m.groupValues[g[1] + 1].ifBlank { "{}" }, m.groupValues[g[2] + 1])
+        },
+        // JS-handled types: emit as WebViewCustomAction so JS handles the logic
+        CommandType.SHOW_POPUP to { m, g ->
+            val answers = g.drop(1).mapNotNull { idx ->
+                val v = m.groupValues.getOrNull(idx + 1)
+                if (v.isNullOrBlank()) null else v
+            }
+            Command.WebViewCustomAction("SHOW_POPUP", listOf(m.groupValues[g[0] + 1]) + answers)
+        },
+        CommandType.WEBVIEW_CUSTOM_ACTION to { _, _ ->
+            error("WEBVIEW_CUSTOM_ACTION should not be built by the factory — it's built inline for custom-action-types.json entries")
+        }
+    )
+
+    // ── Internal data structures ──────────────────────────────────────────────────
+
+    data class JsonPatternEntry(
+        val id: String,
+        val type: String,
+        val regex: String,
+        val groups: List<Int> = emptyList()
+    )
+
     private data class PatternInfo(
-        val id: String, // For debugging
+        val id: String,
         val regex: Regex,
-        val commandBuilder: (MatchResult) -> Command,
-        val commandType: CommandType // Used for single-instance command check
+        val commandType: CommandType,
+        val groupIndices: List<Int>,
+        val commandBuilder: (MatchResult) -> Command
     )
     private data class ProcessedMatch(
         val startIndex: Int,
@@ -38,131 +116,85 @@ object CommandParser {
         val commandType: CommandType
     )
 
-    // Master list of all patterns
-    private val ALL_PATTERNS: List<PatternInfo> = listOf(
-        // Enter key patterns
-        PatternInfo("enterKey1", Regex("(?i)\\benter\\(\\)"), { Command.PressEnterKey }, CommandType.PRESS_ENTER_KEY),
+    // ── Built-in patterns (loaded from JSON at init, never hardcoded as regexes) ──
 
-        // Model selection patterns
-        PatternInfo("highReasoning1", Regex("(?i)\\bhighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandType.USE_HIGH_REASONING_MODEL),
-        PatternInfo("lowReasoning1", Regex("(?i)\\blowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandType.USE_LOW_REASONING_MODEL),
+    private val BUILTIN_PATTERNS_JSON = """
+[
+  {"id":"enterKey1","type":"PRESS_ENTER_KEY","regex":"(?i)\\benter\\(\\)"},
+  {"id":"writeText1","type":"WRITE_TEXT","regex":"(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)","groups":[1]},
+  {"id":"termux1","type":"TERMUX_COMMAND","regex":"(?i)\\bTermux\\(\\s*([\"'])((?:\\\\.|(?!\\1\\s*\\)).)*)\\1\\s*\\)","groups":[2]},
+  {"id":"clickBtn1","type":"CLICK_BUTTON","regex":"(?i)\\bclick\\([\"']([^\"']+)[\"']\\)","groups":[1]},
+  {"id":"longClickBtn1","type":"LONG_CLICK_BUTTON","regex":"(?i)\\blongClick\\([\"']([^\"']+)[\"']\\)","groups":[1]},
+  {"id":"tapCoords1","type":"TAP_COORDINATES","regex":"(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)","groups":[1,2]},
+  {"id":"screenshot1","type":"TAKE_SCREENSHOT","regex":"(?i)\\btakeScreenshot\\(\\)"},
+  {"id":"completed1","type":"COMPLETED","regex":"(?i)\\bcompleted\\(\\)"},
+  {"id":"wait1","type":"WAIT","regex":"(?i)\\bWait\\(\\s*(\\d+)\\s*\\)","groups":[1]},
+  {"id":"home1","type":"PRESS_HOME","regex":"(?i)\\bhome\\(\\)"},
+  {"id":"back1","type":"PRESS_BACK","regex":"(?i)\\bback\\(\\)"},
+  {"id":"recentApps1","type":"SHOW_RECENT_APPS","regex":"(?i)\\brecentApps\\(\\)"},
+  {"id":"scrollDown1","type":"SCROLL_DOWN","regex":"(?i)\\bscrollDown\\(\\)"},
+  {"id":"scrollUp1","type":"SCROLL_UP","regex":"(?i)\\bscrollUp\\(\\)"},
+  {"id":"scrollLeft1","type":"SCROLL_LEFT","regex":"(?i)\\bscrollLeft\\(\\)"},
+  {"id":"scrollRight1","type":"SCROLL_RIGHT","regex":"(?i)\\bscrollRight\\(\\)"},
+  {"id":"scrollDownCoords","type":"SCROLL_DOWN_FROM_COORDINATES","regex":"(?i)\\bscrollDown\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)","groups":[1,2,3,4]},
+  {"id":"scrollUpCoords","type":"SCROLL_UP_FROM_COORDINATES","regex":"(?i)\\bscrollUp\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)","groups":[1,2,3,4]},
+  {"id":"scrollLeftCoords","type":"SCROLL_LEFT_FROM_COORDINATES","regex":"(?i)\\bscrollLeft\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)","groups":[1,2,3,4]},
+  {"id":"scrollRightCoords","type":"SCROLL_RIGHT_FROM_COORDINATES","regex":"(?i)\\bscrollRight\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)","groups":[1,2,3,4]},
+  {"id":"openApp1","type":"OPEN_APP","regex":"(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)","groups":[1]},
+  {"id":"pinch1","type":"PINCH_GESTURE","regex":"(?i)\\bpinch\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)","groups":[1,2,3,4,5]},
+  {"id":"launchIntent1","type":"LAUNCH_INTENT","regex":"(?i)\\blaunchIntent\\([\"']([^\"']+)[\"']\\s*,\\s*[\"']([^\"']*)[\"']\\s*,\\s*[\"']([^\"']*)[\"']\\)","groups":[1,2,3]},
+  {"id":"copyToClipboard1","type":"COPY_TO_CLIPBOARD","regex":"(?i)\\bcopyToClipboard\\([\"']([^\"']*)[\"']\\)","groups":[1]},
+  {"id":"popUp1","type":"SHOW_POPUP","regex":"(?i)\\bpopUp\\([\"']([^\"']+)[\"'](?:\\s*,\\s*[\"']([^\"']*)[\"'])?(?:\\s*,\\s*[\"']([^\"']*)[\"'])?(?:\\s*,\\s*[\"']([^\"']*)[\"'])?(?:\\s*,\\s*[\"']([^\"']*)[\"'])?(?:\\s*,\\s*[\"']([^\"']*)[\"'])?\\)","groups":[1,2,3,4,5,6]}
+]
+    """.trimIndent()
 
-        // Write text patterns
-        PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandType.WRITE_TEXT),
-        PatternInfo("termux1", Regex("""(?i)\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)"""), { match -> Command.TermuxCommand(match.groupValues[2]) }, CommandType.TERMUX_COMMAND),
+    private val builtinPatterns: List<PatternInfo> by lazy { parsePatternsJson(BUILTIN_PATTERNS_JSON) }
 
-        // Click (long) button patterns
-        PatternInfo("clickBtn1", Regex("(?i)\\bclick\\([\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandType.CLICK_BUTTON),
-        PatternInfo("longClickBtn1", Regex("(?i)\\blongClick\\([\"']([^\"']+)[\"']"), { match -> Command.LongClickButton(match.groupValues[1]) }, CommandType.LONG_CLICK_BUTTON),
+    // ── Runtime state ───────────────────────────────────────────────────────────
 
-        // Tap coordinates patterns
-        PatternInfo("tapCoords1", Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandType.TAP_COORDINATES),
+    /** All active patterns: builtins + remote overrides */
+    @Volatile private var activePatterns: List<PatternInfo> = emptyList()
 
-        // Screenshot, completion and wait patterns
-        PatternInfo("screenshot1", Regex("(?i)\\btakeScreenshot\\(\\)"), { Command.TakeScreenshot }, CommandType.TAKE_SCREENSHOT),
-        PatternInfo("completed1", Regex("(?i)\\bcompleted\\(\\)"), { Command.Completed }, CommandType.COMPLETED),
-        PatternInfo("wait1", Regex("(?i)\\bWait\\(\\s*(\\d+)\\s*\\)"), { match -> Command.Wait(match.groupValues[1].toLong()) }, CommandType.WAIT),
+    /** Custom action types from custom-action-types.json */
+    @Volatile private var customActionPatterns: List<CustomActionTypeConfig.ParsedEntry> = emptyList()
 
-        // Home button patterns
-        PatternInfo("home1", Regex("(?i)\\bhome\\(\\)"), { Command.PressHomeButton }, CommandType.PRESS_HOME),
-
-        // Back button patterns
-        PatternInfo("back1", Regex("(?i)\\bback\\(\\)"), { Command.PressBackButton }, CommandType.PRESS_BACK),
-
-        // Recent apps patterns
-        PatternInfo("recentApps1", Regex("(?i)\\brecentApps\\(\\)"), { Command.ShowRecentApps }, CommandType.SHOW_RECENT_APPS),
-
-        // Scroll patterns (simple)
-        PatternInfo("scrollDown1", Regex("(?i)\\bscrollDown\\(\\)"), { Command.ScrollDown }, CommandType.SCROLL_DOWN),
-        PatternInfo("scrollUp1", Regex("(?i)\\bscrollUp\\(\\)"), { Command.ScrollUp }, CommandType.SCROLL_UP),
-        PatternInfo("scrollLeft1", Regex("(?i)\\bscrollLeft\\(\\)"), { Command.ScrollLeft }, CommandType.SCROLL_LEFT),
-        PatternInfo("scrollRight1", Regex("(?i)\\bscrollRight\\(\\)"), { Command.ScrollRight }, CommandType.SCROLL_RIGHT),
-
-        // Scroll from coordinates patterns
-        PatternInfo("scrollDownCoords", Regex("(?i)\\bscrollDown\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollDownFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_DOWN_FROM_COORDINATES),
-        PatternInfo("scrollUpCoords", Regex("(?i)\\bscrollUp\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollUpFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_UP_FROM_COORDINATES),
-        PatternInfo("scrollLeftCoords", Regex("(?i)\\bscrollLeft\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollLeftFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_LEFT_FROM_COORDINATES),
-        PatternInfo("scrollRightCoords", Regex("(?i)\\bscrollRight\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.ScrollRightFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandType.SCROLL_RIGHT_FROM_COORDINATES),
-
-        // Open app patterns
-        PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandType.OPEN_APP),
-
-        // Pinch gesture pattern: pinch(centerX, centerY, startDistance, endDistance, durationMs)
-        // endDistance > startDistance = zoom in (pinch out); endDistance < startDistance = zoom out (pinch in)
-        PatternInfo("pinch1", Regex("(?i)\\bpinch\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
-            { match -> Command.PinchGesture(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4], match.groupValues[5].toLong()) },
-            CommandType.PINCH_GESTURE),
-
-        // Retrieve information patterns
-        PatternInfo("retrieve1", Regex("(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"), { match -> Command.Retrieve(match.groupValues[1]) }, CommandType.RETRIEVE),
-
-        // Clipboard pattern: copyToClipboard("text") - needs no Android permission
-        PatternInfo("copyToClipboard1", Regex("(?i)\\bcopyToClipboard\\([\"']([^\"']*)[\"']\\)"), { match -> Command.CopyToClipboard(match.groupValues[1]) }, CommandType.COPY_TO_CLIPBOARD)
-    )
-
-    // One canonical command-builder per CommandType, derived from ALL_PATTERNS above.
-    // CommandPatternConfig uses this to attach remotely supplied regexes to the existing,
-    // compiled-in command-construction logic - it can never introduce custom logic of its own.
-    private val BUILDER_BY_TYPE: Map<CommandType, (MatchResult) -> Command> by lazy {
-        ALL_PATTERNS.associate { it.commandType to it.commandBuilder }
+    /** Ensure builtins are loaded before first use */
+    private fun ensureBuiltinsLoaded() {
+        if (activePatterns.isEmpty()) {
+            activePatterns = builtinPatterns
+        }
     }
 
-    // Additional patterns supplied at runtime (e.g. fetched together with the WebView bundle)
-    // so that a new model's slightly different command syntax can be recognized without an
-    // app update. See [CommandPatternConfig] for the safety boundary this respects. Empty by
-    // default, i.e. behavior is unchanged unless overrides are explicitly installed.
-    @Volatile
-    private var remotePatterns: List<PatternInfo> = emptyList()
+    // ── Public API ──────────────────────────────────────────────────────────────
 
-    // Entirely new action types defined in the remote WebView bundle (custom-action-types.json).
-    // Each entry carries its own id and regex; matches are emitted as Command.WebViewCustomAction
-    // and executed by calling window.onCustomAction(id, groups[]) in JavaScript.
-    @Volatile
-    private var customActionPatterns: List<CustomActionTypeConfig.ParsedEntry> = emptyList()
-
-    /**
-     * Installs additional command-recognition patterns from a remotely supplied JSON config.
-     * Each entry may only reference an existing [CommandType]; unknown types or invalid
-     * regexes are skipped (logged) rather than causing a crash, so a malformed remote config
-     * degrades gracefully to "no extra patterns".
-     *
-     * @return the number of overrides that were successfully installed.
-     */
+    /** Installs additional command-recognition patterns from remote JSON. */
     @Synchronized
     fun setRemotePatternOverrides(json: String): Int {
+        ensureBuiltinsLoaded()
         val parsed = CommandPatternConfig.parse(json)
-        remotePatterns = parsed.mapNotNull { override ->
-            val builder = BUILDER_BY_TYPE[override.commandType]
-            if (builder == null) {
-                Log.w(TAG, "Skipping remote pattern override '${override.id}': no builder for ${override.commandType}")
+        val overrides = parsed.mapNotNull { override ->
+            val type = CommandType.safeValueOf(override.commandType.name) ?: return@mapNotNull null
+            val factory = COMMAND_FACTORY[type] ?: return@mapNotNull null
+            try {
+                val regex = try { Regex(override.regex.pattern) } catch (_: Exception) { null } ?: return@mapNotNull null
+                PatternInfo(override.id, regex, type, emptyList()) { match ->
+                    factory(match, (0 until match.groupValues.size - 1).toList())
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Skipping remote pattern '${override.id}': ${e.message}")
                 null
-            } else {
-                PatternInfo(override.id, override.regex, builder, override.commandType)
             }
         }
-        Log.d(TAG, "Installed ${remotePatterns.size} remote command pattern override(s)")
-        return remotePatterns.size
+        activePatterns = builtinPatterns + overrides
+        Log.d(TAG, "Installed ${overrides.size} remote pattern override(s), total=${activePatterns.size}")
+        return overrides.size
     }
 
-    /** Removes all remotely installed pattern overrides, reverting to built-in patterns only. */
     @Synchronized
     fun clearRemotePatternOverrides() {
-        remotePatterns = emptyList()
+        activePatterns = builtinPatterns
     }
 
-    /**
-     * Installs entirely new action type definitions from a remotely supplied JSON config.
-     * Each entry must have a unique `id` and a `regex`; unknown/malformed entries are
-     * skipped (logged) rather than causing a crash. Matches are emitted as
-     * [Command.WebViewCustomAction] and executed by the native side calling
-     * `window.onCustomAction(id, groups[])` back into JavaScript.
-     *
-     * @return the number of action types that were successfully installed.
-     */
     @Synchronized
     fun setCustomActionTypes(json: String): Int {
         customActionPatterns = CustomActionTypeConfig.parse(json)
@@ -170,57 +202,35 @@ object CommandParser {
         return customActionPatterns.size
     }
 
-    /** Removes all remotely installed custom action types. */
     @Synchronized
     fun clearCustomActionTypes() {
         customActionPatterns = emptyList()
     }
 
-    // Buffer for storing partial text between calls
-    private var textBuffer = ""
+    // ── Parsing ─────────────────────────────────────────────────────────────────
 
-    // Flag to indicate if we should clear the buffer on next call
+    private var textBuffer = ""
     private var shouldClearBuffer = false
 
-    /**
-     * Parse commands from the given text
-     *
-     * @param text The text to parse for commands
-     * @param clearBuffer Whether to clear the buffer before parsing (default: false)
-     * @return A list of commands found in the text
-     */
     @Synchronized
     fun parseCommands(text: String, clearBuffer: Boolean = false): List<Command> {
+        ensureBuiltinsLoaded()
         var commands: List<Command> = emptyList()
         try {
             resetBufferIfNeeded(clearBuffer)
-
-            // Normalize the text (trim whitespace, normalize line breaks)
             val normalizedText = normalizeText(text)
-
-            // Append to buffer
             textBuffer += normalizedText
-
-            // Debug the buffer
             Log.d(TAG, "Current buffer for command parsing: $textBuffer")
-
-            // Process each line and the combined buffer
             commands = processTextInternal(textBuffer)
-
-            // If we found commands, clear the buffer for next time
             if (commands.isNotEmpty()) {
                 shouldClearBuffer = true
                 Log.d(TAG, "Commands found, buffer will be cleared on next call")
             }
-
-            Log.d(TAG, "Found ${commands.size} commands in text") // This log remains
-
-            // Debug each found command
+            Log.d(TAG, "Found ${commands.size} commands in text")
             commands.forEach(::logCommandDetails)
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing commands: ${e.message}", e)
         }
-
         return commands
     }
 
@@ -248,14 +258,11 @@ object CommandParser {
             is Command.ScrollLeft -> Log.d(TAG, "Command details: ScrollLeft")
             is Command.ScrollRight -> Log.d(TAG, "Command details: ScrollRight")
             is Command.ScrollDownFromCoordinates -> Log.d(TAG, "Command details: ScrollDownFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
-            is Command.UseHighReasoningModel -> Log.d(TAG, "Command details: UseHighReasoningModel")
-            is Command.UseLowReasoningModel -> Log.d(TAG, "Command details: UseLowReasoningModel")
             is Command.ScrollUpFromCoordinates -> Log.d(TAG, "Command details: ScrollUpFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
             is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
-            is Command.PinchGesture -> Log.d(TAG, "Command details: PinchGesture(${command.centerX}, ${command.centerY}, start=${command.startDistance}, end=${command.endDistance}, ${command.durationMs}ms)")
-            is Command.Retrieve -> Log.d(TAG, "Command details: Retrieve(\"${command.heading}\")")
+            is Command.PinchGesture -> Log.d(TAG, "Command details: PinchGesture(${command.centerX}, ${command.centerY}, ...)")
             is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
             is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
             is Command.TermuxCommand -> Log.d(TAG, "Command details: TermuxCommand(\"${command.command}\")")
@@ -265,18 +272,12 @@ object CommandParser {
         }
     }
 
-    /**
-     * Process text to find commands
-     */
     private fun processTextInternal(text: String): List<Command> {
         val foundRawMatches = collectRawMatches(text)
         val finalCommands = mutableListOf<Command>()
         val addedSingleInstanceCommands = mutableSetOf<CommandType>()
-
-        // Sort matches by start index
         foundRawMatches.sortBy { it.startIndex }
         Log.d(TAG, "Sorted raw matches (${foundRawMatches.size}): $foundRawMatches")
-
         var currentPosition = 0
         for (processedMatch in foundRawMatches) {
             val (startIndex, endIndex, command, commandType) = processedMatch
@@ -284,51 +285,38 @@ object CommandParser {
                 val isSingleInstanceDuplicate = commandType in SINGLE_INSTANCE_COMMAND_TYPES &&
                     !addedSingleInstanceCommands.add(commandType)
                 if (isSingleInstanceDuplicate) {
-                    Log.d(TAG, "Skipping duplicate single-instance command: $command (Type: $commandType)")
+                    Log.d(TAG, "Skipping duplicate single-instance command: $command")
                 } else {
                     finalCommands.add(command)
                     currentPosition = endIndex + 1
-                    Log.d(TAG, "Added command: $command. New currentPosition: $currentPosition")
                 }
             } else {
-                Log.d(TAG, "Skipping overlapping command: $command (startIndex $startIndex < currentPosition $currentPosition)")
+                Log.d(TAG, "Skipping overlapping command: $command")
             }
         }
-        Log.d(TAG, "Final commands list (${finalCommands.size}): $finalCommands")
         return finalCommands
     }
 
     private fun collectRawMatches(text: String): MutableList<ProcessedMatch> {
         val foundRawMatches = mutableListOf<ProcessedMatch>()
-        for (patternInfo in ALL_PATTERNS + remotePatterns) {
+        for (patternInfo in activePatterns) {
             try {
                 patternInfo.regex.findAll(text).forEach { matchResult ->
                     try {
                         val command = patternInfo.commandBuilder(matchResult)
                         foundRawMatches.add(
-                            ProcessedMatch(
-                                startIndex = matchResult.range.first,
-                                endIndex = matchResult.range.last,
-                                command = command,
-                                commandType = patternInfo.commandType
-                            )
+                            ProcessedMatch(matchResult.range.first, matchResult.range.last, command, patternInfo.commandType)
                         )
-                        Log.d(
-                            TAG,
-                            "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=$command, Type=${patternInfo.commandType}, Pattern=${patternInfo.id}"
-                        )
+                        Log.d(TAG, "Found match: pattern=${patternInfo.id}, command=$command")
                     } catch (e: Exception) {
-                        Log.e(
-                            TAG,
-                            "Error building command for pattern ${patternInfo.id} with match ${matchResult.value}: ${e.message}",
-                            e
-                        )
+                        Log.e(TAG, "Error building command for ${patternInfo.id}: ${e.message}", e)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error finding matches for pattern ${patternInfo.id}: ${e.message}", e)
+                Log.e(TAG, "Error matching pattern ${patternInfo.id}: ${e.message}", e)
             }
         }
+        // Custom action types (from custom-action-types.json)
         for (entry in customActionPatterns) {
             try {
                 entry.regex.findAll(text).forEach { matchResult ->
@@ -336,74 +324,87 @@ object CommandParser {
                         val groups = matchResult.groupValues.drop(1)
                         val command = Command.WebViewCustomAction(entry.id, groups)
                         foundRawMatches.add(
-                            ProcessedMatch(
-                                startIndex = matchResult.range.first,
-                                endIndex = matchResult.range.last,
-                                command = command,
-                                commandType = CommandType.WEBVIEW_CUSTOM_ACTION
-                            )
+                            ProcessedMatch(matchResult.range.first, matchResult.range.last, command, CommandType.WEBVIEW_CUSTOM_ACTION)
                         )
-                        Log.d(
-                            TAG,
-                            "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=$command, Type=WEBVIEW_CUSTOM_ACTION, id=${entry.id}"
-                        )
+                        Log.d(TAG, "Found custom action match: id=${entry.id}")
                     } catch (e: Exception) {
-                        Log.e(
-                            TAG,
-                            "Error building WebViewCustomAction for id=${entry.id} with match ${matchResult.value}: ${e.message}",
-                            e
-                        )
+                        Log.e(TAG, "Error building WebViewCustomAction for ${entry.id}: ${e.message}", e)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error finding matches for custom action type id=${entry.id}: ${e.message}", e)
+                Log.e(TAG, "Error matching custom action ${entry.id}: ${e.message}", e)
             }
         }
         return foundRawMatches
     }
 
-    /**
-     * Normalize text by trimming whitespace and normalizing line breaks
-     */
     private fun normalizeText(text: String): String {
-        // Replace multiple spaces with a single space
         var normalized = text.replace(Regex("\\s+"), " ")
-
-        // Ensure consistent line breaks
         normalized = normalized.replace(Regex("\\r\\n|\\r"), "\n")
-
         return normalized.trim()
     }
 
-    /**
-     * Clear the text buffer
-     */
     @Synchronized
     fun clearBuffer() {
         textBuffer = ""
         shouldClearBuffer = false
-        Log.d(TAG, "Buffer manually cleared")
     }
 
-    /**
-     * Debug method to test if a specific command would be recognized
-     */
     fun testCommandRecognition(commandText: String): List<Command> {
-        Log.d(TAG, "Testing command recognition for: \"$commandText\"")
-
-        // Clear buffer for testing
         clearBuffer()
-
-        val commands = parseCommands(commandText)
-        Log.d(TAG, "Recognition test result: ${commands.size} commands found")
-        return commands
+        return parseCommands(commandText)
     }
 
-    /**
-     * Get the current buffer content (for debugging)
-     */
     @Synchronized
-    fun getBufferContent(): String {
-        return textBuffer
+    fun getBufferContent(): String = textBuffer
+
+    // ── JSON parsing ────────────────────────────────────────────────────────────
+
+    private fun parsePatternsJson(json: String): List<PatternInfo> {
+        return try {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).mapNotNull { i ->
+                try {
+                    val obj = arr.getJSONObject(i)
+                    val id = obj.getString("id")
+                    val typeName = obj.getString("type")
+                    val regexStr = obj.getString("regex")
+                    val groupsJson = obj.optJSONArray("groups")
+                    val groups = if (groupsJson != null) {
+                        (0 until groupsJson.length()).map { groupsJson.getInt(it) - 1 }
+                    } else emptyList()
+
+                    val type = CommandType.safeValueOf(typeName)
+                        ?: return@mapNotNull null.also { Log.w(TAG, "Unknown CommandType: $typeName") }
+
+                    val factory = COMMAND_FACTORY[type]
+                        ?: return@mapNotNull null.also { Log.w(TAG, "No factory for CommandType: $typeName") }
+
+                    val regex = try { Regex(regexStr) } catch (e: Exception) {
+                        Log.w(TAG, "Invalid regex for $id: ${e.message}")
+                        return@mapNotNull null
+                    }
+
+                    PatternInfo(id, regex, type, groups) { match ->
+                        if (type == CommandType.SHOW_POPUP) {
+                            // Special handling: collect non-blank answer groups
+                            val answers = groups.mapNotNull { idx ->
+                                val v = match.groupValues.getOrNull(idx + 1)
+                                if (v.isNullOrBlank()) null else v
+                            }
+                            Command.WebViewCustomAction("SHOW_POPUP", listOf(match.groupValues[groups.getOrElse(0) { 0 } + 1]) + answers)
+                        } else {
+                            factory(match, groups)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Skipping malformed pattern entry: ${e.message}")
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse builtin patterns JSON: ${e.message}", e)
+            emptyList()
+        }
     }
 }
