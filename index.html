@@ -4460,14 +4460,16 @@ function _submitAiQuestionAnswer(answer) {
   window.onGenerationStateChanged(true, false);
 }
 
-function _enqueueAiQuestion(rawArguments) {
-  const args = _parsePopupArguments(rawArguments || '');
-  if (args.length < 2 || !args[0].trim()) {
-    console.warn('[ScreenOperator] Ignoring malformed popUp arguments:', rawArguments);
-    return;
-  }
-  const item = { question: args[0], answers: args.slice(1).filter(answer => answer.trim()) };
-  if (!item.answers.length) return;
+/**
+ * Shared core: given an already-split question + answers array, dedupes and enqueues
+ * the popup. Both call sites below (raw-string and pre-split-groups) funnel through here
+ * so there is exactly one place that owns the queueing/dedup/display logic.
+ */
+function _enqueueAiQuestionItem(question, answers) {
+  if (!question || !question.trim()) return;
+  const cleanAnswers = (answers || []).filter(answer => answer && answer.trim());
+  if (!cleanAnswers.length) return;
+  const item = { question, answers: cleanAnswers };
 
   // Android's native parser and the WebView parser may both report the same command. Avoid
   // showing it twice while still allowing an identical question in a later AI turn.
@@ -4480,15 +4482,34 @@ function _enqueueAiQuestion(rawArguments) {
   _showNextAiQuestion();
 }
 
+/** Legacy entry point: a single raw string containing all quoted popUp(...) arguments. */
+function _enqueueAiQuestion(rawArguments) {
+  const args = _parsePopupArguments(rawArguments || '');
+  if (args.length < 2 || !args[0].trim()) {
+    console.warn('[ScreenOperator] Ignoring malformed popUp arguments:', rawArguments);
+    return;
+  }
+  _enqueueAiQuestionItem(args[0], args.slice(1));
+}
+
+/** Entry point for callers that already have the question/answers split into separate values
+ *  (e.g. regex capture groups from custom-action-types.json, where each answer is its own
+ *  capture group rather than one combined raw-argument string). */
+function _enqueueAiQuestionFromParts(question, answers) {
+  _enqueueAiQuestionItem(question, answers);
+}
+
 window.onCustomAction = window.onCustomAction || function(id, groups) {
   if (id === 'TOAST') {
     // groups[0] = the message text captured from toast("...") / toast('...')
     Bridge.showToast(groups[0] || '', false);
     return;
   }
-  if (id === 'POPUP_QUESTION') {
-    // groups[0] contains all quoted arguments, allowing any number of answer options.
-    _enqueueAiQuestion(groups[0] || '');
+  if (id === 'POPUP_QUESTION' || id === 'SHOW_POPUP') {
+    // groups here are already-split regex capture groups: groups[0] = question,
+    // groups[1..] = individual answer options (each its own capture group).
+    const [question, ...answers] = groups || [];
+    _enqueueAiQuestionFromParts(question || '', answers);
     return;
   }
   console.log('[ScreenOperator] onCustomAction: id=' + id + ', groups=' + JSON.stringify(groups));
