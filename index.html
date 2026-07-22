@@ -2100,8 +2100,8 @@ async function _callGemini(payload) {
     Bridge.onCustomModelError('No Google API key configured. Please add one in the menu.');
     return;
   }
-  const keyIdx = Bridge.getCurrentKeyIndex('GOOGLE') || 0;
-  const apiKey = keys[keyIdx] || keys[0];
+  let keyIdx = Bridge.getCurrentKeyIndex('GOOGLE') || 0;
+  let apiKey = keys[keyIdx] || keys[0];
   const modelName = payload.modelName;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
@@ -2151,7 +2151,7 @@ async function _callGemini(payload) {
   let acc = '';
   let thinkingAcc = '';
   try {
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
@@ -2162,11 +2162,36 @@ async function _callGemini(payload) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
       const errMsg = 'Gemini HTTP ' + response.status + (detail ? ': ' + detail : '');
-      // Quota exceeded? try next key (mirrors ErrorClassificationConfig substring matching)
-      if (response.status === 429 || response.status === 403 || _isQuotaExceededError(errMsg)) {
-        _rotateKey('GOOGLE');
+      // Key-level failure → try every remaining key before giving up
+      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
+        const startIdx = keyIdx;
+        let lastErrMsg = errMsg;
+        for (let attempt = 1; attempt < keys.length; attempt++) {
+          keyIdx = (keyIdx + 1) % keys.length;
+          Bridge.setCurrentKeyIndex(keyIdx, 'GOOGLE');
+          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'GOOGLE') renderKeyList();
+          apiKey = keys[keyIdx];
+          const retryUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
+          let retryResp;
+          try {
+            retryResp = await fetch(retryUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestBody),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (retryResp.ok) { response = retryResp; break; }
+          let rd = '';
+          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
+          lastErrMsg = 'Gemini HTTP ' + retryResp.status + (rd ? ': ' + rd : '');
+          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+          if (keyIdx === startIdx) break; // full circle
+        }
+        if (!response.ok) throw new Error(lastErrMsg);
+      } else {
+        throw new Error(errMsg);
       }
-      throw new Error(errMsg);
     }
 
     const reader = response.body.getReader();
@@ -2224,8 +2249,8 @@ async function _callPuter(payload) {
     Bridge.onCustomModelError('No Puter auth token configured. Please add one in the menu.');
     return;
   }
-  const keyIdx = Bridge.getCurrentKeyIndex('PUTER') || 0;
-  const apiKey = keys[keyIdx] || keys[0];
+  let keyIdx = Bridge.getCurrentKeyIndex('PUTER') || 0;
+  let apiKey = keys[keyIdx] || keys[0];
 
   // Build array-based content per message (PuterMessage.content: List<PuterContent>)
   const messages = [];
@@ -2272,7 +2297,7 @@ async function _callPuter(payload) {
 
   window.__customModelAbortController = new AbortController();
   try {
-    const response = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
+    let response = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2286,8 +2311,34 @@ async function _callPuter(payload) {
       let errBody = '';
       try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
       const errMsg = 'Puter API Error (' + response.status + '): ' + errBody;
-      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('PUTER');
-      throw new Error(errMsg);
+      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
+        const startIdx = keyIdx;
+        let lastErrMsg = errMsg;
+        for (let attempt = 1; attempt < keys.length; attempt++) {
+          keyIdx = (keyIdx + 1) % keys.length;
+          Bridge.setCurrentKeyIndex(keyIdx, 'PUTER');
+          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'PUTER') renderKeyList();
+          apiKey = keys[keyIdx];
+          let retryResp;
+          try {
+            retryResp = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+              body: JSON.stringify(requestBody),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (retryResp.ok) { response = retryResp; break; }
+          let rd = '';
+          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
+          lastErrMsg = 'Puter API Error (' + retryResp.status + '): ' + rd;
+          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+          if (keyIdx === startIdx) break;
+        }
+        if (!response.ok) throw new Error(lastErrMsg);
+      } else {
+        throw new Error(errMsg);
+      }
     }
 
     let rawContentAcc = '';
@@ -2658,28 +2709,39 @@ async function _callCerebras(payload) {
       signal: window.__customModelAbortController.signal,
     });
 
-    // Single retry with the next key on 429 (matches reasonWithCerebras exactly - not a full
-    // cooldown coordinator, just one switch-and-retry).
-    if (response.status === 429 && keys.length > 1) {
-      const nextIdx = (keyIdx + 1) % keys.length;
-      const nextKey = keys[nextIdx];
-      if (nextKey && nextKey !== apiKey) {
-        Bridge.setCurrentKeyIndex(nextIdx, 'CEREBRAS');
-        apiKey = nextKey;
-        response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-          body: JSON.stringify(requestBody),
-          signal: window.__customModelAbortController.signal,
-        });
-      } else {
-        throw new Error('Cerebras rate limit reached. Please add another API key.');
-      }
-    }
-
+    // Retry with successive keys on key-level errors (quota/rate-limit/invalid)
     if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error('Unexpected code ' + response.status + ' - ' + errBody.slice(0, 400));
+      let errBody = '';
+      try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
+      const errMsg = 'Unexpected code ' + response.status + ' - ' + errBody;
+      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
+        const startIdx = keyIdx;
+        let lastErrMsg = errMsg;
+        for (let attempt = 1; attempt < keys.length; attempt++) {
+          keyIdx = (keyIdx + 1) % keys.length;
+          Bridge.setCurrentKeyIndex(keyIdx, 'CEREBRAS');
+          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'CEREBRAS') renderKeyList();
+          apiKey = keys[keyIdx];
+          let retryResp;
+          try {
+            retryResp = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+              body: JSON.stringify(requestBody),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (retryResp.ok) { response = retryResp; break; }
+          let rd = '';
+          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
+          lastErrMsg = 'Unexpected code ' + retryResp.status + ' - ' + rd;
+          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+          if (keyIdx === startIdx) break;
+        }
+        if (!response.ok) throw new Error(lastErrMsg);
+      } else {
+        throw new Error(errMsg);
+      }
     }
 
     const reader = response.body.getReader();
@@ -2732,8 +2794,8 @@ async function _callGroq(payload) {
     Bridge.onCustomModelError('No Groq API key configured. Please add one in the menu.');
     return;
   }
-  const keyIdx = Bridge.getCurrentKeyIndex('GROQ') || 0;
-  const apiKey = keys[keyIdx] || keys[0];
+  let keyIdx = Bridge.getCurrentKeyIndex('GROQ') || 0;
+  let apiKey = keys[keyIdx] || keys[0];
 
   const apiMessages = [];
   const sysParts = [];
@@ -2756,7 +2818,7 @@ async function _callGroq(payload) {
 
   window.__customModelAbortController = new AbortController();
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    let response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
       body: JSON.stringify(requestBody),
@@ -2767,8 +2829,34 @@ async function _callGroq(payload) {
       let errBody = '';
       try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
       const errMsg = 'Groq Error ' + response.status + ': ' + errBody;
-      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey('GROQ');
-      throw new Error(errMsg);
+      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
+        const startIdx = keyIdx;
+        let lastErrMsg = errMsg;
+        for (let attempt = 1; attempt < keys.length; attempt++) {
+          keyIdx = (keyIdx + 1) % keys.length;
+          Bridge.setCurrentKeyIndex(keyIdx, 'GROQ');
+          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'GROQ') renderKeyList();
+          apiKey = keys[keyIdx];
+          let retryResp;
+          try {
+            retryResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+              body: JSON.stringify(requestBody),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (retryResp.ok) { response = retryResp; break; }
+          let rd = '';
+          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
+          lastErrMsg = 'Groq Error ' + retryResp.status + ': ' + rd;
+          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+          if (keyIdx === startIdx) break;
+        }
+        if (!response.ok) throw new Error(lastErrMsg);
+      } else {
+        throw new Error(errMsg);
+      }
     }
 
     let acc = '';
@@ -2823,8 +2911,8 @@ async function _callVercel(payload) {
     Bridge.onCustomModelError('No Vercel API key configured. Please add one in the menu.');
     return;
   }
-  const keyIdx = Bridge.getCurrentKeyIndex('VERCEL') || 0;
-  const apiKey = keys[keyIdx] || keys[0];
+  let keyIdx = Bridge.getCurrentKeyIndex('VERCEL') || 0;
+  let apiKey = keys[keyIdx] || keys[0];
 
   const messages = [];
   const sysParts = [];
@@ -2850,7 +2938,7 @@ async function _callVercel(payload) {
   let acc = '';
   let thinkingAcc = '';
   try {
-    const response = await fetch('https://v0-screen-operator-clon-pi.vercel.app/api/chat', {
+    let response = await fetch('https://v0-screen-operator-clon-pi.vercel.app/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
       body: JSON.stringify(requestBody),
@@ -2860,7 +2948,35 @@ async function _callVercel(payload) {
     if (!response.ok) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
-      throw new Error('Vercel API error ' + response.status + ': ' + detail);
+      const errMsg = 'Vercel API error ' + response.status + ': ' + detail;
+      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
+        const startIdx = keyIdx;
+        let lastErrMsg = errMsg;
+        for (let attempt = 1; attempt < keys.length; attempt++) {
+          keyIdx = (keyIdx + 1) % keys.length;
+          Bridge.setCurrentKeyIndex(keyIdx, 'VERCEL');
+          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'VERCEL') renderKeyList();
+          apiKey = keys[keyIdx];
+          let retryResp;
+          try {
+            retryResp = await fetch('https://v0-screen-operator-clon-pi.vercel.app/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+              body: JSON.stringify(requestBody),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (retryResp.ok) { response = retryResp; break; }
+          let rd = '';
+          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
+          lastErrMsg = 'Vercel API error ' + retryResp.status + ': ' + rd;
+          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+          if (keyIdx === startIdx) break;
+        }
+        if (!response.ok) throw new Error(lastErrMsg);
+      } else {
+        throw new Error(errMsg);
+      }
     }
 
     const reader = response.body.getReader();
@@ -2923,16 +3039,18 @@ async function _callOpenAiCompat(payload, provider) {
   const provDef = PROVIDER_API[provider];
   let endpoint, keyHeader, keyPrefix, apiKey;
 
+  let keys = [];
+  let keyIdx = 0;
   if (provDef) {
     endpoint = provDef.endpoint(payload.modelName);
     keyHeader = provDef.keyHeader;
     keyPrefix = provDef.keyPrefix || '';
-    const keys = Bridge.getAllApiKeys(provider);
+    keys = Bridge.getAllApiKeys(provider);
     if (!keys.length) {
       Bridge.onCustomModelError('No API key for ' + provider + '. Please add one in the menu.');
       return;
     }
-    const keyIdx = Bridge.getCurrentKeyIndex(provider) || 0;
+    keyIdx = Bridge.getCurrentKeyIndex(provider) || 0;
     apiKey = keys[keyIdx] || keys[0];
   } else {
     // Custom model (defined in custom-models.json)
@@ -2966,7 +3084,7 @@ async function _callOpenAiCompat(payload, provider) {
   let acc = '';
   let thinkingAcc = '';
   try {
-    const response = await fetch(endpoint, {
+    let response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -2977,8 +3095,36 @@ async function _callOpenAiCompat(payload, provider) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
       const errMsg = (provider || 'API') + ' HTTP ' + response.status + (detail ? ': ' + detail : '');
-      if (response.status === 429 || response.status === 401 || _isQuotaExceededError(errMsg)) _rotateKey(provider);
-      throw new Error(errMsg);
+      // Key-level failure with provider keys → cycle through all keys before giving up
+      if (provDef && _isKeyError(response.status, errMsg) && keys.length > 1) {
+        const startIdx = keyIdx;
+        let lastErrMsg = errMsg;
+        for (let attempt = 1; attempt < keys.length; attempt++) {
+          keyIdx = (keyIdx + 1) % keys.length;
+          Bridge.setCurrentKeyIndex(keyIdx, provider);
+          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === provider) renderKeyList();
+          apiKey = keys[keyIdx];
+          if (keyHeader) headers[keyHeader] = keyPrefix + apiKey;
+          let retryResp;
+          try {
+            retryResp = await fetch(endpoint, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (retryResp.ok) { response = retryResp; break; }
+          let rd = '';
+          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
+          lastErrMsg = (provider || 'API') + ' HTTP ' + retryResp.status + (rd ? ': ' + rd : '');
+          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+          if (keyIdx === startIdx) break;
+        }
+        if (!response.ok) throw new Error(lastErrMsg);
+      } else {
+        throw new Error(errMsg);
+      }
     }
 
     if (payload.stream !== false && response.body) {
@@ -3088,10 +3234,25 @@ function _buildOpenAiMessages(payload) {
 function _rotateKey(provider) {
   try {
     const keys = Bridge.getAllApiKeys(provider);
-    if (keys.length < 2) return;
+    if (keys.length < 2) return false;
     const idx = ((Bridge.getCurrentKeyIndex(provider) || 0) + 1) % keys.length;
     Bridge.setCurrentKeyIndex(idx, provider);
+    // Refresh the key list UI if the popup is currently open
+    if (typeof currentProviderId !== 'undefined' && currentProviderId === provider &&
+        document.getElementById('popup-apikey')?.classList.contains('open')) {
+      renderKeyList();
+    }
+    return true;
   } catch(e) { /* ignore */ }
+  return false;
+}
+
+/**
+ * Returns true if the HTTP status / error message indicates a key-level failure
+ * (quota exhausted, invalid/expired key, no credits) that warrants trying the next key.
+ */
+function _isKeyError(status, errMsg) {
+  return status === 429 || status === 401 || status === 403 || _isQuotaExceededError(errMsg);
 }
 
 /* ════════════════════════════════════════════════════════
