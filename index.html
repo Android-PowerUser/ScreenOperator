@@ -345,9 +345,10 @@ html.dark-mode .task-input { color: var(--text-primary); }
 /* AI-requested question popup. Kept in the WebView so its behaviour can be updated remotely. */
 #ai-question-overlay{z-index:1100;align-items:center;justify-content:center;overflow:hidden}
 #ai-question-overlay.visible{display:flex}
-.ai-question-popup{width:min(480px,calc(100vw - 28px));max-height:calc(100dvh - 48px);margin:0;display:flex;flex-direction:column;overflow:hidden}
-#ai-question-text{flex:0 0 auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px;padding-right:38px}
-#ai-answer-options{min-height:0;display:flex;flex:0 1 auto;flex-direction:column;gap:10px;overflow-y:auto;padding:2px}
+/* WebView viewport units are unreliable in this app; JS applies pixel max-heights. */
+.ai-question-popup{width:100%;max-width:480px;margin:0;display:block;overflow:hidden}
+#ai-question-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px;padding-right:38px}
+#ai-answer-options{display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding:2px}
 .ai-answer-option{display:block;flex:0 0 auto;width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--outline);border-radius:12px;background:var(--bg);color:var(--text-primary);font:inherit;text-align:left;cursor:pointer}
 .ai-answer-option:active{background:var(--item-hover)}
 .ai-answer-custom{cursor:text;outline:none}
@@ -860,7 +861,14 @@ const Bridge = {
     console.warn('[Bridge.launchIntent] not available on this build');
   },
 
-  /* Focusable accessibility overlay used for questions throughout the Android app. */
+  /* Question presentation: WebView in foreground, accessibility overlay in background. */
+  isAppInForeground:()=>{
+    if (getInAndroid() && typeof Android.isAppInForeground === 'function') {
+      try { return !!Android.isAppInForeground(); }
+      catch(e) { console.warn('[Bridge.isAppInForeground]', e); }
+    }
+    return !document.hidden;
+  },
   showQuestionOverlay:(question, answers)=>{
     if (getInAndroid() && typeof Android.showQuestionOverlay === 'function') {
       try { return !!Android.showQuestionOverlay(String(question), JSON.stringify(answers || [])); }
@@ -4197,13 +4205,31 @@ function _showNextAiQuestion() {
   _presentActiveAiQuestion();
 }
 
+function _fitWebAiQuestionPopup() {
+  const popup = document.querySelector('.ai-question-popup');
+  const question = document.getElementById('ai-question-text');
+  const options = document.getElementById('ai-answer-options');
+  if (!popup || !question || !options) return;
+
+  // The app's WebView reports vh/dvh larger than its real visible area. Use the same
+  // window.innerHeight pixel strategy as the existing database popups instead.
+  const available = Math.max(220, Math.floor(window.innerHeight - 48));
+  popup.style.maxHeight = available + 'px';
+  const nonOptionsHeight = question.offsetHeight + 56; // popup padding + title margin
+  options.style.maxHeight = Math.max(96, available - nonOptionsHeight) + 'px';
+}
+
+function _showWebAiQuestionPopup() {
+  document.getElementById('ai-question-overlay')?.classList.add('visible');
+  _fitWebAiQuestionPopup();
+}
+
 function _presentActiveAiQuestion() {
   if (!_activeAiQuestion) return;
   const overlay = document.getElementById('ai-question-overlay');
+  const useNativeOverlay = getInAndroid() && !Bridge.isAppInForeground();
 
-  // Use the same proven accessibility overlay both above Screen Operator and above other apps.
-  // Keeping one presentation path avoids WebView-specific flex/viewport rendering differences.
-  if (getInAndroid()) {
+  if (useNativeOverlay) {
     overlay?.classList.remove('visible');
     if (!_aiQuestionShownNatively) {
       _aiQuestionShownNatively = Bridge.showQuestionOverlay(
@@ -4214,16 +4240,21 @@ function _presentActiveAiQuestion() {
     if (_aiQuestionShownNatively) return;
 
     // Backward compatibility for APKs from before the accessibility-overlay bridge existed.
-    overlay?.classList.add('visible');
-    if (document.hidden) Bridge.openAppByNameOrPackage('io.github.android_poweruser');
+    _showWebAiQuestionPopup();
+    Bridge.openAppByNameOrPackage('io.github.android_poweruser');
     return;
   }
 
-  overlay?.classList.add('visible');
+  if (!_aiQuestionShownNatively) _showWebAiQuestionPopup();
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && _activeAiQuestion) _presentActiveAiQuestion();
+});
+window.addEventListener('resize', () => {
+  if (document.getElementById('ai-question-overlay')?.classList.contains('visible')) {
+    _fitWebAiQuestionPopup();
+  }
 });
 
 window.onNativeAiQuestionAnswer = function(answer) {
