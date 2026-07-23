@@ -371,7 +371,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:600px;display:flex;flex-direction:column;margin:0 auto}
 .db-popup #db-list{flex:1;min-height:0}
 .db-filler-row{height:56px;flex-shrink:0}
-.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;max-height:480px;display:flex;flex-direction:column;margin:0 auto}
+.db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;display:flex;flex-direction:column;margin:auto}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000}
 .db-edit-input::placeholder{color:#888}
 #entry-title-input,#entry-guide-input{font-size:15px}
@@ -655,16 +655,16 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 </div>
 
 <!-- Edit Entry Popup -->
-<div id="popup-edit-entry" class="overlay" onclick="if(event.target.id==='popup-edit-entry')closeEditEntry()">
+<div id="popup-edit-entry" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-edit-entry')closeEditEntry()">
   <div class="popup db-edit-popup" onclick="event.stopPropagation()">
     <div id="edit-entry-title" style="display:none"></div>
     <div class="form-group">
       <label class="form-label" style="color:rgba(0,0,0,.7)">Title</label>
       <input type="text" id="entry-title-input" class="text-input db-edit-input" placeholder="App/Task">
     </div>
-    <div class="form-group" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div class="form-group">
       <label class="form-label" style="color:rgba(0,0,0,.7)">Guide</label>
-      <textarea id="entry-guide-input" class="text-input db-edit-input" style="flex:1;resize:none" placeholder="Write a guide for an LLM on how it should perform certain tasks to be successful"></textarea>
+      <textarea id="entry-guide-input" class="text-input db-edit-input" style="resize:none;min-height:120px;overflow:hidden" placeholder="Write a guide for an LLM on how it should perform certain tasks to be successful" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
     </div>
     <div class="popup-actions" style="margin-top:12px">
       <button class="btn btn-solid" onclick="saveEntry()">Save</button>
@@ -5136,7 +5136,10 @@ function openEditEntry(entry) {
   editingEntryOriginalTitle = entry ? entry.title : null;
   document.getElementById('edit-entry-title').textContent = entry ? 'Edit Entry' : 'New Entry';
   document.getElementById('entry-title-input').value = entry ? entry.title : '';
-  document.getElementById('entry-guide-input').value = entry ? entry.guide : '';
+  const guideEl = document.getElementById('entry-guide-input');
+  guideEl.value = entry ? entry.guide : '';
+  guideEl.style.height = 'auto';
+  setTimeout(() => { guideEl.style.height = guideEl.scrollHeight + 'px'; }, 0);
   closePopup('popup-db');
   openPopup('popup-edit-entry');
   fitDbPopup(document.querySelector('#popup-edit-entry .db-edit-popup'));
@@ -5220,6 +5223,7 @@ function closePopup(id) { document.getElementById(id).classList.remove('open'); 
 // max-height set here in real pixels instead of via CSS vh units.
 function fitDbPopup(popupEl) {
   if (!popupEl) return;
+  if (popupEl.classList.contains('db-edit-popup')) return; // edit popup grows with content
   const OVERLAY_VPAD = 48; // .overlay padding:24px top + 24px bottom
   const available = Math.floor(window.innerHeight - OVERLAY_VPAD);
   popupEl.style.maxHeight = Math.max(200, available) + 'px';
@@ -5340,6 +5344,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
