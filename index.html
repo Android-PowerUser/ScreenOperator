@@ -3519,6 +3519,38 @@ function parseCommandsFromText(rawText) {
 ════════════════════════════════════════════════════════ */
 let _stopExecution = false;
 
+/* ── TERMUX PIPE-SESSION STATE ──────────────────────────────── */
+let _termuxSessionArmed = false;
+
+const _TERMUX_SETUP_SCRIPT =
+  'rm -f ~/cmdpipe ~/outpipe\n' +
+  'mkfifo ~/cmdpipe ~/outpipe\n' +
+  'setsid bash -c \'\n' +
+  '  while true; do\n' +
+  '    read -r cmd < ~/cmdpipe\n' +
+  '    eval "$cmd" > ~/outpipe 2>&1\n' +
+  '  done\n' +
+  '\' </dev/null >/dev/null 2>&1 &\n' +
+  'disown';
+
+function _termuxWrapCommand(rawCommand) {
+  const escaped = String(rawCommand).replace(/"/g, '\\"');
+  return `{ echo "${escaped}" > ~/cmdpipe & cat ~/outpipe; } 2>/dev/null`;
+}
+
+function _buildTermuxSessionCommand(rawCommand) {
+  const wrapped = _termuxWrapCommand(rawCommand);
+  if (!_termuxSessionArmed) {
+    _termuxSessionArmed = true;
+    return _TERMUX_SETUP_SCRIPT + '\n' + wrapped;
+  }
+  return wrapped;
+}
+
+function _resetTermuxSession() {
+  _termuxSessionArmed = false;
+}
+
 async function _executeCommandsFromResponse(text) {
   _stopExecution = false;
   _dispatchCustomActions(text);
@@ -3566,7 +3598,7 @@ async function _executeSingleCommand(cmd) {
   switch (cmd.type) {
     case 'ENTER':        Bridge.pressEnterKey(); break;
     case 'WRITE_TEXT':   Bridge.writeText(cmd.text); break;
-    case 'TERMUX':       Bridge.runTermuxCommand(cmd.command); break;
+    case 'TERMUX':       Bridge.runTermuxCommand(_buildTermuxSessionCommand(cmd.command)); break;
     case 'CLICK':        Bridge.tapByText(cmd.text); break;
     case 'LONG_CLICK':   Bridge.longTapByText(cmd.text); break;
     case 'TAP':          Bridge.tapAtCoordinates(cmd.x, cmd.y); break;
@@ -4778,6 +4810,7 @@ function clearChat() {
   Bridge.clearChatHistory();
   Bridge.clearChatHistoryJs();
   _jsChatHistory = [];
+  _resetTermuxSession();
 }
 function stopGeneration() {
   _stopExecution = true;  // halt JS command executor
@@ -4786,6 +4819,7 @@ function stopGeneration() {
     window.__customModelAbortController.abort();
   }
   window.onGenerationStateChanged(false, false);
+  _resetTermuxSession();
 }
 
 function autoGrowTextarea(el, maxPx) {
