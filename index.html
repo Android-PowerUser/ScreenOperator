@@ -372,9 +372,9 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .db-popup #db-list{flex:1;min-height:0}
 .db-filler-row{height:56px;flex-shrink:0}
 .db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;display:flex;flex-direction:column;margin:auto}
-.db-edit-input{background:#fff;color:#000;border:1px solid #000}
+.db-edit-input{background:#fff;color:#000;border:1px solid #000;font-size:16px}
 .db-edit-input::placeholder{color:#888}
-#entry-title-input,#entry-guide-input{font-size:15px}
+#entry-title-input,#entry-guide-input{font-size:16px}
 
 /* ── Hint text ───────────────────────────────────────────── */
 .model-hint{font-size:13px;color:var(--text-secondary);margin-top:8px;line-height:1.5}
@@ -664,7 +664,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     </div>
     <div class="form-group">
       <label class="form-label" style="color:rgba(0,0,0,.7)">Guide</label>
-      <textarea id="entry-guide-input" class="text-input db-edit-input" style="resize:none;min-height:120px;overflow:hidden" placeholder="Write a guide for an LLM on how it should perform certain tasks to be successful" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      <textarea id="entry-guide-input" class="text-input db-edit-input" style="resize:none;min-height:120px;overflow:hidden" placeholder="Write a guide for an LLM on how it should perform certain tasks to be successful" oninput="fitGuideTextarea()"></textarea>
     </div>
     <div class="popup-actions" style="margin-top:12px">
       <button class="btn btn-solid" onclick="saveEntry()">Save</button>
@@ -5179,11 +5179,32 @@ function openEditEntry(entry) {
   document.getElementById('entry-title-input').value = entry ? entry.title : '';
   const guideEl = document.getElementById('entry-guide-input');
   guideEl.value = entry ? entry.guide : '';
-  guideEl.style.height = 'auto';
-  setTimeout(() => { guideEl.style.height = guideEl.scrollHeight + 'px'; }, 0);
   // Keep database popup open and show edit popup on top (z-index:60)
   openPopup('popup-edit-entry');
   fitDbPopup(document.querySelector('#popup-edit-entry .db-edit-popup'));
+  fitGuideTextarea();
+}
+
+// Grows the guide textarea with its content (like autoGrowTextarea), but caps
+// it so the whole edit popup stays within the display (fitDbPopup's max-height).
+// Beyond that cap the textarea scrolls internally instead of the popup growing
+// taller than the screen.
+function fitGuideTextarea() {
+  const ta = document.getElementById('entry-guide-input');
+  const popup = document.querySelector('#popup-edit-entry .db-edit-popup');
+  if (!ta || !popup || !popup.closest('.overlay').classList.contains('open')) return;
+  const POPUP_MAX = window.innerHeight - 48; // keep in sync with fitDbPopup's OVERLAY_VPAD
+  ta.style.height = 'auto';
+  // Measure the popup's uncapped height (forced layout, nothing is painted in between)
+  const savedMax = popup.style.maxHeight;
+  popup.style.maxHeight = 'none';
+  const natural = ta.scrollHeight;   // border-box height that fits the whole content
+  const used = ta.offsetHeight;      // height:auto -> clamps to min-height (120px)
+  const others = popup.offsetHeight - used; // popup chrome: padding, title field, labels, Save button
+  popup.style.maxHeight = savedMax;
+  const room = Math.max(120, Math.floor(POPUP_MAX - others));
+  ta.style.height = Math.min(natural, room) + 'px';
+  ta.style.overflowY = natural > room ? 'auto' : 'hidden';
 }
 function closeEditEntry() {
   closePopup('popup-edit-entry');
@@ -5257,17 +5278,20 @@ function closePopup(id) { document.getElementById(id).classList.remove('open'); 
 
 // vh/dvh have been found unreliable inside this app's WebView (they resolve
 // to a height larger than window.innerHeight, see commit 597b75e for the
-// sys-msg-textarea case) - so the near-full-height db popups get their
-// max-height set here in real pixels instead of via CSS vh units.
+// sys-msg-textarea case) - so the db popups get their max-height set here
+// in real pixels instead of via CSS vh units. This also applies to the edit
+// popup: fitGuideTextarea() caps its guide textarea and lets it scroll
+// internally, so a long entry can no longer make the popup taller than the
+// display.
 function fitDbPopup(popupEl) {
   if (!popupEl) return;
-  if (popupEl.classList.contains('db-edit-popup')) return; // edit popup grows with content
   const OVERLAY_VPAD = 48; // .overlay padding:24px top + 24px bottom
   const available = Math.floor(window.innerHeight - OVERLAY_VPAD);
   popupEl.style.maxHeight = Math.max(200, available) + 'px';
 }
 window.addEventListener('resize', () => {
   document.querySelectorAll('.overlay.open .db-popup, .overlay.open .db-edit-popup').forEach(fitDbPopup);
+  fitGuideTextarea(); // re-cap the guide textarea when e.g. the soft keyboard opens/closes
 });
 function overlayClose(e, id) { if (e.target.id===id) closePopup(id); }
 
