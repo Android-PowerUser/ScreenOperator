@@ -1990,6 +1990,27 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     payload.supportsThinking = modelDef ? !!modelDef.supportsThinking : false;
   }
 
+  // After an app restart the native _chatState is empty, so payload.history
+  // arrives as []. _jsChatHistory is persisted via SharedPreferences and
+  // survives restarts, so use it as the authoritative history source when it
+  // contains more turns than the native payload does. This fixes providers like
+  // Mistral not receiving prior conversation context after a restart.
+  // _jsChatHistory already includes the user turn the user just sent (appended
+  // by the onUserMessage hook), so exclude the last entry if it matches the
+  // current payload.userText to avoid duplicating it (each _call* function
+  // appends payload.userText itself as the current user turn).
+  if (_jsChatHistory.length > (payload.history || []).length) {
+    let jsHistory = _jsChatHistory.slice(); // shallow copy
+    // Drop the trailing user entry that matches the current turn to avoid duplication.
+    if (jsHistory.length > 0) {
+      const last = jsHistory[jsHistory.length - 1];
+      if (last.role === 'user' && (last.text || '') === (payload.userText || '')) {
+        jsHistory = jsHistory.slice(0, -1);
+      }
+    }
+    payload.history = jsHistory;
+  }
+
   const provider = payload.apiProvider || 'PUTER';
 
   try {
