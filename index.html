@@ -4800,8 +4800,11 @@ function addUserBubble(text, imageDataUri) {
   const thumbHtml = imageDataUri
     ? `<img class="bubble-thumb" src="${escAttr(imageDataUri)}" alt="Screenshot" onclick="_showThumbLightbox('${escAttr(imageDataUri)}')" />`
     : '';
-  wrap.innerHTML = `<div class="bubble user">${escHtml(text)}${thumbHtml}</div>
-    <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`;
+  const isFirstUserMsg = document.querySelectorAll('#chat-messages .user-wrap').length === 0;
+  const undoBtnHtml = isFirstUserMsg
+    ? `\n    <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`
+    : '';
+  wrap.innerHTML = `<div class="bubble user">${escHtml(text)}${thumbHtml}</div>${undoBtnHtml}`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
