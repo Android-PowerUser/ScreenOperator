@@ -337,7 +337,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 
 /* ── Overlays / Popups ───────────────────────────────────── */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
-.overlay.open{display:flex;align-items:flex-start;justify-content:center}
+.overlay.open{display:flex;align-items:center;justify-content:center}
 .popup{background:var(--bg);border-radius:18px;padding:20px;width:100%;max-width:480px;position:relative;margin:auto}
 .popup-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:14px}
 .popup-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);line-height:1}
@@ -655,7 +655,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 </div>
 
 <!-- Edit Entry Popup -->
-<div id="popup-edit-entry" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-edit-entry')closeEditEntry()">
+<div id="popup-edit-entry" class="overlay" style="align-items:center;z-index:60" onclick="if(event.target.id==='popup-edit-entry')closeEditEntry()">
   <div class="popup db-edit-popup" onclick="event.stopPropagation()">
     <div id="edit-entry-title" style="display:none"></div>
     <div class="form-group">
@@ -5181,15 +5181,14 @@ function openEditEntry(entry) {
   guideEl.value = entry ? entry.guide : '';
   guideEl.style.height = 'auto';
   setTimeout(() => { guideEl.style.height = guideEl.scrollHeight + 'px'; }, 0);
-  closePopup('popup-db');
+  // Keep database popup open and show edit popup on top (z-index:60)
   openPopup('popup-edit-entry');
   fitDbPopup(document.querySelector('#popup-edit-entry .db-edit-popup'));
 }
 function closeEditEntry() {
   closePopup('popup-edit-entry');
+  // Database popup stays open, just re-render the list to reflect any changes
   renderDbList();
-  openPopup('popup-db');
-  fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
 function saveEntry() {
   const title = document.getElementById('entry-title-input').value.trim();
@@ -5205,8 +5204,6 @@ function saveEntry() {
   }
   closePopup('popup-edit-entry');
   renderDbList();
-  openPopup('popup-db');
-  fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
 function exportDatabase() {
   const entries = Bridge.getDatabaseEntries();
