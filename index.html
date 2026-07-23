@@ -346,9 +346,9 @@ html.dark-mode .task-input { color: var(--text-primary); }
 #ai-question-overlay{z-index:1100;align-items:center;justify-content:center;overflow:hidden}
 #ai-question-overlay.visible{display:flex}
 /* WebView viewport units are unreliable in this app; JS applies pixel max-heights. */
-.ai-question-popup{width:100%;max-width:480px;margin:0;display:block;overflow:hidden}
-#ai-question-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px;padding-right:38px}
-#ai-answer-options{display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding:2px}
+.ai-question-popup{width:100%;max-width:480px;margin:0;display:flex;flex-direction:column;overflow:hidden}
+#ai-question-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px;padding-right:38px;flex-shrink:0}
+#ai-answer-options{display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding:2px;flex:1;min-height:0}
 .ai-answer-option{display:block;flex:0 0 auto;width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--outline);border-radius:12px;background:var(--bg);color:var(--text-primary);font:inherit;text-align:left;cursor:pointer}
 .ai-answer-option:active{background:var(--item-hover)}
 .ai-answer-custom{cursor:text;outline:none}
@@ -4448,8 +4448,7 @@ function _fitWebAiQuestionPopup() {
   // window.innerHeight pixel strategy as the existing database popups instead.
   const available = Math.max(220, Math.floor(window.innerHeight - 48));
   popup.style.maxHeight = available + 'px';
-  const nonOptionsHeight = question.offsetHeight + 56; // popup padding + title margin
-  options.style.maxHeight = Math.max(96, available - nonOptionsHeight) + 'px';
+  // options scroll is handled by flex:1 + overflow-y:auto on #ai-answer-options
 }
 
 function _showWebAiQuestionPopup() {
@@ -5344,6 +5343,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
