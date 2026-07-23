@@ -1232,9 +1232,28 @@ window.onChatCleared = function() {
 // Termux output). Appends a new user bubble so every message appears in order at the bottom.
 // imageDataUri (optional) is a base64 data: URI of the screenshot just sent to the AI; when
 // present it's rendered as a small thumbnail inside the bubble instead of a separate toast.
+/**
+ * FIX for retrieve("..."): retrieve is now handled exactly like any other non-Termux
+ * command – JS fetches the DB entry, stores it in _pendingScreenInfo, and lets the
+ * normal auto-appended SCREENSHOT do the rest. No direct Bridge.requestScreenshot()
+ * inside the RETRIEVE case, otherwise two screenshots/races split the flow and break Stop.
+ * The pending info is shown at the very beginning of the next user message (chat bubble
+ * AND AI payload), then screen elements + screenshot follow as usual.
+ */
+function _applyPendingRetrievedInfo(text) {
+  if (!_pendingScreenInfo) return text;
+  return _pendingScreenInfo + (text ? '\n\n' + text : '');
+}
+function _consumePendingRetrievedInfo() {
+  _pendingScreenInfo = null;
+}
+
 window.onUserMessage = function(text, imageDataUri) {
   if (text || imageDataUri) {
+    // First apply truncation warning (inserts above Screen elements marker, or top if no marker)
     text = _applyPendingTruncationWarning(text || '');
+    // Then prepend retrieved DB info so it is always absolute top, same as AI payload.
+    text = _applyPendingRetrievedInfo(text || '');
     addUserBubble(text, imageDataUri);
   }
 };
@@ -1971,16 +1990,15 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     payload.databaseEntries = '';
   }
 
-  // Inject any pending retrieved DB entry info
-  if (_pendingScreenInfo) {
-    payload.userText = _pendingScreenInfo + '\n\n' + (payload.userText || '');
-    _pendingScreenInfo = null;
-  }
-
-  // Inject any pending command-truncation warning, positioned directly above the
-  // "Screen elements:"/"Termux output:" section rather than above the whole message.
+  // Inject any pending command-truncation warning first (inserts above Screen elements marker)
+  // Then prepend retrieved DB info so it is always absolute top – same order as in onUserMessage,
+  // so chat bubble and AI payload show identical text and Stop keeps working with a single screenshot.
   payload.userText = _applyPendingTruncationWarning(payload.userText || '');
+  payload.userText = _applyPendingRetrievedInfo(payload.userText || '');
+  // Consume after both have been injected; onUserMessage (which ran earlier for this turn)
+  // already displayed the same content because it also applies both helpers without consuming.
   _consumePendingTruncationWarning();
+  _consumePendingRetrievedInfo();
 
   // Enrich payload with supportsThinking from the JS MODELS list.
   // The native side doesn't know this flag, so we look it up here so every
@@ -3628,9 +3646,14 @@ async function _executeSingleCommand(cmd) {
       await new Promise(r => setTimeout(r, (cmd.seconds || 1) * 1000));
       break;
     case 'RETRIEVE': {
-      // Skip if this heading was already retrieved earlier in the chat (mirrors
-      // PhotoReasoningTextPolicies.isHeadingAlreadyRetrievedInChat) - avoids re-injecting the
-      // same information repeatedly if the AI asks for it again.
+      // FIX: retrieve now behaves like any other command (click, scroll, etc.):
+      // - fetch with existing JS logic (Bridge.getDatabaseEntries)
+      // - store in _pendingScreenInfo to be prepended at beginning of next message
+      // - do NOT call requestScreenshot() here. The generic auto-appended SCREENSHOT
+      //   (see _executeCommandsFromResponse) will request exactly one screenshot,
+      //   just like for all other commands. Previously two screenshots were triggered
+      //   (one here + one auto-appended), which split the flow: AI got the info but
+      //   chat showed something else, and Stop lost its AbortController.
       const marker = `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]`.toLowerCase();
       const alreadyRetrieved = _jsChatHistory.some(m => (m.text || '').toLowerCase().includes(marker));
 
@@ -3641,7 +3664,7 @@ async function _executeSingleCommand(cmd) {
         _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
           + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
       }
-      Bridge.requestScreenshot();
+      // No screenshot here – handled by auto-appended SCREENSHOT.
       break;
     }
     case 'SCREENSHOT':
@@ -5328,7 +5351,13 @@ function _appendAssistantToHistory(text) {
  */
 function _appendUserToHistory(text, imageDataUri) {
   if (!text && !imageDataUri) return;
-  const entry = { role: 'user', text: text || '' };
+  // Enrich with pending truncation warning + retrieved info exactly like the visible bubble
+  // and the outgoing AI payload, so isHeadingAlreadyRetrievedInChat() check works and
+  // history stays consistent with what user saw and what AI received.
+  let enriched = text || '';
+  enriched = _applyPendingTruncationWarning(enriched);
+  enriched = _applyPendingRetrievedInfo(enriched);
+  const entry = { role: 'user', text: enriched || '' };
   if (imageDataUri) entry.imageDataUri = imageDataUri;
   _jsChatHistory.push(entry);
   // Persist immediately so the user's turn survives an app kill that happens
