@@ -4522,8 +4522,17 @@ function _submitAiQuestionAnswer(answer) {
  * so there is exactly one place that owns the queueing/dedup/display logic.
  */
 function _enqueueAiQuestionItem(question, answers) {
-  if (!question || !question.trim()) return;
-  const cleanAnswers = (answers || []).filter(answer => answer && answer.trim());
+  question = String(question || '').trim();
+  if (!question) return;
+  const cleanAnswers = (answers || [])
+    .map(answer => String(answer || '').trim())
+    .filter(Boolean);
+
+  // Older native SHOW_POPUP pattern handling accidentally forwarded the question as the
+  // first answer as well. Keep this handler tolerant so WebView presentation stays correct
+  // for both old and new parser paths.
+  if (cleanAnswers[0] === question) cleanAnswers.shift();
+
   if (!cleanAnswers.length) return;
   const item = { question, answers: cleanAnswers };
 
@@ -4562,9 +4571,19 @@ window.onCustomAction = window.onCustomAction || function(id, groups) {
     return;
   }
   if (id === 'POPUP_QUESTION' || id === 'SHOW_POPUP') {
-    // groups here are already-split regex capture groups: groups[0] = question,
-    // groups[1..] = individual answer options (each its own capture group).
-    const [question, ...answers] = groups || [];
+    groups = groups || [];
+
+    // Preferred/current path: custom-action-types.json captures the complete argument list
+    // as one string so popUp("Question", "A", "B", ... "Z",) can contain any number of
+    // answer options. Parse it in WebView, where popup logic belongs.
+    if (groups.length === 1) {
+      _enqueueAiQuestion(groups[0] || '');
+      return;
+    }
+
+    // Backward-compatible path: native/older regexes may forward already-split capture
+    // groups: groups[0] = question, groups[1..] = individual answer options.
+    const [question, ...answers] = groups;
     _enqueueAiQuestionFromParts(question || '', answers);
     return;
   }
