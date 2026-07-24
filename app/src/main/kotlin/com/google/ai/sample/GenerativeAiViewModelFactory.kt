@@ -10,10 +10,17 @@ import com.google.ai.client.generativeai.type.generationConfig
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.util.GenerationSettingsPreferences
 
-// Model options - only for models that need native code paths (offline/live)
-// All online models are defined in WebView (index.html) and don't need enum entries
+// API providers - used for API key management in SharedPreferences
+// Models are defined in WebView (index.html), but we need these enum values
+// to store and retrieve API keys via WebViewBridge.getAllApiKeys/addApiKey/etc.
 enum class ApiProvider {
     GOOGLE,
+    PUTER,
+    MISTRAL,
+    GROQ,
+    VERCEL,
+    CEREBRAS,
+    CLOUDFLARE,
     HUMAN_EXPERT
 }
 
