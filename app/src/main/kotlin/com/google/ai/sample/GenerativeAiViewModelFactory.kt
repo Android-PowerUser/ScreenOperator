@@ -43,6 +43,7 @@ enum class ModelOption(
     PUTER_AUTOGLM_PHONE_MULTILINGUAL("AutoGLM Phone Multilingual 9B (Puter)", "z-ai/autoglm-phone-multilingual", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_MINIMAX_M3("MiniMax M3 (Puter)", "minimax/minimax-m3", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_QWEN2_5_VL_72B("Qwen3.7 Plus (Puter)", "qwen/qwen3.7-plus", ApiProvider.PUTER, supportsScreenshot = true),
+    PUTER_LING_3_FLASH("Ling 3.0 Flash (Puter)", "inclusionai/ling-3.0-flash", ApiProvider.PUTER, supportsScreenshot = false),
     GROQ_LLAMA_4_SCOUT_17B("Llama 4 Scout 109B (Groq)", "meta-llama/llama-4-scout-17b-16e-instruct", ApiProvider.GROQ, supportsScreenshot = true),
     CLOUDFLARE_KIMI_K2_6("Kimi K2.6 (Cloudflare)", "@cf/moonshotai/kimi-k2.6", ApiProvider.CLOUDFLARE, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
@@ -265,3 +266,4 @@ object GenerativeAiViewModelFactory {
         }
     }
 }
+
