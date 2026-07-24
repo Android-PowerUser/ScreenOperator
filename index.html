@@ -3580,6 +3580,10 @@ function _resetTermuxSession() {
 
 async function _executeCommandsFromResponse(text) {
   _stopExecution = false;
+  // Reset batch answer collection for each new AI response so answers from a previous
+  // multi-popup turn don't bleed into this one.
+  _batchAnswers = [];
+  _batchTotalSize = 0;
   _dispatchCustomActions(text);
   const parsedCommands = parseCommandsFromText(text);
   if (!parsedCommands.length) {
@@ -3696,15 +3700,33 @@ async function _executeSingleCommand(cmd) {
  * (CustomActionTypeConfig) and dispatches to window.onCustomAction(id, groups[])
  * for any handler wired up by the user's own JS. Called alongside the built-in
  * command parser so new action types work without an app update.
+ *
+ * For POPUP_QUESTION / SHOW_POPUP action types the total match count within this
+ * response is pre-computed and passed as a third argument (batchSize) so the
+ * answer-collection logic can group all popups from the same AI response together.
  */
 function _dispatchCustomActions(text) {
+  // Pre-count popup matches per action type so we can pass batchSize to handlers.
+  const popupBatchSizes = new Map();
+  for (const def of _customActionTypes) {
+    if (def.id === 'POPUP_QUESTION' || def.id === 'SHOW_POPUP') {
+      def.regex.lastIndex = 0;
+      let count = 0;
+      while (def.regex.exec(text) !== null) count++;
+      if (count > 0) popupBatchSizes.set(def.id, count);
+    }
+  }
+
   for (const def of _customActionTypes) {
     def.regex.lastIndex = 0;
     let m;
     while ((m = def.regex.exec(text)) !== null) {
       const groups = m.slice(1);
       if (typeof window.onCustomAction === 'function') {
-        try { window.onCustomAction(def.id, groups); }
+        try {
+          const batchSize = popupBatchSizes.get(def.id) || 1;
+          window.onCustomAction(def.id, groups, batchSize);
+        }
         catch(e) { console.warn('onCustomAction handler error for', def.id, e); }
       }
     }
@@ -4400,6 +4422,12 @@ const _aiQuestionQueue = [];
 let _lastAiQuestionSignature = '';
 let _lastAiQuestionAt = 0;
 
+// Batch answer collection: when multiple popUp() commands arrive in one AI message,
+// answers are collected here and sent together after the last popup is answered.
+let _batchAnswers = [];        // collected answers for current batch
+let _batchTotalSize = 0;       // how many popUps are in the current batch
+let _batchStartIndex = 0;      // index into _aiQuestionQueue when batch was started
+
 /** Parse the quoted, comma-separated arguments captured from popUp(...). */
 function _parsePopupArguments(source) {
   const values = [];
@@ -4436,6 +4464,16 @@ function _parsePopupArguments(source) {
 function _showNextAiQuestion() {
   if (_activeAiQuestion || !_aiQuestionQueue.length) return;
   _activeAiQuestion = _aiQuestionQueue.shift();
+
+  // If this is the first popup of a new batch, initialise batch tracking.
+  // A "batch" is a group of popUps that arrived in the same AI response, identified
+  // by a batchSize > 1 on the first item and consecutive items with matching batchSize.
+  const batchSize = _activeAiQuestion.batchSize || 1;
+  if (_batchTotalSize === 0) {
+    // Starting a fresh batch
+    _batchAnswers = [];
+    _batchTotalSize = batchSize;
+  }
   const overlay = document.getElementById('ai-question-overlay');
   const question = document.getElementById('ai-question-text');
   const options = document.getElementById('ai-answer-options');
@@ -4543,17 +4581,43 @@ function _dismissAiQuestion() {
 
 function _submitAiQuestionAnswer(answer) {
   if (!_activeAiQuestion || !answer) return;
+  const questionText = _activeAiQuestion.question;
   _clearActiveAiQuestion();
-  Bridge.sendMessage(String(answer));
-  window.onGenerationStateChanged(true, false);
+
+  _batchAnswers.push({ question: questionText, answer: String(answer) });
+
+  // Check if all questions in the batch have been answered
+  if (_batchAnswers.length >= _batchTotalSize) {
+    // All collected – build and send the combined message
+    let message;
+    if (_batchAnswers.length === 1) {
+      // Single popup: send answer directly without numbering
+      message = _batchAnswers[0].answer;
+    } else {
+      // Multiple popups: send numbered answers
+      message = _batchAnswers
+        .map((item, i) => `Question ${i + 1}: ${item.answer}`)
+        .join('\n');
+    }
+    // Reset batch state before sending so re-entrant calls start fresh
+    _batchAnswers = [];
+    _batchTotalSize = 0;
+    Bridge.sendMessage(message);
+    window.onGenerationStateChanged(true, false);
+  }
+  // If not all answered yet, _showNextAiQuestion() (called by _clearActiveAiQuestion)
+  // will show the next popup in the queue; no message is sent until the batch is complete.
 }
 
 /**
  * Shared core: given an already-split question + answers array, dedupes and enqueues
  * the popup. Both call sites below (raw-string and pre-split-groups) funnel through here
  * so there is exactly one place that owns the queueing/dedup/display logic.
+ *
+ * batchSize (optional): total number of popUps in the same AI response. When > 1,
+ * answers are collected and sent together after all popUps are answered.
  */
-function _enqueueAiQuestionItem(question, answers) {
+function _enqueueAiQuestionItem(question, answers, batchSize) {
   question = String(question || '').trim();
   if (!question) return;
   const cleanAnswers = (answers || [])
@@ -4566,11 +4630,11 @@ function _enqueueAiQuestionItem(question, answers) {
   if (cleanAnswers[0] === question) cleanAnswers.shift();
 
   if (!cleanAnswers.length) return;
-  const item = { question, answers: cleanAnswers };
+  const item = { question, answers: cleanAnswers, batchSize: batchSize || 1 };
 
   // Android's native parser and the WebView parser may both report the same command. Avoid
   // showing it twice while still allowing an identical question in a later AI turn.
-  const signature = JSON.stringify(item);
+  const signature = JSON.stringify({ question, answers: cleanAnswers });
   const now = Date.now();
   if (signature === _lastAiQuestionSignature && now - _lastAiQuestionAt < 10000) return;
   _lastAiQuestionSignature = signature;
@@ -4580,23 +4644,23 @@ function _enqueueAiQuestionItem(question, answers) {
 }
 
 /** Legacy entry point: a single raw string containing all quoted popUp(...) arguments. */
-function _enqueueAiQuestion(rawArguments) {
+function _enqueueAiQuestion(rawArguments, batchSize) {
   const args = _parsePopupArguments(rawArguments || '');
   if (args.length < 2 || !args[0].trim()) {
     console.warn('[ScreenOperator] Ignoring malformed popUp arguments:', rawArguments);
     return;
   }
-  _enqueueAiQuestionItem(args[0], args.slice(1));
+  _enqueueAiQuestionItem(args[0], args.slice(1), batchSize);
 }
 
 /** Entry point for callers that already have the question/answers split into separate values
  *  (e.g. regex capture groups from custom-action-types.json, where each answer is its own
  *  capture group rather than one combined raw-argument string). */
-function _enqueueAiQuestionFromParts(question, answers) {
-  _enqueueAiQuestionItem(question, answers);
+function _enqueueAiQuestionFromParts(question, answers, batchSize) {
+  _enqueueAiQuestionItem(question, answers, batchSize);
 }
 
-window.onCustomAction = window.onCustomAction || function(id, groups) {
+window.onCustomAction = window.onCustomAction || function(id, groups, batchSize) {
   if (id === 'TOAST') {
     // groups[0] = the message text captured from toast("...") / toast('...')
     Bridge.showToast(groups[0] || '', false);
@@ -4604,19 +4668,20 @@ window.onCustomAction = window.onCustomAction || function(id, groups) {
   }
   if (id === 'POPUP_QUESTION' || id === 'SHOW_POPUP') {
     groups = groups || [];
+    const bs = batchSize || 1;
 
     // Preferred/current path: custom-action-types.json captures the complete argument list
     // as one string so popUp("Question", "A", "B", ... "Z",) can contain any number of
     // answer options. Parse it in WebView, where popup logic belongs.
     if (groups.length === 1) {
-      _enqueueAiQuestion(groups[0] || '');
+      _enqueueAiQuestion(groups[0] || '', bs);
       return;
     }
 
     // Backward-compatible path: native/older regexes may forward already-split capture
     // groups: groups[0] = question, groups[1..] = individual answer options.
     const [question, ...answers] = groups;
-    _enqueueAiQuestionFromParts(question || '', answers);
+    _enqueueAiQuestionFromParts(question || '', answers, bs);
     return;
   }
   console.log('[ScreenOperator] onCustomAction: id=' + id + ', groups=' + JSON.stringify(groups));
