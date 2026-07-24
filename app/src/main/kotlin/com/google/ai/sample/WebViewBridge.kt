@@ -102,11 +102,19 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun getAllApiKeys(providerName: String): String {
         return try {
+            Log.d(TAG, "getAllApiKeys called with providerName: '$providerName'")
             val provider = ApiProvider.valueOf(providerName)
+            Log.d(TAG, "ApiProvider resolved to: $provider")
             val keys = mainActivity.apiKeyManager.getApiKeys(provider)
-            JSONArray(keys).toString()
+            Log.d(TAG, "Retrieved ${keys.size} keys for $provider")
+            val result = JSONArray(keys).toString()
+            Log.d(TAG, "Returning JSON: $result")
+            result
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "getAllApiKeys: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
+            "[]"
         } catch (e: Exception) {
-            Log.w(TAG, "getAllApiKeys error: ${e.message}")
+            Log.e(TAG, "getAllApiKeys error for '$providerName': ${e.message}", e)
             "[]"
         }
     }
@@ -114,29 +122,44 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun addApiKey(key: String, providerName: String) {
         try {
+            Log.d(TAG, "addApiKey called: provider='$providerName', key='${key.take(5)}...'")
             val provider = ApiProvider.valueOf(providerName)
-            mainActivity.apiKeyManager.addApiKey(key, provider)
+            val success = mainActivity.apiKeyManager.addApiKey(key, provider)
+            Log.d(TAG, "addApiKey result: $success for $provider")
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "addApiKey: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
         } catch (e: Exception) {
-            Log.e(TAG, "addApiKey error: ${e.message}")
+            Log.e(TAG, "addApiKey error: ${e.message}", e)
         }
     }
 
     @JavascriptInterface
     fun removeApiKey(key: String, providerName: String) {
         try {
+            Log.d(TAG, "removeApiKey called: provider='$providerName', key='${key.take(5)}...'")
             val provider = ApiProvider.valueOf(providerName)
-            mainActivity.apiKeyManager.removeApiKey(key, provider)
+            val success = mainActivity.apiKeyManager.removeApiKey(key, provider)
+            Log.d(TAG, "removeApiKey result: $success for $provider")
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "removeApiKey: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
         } catch (e: Exception) {
-            Log.e(TAG, "removeApiKey error: ${e.message}")
+            Log.e(TAG, "removeApiKey error: ${e.message}", e)
         }
     }
 
     @JavascriptInterface
     fun getCurrentKeyIndex(providerName: String): Int {
         return try {
+            Log.d(TAG, "getCurrentKeyIndex called for provider: '$providerName'")
             val provider = ApiProvider.valueOf(providerName)
-            mainActivity.apiKeyManager.getCurrentKeyIndex(provider)
+            val index = mainActivity.apiKeyManager.getCurrentKeyIndex(provider)
+            Log.d(TAG, "getCurrentKeyIndex result: $index for $provider")
+            index
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "getCurrentKeyIndex: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
+            0
         } catch (e: Exception) {
+            Log.e(TAG, "getCurrentKeyIndex error: ${e.message}", e)
             0
         }
     }
@@ -144,10 +167,14 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun setCurrentKeyIndex(index: Int, providerName: String) {
         try {
+            Log.d(TAG, "setCurrentKeyIndex called: provider='$providerName', index=$index")
             val provider = ApiProvider.valueOf(providerName)
-            mainActivity.apiKeyManager.setCurrentKeyIndex(index, provider)
+            val success = mainActivity.apiKeyManager.setCurrentKeyIndex(index, provider)
+            Log.d(TAG, "setCurrentKeyIndex result: $success for $provider")
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "setCurrentKeyIndex: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
         } catch (e: Exception) {
-            Log.e(TAG, "setCurrentKeyIndex error: ${e.message}")
+            Log.e(TAG, "setCurrentKeyIndex error: ${e.message}", e)
         }
     }
 
