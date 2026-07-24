@@ -237,7 +237,6 @@ class ScreenCaptureService : Service() {
                 val chatHistoryJson = extras.chatHistoryJson
                 val modelName = extras.modelName
                 val apiKey = extras.apiKey
-                val apiProvider = extras.apiProvider
                 val tempFilePaths = extras.tempFilePaths
                 Log.d(TAG, "Received tempFilePaths for cleanup: $tempFilePaths")
 
@@ -303,48 +302,25 @@ class ScreenCaptureService : Service() {
                             }
                         }
                         try {
-                            if (apiProvider == ApiProvider.VERCEL) {
-                                responseText = callVercelApi(applicationContext, modelName, apiKey, chatHistoryDtos, inputContentDto, aiCallCancellationHandle)
-                            } else if (apiProvider == ApiProvider.MISTRAL) {
-                                val availableMistralKeys = ApiKeyManager.getInstance(applicationContext)
-                                    .getApiKeys(ApiProvider.MISTRAL)
-                                    .filter { it.isNotBlank() }
-                                val result = callMistralApi(
-                                    modelName = modelName,
-                                    apiKey = apiKey,
-                                    chatHistory = chatHistory,
-                                    inputContent = inputContent,
-                                    availableApiKeys = availableMistralKeys,
-                                    cancellationHandle = aiCallCancellationHandle
-                                )
-                                responseText = result.first
-                                errorMessage = result.second
-                            } else if (apiProvider == ApiProvider.PUTER) {
-                                val result = callPuterApi(modelName, apiKey, chatHistory, inputContent, aiCallCancellationHandle)
-                                responseText = result.first
-                                errorMessage = result.second
-                            } else if (apiProvider == ApiProvider.GROQ) {
-                                val result = callGroqApi(modelName, apiKey, chatHistory, inputContent, aiCallCancellationHandle)
-                                responseText = result.first
-                                errorMessage = result.second
-                            } else {
-                                val generativeModel = GenerativeModel(
-                                    modelName = modelName,
-                                    apiKey = apiKey
-                                )
-                                val tempChat = generativeModel.startChat(history = chatHistory)
-                                val fullResponse = StringBuilder()
-                                tempChat.sendMessageStream(inputContent).collect { chunk ->
-                                    chunk.text?.let {
-                                        fullResponse.append(it)
-                                        val streamIntent = Intent(ACTION_AI_STREAM_UPDATE).apply {
-                                            putExtra(EXTRA_AI_STREAM_CHUNK, it)
-                                        }
-                                        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(streamIntent)
+                            // All online models are handled by WebView JavaScript.
+                            // This native code path is only a fallback for edge cases.
+                            // The GenerativeModel is used as a generic API client.
+                            val generativeModel = GenerativeModel(
+                                modelName = modelName,
+                                apiKey = apiKey
+                            )
+                            val tempChat = generativeModel.startChat(history = chatHistory)
+                            val fullResponse = StringBuilder()
+                            tempChat.sendMessageStream(inputContent).collect { chunk ->
+                                chunk.text?.let {
+                                    fullResponse.append(it)
+                                    val streamIntent = Intent(ACTION_AI_STREAM_UPDATE).apply {
+                                        putExtra(EXTRA_AI_STREAM_CHUNK, it)
                                     }
+                                    LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(streamIntent)
                                 }
-                                responseText = fullResponse.toString()
                             }
+                            responseText = fullResponse.toString()
                         } catch (e: CancellationException) {
                             if (aiCallCancellationHandle.isCancellationRequested) {
                                 Log.d(TAG, "AI call cancelled by user", e)

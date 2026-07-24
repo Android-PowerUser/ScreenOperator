@@ -1584,7 +1584,6 @@ class PhotoReasoningViewModel(
                 chatHistoryJson = chatHistoryJson,
                 modelName = currentModel.modelName,
                 apiKey = apiKey,
-                apiProvider = currentModel.apiProvider,
                 tempFilePaths = tempFilePaths
             )
             context.startService(serviceIntent)
@@ -1627,7 +1626,6 @@ class PhotoReasoningViewModel(
         chatHistoryJson: String,
         modelName: String,
         apiKey: String,
-        apiProvider: ApiProvider,
         tempFilePaths: ArrayList<String>
     ): Intent {
         return Intent(context, ScreenCaptureService::class.java).apply {
@@ -1637,7 +1635,6 @@ class PhotoReasoningViewModel(
             putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, modelName)
             putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
             putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
-            putExtra(ScreenCaptureService.EXTRA_AI_API_PROVIDER, apiProvider.name)
         }
     }
 

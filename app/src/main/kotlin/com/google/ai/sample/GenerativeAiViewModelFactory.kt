@@ -7,19 +7,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.generationConfig
-import com.google.ai.sample.feature.live.LiveApiManager
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.util.GenerationSettingsPreferences
 
-// Model options
+// Model options - only for models that need native code paths (offline/live)
+// All online models are defined in WebView (index.html) and don't need enum entries
 enum class ApiProvider {
-    VERCEL,
     GOOGLE,
-    CEREBRAS,
-    MISTRAL,
-    GROQ,
-    CLOUDFLARE,
-    PUTER,
     HUMAN_EXPERT
 }
 
@@ -37,29 +31,7 @@ enum class ModelOption(
     val additionalDownloadUrls: List<String> = emptyList(),
     val requiresVisionBackend: Boolean = false
 ) {
-    PUTER_GPT_5_4_NANO("GPT-5.4 Nano (Puter)", "openai/gpt-5.4-nano", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_MIMO_V2_5("Mimo-V2.5 (Puter)", "xiaomi/mimo-v2.5", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_QWEN3_5_FLASH("Qwen3.5-Flash (Puter)", "qwen/qwen3.5-flash-02-23", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_AUTOGLM_PHONE_MULTILINGUAL("AutoGLM Phone Multilingual 9B (Puter)", "z-ai/autoglm-phone-multilingual", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_MINIMAX_M3("MiniMax M3 (Puter)", "minimax/minimax-m3", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_QWEN2_5_VL_72B("Qwen3.7 Plus (Puter)", "qwen/qwen3.7-plus", ApiProvider.PUTER, supportsScreenshot = true),
-    GROQ_LLAMA_4_SCOUT_17B("Llama 4 Scout 109B (Groq)", "meta-llama/llama-4-scout-17b-16e-instruct", ApiProvider.GROQ, supportsScreenshot = true),
-    CLOUDFLARE_KIMI_K2_6("Kimi K2.6 (Cloudflare)", "@cf/moonshotai/kimi-k2.6", ApiProvider.CLOUDFLARE, supportsScreenshot = true),
-    MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
-    MISTRAL_MEDIUM_3_1("Mistral Medium 3.1", "mistral-medium-latest", ApiProvider.MISTRAL),
-    MISTRAL_MEDIUM_3_5("Mistral Medium 3.5", "mistral-medium-3-5", ApiProvider.MISTRAL),
-    GPT_5_1_CODEX_MAX("GPT-5.1 Codex Max (Vercel)", "openai/gpt-5.1-codex-max", ApiProvider.VERCEL),
-    GPT_5_1_CODEX_MINI("GPT-5.1 Codex Mini (Vercel)", "openai/gpt-5.1-codex-mini", ApiProvider.VERCEL),
-    GPT_5_NANO("GPT-5 Nano (Vercel)", "openai/gpt-5-nano", ApiProvider.VERCEL),
-    GPT_OSS_120B("GPT-OSS 120B (Cerebras)", "gpt-oss-120b", ApiProvider.CEREBRAS, supportsScreenshot = false),
-    GEMINI_3_FLASH("Gemini 3 Flash", "gemini-3-flash-preview"),
-    GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro"),
-    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash", "gemini-2.5-flash"),
-    GEMINI_FLASH_LIVE_PREVIEW("Gemini 2.5 Flash Live Preview", "gemini-live-2.5-flash-native-audio"),
-    GEMINI_FLASH_LITE_PREVIEW("Gemini 2.5 Flash Lite Preview", "gemini-2.5-flash-lite-preview-06-17"),
-    GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
-    GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
-    GEMMA_3_27B_IT("Gemma 3 27B IT", "gemma-3-27b-it", supportsScreenshot = false),
+    // ── Offline models (need native LiteRT code) ─────────────────────────────
     GEMMA_3N_E4B_IT(
         "Gemma 3n E4B it (offline)",
         "gemma-3n-e4b-it",
@@ -111,7 +83,14 @@ enum class ModelOption(
         ),
         requiresVisionBackend = true
     ),
-    HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT);
+
+    // ── Special models (need native code paths) ──────────────────────────────
+    HUMAN_EXPERT("Human Expert", "human-expert", ApiProvider.HUMAN_EXPERT),
+
+    // ── Fallback for online models (handled entirely by WebView JS) ──────────
+    // When an online model is selected, the WebView makes the API call via JavaScript.
+    // This enum entry is only used as a placeholder for the native ViewModel infrastructure.
+    ONLINE_MODEL("Online Model (WebView)", "online-model", ApiProvider.GOOGLE);
 
     /** Whether this model supports Temperature/TopP settings in UI */
     val supportsGenerationSettings: Boolean
@@ -119,10 +98,7 @@ enum class ModelOption(
 
     /** Whether this model supports TopK setting in UI/request payloads. */
     val supportsTopK: Boolean
-        get() = when (apiProvider) {
-            ApiProvider.MISTRAL, ApiProvider.PUTER -> false
-            else -> this != HUMAN_EXPERT
-        }
+        get() = this != HUMAN_EXPERT
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -159,48 +135,20 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         val createdViewModel = with(modelClass) {
             when {
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
-                    if (currentModel.modelName.contains("live")) {
-                        // Live API models
-                        val liveApiManager = LiveApiManager(
-                            apiKey = apiKey,
-                            modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
-                            temperature = genSettings.temperature.toDouble(),
-                            topP = genSettings.topP.toDouble(),
-                            topK = genSettings.topK.coerceAtLeast(1)
-                        )
-                        
-                        // For Live API, we might not need a GenerativeModel at all
-                        // or we use a fallback model for non-live operations
-                        // Using the first non-live model as fallback
-                        val fallbackModel = GenerativeModel(
-                            modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(ModelOption.GEMINI_FLASH_PREVIEW), // Using Gemini 2.5 Flash as fallback
-                            apiKey = apiKey,
-                            generationConfig = config
-                        )
-                        
-                        val viewModel = PhotoReasoningViewModel(
-                            application,
-                            fallbackModel, 
-                            currentModel.modelName, 
-                            liveApiManager
-                        )
-                        
-                        // Don't connect immediately - let collectLiveApiMessages handle it with proper setup
-                        viewModel
-                    } else {
-                        // Regular generative models
-                        val generativeModel = GenerativeModel(
-                            modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
-                            apiKey = apiKey,
-                            generationConfig = config
-                        )
-                        PhotoReasoningViewModel(
-                            application,
-                            generativeModel, 
-                            currentModel.modelName,
-                            null // No LiveApiManager for regular models
-                        )
-                    }
+                    // All online models are handled by WebView JavaScript.
+                    // The native GenerativeModel is only used as a placeholder for the
+                    // ViewModel infrastructure. The actual API calls go through JS.
+                    val generativeModel = GenerativeModel(
+                        modelName = currentModel.modelName,
+                        apiKey = apiKey,
+                        generationConfig = config
+                    )
+                    PhotoReasoningViewModel(
+                        application,
+                        generativeModel, 
+                        currentModel.modelName,
+                        null // No LiveApiManager - live models are handled by WebView
+                    )
                 }
 
                 else ->
@@ -217,7 +165,7 @@ enum class InferenceBackend {
 }
 
 object GenerativeAiViewModelFactory {
-    private var currentModel: ModelOption = ModelOption.MISTRAL_LARGE_3
+    private var currentModel: ModelOption = ModelOption.ONLINE_MODEL
     private var currentBackend: InferenceBackend = InferenceBackend.GPU
 
     fun setModel(modelOption: ModelOption, context: Context? = null) {
@@ -276,14 +224,14 @@ object GenerativeAiViewModelFactory {
 
     private fun loadBuiltInModelPreference(context: Context): ModelOption {
         val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
-        val modelNameStr = prefs.getString("selected_model", ModelOption.MISTRAL_LARGE_3.name)
+        val modelNameStr = prefs.getString("selected_model", ModelOption.ONLINE_MODEL.name)
         return try {
-            ModelOption.valueOf(modelNameStr ?: ModelOption.MISTRAL_LARGE_3.name)
+            ModelOption.valueOf(modelNameStr ?: ModelOption.ONLINE_MODEL.name)
         } catch (e: IllegalArgumentException) {
-            when (modelNameStr) {
-                "PUTER_GLM5" -> ModelOption.PUTER_MIMO_V2_5
-                else -> ModelOption.MISTRAL_LARGE_3
-            }
+            // Model ID from preferences doesn't match any enum entry (e.g., it was an
+            // online model that has been removed from the enum). Fall back to ONLINE_MODEL
+            // since the WebView will handle the actual model selection.
+            ModelOption.ONLINE_MODEL
         }
     }
 }
