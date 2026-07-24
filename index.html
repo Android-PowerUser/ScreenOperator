@@ -5406,7 +5406,11 @@ function _appendUserToHistory(text, imageDataUri) {
   const _orig = window.onAiMessage;
   window.onAiMessage = function(text, isPending) {
     if (_orig) _orig(text, isPending);
-    if (!isPending && text) {
+    // Error messages (prefixed with "[Error]" by the native layer) must NOT be stored
+    // in _jsChatHistory, because they would otherwise be sent as assistant context to
+    // the next model call. Native already shows them as error bubbles; keeping them out
+    // of the JS history prevents the error text from polluting subsequent requests.
+    if (!isPending && text && !text.startsWith('[Error]')) {
       _appendAssistantToHistory(text);
     }
   };
@@ -5424,6 +5428,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
