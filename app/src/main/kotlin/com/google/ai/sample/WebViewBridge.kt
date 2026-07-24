@@ -56,12 +56,33 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getSelectedModelId(): String {
+        // Custom models (JSON-defined) take precedence - consistent with setSelectedModel()
         com.google.ai.sample.util.CustomModelRegistry.getActiveModelId()?.let { return it }
         return GenerativeAiViewModelFactory.getCurrentModel().name
     }
 
     @JavascriptInterface
     fun setSelectedModel(id: String) {
+        // PRIORITY: Custom models (JSON-defined in WebView) ALWAYS take precedence over
+        // built-in enum values. This architecture ensures that:
+        // 1. Adding new models NEVER requires native code changes - only WebView JSON updates
+        // 2. WebView can override built-in models by defining them in custom-models.json
+        // 3. The enum becomes a fallback for legacy/hardcoded models only
+        
+        // First, check if this is a custom model (JSON-defined via setCustomModelOverrides)
+        val customModel = com.google.ai.sample.util.CustomModelRegistry.findById(id)
+        if (customModel != null) {
+            // Custom model found - activate it
+            com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(id)
+            com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, id)
+            mainActivity.runOnUiThread {
+                mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
+            }
+            Log.d(TAG, "setSelectedModel: activated custom model '$id'")
+            return
+        }
+        
+        // Fallback: try built-in ModelOption enum (legacy path)
         try {
             val model = ModelOption.valueOf(id)
             com.google.ai.sample.util.CustomModelRegistry.clearActiveModel()
@@ -70,19 +91,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             mainActivity.runOnUiThread {
                 mainActivity.onModelChangedFromWebView()
             }
+            Log.d(TAG, "setSelectedModel: activated built-in model '$id'")
         } catch (e: IllegalArgumentException) {
-            // Not a built-in ModelOption - check whether it's a custom, JSON-defined model
-            // (see CustomModelRegistry). This is what lets a brand-new model/provider be
-            // selected without it ever having existed as a compiled-in enum constant.
-            val activated = com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(id)
-            if (activated) {
-                com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, id)
-                mainActivity.runOnUiThread {
-                    mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
-                }
-            } else {
-                Log.w(TAG, "setSelectedModel: unknown model id '$id' (not a ModelOption nor a known custom model)")
-            }
+            Log.w(TAG, "setSelectedModel: unknown model id '$id' (not in CustomModelRegistry nor ModelOption enum)")
         }
     }
 
@@ -179,15 +190,14 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun getGenerationSettings(modelId: String): String {
         return try {
             // Resolve to the persistence key the same way regardless of whether this is a
-            // built-in ModelOption or a custom (JSON-defined) model: GenerationSettingsPreferences
-            // itself is already keyed by an arbitrary string, not by the ModelOption enum, so no
-            // new storage mechanism is needed here - only this id-resolution step.
-            val settingsKey = try {
-                ModelOption.valueOf(modelId).modelName
-            } catch (e: IllegalArgumentException) {
-                com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
-                    ?: throw e
-            }
+            // built-in ModelOption or a custom (JSON-defined) model. Custom models take
+            // precedence - consistent with setSelectedModel() architecture.
+            val settingsKey = com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
+                ?: try {
+                    ModelOption.valueOf(modelId).modelName
+                } catch (e: IllegalArgumentException) {
+                    throw e
+                }
             val s = GenerationSettingsPreferences.loadSettings(context, settingsKey)
             JSONObject()
                 .put("temperature", s.temperature)
@@ -203,12 +213,13 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun saveGenerationSettings(modelId: String, temperature: Float, topP: Float, topK: Int) {
         try {
-            val settingsKey = try {
-                ModelOption.valueOf(modelId).modelName
-            } catch (e: IllegalArgumentException) {
-                com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
-                    ?: throw e
-            }
+            // Custom models take precedence - consistent with setSelectedModel() architecture
+            val settingsKey = com.google.ai.sample.util.CustomModelRegistry.findById(modelId)?.id
+                ?: try {
+                    ModelOption.valueOf(modelId).modelName
+                } catch (e: IllegalArgumentException) {
+                    throw e
+                }
             GenerationSettingsPreferences.saveSettings(
                 context,
                 settingsKey,

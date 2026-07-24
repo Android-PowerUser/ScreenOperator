@@ -43,7 +43,6 @@ enum class ModelOption(
     PUTER_AUTOGLM_PHONE_MULTILINGUAL("AutoGLM Phone Multilingual 9B (Puter)", "z-ai/autoglm-phone-multilingual", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_MINIMAX_M3("MiniMax M3 (Puter)", "minimax/minimax-m3", ApiProvider.PUTER, supportsScreenshot = true),
     PUTER_QWEN2_5_VL_72B("Qwen3.7 Plus (Puter)", "qwen/qwen3.7-plus", ApiProvider.PUTER, supportsScreenshot = true),
-    PUTER_LING_3_FLASH("Ling 3.0 Flash (Puter)", "inclusionai/ling-3.0-flash", ApiProvider.PUTER, supportsScreenshot = false),
     GROQ_LLAMA_4_SCOUT_17B("Llama 4 Scout 109B (Groq)", "meta-llama/llama-4-scout-17b-16e-instruct", ApiProvider.GROQ, supportsScreenshot = true),
     CLOUDFLARE_KIMI_K2_6("Kimi K2.6 (Cloudflare)", "@cf/moonshotai/kimi-k2.6", ApiProvider.CLOUDFLARE, supportsScreenshot = true),
     MISTRAL_LARGE_3("Mistral Large 3", "mistral-large-latest", ApiProvider.MISTRAL),
@@ -254,9 +253,31 @@ object GenerativeAiViewModelFactory {
     }
 
     fun loadModelPreference(context: Context) {
+        // On startup, first check if a custom model was persisted as active (JSON-defined models
+        // take precedence over built-in enum values - consistent with setSelectedModel architecture)
+        val customModelId = com.google.ai.sample.util.CustomModelPreferences.loadActiveModelId(context)
+        if (customModelId != null) {
+            // Re-load custom models JSON so the registry is populated before we try to activate
+            val savedJson = com.google.ai.sample.util.CustomModelPreferences.loadModelsJson(context)
+            if (savedJson != null) {
+                com.google.ai.sample.util.CustomModelRegistry.setModels(savedJson)
+                if (com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(customModelId)) {
+                    // Custom model restored successfully; keep a safe built-in model as the
+                    // underlying ModelOption (used by the ViewModel factory for non-custom paths)
+                    currentModel = loadBuiltInModelPreference(context)
+                    return
+                }
+            }
+            // Persisted custom model ID is no longer in config - clear stale reference
+            com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, null)
+        }
+        currentModel = loadBuiltInModelPreference(context)
+    }
+
+    private fun loadBuiltInModelPreference(context: Context): ModelOption {
         val prefs = context.getSharedPreferences("inference_prefs", Context.MODE_PRIVATE)
         val modelNameStr = prefs.getString("selected_model", ModelOption.MISTRAL_LARGE_3.name)
-        currentModel = try {
+        return try {
             ModelOption.valueOf(modelNameStr ?: ModelOption.MISTRAL_LARGE_3.name)
         } catch (e: IllegalArgumentException) {
             when (modelNameStr) {

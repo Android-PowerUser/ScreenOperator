@@ -8,11 +8,20 @@ import org.json.JSONArray
  * Its definition - which endpoint to call, what the request looks like, whether it sends
  * screenshots - comes entirely from remotely fetched JSON (see [CustomModelConfig]).
  *
- * The actual HTTP call for these models is made from JavaScript inside the WebView (see
- * `window.onCustomModelRequest` in index.html), not from native networking code. That is what
- * lets a genuinely new model/provider be added with zero app release, as long as its API is an
- * OpenAI-compatible chat-completions endpoint reachable via `fetch()` from the WebView (CORS
- * permitting - this must be verified per provider).
+ * TWO MODES OF OPERATION:
+ *
+ * 1. JS-FETCH MODE (when [apiProvider] is null):
+ *    The actual HTTP call is made from JavaScript inside the WebView (see
+ *    `window.onCustomModelRequest` in index.html), not from native networking code. That is what
+ *    lets a genuinely new model/provider be added with zero app release, as long as its API is an
+ *    OpenAI-compatible chat-completions endpoint reachable via `fetch()` from the WebView (CORS
+ *    permitting - this must be verified per provider).
+ *
+ * 2. NATIVE-API-CLIENT MODE (when [apiProvider] is set):
+ *    Uses an existing native API client (PUTER, MISTRAL, GROQ, etc.) but the model definition
+ *    comes from WebView JSON instead of the compiled-in enum. This allows adding new models to
+ *    existing providers without requiring native code changes or app releases. The [endpoint]
+ *    field is ignored in this mode.
  */
 data class CustomModelDefinition(
     val id: String,
@@ -23,7 +32,8 @@ data class CustomModelDefinition(
     val apiKeyPrefix: String = "Bearer ",
     val supportsScreenshot: Boolean = false,
     val supportsTopK: Boolean = false,
-    val stream: Boolean = true
+    val stream: Boolean = true,
+    val apiProvider: String? = null  // Optional: if set, use native API client instead of JS fetch
 )
 
 /**
@@ -50,12 +60,18 @@ internal object CustomModelConfig {
                 val id = entry.optString("id", "")
                 val endpoint = entry.optString("endpoint", "")
                 val modelName = entry.optString("modelName", "")
+                val apiProvider = entry.optString("apiProvider", "").ifBlank { null }
 
-                if (id.isBlank() || endpoint.isBlank() || modelName.isBlank()) {
-                    Log.w(TAG, "Skipping custom model at index $i: 'id', 'endpoint' and 'modelName' are required")
+                if (id.isBlank() || modelName.isBlank()) {
+                    Log.w(TAG, "Skipping custom model at index $i: 'id' and 'modelName' are required")
                     continue
                 }
-                if (!endpoint.startsWith("https://")) {
+                // endpoint is only required for JS-fetch mode (when apiProvider is null)
+                if (apiProvider == null && endpoint.isBlank()) {
+                    Log.w(TAG, "Skipping custom model '$id': 'endpoint' is required when 'apiProvider' is not set")
+                    continue
+                }
+                if (apiProvider == null && !endpoint.startsWith("https://")) {
                     Log.w(TAG, "Skipping custom model '$id': endpoint must be https://")
                     continue
                 }
@@ -70,7 +86,8 @@ internal object CustomModelConfig {
                         apiKeyPrefix = entry.optString("apiKeyPrefix", "Bearer "),
                         supportsScreenshot = entry.optBoolean("supportsScreenshot", false),
                         supportsTopK = entry.optBoolean("supportsTopK", false),
-                        stream = entry.optBoolean("stream", true)
+                        stream = entry.optBoolean("stream", true),
+                        apiProvider = apiProvider
                     )
                 )
             }

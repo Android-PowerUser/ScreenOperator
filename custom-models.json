@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "PUTER_LING_3_FLASH",
+    "displayName": "Ling 3.0 Flash (Puter)",
+    "endpoint": "https://api.puter.com/v1/chat/completions",
+    "modelName": "inclusionai/ling-3.0-flash",
+    "apiKeyHeader": "Authorization",
+    "apiKeyPrefix": "Bearer ",
+    "supportsScreenshot": false,
+    "supportsTopK": false,
+    "stream": true
+  }
+]

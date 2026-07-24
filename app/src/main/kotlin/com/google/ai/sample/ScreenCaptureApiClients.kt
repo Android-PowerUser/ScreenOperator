@@ -92,7 +92,11 @@ internal suspend fun callMistralApi(
     }
 
     val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
-    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+    // Check CustomModelRegistry first (JSON-defined models take precedence), then enum
+    val supportsScreenshot = com.google.ai.sample.util.CustomModelRegistry.getModels()
+        .find { it.modelName == modelName }?.supportsScreenshot
+        ?: currentModelOption?.supportsScreenshot
+        ?: true
 
     try {
         val apiMessages = mutableListOf<ServiceMistralMessage>()
@@ -226,7 +230,11 @@ internal suspend fun callPuterApi(modelName: String, apiKey: String, chatHistory
     var errorMessage: String? = null
     
     val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
-    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+    // Check CustomModelRegistry first (JSON-defined models take precedence), then enum
+    val supportsScreenshot = com.google.ai.sample.util.CustomModelRegistry.getModels()
+        .find { it.modelName == modelName }?.supportsScreenshot
+        ?: currentModelOption?.supportsScreenshot
+        ?: true
 
     try {
         val apiMessages = mutableListOf<com.google.ai.sample.network.PuterMessage>()
@@ -329,7 +337,11 @@ internal suspend fun callGroqApi(modelName: String, apiKey: String, chatHistory:
     var errorMessage: String? = null
 
     val currentModelOption = com.google.ai.sample.ModelOption.values().find { it.modelName == modelName }
-    val supportsScreenshot = currentModelOption?.supportsScreenshot ?: true
+    // Check CustomModelRegistry first (JSON-defined models take precedence), then enum
+    val supportsScreenshot = com.google.ai.sample.util.CustomModelRegistry.getModels()
+        .find { it.modelName == modelName }?.supportsScreenshot
+        ?: currentModelOption?.supportsScreenshot
+        ?: true
 
     try {
         val apiMessages = mutableListOf<ServiceGroqMessage>()
