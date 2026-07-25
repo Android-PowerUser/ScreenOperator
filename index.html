@@ -3599,6 +3599,8 @@ async function _executeCommandsFromResponse(text) {
     _stopExecution = true;
     generationRunning = false;
     if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
+    // Clear any leftover commands bubble from the previous message
+    if (window.onCommandStatus) window.onCommandStatus('');
     return;
   }
 
