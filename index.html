@@ -730,7 +730,7 @@ const Bridge = {
   /* API Keys */
   getAllApiKeys:(prov)=> JSON.parse(getInAndroid() ? Android.getAllApiKeys(prov) : (LS.getItem('keys_'+prov)||'[]')),
   addApiKey:(key,prov)=>{
-    if(getInAndroid()) return Android.addApiKey(key,prov);
+    if(getInAndroid()){ Android.addApiKey(key,prov); return true; }
     const k=Bridge.getAllApiKeys(prov); if(k.includes(key)) return false;
     k.push(key); LS.setItem('keys_'+prov,JSON.stringify(k)); return true;
   },
