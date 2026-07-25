@@ -56,45 +56,68 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getSelectedModelId(): String {
-        // Custom models (JSON-defined) take precedence - consistent with setSelectedModel()
+        // 1. Custom models (JSON-defined) take precedence
         com.google.ai.sample.util.CustomModelRegistry.getActiveModelId()?.let { return it }
+        // 2. JS-only online models (known only to the WebView, not in ModelOption enum)
+        getJsOnlyModelId()?.let { return it }
+        // 3. Built-in native enum models (offline models, HUMAN_EXPERT)
         return GenerativeAiViewModelFactory.getCurrentModel().name
     }
 
+    private fun getJsOnlyModelId(): String? =
+        context.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
+            .getString("js_only_model_id", null)
+
+    private fun saveJsOnlyModelId(id: String?) =
+        context.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().apply { if (id == null) remove("js_only_model_id") else putString("js_only_model_id", id) }.apply()
+
     @JavascriptInterface
     fun setSelectedModel(id: String) {
-        // PRIORITY: Custom models (JSON-defined in WebView) ALWAYS take precedence over
-        // built-in enum values. This architecture ensures that:
-        // 1. Adding new models NEVER requires native code changes - only WebView JSON updates
-        // 2. WebView can override built-in models by defining them in custom-models.json
-        // 3. The enum becomes a fallback for legacy/hardcoded models only
-        
-        // First, check if this is a custom model (JSON-defined via setCustomModelOverrides)
+        // PRIORITY order:
+        // 1. Custom models (JSON-defined in WebView via setCustomModelOverrides)
+        // 2. JS-only online models (defined only in WebView's MODELS list, not in any native enum)
+        // 3. Built-in native enum models (offline models, HUMAN_EXPERT)
+        // This ensures WebView is fully independent: new online models never need a native change.
+
+        // Check if this is a custom model (JSON-defined via setCustomModelOverrides)
         val customModel = com.google.ai.sample.util.CustomModelRegistry.findById(id)
         if (customModel != null) {
-            // Custom model found - activate it
             com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(id)
             com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, id)
+            saveJsOnlyModelId(null)
             mainActivity.runOnUiThread {
                 mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
             }
             Log.d(TAG, "setSelectedModel: activated custom model '$id'")
             return
         }
-        
-        // Fallback: try built-in ModelOption enum (legacy path)
-        try {
-            val model = ModelOption.valueOf(id)
+
+        // Check if this is a native built-in model (offline models, HUMAN_EXPERT)
+        val builtInModel = try { ModelOption.valueOf(id) } catch (e: IllegalArgumentException) { null }
+        if (builtInModel != null) {
             com.google.ai.sample.util.CustomModelRegistry.clearActiveModel()
             com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, null)
-            GenerativeAiViewModelFactory.setModel(model, context)
+            saveJsOnlyModelId(null)
+            GenerativeAiViewModelFactory.setModel(builtInModel, context)
             mainActivity.runOnUiThread {
                 mainActivity.onModelChangedFromWebView()
             }
             Log.d(TAG, "setSelectedModel: activated built-in model '$id'")
-        } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "setSelectedModel: unknown model id '$id' (not in CustomModelRegistry nor ModelOption enum)")
+            return
         }
+
+        // JS-only online model (exists only in WebView's MODELS list).
+        // Store the id so getSelectedModelId() and reasonWithBuiltInModelViaJs() can use it.
+        // The WebView looks up all other properties (apiProvider, modelName, etc.) from its own MODELS list.
+        com.google.ai.sample.util.CustomModelRegistry.clearActiveModel()
+        com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, null)
+        saveJsOnlyModelId(id)
+        // Make sure no offline model stays loaded when switching to an online model
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
+        }
+        Log.d(TAG, "setSelectedModel: stored JS-only model '$id'")
     }
 
     // ── API Keys ──────────────────────────────────────────────────────────────
@@ -1447,6 +1470,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
 
 
 
