@@ -2224,7 +2224,7 @@ async function _callGemini(payload) {
       if (_isKeyError(response.status, errMsg) && keys.length > 1) {
         const startIdx = keyIdx;
         let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt < keys.length; attempt++) {
+        for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
           Bridge.setCurrentKeyIndex(keyIdx, 'GOOGLE');
           if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'GOOGLE') renderKeyList();
@@ -2244,7 +2244,6 @@ async function _callGemini(payload) {
           try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
           lastErrMsg = 'Gemini HTTP ' + retryResp.status + (rd ? ': ' + rd : '');
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
-          if (keyIdx === startIdx) break; // full circle
         }
         if (!response.ok) throw new Error(lastErrMsg);
       } else {
@@ -2381,7 +2380,7 @@ async function _callPuter(payload) {
       if (_isKeyError(response.status, errMsg) && keys.length > 1) {
         const startIdx = keyIdx;
         let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt < keys.length; attempt++) {
+        for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
           Bridge.setCurrentKeyIndex(keyIdx, 'PUTER');
           if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'PUTER') renderKeyList();
@@ -2400,7 +2399,6 @@ async function _callPuter(payload) {
           try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
           lastErrMsg = 'Puter API Error (' + retryResp.status + '): ' + rd;
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
-          if (keyIdx === startIdx) break;
         }
         if (!response.ok) throw new Error(lastErrMsg);
       } else {
@@ -2784,7 +2782,7 @@ async function _callCerebras(payload) {
       if (_isKeyError(response.status, errMsg) && keys.length > 1) {
         const startIdx = keyIdx;
         let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt < keys.length; attempt++) {
+        for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
           Bridge.setCurrentKeyIndex(keyIdx, 'CEREBRAS');
           if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'CEREBRAS') renderKeyList();
@@ -2803,7 +2801,6 @@ async function _callCerebras(payload) {
           try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
           lastErrMsg = 'Unexpected code ' + retryResp.status + ' - ' + rd;
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
-          if (keyIdx === startIdx) break;
         }
         if (!response.ok) throw new Error(lastErrMsg);
       } else {
@@ -2907,7 +2904,7 @@ async function _callGroq(payload) {
       if (_isKeyError(response.status, errMsg) && keys.length > 1) {
         const startIdx = keyIdx;
         let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt < keys.length; attempt++) {
+        for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
           Bridge.setCurrentKeyIndex(keyIdx, 'GROQ');
           if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'GROQ') renderKeyList();
@@ -2926,7 +2923,6 @@ async function _callGroq(payload) {
           try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
           lastErrMsg = 'Groq Error ' + retryResp.status + ': ' + rd;
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
-          if (keyIdx === startIdx) break;
         }
         if (!response.ok) throw new Error(lastErrMsg);
       } else {
@@ -3027,7 +3023,7 @@ async function _callVercel(payload) {
       if (_isKeyError(response.status, errMsg) && keys.length > 1) {
         const startIdx = keyIdx;
         let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt < keys.length; attempt++) {
+        for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
           Bridge.setCurrentKeyIndex(keyIdx, 'VERCEL');
           if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'VERCEL') renderKeyList();
@@ -3046,7 +3042,6 @@ async function _callVercel(payload) {
           try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
           lastErrMsg = 'Vercel API error ' + retryResp.status + ': ' + rd;
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
-          if (keyIdx === startIdx) break;
         }
         if (!response.ok) throw new Error(lastErrMsg);
       } else {
@@ -3174,7 +3169,7 @@ async function _callOpenAiCompat(payload, provider) {
       if (provDef && _isKeyError(response.status, errMsg) && keys.length > 1) {
         const startIdx = keyIdx;
         let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt < keys.length; attempt++) {
+        for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
           Bridge.setCurrentKeyIndex(keyIdx, provider);
           if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === provider) renderKeyList();
@@ -3194,7 +3189,6 @@ async function _callOpenAiCompat(payload, provider) {
           try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
           lastErrMsg = (provider || 'API') + ' HTTP ' + retryResp.status + (rd ? ': ' + rd : '');
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
-          if (keyIdx === startIdx) break;
         }
         if (!response.ok) throw new Error(lastErrMsg);
       } else {
