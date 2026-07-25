@@ -1290,10 +1290,28 @@ class PhotoReasoningViewModel(
                     context, model.modelName
                 )
 
+                // For JS-only online models (e.g. PUTER_QWEN2_5_VL_72B, MISTRAL_MEDIUM_3_1, …)
+                // the ModelOption is always ONLINE_MODEL – a placeholder. The real model ID is
+                // stored in SharedPreferences by WebViewBridge.setSelectedModel().
+                // We pass it as modelId so the WebView can look up apiProvider, modelName, etc.
+                // from its own MODELS list, keeping all model knowledge inside the WebView.
+                val jsOnlyModelId = context.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
+                    .getString("js_only_model_id", null)
+                val effectiveModelId = if (model == com.google.ai.sample.ModelOption.ONLINE_MODEL && jsOnlyModelId != null) {
+                    jsOnlyModelId
+                } else {
+                    model.name
+                }
+
                 val payload = org.json.JSONObject().apply {
-                    put("modelId", model.name)                  // e.g. "GEMINI_PRO"
-                    put("modelName", com.google.ai.sample.util.ModelIdentifierOverrides.resolve(model))
-                    put("apiProvider", model.apiProvider.name)  // e.g. "GOOGLE"
+                    put("modelId", effectiveModelId)
+                    // modelName and apiProvider are intentionally omitted for JS-only models:
+                    // the WebView resolves them from its MODELS list using modelId.
+                    // For native built-in models (offline, GEMINI_*) we keep them as hints.
+                    if (jsOnlyModelId == null) {
+                        put("modelName", com.google.ai.sample.util.ModelIdentifierOverrides.resolve(model))
+                        put("apiProvider", model.apiProvider.name)
+                    }
                     put("supportsScreenshot", model.supportsScreenshot)
                     put("supportsTopK", model.supportsTopK)
                     put("isBuiltIn", true)
@@ -2478,3 +2496,4 @@ private fun processCommands(text: String) {
 
     
 }
+
