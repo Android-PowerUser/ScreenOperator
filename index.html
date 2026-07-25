@@ -394,6 +394,9 @@ html.dark-mode .task-input { color: var(--text-primary); }
 /* ── Progress / spinner ──────────────────────────────────── */
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--outline);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* ── Termux waiting spinner (inside user bubble) ─────────── */
+.termux-waiting-label{opacity:.85;font-style:italic}
+.termux-waiting-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:rgba(255,255,255,.9);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
 
 /* ── Scrollbar thin ──────────────────────────────────────── */
 ::-webkit-scrollbar{width:4px}
@@ -1251,6 +1254,8 @@ function _consumePendingRetrievedInfo() {
 }
 
 window.onUserMessage = function(text, imageDataUri) {
+  // Remove Termux waiting placeholder (if any) so the real bubble replaces it.
+  removeTermuxWaitingBubble();
   if (text || imageDataUri) {
     // First apply truncation warning (inserts above Screen elements marker, or top if no marker)
     text = _applyPendingTruncationWarning(text || '');
@@ -3554,6 +3559,8 @@ let _stopExecution = false;
 
 /* ── TERMUX PIPE-SESSION STATE ──────────────────────────────── */
 let _termuxSessionArmed = false;
+/* Placeholder user bubble shown while waiting for Termux output */
+let _termuxPendingBubbleWrap = null;
 
 const _TERMUX_SETUP_SCRIPT =
   'rm -f ~/cmdpipe ~/outpipe\n' +
@@ -3637,7 +3644,7 @@ async function _executeSingleCommand(cmd) {
   switch (cmd.type) {
     case 'ENTER':        Bridge.pressEnterKey(); break;
     case 'WRITE_TEXT':   Bridge.writeText(cmd.text); break;
-    case 'TERMUX':       Bridge.runTermuxCommand(_buildTermuxSessionCommand(cmd.command)); break;
+    case 'TERMUX':       showTermuxWaitingBubble(); Bridge.runTermuxCommand(_buildTermuxSessionCommand(cmd.command)); break;
     case 'CLICK':        Bridge.tapByText(cmd.text); break;
     case 'LONG_CLICK':   Bridge.longTapByText(cmd.text); break;
     case 'TAP':          Bridge.tapAtCoordinates(cmd.x, cmd.y); break;
@@ -4890,6 +4897,24 @@ function addUserBubble(text, imageDataUri) {
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
+/** Shows a placeholder user-side bubble with a spinner while waiting for Termux output. */
+function showTermuxWaitingBubble() {
+  // Remove any stale one first (shouldn't normally exist, but be safe)
+  removeTermuxWaitingBubble();
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap user-wrap';
+  wrap.innerHTML = `<div class="bubble user"><span class="termux-waiting-label">Waiting for Termux</span><span class="termux-waiting-spinner"></span></div>`;
+  document.getElementById('chat-messages').appendChild(wrap);
+  scrollToBottom();
+  _termuxPendingBubbleWrap = wrap;
+}
+/** Removes the Termux waiting placeholder bubble if it exists. */
+function removeTermuxWaitingBubble() {
+  if (_termuxPendingBubbleWrap) {
+    _termuxPendingBubbleWrap.remove();
+    _termuxPendingBubbleWrap = null;
+  }
+}
 // Tapping a screenshot thumbnail opens it full-size in a simple lightbox overlay.
 function _showThumbLightbox(src) {
   const overlay = document.createElement('div');
@@ -4940,6 +4965,7 @@ function clearChat() {
 }
 function stopGeneration() {
   _stopExecution = true;  // halt JS command executor
+  removeTermuxWaitingBubble();
   Bridge.stopGeneration();
   if (window.__customModelAbortController) {
     window.__customModelAbortController.abort();
