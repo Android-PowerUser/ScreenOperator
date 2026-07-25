@@ -2002,20 +2002,22 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   _consumePendingTruncationWarning();
   _consumePendingRetrievedInfo();
 
-  // Enrich payload with supportsThinking from the JS MODELS list.
-  // The native side doesn't know this flag, so we look it up here so every
-  // _call* function can read payload.supportsThinking without extra lookups.
-  // Also override apiProvider from the JS MODELS list: the native side always
-  // sends ApiProvider.GOOGLE as a placeholder for all online models (because
-  // ONLINE_MODEL enum has ApiProvider.GOOGLE as default). The JS MODELS list
-  // holds the real provider (PUTER, MISTRAL, GROQ, etc.), so we correct it here.
+  // Enrich payload from the JS MODELS list.
+  // The native side passes the correct modelId (stored by setSelectedModel) but
+  // leaves apiProvider, modelName, supportsThinking, supportsTopK, supportsScreenshot
+  // blank for JS-only online models. Resolve them here so every _call* function
+  // has complete, authoritative data from the single source of truth: the MODELS list.
   {
     const modelDef = MODELS.find(m => m.id === payload.modelId);
-    if (payload.supportsThinking === undefined) {
-      payload.supportsThinking = modelDef ? !!modelDef.supportsThinking : false;
-    }
-    if (modelDef && modelDef.apiProvider) {
-      payload.apiProvider = modelDef.apiProvider;
+    if (modelDef) {
+      // Always authoritative from JS MODELS list for these fields:
+      payload.apiProvider      = modelDef.apiProvider;
+      payload.modelName        = modelDef.modelName;
+      if (payload.supportsThinking === undefined) payload.supportsThinking = !!modelDef.supportsThinking;
+      if (payload.supportsTopK    === undefined) payload.supportsTopK     = !!modelDef.supportsTopK;
+      if (payload.supportsScreenshot === undefined) payload.supportsScreenshot = !!modelDef.supportsScreenshot;
+    } else {
+      if (payload.supportsThinking === undefined) payload.supportsThinking = false;
     }
   }
 
