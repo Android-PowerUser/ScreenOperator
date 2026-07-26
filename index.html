@@ -396,8 +396,8 @@ html.dark-mode .task-input { color: var(--text-primary); }
 @keyframes spin{to{transform:rotate(360deg)}}
 /* ── Termux waiting bubble (user-style, spinner matches model-icon) ── */
 .termux-waiting-label{opacity:.85;font-style:italic}
-.termux-waiting-spinner{display:inline-block;width:24px;height:24px;border-radius:50%;background:#fff;vertical-align:middle;margin-left:8px;position:relative;flex-shrink:0}
-.termux-waiting-spinner::after{content:'';display:block;width:16px;height:16px;border:2.5px solid #C4C4C4;border-top-color:#6650A4;border-radius:50%;animation:ai-spin 1.4s linear infinite;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+.termux-waiting-spinner{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#fff;vertical-align:middle;margin-left:8px;flex-shrink:0}
+.termux-waiting-spinner::after{content:'';width:16px;height:16px;border:2.5px solid #C4C4C4;border-top-color:#6650A4;border-radius:50%;animation:ai-spin 1.4s linear infinite}
 
 /* ── Scrollbar thin ──────────────────────────────────────── */
 ::-webkit-scrollbar{width:4px}
