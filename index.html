@@ -396,7 +396,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 @keyframes spin{to{transform:rotate(360deg)}}
 /* ── Termux waiting spinner (inside user bubble) ─────────── */
 .termux-waiting-label{opacity:.85;font-style:italic}
-.termux-waiting-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:rgba(255,255,255,.9);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
+.termux-waiting-spinner{display:inline-block;width:16px;height:16px;border:2.5px solid #C4C4C4;border-top-color:#6650A4;border-radius:50%;animation:ai-spin 1.4s linear infinite;vertical-align:middle;margin-left:6px}
 
 /* ── Scrollbar thin ──────────────────────────────────────── */
 ::-webkit-scrollbar{width:4px}
@@ -5847,6 +5847,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
