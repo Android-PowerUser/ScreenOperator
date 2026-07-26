@@ -1279,13 +1279,6 @@ class PhotoReasoningViewModel(
                     historyJson.put(org.json.JSONObject().put("role", role).put("text", message.text))
                 }
 
-                val imagesJson = org.json.JSONArray()
-                if (model.supportsScreenshot) {
-                    for (bitmap in selectedImages) {
-                        imagesJson.put(com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(bitmap))
-                    }
-                }
-
                 val genSettings = com.google.ai.sample.util.GenerationSettingsPreferences.loadSettings(
                     context, model.modelName
                 )
@@ -1303,6 +1296,25 @@ class PhotoReasoningViewModel(
                     model.name
                 }
 
+                // For JS-only online models (ONLINE_MODEL placeholder), supportsScreenshot is
+                // stored in SharedPreferences by the WebView when the user selects a model
+                // (via dispatch("setJsOnlyModelSupportsScreenshot", ...)).
+                // ONLINE_MODEL.supportsScreenshot is always true (default), so we must not use
+                // it directly for JS-only models — it would send screenshots to vision-less models.
+                val effectiveSupportsScreenshot = if (model == com.google.ai.sample.ModelOption.ONLINE_MODEL && jsOnlyModelId != null) {
+                    context.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
+                        .getBoolean("js_only_supports_screenshot", true)
+                } else {
+                    model.supportsScreenshot
+                }
+
+                val imagesJson = org.json.JSONArray()
+                if (effectiveSupportsScreenshot) {
+                    for (bitmap in selectedImages) {
+                        imagesJson.put(com.google.ai.sample.network.PuterApiClient.bitmapToBase64DataUri(bitmap))
+                    }
+                }
+
                 val payload = org.json.JSONObject().apply {
                     put("modelId", effectiveModelId)
                     // modelName and apiProvider are intentionally omitted for JS-only models:
@@ -1312,7 +1324,7 @@ class PhotoReasoningViewModel(
                         put("modelName", com.google.ai.sample.util.ModelIdentifierOverrides.resolve(model))
                         put("apiProvider", model.apiProvider.name)
                     }
-                    put("supportsScreenshot", model.supportsScreenshot)
+                    put("supportsScreenshot", effectiveSupportsScreenshot)
                     put("supportsTopK", model.supportsTopK)
                     put("isBuiltIn", true)
                     put("stream", true)
