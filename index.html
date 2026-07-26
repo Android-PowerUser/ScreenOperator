@@ -2333,7 +2333,9 @@ async function _callPuter(payload) {
 
   const userContent = [];
   if (payload.userText) userContent.push({ type: 'text', text: payload.userText });
-  (payload.images || []).forEach(uri => userContent.push({ type: 'image_url', image_url: { url: uri } }));
+  if (payload.supportsScreenshot !== false) {
+    (payload.images || []).forEach(uri => userContent.push({ type: 'image_url', image_url: { url: uri } }));
+  }
   messages.push({ role: 'user', content: userContent });
 
   const requestBody = {
@@ -5527,6 +5529,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
