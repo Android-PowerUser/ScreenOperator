@@ -5704,19 +5704,32 @@ function _appendUserToHistory(text, imageDataUri) {
 
 /* ── Live hot-reload: prüft alle 5 Minuten ob index.html aktualisiert wurde ──
  *
- * Strategie:
- *  1. Beim ersten Poll wird der ETag- bzw. Last-Modified-Header des aktuell
- *     geladenen Dokuments per HEAD-Request gespeichert (Baseline).
- *  2. Jeder folgende HEAD-Request vergleicht den Header mit der Baseline.
- *  3. Hat sich der Header geändert, wird die neue HTML per GET geladen und
- *     der komplette Seiteninhalt per document.open/write/close ersetzt –
- *     ohne nativen WebView-Reload, ohne App-Neustart.
- *  4. Schlägt ein Netzwerk-Request fehl, wird er still ignoriert; der nächste
- *     reguläre Poll-Zyklus versucht es erneut.
+ * Strategie (überarbeitet):
+ *  1. Jeder Poll lädt index.html per GET mit einem Cache-Busting-Query-Parameter
+ *     (?_hr=<timestamp>), damit weder der Android-WebView-HTTP-Cache noch ein
+ *     zwischengeschalteter CDN-Edge-Cache eine veraltete Antwort ausliefert.
+ *     `cache: 'no-store'` wird zusätzlich gesetzt, ist aber allein nicht
+ *     ausreichend (manche WebView-/CDN-Kombinationen ignorieren es).
+ *  2. Es wird NICHT mehr auf ETag/Last-Modified-Header via HEAD-Request
+ *     vertraut: HEAD-Requests werden von manchen WebView-Versionen und
+ *     CDN-Konfigurationen unzuverlässig behandelt, und fehlende oder
+ *     nicht-variierende Cache-Header führten zuvor dazu, dass Änderungen nie
+ *     (oder immer) erkannt wurden. Stattdessen wird der tatsächliche
+ *     HTML-Inhalt geladen und über einen einfachen Hash mit der zuletzt
+ *     gesehenen Version verglichen – das ist unabhängig von Server-Headern.
+ *  3. Hat sich der Hash geändert, wird der komplette Seiteninhalt per
+ *     document.open/write/close ersetzt – ohne nativen WebView-Reload,
+ *     ohne App-Neustart.
+ *  4. Schlägt ein Netzwerk-Request fehl, wird das mit console.warn geloggt
+ *     (jetzt via WebChromeClient.onConsoleMessage in logcat sichtbar) und der
+ *     nächste reguläre Poll-Zyklus versucht es erneut.
  *  5. Der Poller pausiert, wenn das Tab/die App in den Hintergrund geht
- *     (visibilitychange), und setzt nach vorne kommen sofort einen Check ab.
+ *     (visibilitychange), und setzt nach vorne kommen sofort einen Check ab
+ *     (zusätzlich über pageshow/focus abgesichert, falls visibilitychange in
+ *     der Android-WebView nicht zuverlässig feuert).
  *
- * Der Poller arbeitet rein in JS und braucht keine nativen Änderungen.
+ * Der Poller arbeitet rein in JS und braucht keine nativen Änderungen für die
+ * eigentliche Update-Logik.
  * ─────────────────────────────────────────────────────────────────────────── */
 (function () {
   'use strict';
@@ -5727,23 +5740,29 @@ function _appendUserToHistory(text, imageDataUri) {
       // Im WebView-String-Modus ist location.href oft 'about:blank'.
       // Wir nutzen die bekannte öffentliche URL direkt.
       var href = window.location.href;
-      if (href && href.indexOf('android-poweruser.github.io') !== -1) return href;
+      if (href && href.indexOf('android-poweruser.github.io') !== -1) {
+        // Nur Schema+Host+Pfad übernehmen, keinen evtl. vorhandenen Query-String
+        // oder Hash aus location.href, da wir unseren eigenen Cache-Buster anhängen.
+        return href.split('#')[0].split('?')[0];
+      }
     } catch (_) {}
     return 'https://android-poweruser.github.io/ScreenOperator/index.html';
   })();
 
-  // Welchen Cache-Discriminator wir zuletzt gesehen haben (ETag bevorzugt,
-  // sonst Last-Modified, sonst leer → kein Vergleich möglich).
-  var _knownDiscriminator = null;
+  var _knownHash = null;
   var _pollTimer = null;
   var _polling = false;
+  var _consecutiveFailures = 0;
 
-  function _extractDiscriminator(headers) {
-    var etag = headers.get ? headers.get('etag') : null;
-    if (etag) return 'etag:' + etag;
-    var lm = headers.get ? headers.get('last-modified') : null;
-    if (lm) return 'lm:' + lm;
-    return null;
+  // Einfacher, schneller String-Hash (djb2), reicht als Change-Discriminator
+  // völlig aus - es geht nur darum, "gleich" von "unterschiedlich" zu
+  // unterscheiden, nicht um Kryptographie.
+  function _hashString(str) {
+    var hash = 5381;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+    }
+    return hash.toString(36) + ':' + str.length;
   }
 
   function _applyNewHtml(html) {
@@ -5759,56 +5778,48 @@ function _appendUserToHistory(text, imageDataUri) {
     }
   }
 
-  function _fetchAndApply() {
-    fetch(_selfUrl, { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        var disc = _extractDiscriminator(r.headers);
-        if (disc) _knownDiscriminator = disc;
-        return r.text();
-      })
-      .then(function (html) {
-        console.log('[HotReload] Neue index.html geladen, wende sie an …');
-        _applyNewHtml(html);
-      })
-      .catch(function (e) {
-        console.warn('[HotReload] GET fehlgeschlagen:', e);
-        _schedulePoll();
-      });
+  function _buildFetchUrl() {
+    var sep = _selfUrl.indexOf('?') === -1 ? '?' : '&';
+    return _selfUrl + sep + '_hr=' + Date.now();
   }
 
   function _checkForUpdate() {
     if (_polling) return;
     _polling = true;
-    fetch(_selfUrl, { method: 'HEAD', cache: 'no-store' })
+    fetch(_buildFetchUrl(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (html) {
         _polling = false;
-        if (!r.ok) { _schedulePoll(); return; }
-        var disc = _extractDiscriminator(r.headers);
-        if (disc === null) {
-          // Keine verwertbaren Cache-Header → immer nachladen (konservativer Fallback)
-          console.log('[HotReload] Keine Cache-Header, lade index.html zur Sicherheit …');
-          _fetchAndApply();
-          return;
-        }
-        if (_knownDiscriminator === null) {
-          // Erste Baseline setzen
-          _knownDiscriminator = disc;
-          console.log('[HotReload] Baseline gesetzt:', disc);
+        _consecutiveFailures = 0;
+        if (!html || html.length < 100) {
+          // Verdächtig kurze/leere Antwort - nicht als gültige Version werten.
+          console.warn('[HotReload] Antwort ungewöhnlich kurz (' + (html ? html.length : 0) + ' Zeichen), ignoriere.');
           _schedulePoll();
           return;
         }
-        if (disc !== _knownDiscriminator) {
-          console.log('[HotReload] Änderung erkannt (' + _knownDiscriminator + ' → ' + disc + '), lade neue Version …');
-          _knownDiscriminator = disc;
-          _fetchAndApply(); // Timer wird nach erfolgreichem Reload nicht mehr gebraucht
+        var hash = _hashString(html);
+        if (_knownHash === null) {
+          // Erste Baseline setzen - der aktuell angezeigte Inhalt gilt als bekannt.
+          _knownHash = hash;
+          console.log('[HotReload] Baseline gesetzt (' + hash + ').');
+          _schedulePoll();
+          return;
+        }
+        if (hash !== _knownHash) {
+          console.log('[HotReload] Änderung erkannt (' + _knownHash + ' → ' + hash + '), wende neue Version an …');
+          _knownHash = hash;
+          _applyNewHtml(html);
         } else {
           _schedulePoll();
         }
       })
       .catch(function (e) {
         _polling = false;
-        console.warn('[HotReload] HEAD fehlgeschlagen:', e);
+        _consecutiveFailures++;
+        console.warn('[HotReload] Prüfung fehlgeschlagen (Versuch ' + _consecutiveFailures + '): ' + (e && e.message ? e.message : e));
         _schedulePoll();
       });
   }

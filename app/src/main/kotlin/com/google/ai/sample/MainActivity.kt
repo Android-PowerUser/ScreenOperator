@@ -36,6 +36,8 @@ import android.view.View
 import android.widget.Toast
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.webkit.ConsoleMessage
 import android.webkit.WebSettings
 import android.webkit.JavascriptInterface
 import androidx.webkit.WebSettingsCompat
@@ -852,6 +854,16 @@ class MainActivity : ComponentActivity() {
                                             if (isNightMode) WebSettingsCompat.FORCE_DARK_ON
                                             else             WebSettingsCompat.FORCE_DARK_OFF
                                         )
+                                    }
+
+                                    // Leitet console.log/warn/error aus dem WebView-JS-Kontext nach
+                                    // logcat weiter, damit z. B. der Hot-Reload-Poller in index.html
+                                    // debuggbar ist (vorher waren console.*-Ausgaben unsichtbar).
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                                            Log.d(TAG, "WebView console: ${consoleMessage.message()} (${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})")
+                                            return true
+                                        }
                                     }
 
                                     webViewClient = object : WebViewClient() {
