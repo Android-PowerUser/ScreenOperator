@@ -3631,8 +3631,11 @@ async function _executeCommandsFromResponse(text) {
 
   // If no screenshot and no completed: auto-append a screenshot at the end
   // so the AI always gets screen feedback (matches Kotlin behavior).
+  // Only append if the current model actually supports screenshots.
   const cmdList = [...commands];
-  if (!hasScreenshot && !hasCompleted) {
+  const currentModelDef = MODELS.find(m => m.id === currentModelId);
+  const modelSupportsScreenshot = currentModelDef ? currentModelDef.supportsScreenshot !== false : true;
+  if (!hasScreenshot && !hasCompleted && modelSupportsScreenshot) {
     cmdList.push({ type: 'SCREENSHOT' });
   }
 
@@ -3697,10 +3700,24 @@ async function _executeSingleCommand(cmd) {
       // No screenshot here – handled by auto-appended SCREENSHOT.
       break;
     }
-    case 'SCREENSHOT':
+    case 'SCREENSHOT': {
       // Kotlin pipeline: captures screen → addScreenshotToConversation → reason() → onCustomModelRequest
-      Bridge.requestScreenshot();
+      // Only take a screenshot if the current model supports it; text-only models
+      // must never trigger a screenshot (no toast, no capture, no image sent).
+      const _screenshotModelDef = MODELS.find(m => m.id === currentModelId);
+      const _screenshotSupported = _screenshotModelDef ? _screenshotModelDef.supportsScreenshot !== false : true;
+      if (_screenshotSupported) {
+        Bridge.requestScreenshot();
+      } else {
+        // Text-only model: trigger the next AI turn without a screenshot.
+        // Call onCustomModelRequest directly with no image payload so the
+        // conversation continues normally.
+        if (getInAndroid() && typeof Android.triggerNextTurnWithoutScreenshot === 'function') {
+          Android.triggerNextTurnWithoutScreenshot();
+        }
+      }
       break;
+    }
     case 'COMPLETED':
       Bridge.markCompleted();
       _stopExecution = true;
