@@ -5526,6 +5526,140 @@ function _appendUserToHistory(text, imageDataUri) {
   };
 })();
 
+/* ── Live hot-reload: prüft alle 5 Minuten ob index.html aktualisiert wurde ──
+ *
+ * Strategie:
+ *  1. Beim ersten Poll wird der ETag- bzw. Last-Modified-Header des aktuell
+ *     geladenen Dokuments per HEAD-Request gespeichert (Baseline).
+ *  2. Jeder folgende HEAD-Request vergleicht den Header mit der Baseline.
+ *  3. Hat sich der Header geändert, wird die neue HTML per GET geladen und
+ *     der komplette Seiteninhalt per document.open/write/close ersetzt –
+ *     ohne nativen WebView-Reload, ohne App-Neustart.
+ *  4. Schlägt ein Netzwerk-Request fehl, wird er still ignoriert; der nächste
+ *     reguläre Poll-Zyklus versucht es erneut.
+ *  5. Der Poller pausiert, wenn das Tab/die App in den Hintergrund geht
+ *     (visibilitychange), und setzt nach vorne kommen sofort einen Check ab.
+ *
+ * Der Poller arbeitet rein in JS und braucht keine nativen Änderungen.
+ * ─────────────────────────────────────────────────────────────────────────── */
+(function () {
+  'use strict';
+
+  var POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 Minuten
+  var _selfUrl = (function () {
+    try {
+      // Im WebView-String-Modus ist location.href oft 'about:blank'.
+      // Wir nutzen die bekannte öffentliche URL direkt.
+      var href = window.location.href;
+      if (href && href.indexOf('android-poweruser.github.io') !== -1) return href;
+    } catch (_) {}
+    return 'https://android-poweruser.github.io/ScreenOperator/index.html';
+  })();
+
+  // Welchen Cache-Discriminator wir zuletzt gesehen haben (ETag bevorzugt,
+  // sonst Last-Modified, sonst leer → kein Vergleich möglich).
+  var _knownDiscriminator = null;
+  var _pollTimer = null;
+  var _polling = false;
+
+  function _extractDiscriminator(headers) {
+    var etag = headers.get ? headers.get('etag') : null;
+    if (etag) return 'etag:' + etag;
+    var lm = headers.get ? headers.get('last-modified') : null;
+    if (lm) return 'lm:' + lm;
+    return null;
+  }
+
+  function _applyNewHtml(html) {
+    try {
+      // document.write ersetzt den kompletten DOM-Baum; anschließend laufen
+      // alle <script>-Tags in der neuen HTML normal durch.
+      document.open('text/html', 'replace');
+      document.write(html);
+      document.close();
+    } catch (e) {
+      console.warn('[HotReload] document.write fehlgeschlagen, versuche location.reload()', e);
+      try { window.location.reload(); } catch (_) {}
+    }
+  }
+
+  function _fetchAndApply() {
+    fetch(_selfUrl, { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var disc = _extractDiscriminator(r.headers);
+        if (disc) _knownDiscriminator = disc;
+        return r.text();
+      })
+      .then(function (html) {
+        console.log('[HotReload] Neue index.html geladen, wende sie an …');
+        _applyNewHtml(html);
+      })
+      .catch(function (e) {
+        console.warn('[HotReload] GET fehlgeschlagen:', e);
+        _schedulePoll();
+      });
+  }
+
+  function _checkForUpdate() {
+    if (_polling) return;
+    _polling = true;
+    fetch(_selfUrl, { method: 'HEAD', cache: 'no-store' })
+      .then(function (r) {
+        _polling = false;
+        if (!r.ok) { _schedulePoll(); return; }
+        var disc = _extractDiscriminator(r.headers);
+        if (disc === null) {
+          // Keine verwertbaren Cache-Header → immer nachladen (konservativer Fallback)
+          console.log('[HotReload] Keine Cache-Header, lade index.html zur Sicherheit …');
+          _fetchAndApply();
+          return;
+        }
+        if (_knownDiscriminator === null) {
+          // Erste Baseline setzen
+          _knownDiscriminator = disc;
+          console.log('[HotReload] Baseline gesetzt:', disc);
+          _schedulePoll();
+          return;
+        }
+        if (disc !== _knownDiscriminator) {
+          console.log('[HotReload] Änderung erkannt (' + _knownDiscriminator + ' → ' + disc + '), lade neue Version …');
+          _knownDiscriminator = disc;
+          _fetchAndApply(); // Timer wird nach erfolgreichem Reload nicht mehr gebraucht
+        } else {
+          _schedulePoll();
+        }
+      })
+      .catch(function (e) {
+        _polling = false;
+        console.warn('[HotReload] HEAD fehlgeschlagen:', e);
+        _schedulePoll();
+      });
+  }
+
+  function _schedulePoll() {
+    clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(_checkForUpdate, POLL_INTERVAL_MS);
+  }
+
+  // Sichtbarkeitssteuerung: pausieren wenn App in Hintergrund, sofort prüfen
+  // wenn sie wieder in den Vordergrund kommt.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      clearTimeout(_pollTimer);
+    } else {
+      // Sofort einen Check anstoßen (mit minimalem Delay damit das DOM settled ist)
+      clearTimeout(_pollTimer);
+      _pollTimer = setTimeout(_checkForUpdate, 2000);
+    }
+  });
+
+  // Erster Poll startet nach kurzem Delay, damit die App vollständig initialisiert ist.
+  _pollTimer = setTimeout(_checkForUpdate, 30000);
+
+  console.log('[HotReload] Live-Update-Poller gestartet (Interval: ' + (POLL_INTERVAL_MS / 60000) + ' min, URL: ' + _selfUrl + ')');
+})();
+
 </script>
 </body>
 </html>
