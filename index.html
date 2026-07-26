@@ -5824,12 +5824,12 @@ function _appendUserToHistory(text, imageDataUri) {
     } else {
       // Sofort einen Check anstoßen (mit minimalem Delay damit das DOM settled ist)
       clearTimeout(_pollTimer);
-      _pollTimer = setTimeout(_checkForUpdate, 2000);
+      _pollTimer = setTimeout(_checkForUpdate, 0);
     }
   });
 
   // Erster Poll startet nach kurzem Delay, damit die App vollständig initialisiert ist.
-  _pollTimer = setTimeout(_checkForUpdate, 30000);
+  _pollTimer = setTimeout(_checkForUpdate, 0);
 
   console.log('[HotReload] Live-Update-Poller gestartet (Interval: ' + (POLL_INTERVAL_MS / 60000) + ' min, URL: ' + _selfUrl + ')');
 })();
@@ -5837,6 +5837,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
