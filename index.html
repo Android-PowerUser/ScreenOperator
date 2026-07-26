@@ -394,9 +394,10 @@ html.dark-mode .task-input { color: var(--text-primary); }
 /* ── Progress / spinner ──────────────────────────────────── */
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--outline);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* ── Termux waiting spinner (inside user bubble) ─────────── */
+/* ── Termux waiting bubble (user-style, spinner matches model-icon) ── */
 .termux-waiting-label{opacity:.85;font-style:italic}
-.termux-waiting-spinner{display:inline-block;width:16px;height:16px;border:2.5px solid #C4C4C4;border-top-color:#6650A4;border-radius:50%;animation:ai-spin 1.4s linear infinite;vertical-align:middle;margin-left:6px}
+.termux-waiting-spinner{display:inline-block;width:24px;height:24px;border-radius:50%;background:#fff;vertical-align:middle;margin-left:8px;position:relative;flex-shrink:0}
+.termux-waiting-spinner::after{content:'';display:block;width:16px;height:16px;border:2.5px solid #C4C4C4;border-top-color:#6650A4;border-radius:50%;animation:ai-spin 1.4s linear infinite;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
 
 /* ── Scrollbar thin ──────────────────────────────────────── */
 ::-webkit-scrollbar{width:4px}
