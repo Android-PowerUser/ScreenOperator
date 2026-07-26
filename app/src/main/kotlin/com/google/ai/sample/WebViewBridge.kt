@@ -72,6 +72,10 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         context.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
             .edit().apply { if (id == null) remove("js_only_model_id") else putString("js_only_model_id", id) }.apply()
 
+    private fun saveJsOnlyModelSupportsScreenshot(value: Boolean) =
+        context.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().putBoolean("js_only_supports_screenshot", value).apply()
+
     @JavascriptInterface
     fun setSelectedModel(id: String) {
         // PRIORITY order:
@@ -1087,6 +1091,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 // ── Model Selection ───────────────────────────────────────────
                 "getSelectedModelId"            -> getSelectedModelId()
                 "setSelectedModel"              -> { setSelectedModel(a.getString("id")); "" }
+                "setJsOnlyModelSupportsScreenshot" -> { saveJsOnlyModelSupportsScreenshot(a.getBoolean("value")); "" }
                 // ── API Keys ──────────────────────────────────────────────────
                 "getAllApiKeys"                 -> getAllApiKeys(a.getString("providerName"))
                 "addApiKey"                     -> { addApiKey(a.getString("key"), a.getString("providerName")); "" }
