@@ -3700,24 +3700,17 @@ async function _executeSingleCommand(cmd) {
       // No screenshot here – handled by auto-appended SCREENSHOT.
       break;
     }
-    case 'SCREENSHOT': {
-      // Kotlin pipeline: captures screen → addScreenshotToConversation → reason() → onCustomModelRequest
-      // Only take a screenshot if the current model supports it; text-only models
-      // must never trigger a screenshot (no toast, no capture, no image sent).
-      const _screenshotModelDef = MODELS.find(m => m.id === currentModelId);
-      const _screenshotSupported = _screenshotModelDef ? _screenshotModelDef.supportsScreenshot !== false : true;
-      if (_screenshotSupported) {
-        Bridge.requestScreenshot();
-      } else {
-        // Text-only model: trigger the next AI turn without a screenshot.
-        // Call onCustomModelRequest directly with no image payload so the
-        // conversation continues normally.
-        if (getInAndroid() && typeof Android.triggerNextTurnWithoutScreenshot === 'function') {
-          Android.triggerNextTurnWithoutScreenshot();
-        }
-      }
+    case 'SCREENSHOT':
+      // Kotlin pipeline: captures screen → addScreenshotToConversation → reason() → onCustomModelRequest.
+      // Always request here, for every model (text-only or not): the native side
+      // (executeTakeScreenshotCommand in ScreenOperatorAccessibilityService) resolves the
+      // model's real supportsScreenshot flag itself - including for JS-only online models,
+      // via the "js_only_supports_screenshot" SharedPreferences flag - and takes the
+      // no-capture/no-toast/no-MediaProjection branch for text-only models. The turn is still
+      // continued in that branch (addScreenshotToConversation with Uri.EMPTY -> reason()), so
+      // the conversation keeps going normally without ever taking a real screenshot.
+      Bridge.requestScreenshot();
       break;
-    }
     case 'COMPLETED':
       Bridge.markCompleted();
       _stopExecution = true;

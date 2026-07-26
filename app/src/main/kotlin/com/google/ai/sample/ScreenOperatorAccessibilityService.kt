@@ -287,7 +287,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     .coerceAtLeast(0L)
                     .coerceAtMost(Long.MAX_VALUE / 1000L) * 1000L
                 Log.d(TAG, "Command.Wait: Delaying the next takeScreenshot command by ${command.seconds} seconds.")
-                showToast("Delaying next screenshot by ${command.seconds} seconds", false)
+                if (currentModelSupportsScreenshot()) {
+                    showToast("Delaying next screenshot by ${command.seconds} seconds", false)
+                } else {
+                    showToast("Waiting ${command.seconds} seconds", false)
+                }
                 false
             }
             is Command.PressHomeButton -> {
@@ -501,18 +505,50 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * Resolves whether the currently active model (whichever of the three model
+     * categories - custom JSON-defined model, JS-only online model, or native built-in
+     * model/offline model - is active) actually supports screenshots/vision input.
+     *
+     * This is the single source of truth used everywhere a screenshot-related toast or
+     * action might otherwise leak the impression that a screenshot was or will be taken
+     * for a text-only model: Command.Wait's toast, the delayed-screenshot toast, and the
+     * actual capture/MediaProjection-request decision in executeTakeScreenshotCommand.
+     */
+    private fun currentModelSupportsScreenshot(): Boolean {
+        com.google.ai.sample.util.CustomModelRegistry.getActiveModel()?.let { customModel ->
+            return customModel.supportsScreenshot
+        }
+
+        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
+        val jsModelPrefs = applicationContext.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
+        val jsOnlyModelId = jsModelPrefs.getString("js_only_model_id", null)
+
+        // JS-only online models (the normal WebView model dropdown) are a third, separate
+        // case: they are not in CustomModelRegistry, and ModelOption.ONLINE_MODEL always
+        // reports supportsScreenshot=true. Their real capability is persisted by the WebView
+        // on model selection (dispatch("setJsOnlyModelSupportsScreenshot", ...)) - the same
+        // flag PhotoReasoningViewModel already reads to decide whether to attach the image to
+        // the outgoing payload. jsOnlyModelId being non-null is itself the reliable signal
+        // that a JS-only model is active (it is cleared whenever a custom or native built-in
+        // model is selected instead - see WebViewBridge.setSelectedModel) - it is checked on
+        // its own, without also requiring currentModel == ONLINE_MODEL, because currentModel
+        // is only updated by native built-in model selections and can otherwise still hold a
+        // stale value (e.g. a previously selected offline model) while a JS-only model is the
+        // one actually active.
+        if (jsOnlyModelId != null) {
+            return jsModelPrefs.getBoolean("js_only_supports_screenshot", true)
+        }
+
+        return currentModel.supportsScreenshot
+    }
+
     private fun executeTakeScreenshotCommand(): Boolean {
         val delayMillis = pendingScreenshotDelayMillis
         pendingScreenshotDelayMillis = 0L
 
         val captureAndRequestScreenshot = {
-            val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-            // A custom (JSON-defined) model, if active, overrides the stale native ModelOption's
-            // flag here - otherwise the autonomous screenshot loop would silently never send
-            // real screenshots to a custom vision model (it would fall back to text-only screen
-            // info every time, regardless of "supportsScreenshot" in custom-models.json).
-            val effectiveSupportsScreenshot = com.google.ai.sample.util.CustomModelRegistry.getActiveModel()
-                ?.supportsScreenshot ?: currentModel.supportsScreenshot
+            val effectiveSupportsScreenshot = currentModelSupportsScreenshot()
 
             val termuxOutput = TermuxOutputPreferences.consumeOutput(applicationContext)?.trim().orEmpty()
             val isTermuxOutputOnly = termuxOutput.isNotBlank()
@@ -522,8 +558,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.i(TAG, "executeTakeScreenshotCommand: Sending Termux output only without screenshot. chars=${termuxOutput.length}")
                     "Termux output:\n$termuxOutput"
                 } else {
+                    // Text-only model: no screenshot is taken, no MediaProjection is requested,
+                    // and no image is sent to the model - only plain screen-element text. No
+                    // toast is shown here: a toast would incorrectly suggest to the user that a
+                    // screenshot was captured and handed to the model.
                     Log.d(TAG, "Command.TakeScreenshot: Model has no screenshot support, capturing screen info only.")
-                    showToast("Capturing screen info...", false)
                     captureScreenInformation()
                 }
 
@@ -556,7 +595,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
 
         Log.d(TAG, "Command.TakeScreenshot: Waiting ${delayMillis}ms before capturing screen info and screenshot.")
-        showToast("Waiting ${delayMillis / 1000L} seconds before screenshot...", false)
+        if (currentModelSupportsScreenshot()) {
+            showToast("Waiting ${delayMillis / 1000L} seconds before screenshot...", false)
+        } else {
+            showToast("Waiting ${delayMillis / 1000L} seconds...", false)
+        }
         val delayedScreenshotRunnable = Runnable {
             pendingDelayedScreenshotRunnable = null
             captureAndRequestScreenshot()
