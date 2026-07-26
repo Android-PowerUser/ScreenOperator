@@ -37,7 +37,7 @@ An override can only replace the identifier string sent for an **already existin
 consult it. It can never add a new provider, change which endpoint/SDK/code path handles
 the request, change API-key/billing handling, or introduce any new capability — it only
 swaps which model name is requested from the same, already-reviewed call site. To add a
-genuinely new model/provider, use `custom-models.json` instead (see
+genuinely new model/provider, use the `CUSTOM_PROVIDERS` constant in `index.html` instead (see
 `docs/custom-models.md`).
 
 ## Coverage

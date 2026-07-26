@@ -952,6 +952,47 @@ const PROVIDERS = {
 
 const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLARE','PUTER'];
 
+/* ════════════════════════════════════════════════════════
+   CUSTOM PROVIDERS — add a genuinely new provider/model here, entirely in
+   index.html. No native code change, no separate JSON file, no app build.
+
+   Requirements for a new entry:
+   - The endpoint must be an OpenAI-compatible chat-completions endpoint
+     (POST {model, messages, stream}, SSE-style streaming deltas), reachable
+     via fetch() from the WebView (i.e. it must send CORS headers allowing
+     this origin — verify this per provider before relying on it).
+   - `endpoint`, `apiKeyHeader`, `apiKeyPrefix` are sent to native code once
+     (via Bridge.setCustomModelOverrides, called automatically below) purely
+     so the native reason()/reasonWithCustomJsModel() dispatcher recognizes
+     the model id and routes back into JS - native code never calls the
+     endpoint itself, it only stores this definition and the user's API key
+     (SharedPreferences; see CustomModelPreferences.kt) and hands both back
+     to _callOpenAiCompat() in this file, which performs the actual fetch().
+
+   Fields:
+   - id             (required) unique string, e.g. 'OPENROUTER_LLAMA_4'
+   - displayName    (required) shown in the model picker
+   - endpoint       (required) full URL, e.g. 'https://openrouter.ai/api/v1/chat/completions'
+   - modelName      (required) the "model" field sent in the request body
+   - apiKeyHeader   (default 'Authorization') HTTP header used to send the key
+   - apiKeyPrefix   (default 'Bearer ') prefix prepended to the key in that header
+   - supportsScreenshot (default false) whether to send the screenshot image
+   - supportsTopK   (default false) whether to send top_k
+   - supportsThinking (default false) whether to send enable_thinking/thinking_budget
+   - stream         (default true) whether the endpoint streams SSE deltas
+   - hint           (optional) short text shown under the model name in the picker
+
+   Example:
+   { id:'OPENROUTER_LLAMA_4', displayName:'Llama 4 (OpenRouter)',
+     endpoint:'https://openrouter.ai/api/v1/chat/completions',
+     modelName:'meta-llama/llama-4-scout', apiKeyHeader:'Authorization',
+     apiKeyPrefix:'Bearer ', supportsScreenshot:true, supportsTopK:false,
+     supportsThinking:false, stream:true, hint:'OpenRouter' }
+════════════════════════════════════════════════════════ */
+const CUSTOM_PROVIDERS = [
+  // Add new custom-provider model definitions here.
+];
+
 // Built-in model list — matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
 let MODELS = [
   { id:'PUTER_GPT_5_4_NANO',       displayName:'GPT-5.4 Nano (Puter)',                    modelName:'openai/gpt-5.4-nano',                     apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'$0.2/M input | $1.25/M output', strike:false },
@@ -1405,7 +1446,7 @@ function navigateToChat() {
     // Preselect the popup on the provider that's missing a key, then bail
     // out - the user stays on the menu screen until a key is added (or a
     // different, already-configured model is chosen).
-    openApiKeyPopup(m && m.apiProvider !== 'CUSTOM' ? m.apiProvider : currentProviderId);
+    openApiKeyPopup(m && m.apiProvider === 'CUSTOM' ? ('CUSTOM:' + m.id) : (m ? m.apiProvider : currentProviderId));
     return;
   }
   history.pushState({screen:'chat'}, '');
@@ -1467,11 +1508,11 @@ function buildModelDropdown() {
 
 /* ════════════════════════════════════════════════════════
    CUSTOM MODELS
-   Optional file "custom-models.json" next to this index.html (see docs/command-pattern-
-   overrides.md's sibling doc for the format). Each entry describes a genuinely new model/
-   provider - id, endpoint, modelName, etc. - with no corresponding native ModelOption at
-   all. They show up in the model picker like any built-in model; the actual API call for
-   them is made right here in JS (see window.onCustomModelRequest below) once selected.
+   Entries come from the CUSTOM_PROVIDERS constant defined above, right in this file.
+   Each entry describes a genuinely new model/provider - id, endpoint, modelName, etc. -
+   with no corresponding native ModelOption at all. They show up in the model picker like
+   any built-in model; the actual API call for them is made right here in JS (see
+   _callOpenAiCompat, invoked from window.onCustomModelRequest) once selected.
 ════════════════════════════════════════════════════════ */
 function mergeCustomModelsIntoDropdown(json) {
   let entries;
@@ -1496,7 +1537,7 @@ function mergeCustomModelsIntoDropdown(json) {
       supportsScreenshot: !!e.supportsScreenshot,
       isOffline: false,
       strike: false,
-      hint: 'Custom model (defined in custom-models.json)'
+      hint: e.hint || 'Custom model (defined in CUSTOM_PROVIDERS)'
     });
   });
 
@@ -2065,7 +2106,7 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     } else if (provider === 'CLOUDFLARE') {
       await _callCloudflareUnsupported(payload);
     } else {
-      // Only genuinely custom models (defined in custom-models.json) reach here.
+      // Only genuinely custom models (defined in CUSTOM_PROVIDERS above) reach here.
       await _callOpenAiCompat(payload, provider);
     }
   } catch(e) {
@@ -3130,7 +3171,7 @@ async function _callOpenAiCompat(payload, provider) {
     keyIdx = Bridge.getCurrentKeyIndex(provider) || 0;
     apiKey = keys[keyIdx] || keys[0];
   } else {
-    // Custom model (defined in custom-models.json)
+    // Custom model (defined in CUSTOM_PROVIDERS above)
     endpoint = payload.endpoint;
     keyHeader = payload.apiKeyHeader;
     keyPrefix = payload.apiKeyPrefix || '';
@@ -4766,16 +4807,16 @@ window.onAndroidReady = function() {
   // custom action types, timing) - same fetch-relative-to-index.html pattern as the others.
   _loadAllPolicyOverrides();
 
-  // Genuinely new models/providers, defined entirely in JSON. The actual API call for
-  // these happens in window.onCustomModelRequest() below (fetch()), not in native code.
-  fetch('custom-models.json', { cache: 'no-store' })
-    .then(r => r.ok ? r.text() : null)
-    .then(json => {
-      if (!json) return;
-      Bridge.setCustomModelOverrides(json);
-      mergeCustomModelsIntoDropdown(json);
-    })
-    .catch(() => { /* optional file */ });
+  // Genuinely new models/providers, defined entirely in CUSTOM_PROVIDERS above (in this
+  // file) - the actual API call for these happens in _callOpenAiCompat() (fetch()), not in
+  // native code. Native code only needs to know the definition exists so its reason()
+  // dispatcher recognizes the model id and routes back into JS; that's what
+  // Bridge.setCustomModelOverrides does here (see CustomModelRegistry.kt / CustomModelConfig.kt).
+  if (CUSTOM_PROVIDERS.length) {
+    const customProvidersJson = JSON.stringify(CUSTOM_PROVIDERS);
+    Bridge.setCustomModelOverrides(customProvidersJson);
+    mergeCustomModelsIntoDropdown(customProvidersJson);
+  }
 
   // Corrected wire-level model identifier for an *existing* built-in model (e.g. a Gemini
   // preview model got renamed/retired by Google) - no app update needed to fix it.
@@ -5148,9 +5189,17 @@ function toggleTermuxMode() {
 /* ════════════════════════════════════════════════════════
    API KEY POPUP
 ════════════════════════════════════════════════════════ */
+// Custom-model (CUSTOM_PROVIDERS) API keys are marked by prefixing the model id with
+// 'CUSTOM:' and stored/looked-up via this popup's single-key path below. Native side has
+// no multi-key/failover storage for these (see CustomModelPreferences.kt: one key per
+// modelId, no index, no failed-key list) - that's intentionally simpler than the fixed
+// providers' key rotation, since a new custom provider is just "my one key for this model".
+function _isCustomProviderId(pid) { return typeof pid === 'string' && pid.startsWith('CUSTOM:'); }
+function _customModelIdFromProviderId(pid) { return pid.slice('CUSTOM:'.length); }
+
 function openApiKeyPopup(forceProviderId) {
   if (forceProviderId) currentProviderId = forceProviderId;
-  // Build provider chips
+  // Build provider chips: fixed providers first, then one chip per CUSTOM_PROVIDERS entry.
   const chips = document.getElementById('provider-chips');
   chips.innerHTML = '';
   PROVIDER_ORDER.forEach(pid => {
@@ -5161,16 +5210,35 @@ function openApiKeyPopup(forceProviderId) {
     btn.onclick = () => { currentProviderId=pid; renderApiKeyChips(); renderKeyList(); };
     chips.appendChild(btn);
   });
+  CUSTOM_PROVIDERS.forEach(cp => {
+    const pid = 'CUSTOM:' + cp.id;
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (pid===currentProviderId?' active':'');
+    btn.textContent = cp.displayName || cp.id;
+    btn.onclick = () => { currentProviderId=pid; renderApiKeyChips(); renderKeyList(); };
+    chips.appendChild(btn);
+  });
   renderApiKeyChips();
   renderKeyList();
   openPopup('popup-apikey');
 }
 function renderApiKeyChips() {
-  document.querySelectorAll('#provider-chips .chip').forEach((c,i) => {
-    c.classList.toggle('active', PROVIDER_ORDER[i]===currentProviderId);
+  document.querySelectorAll('#provider-chips .chip').forEach(c => {
+    c.classList.toggle('active', c.textContent === (
+      _isCustomProviderId(currentProviderId)
+        ? (CUSTOM_PROVIDERS.find(cp => cp.id === _customModelIdFromProviderId(currentProviderId))?.displayName || '')
+        : (PROVIDERS[currentProviderId]?.name || '')
+    ));
   });
-  const p = PROVIDERS[currentProviderId];
   const link = document.getElementById('get-key-link');
+  if (_isCustomProviderId(currentProviderId)) {
+    // Custom providers have no known "get a key" URL - it's whatever service the
+    // user configured in CUSTOM_PROVIDERS.
+    link.style.display = 'none';
+    document.getElementById('new-key-input').placeholder = 'Enter API Key';
+    return;
+  }
+  const p = PROVIDERS[currentProviderId];
   if (p && p.keyUrl) {
     link.textContent = (p.keyLabel || 'Get API Key') + ' ↗';
     link.href = p.keyUrl;
@@ -5183,9 +5251,27 @@ function renderApiKeyChips() {
 }
 function renderKeyList() {
   const list = document.getElementById('key-list');
+  list.innerHTML = '';
+
+  if (_isCustomProviderId(currentProviderId)) {
+    // Custom models: exactly one key, no rotation/failover - just show it (masked) with a
+    // delete button, same visual language as the fixed-provider key rows.
+    const modelId = _customModelIdFromProviderId(currentProviderId);
+    const key = Bridge.getCustomModelApiKey(modelId);
+    if (!key) { list.innerHTML='<div class="body-sm" style="padding:8px 0;color:var(--text-secondary)">No key saved yet.</div>'; return; }
+    const masked = key.length > 15 ? key.slice(0,10)+'…'+key.slice(-5) : key;
+    const row = document.createElement('div');
+    row.className='key-row';
+    row.innerHTML = `
+      <input type="radio" class="key-radio" name="keysel" checked disabled>
+      <span class="key-label">${escHtml(masked)}</span>
+      <button class="key-del" onclick="event.stopPropagation();deleteApiKey('')">✕</button>`;
+    list.appendChild(row);
+    return;
+  }
+
   const keys = Bridge.getAllApiKeys(currentProviderId);
   const curIdx = Bridge.getCurrentKeyIndex(currentProviderId);
-  list.innerHTML = '';
   if (!keys.length) { list.innerHTML='<div class="body-sm" style="padding:8px 0;color:var(--text-secondary)">No keys saved yet.</div>'; return; }
   keys.forEach((k,i) => {
     const row = document.createElement('div');
@@ -5212,6 +5298,16 @@ function addApiKey() {
   const err = document.getElementById('key-error');
   const key = input.value.trim();
   if (!key) { err.textContent='API key cannot be empty.'; err.style.display='block'; return; }
+
+  if (_isCustomProviderId(currentProviderId)) {
+    const modelId = _customModelIdFromProviderId(currentProviderId);
+    Bridge.setCustomModelApiKey(modelId, key);
+    err.style.display='none';
+    input.value='';
+    renderKeyList();
+    return;
+  }
+
   const ok = Bridge.addApiKey(key, currentProviderId);
   if (!ok) { err.textContent='This key already exists.'; err.style.display='block'; return; }
   err.style.display='none';
@@ -5219,6 +5315,12 @@ function addApiKey() {
   renderKeyList();
 }
 function deleteApiKey(key) {
+  if (_isCustomProviderId(currentProviderId)) {
+    const modelId = _customModelIdFromProviderId(currentProviderId);
+    Bridge.setCustomModelApiKey(modelId, '');
+    renderKeyList();
+    return;
+  }
   Bridge.removeApiKey(key, currentProviderId);
   renderKeyList();
 }
