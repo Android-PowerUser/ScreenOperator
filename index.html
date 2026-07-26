@@ -3631,11 +3631,17 @@ async function _executeCommandsFromResponse(text) {
 
   // If no screenshot and no completed: auto-append a screenshot at the end
   // so the AI always gets screen feedback (matches Kotlin behavior).
-  // Only append if the current model actually supports screenshots.
+  // IMPORTANT: append this for EVERY model, including text-only ones (supportsScreenshot
+  // === false). The native side (executeTakeScreenshotCommand in
+  // ScreenOperatorAccessibilityService) already resolves the model's real
+  // supportsScreenshot flag itself and takes the no-capture/no-toast/no-MediaProjection
+  // branch for text-only models, sending back screen-element text only (via
+  // addScreenshotToConversation(Uri.EMPTY, ...) -> reason()). If we gate the push on
+  // supportsScreenshot here, text-only models never get Bridge.requestScreenshot() called
+  // after a non-Termux command, so the conversation loop silently stalls (no further
+  // message is ever sent back to the model).
   const cmdList = [...commands];
-  const currentModelDef = MODELS.find(m => m.id === currentModelId);
-  const modelSupportsScreenshot = currentModelDef ? currentModelDef.supportsScreenshot !== false : true;
-  if (!hasScreenshot && !hasCompleted && modelSupportsScreenshot) {
+  if (!hasScreenshot && !hasCompleted) {
     cmdList.push({ type: 'SCREENSHOT' });
   }
 
