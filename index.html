@@ -1434,8 +1434,8 @@ function hasRequiredApiKeyForCurrentModel() {
   if (m.id === 'HUMAN_EXPERT') return true;
   if (m.isOffline) return true;
   if (m.apiProvider === 'CUSTOM') {
-    const key = Bridge.getCustomModelApiKey(m.id);
-    return !!(key && key.trim());
+    const keys = _getCustomModelApiKeys(m.id);
+    return keys.length > 0;
   }
   const keys = Bridge.getAllApiKeys(m.apiProvider);
   return !!(keys && keys.length);
@@ -3171,11 +3171,20 @@ async function _callOpenAiCompat(payload, provider) {
     keyIdx = Bridge.getCurrentKeyIndex(provider) || 0;
     apiKey = keys[keyIdx] || keys[0];
   } else {
-    // Custom model (defined in CUSTOM_PROVIDERS above)
+    // Custom model (defined in CUSTOM_PROVIDERS above) – supports multiple keys with rotation
     endpoint = payload.endpoint;
     keyHeader = payload.apiKeyHeader;
     keyPrefix = payload.apiKeyPrefix || '';
-    apiKey = payload.apiKey;
+    const customModelId = payload.modelId;
+    keys = _getCustomModelApiKeys(customModelId);
+    if (keys.length) {
+      keyIdx = _getCustomKeyIndex(customModelId);
+      if (keyIdx >= keys.length) keyIdx = 0;
+      apiKey = keys[keyIdx];
+    } else {
+      // Fallback: legacy single key from payload (may be undefined)
+      apiKey = payload.apiKey;
+    }
   }
 
   const messages = _buildOpenAiMessages(payload);
@@ -3213,14 +3222,20 @@ async function _callOpenAiCompat(payload, provider) {
       let detail = '';
       try { detail = (await response.text()).slice(0, 400); } catch(e2) {}
       const errMsg = (provider || 'API') + ' HTTP ' + response.status + (detail ? ': ' + detail : '');
-      // Key-level failure with provider keys → cycle through all keys before giving up
-      if (provDef && _isKeyError(response.status, errMsg) && keys.length > 1) {
-        const startIdx = keyIdx;
+      // Key-level failure → cycle through all keys before giving up (works for both fixed and custom providers)
+      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
+        const customModelId = !provDef ? payload.modelId : null;
         let lastErrMsg = errMsg;
         for (let attempt = 1; attempt <= keys.length; attempt++) {
           keyIdx = (keyIdx + 1) % keys.length;
-          Bridge.setCurrentKeyIndex(keyIdx, provider);
-          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === provider) renderKeyList();
+          if (provDef) {
+            Bridge.setCurrentKeyIndex(keyIdx, provider);
+            if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === provider) renderKeyList();
+          } else {
+            _setCustomKeyIndex(customModelId, keyIdx);
+            const cpid = 'CUSTOM:' + customModelId;
+            if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === cpid) renderKeyList();
+          }
           apiKey = keys[keyIdx];
           if (keyHeader) headers[keyHeader] = keyPrefix + apiKey;
           let retryResp;
@@ -5190,12 +5205,31 @@ function toggleTermuxMode() {
    API KEY POPUP
 ════════════════════════════════════════════════════════ */
 // Custom-model (CUSTOM_PROVIDERS) API keys are marked by prefixing the model id with
-// 'CUSTOM:' and stored/looked-up via this popup's single-key path below. Native side has
-// no multi-key/failover storage for these (see CustomModelPreferences.kt: one key per
-// modelId, no index, no failed-key list) - that's intentionally simpler than the fixed
-// providers' key rotation, since a new custom provider is just "my one key for this model".
+// 'CUSTOM:' and stored as a JSON array in the native single-key slot (CustomModelPreferences.kt).
+// Multiple keys are supported with round-robin rotation on key errors, mirroring the fixed
+// providers. The active key index is kept in _customKeyIndex (in-memory, resets on reload).
 function _isCustomProviderId(pid) { return typeof pid === 'string' && pid.startsWith('CUSTOM:'); }
 function _customModelIdFromProviderId(pid) { return pid.slice('CUSTOM:'.length); }
+
+// Multi-key helpers for custom providers.
+// Keys are stored as a JSON array in the single key slot; legacy single-string values are migrated on read.
+function _getCustomModelApiKeys(modelId) {
+  const raw = Bridge.getCustomModelApiKey(modelId);
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(k => typeof k === 'string' && k.trim());
+  } catch(e) {}
+  // Legacy: plain string → wrap in array
+  return [raw.trim()];
+}
+function _setCustomModelApiKeys(modelId, keys) {
+  Bridge.setCustomModelApiKey(modelId, JSON.stringify(keys));
+}
+// Per-model current key index, stored in memory (resets on reload, good enough for rotation)
+const _customKeyIndex = {};
+function _getCustomKeyIndex(modelId) { return _customKeyIndex[modelId] || 0; }
+function _setCustomKeyIndex(modelId, idx) { _customKeyIndex[modelId] = idx; }
 
 function openApiKeyPopup(forceProviderId) {
   if (forceProviderId) currentProviderId = forceProviderId;
@@ -5254,19 +5288,26 @@ function renderKeyList() {
   list.innerHTML = '';
 
   if (_isCustomProviderId(currentProviderId)) {
-    // Custom models: exactly one key, no rotation/failover - just show it (masked) with a
-    // delete button, same visual language as the fixed-provider key rows.
     const modelId = _customModelIdFromProviderId(currentProviderId);
-    const key = Bridge.getCustomModelApiKey(modelId);
-    if (!key) { list.innerHTML='<div class="body-sm" style="padding:8px 0;color:var(--text-secondary)">No key saved yet.</div>'; return; }
-    const masked = key.length > 15 ? key.slice(0,10)+'…'+key.slice(-5) : key;
-    const row = document.createElement('div');
-    row.className='key-row';
-    row.innerHTML = `
-      <input type="radio" class="key-radio" name="keysel" checked disabled>
-      <span class="key-label">${escHtml(masked)}</span>
-      <button class="key-del" onclick="event.stopPropagation();deleteApiKey('')">✕</button>`;
-    list.appendChild(row);
+    const keys = _getCustomModelApiKeys(modelId);
+    if (!keys.length) { list.innerHTML='<div class="body-sm" style="padding:8px 0;color:var(--text-secondary)">No keys saved yet.</div>'; return; }
+    const curIdx = _getCustomKeyIndex(modelId);
+    keys.forEach((k, i) => {
+      const masked = k.length > 15 ? k.slice(0,10)+'…'+k.slice(-5) : k;
+      const row = document.createElement('div');
+      row.className='key-row';
+      row.style.cursor='pointer';
+      row.innerHTML = `
+        <input type="radio" class="key-radio" name="keysel" ${i===curIdx?'checked':''} onchange="_setCustomKeyIndex('${escAttr(modelId)}',${i})">
+        <span class="key-label">${escHtml(masked)}</span>
+        <button class="key-del" onclick="event.stopPropagation();deleteApiKey('${escAttr(k)}')">✕</button>`;
+      row.addEventListener('click', function(e) {
+        if (e.target.classList.contains('key-del')) return;
+        const radio = row.querySelector('.key-radio');
+        if (radio && !radio.checked) { radio.checked=true; _setCustomKeyIndex(modelId, i); }
+      });
+      list.appendChild(row);
+    });
     return;
   }
 
@@ -5301,7 +5342,10 @@ function addApiKey() {
 
   if (_isCustomProviderId(currentProviderId)) {
     const modelId = _customModelIdFromProviderId(currentProviderId);
-    Bridge.setCustomModelApiKey(modelId, key);
+    const existing = _getCustomModelApiKeys(modelId);
+    if (existing.includes(key)) { err.textContent='This key already exists.'; err.style.display='block'; return; }
+    existing.push(key);
+    _setCustomModelApiKeys(modelId, existing);
     err.style.display='none';
     input.value='';
     renderKeyList();
@@ -5317,7 +5361,11 @@ function addApiKey() {
 function deleteApiKey(key) {
   if (_isCustomProviderId(currentProviderId)) {
     const modelId = _customModelIdFromProviderId(currentProviderId);
-    Bridge.setCustomModelApiKey(modelId, '');
+    const remaining = _getCustomModelApiKeys(modelId).filter(k => k !== key);
+    _setCustomModelApiKeys(modelId, remaining);
+    // Clamp active index
+    const curIdx = _getCustomKeyIndex(modelId);
+    if (curIdx >= remaining.length) _setCustomKeyIndex(modelId, Math.max(0, remaining.length - 1));
     renderKeyList();
     return;
   }
