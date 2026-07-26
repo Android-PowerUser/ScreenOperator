@@ -3816,6 +3816,14 @@ document.addEventListener('click', e => {
 function selectModel(id) {
   currentModelId = id;
   Bridge.setSelectedModel(id);
+  // Persist supportsScreenshot for JS-only models so the native side can read it
+  // when building the image payload (ONLINE_MODEL.supportsScreenshot is always true).
+  if (getInAndroid()) {
+    const m = MODELS.find(x => x.id === id);
+    if (m) {
+      Android.dispatch('setJsOnlyModelSupportsScreenshot', JSON.stringify({ value: !!m.supportsScreenshot }));
+    }
+  }
   applyModelSelection(id);
   loadGenerationSettings();
 }
