@@ -25,6 +25,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
+import com.google.ai.sample.util.ActiveModelCapabilities
 import com.google.ai.sample.util.AppNamePackageMapper
 import com.google.ai.sample.util.AppOpenFeedbackPreferences
 import com.google.ai.sample.util.Command
@@ -515,33 +516,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      * for a text-only model: Command.Wait's toast, the delayed-screenshot toast, and the
      * actual capture/MediaProjection-request decision in executeTakeScreenshotCommand.
      */
-    private fun currentModelSupportsScreenshot(): Boolean {
-        com.google.ai.sample.util.CustomModelRegistry.getActiveModel()?.let { customModel ->
-            return customModel.supportsScreenshot
-        }
-
-        val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
-        val jsModelPrefs = applicationContext.getSharedPreferences("js_model_prefs", android.content.Context.MODE_PRIVATE)
-        val jsOnlyModelId = jsModelPrefs.getString("js_only_model_id", null)
-
-        // JS-only online models (the normal WebView model dropdown) are a third, separate
-        // case: they are not in CustomModelRegistry, and ModelOption.ONLINE_MODEL always
-        // reports supportsScreenshot=true. Their real capability is persisted by the WebView
-        // on model selection (dispatch("setJsOnlyModelSupportsScreenshot", ...)) - the same
-        // flag PhotoReasoningViewModel already reads to decide whether to attach the image to
-        // the outgoing payload. jsOnlyModelId being non-null is itself the reliable signal
-        // that a JS-only model is active (it is cleared whenever a custom or native built-in
-        // model is selected instead - see WebViewBridge.setSelectedModel) - it is checked on
-        // its own, without also requiring currentModel == ONLINE_MODEL, because currentModel
-        // is only updated by native built-in model selections and can otherwise still hold a
-        // stale value (e.g. a previously selected offline model) while a JS-only model is the
-        // one actually active.
-        if (jsOnlyModelId != null) {
-            return jsModelPrefs.getBoolean("js_only_supports_screenshot", true)
-        }
-
-        return currentModel.supportsScreenshot
-    }
+    private fun currentModelSupportsScreenshot(): Boolean =
+        ActiveModelCapabilities.currentModelSupportsScreenshot(applicationContext)
 
     private fun executeTakeScreenshotCommand(): Boolean {
         val delayMillis = pendingScreenshotDelayMillis

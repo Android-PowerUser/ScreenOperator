@@ -69,6 +69,7 @@ import com.android.billingclient.api.PendingPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.ui.theme.GenerativeAISample
+import com.google.ai.sample.util.ActiveModelCapabilities
 import com.google.ai.sample.util.BroadcastReceiverCompat
 import com.google.ai.sample.util.NotificationUtil
 import com.google.ai.sample.util.TermuxExecutionModePreferences
@@ -1396,9 +1397,17 @@ class MainActivity : ComponentActivity() {
         // Mirror the native send-button logic: ask for MediaProjection permission before sending
         // when the active model supports screenshots, unless it is the Human Expert model (which
         // manages its own WebRTC-based projection separately).
+        // Use ActiveModelCapabilities instead of GenerativeAiViewModelFactory.getCurrentModel()
+        // .supportsScreenshot directly: for JS-only online models selected from the WebView
+        // dropdown (the normal case here), currentModel stays ONLINE_MODEL, which always
+        // reports supportsScreenshot=true - so a text-only WebView model (e.g. a Groq/Cerebras
+        // text-only model) would otherwise incorrectly trigger a MediaProjection permission
+        // request before every send. ActiveModelCapabilities resolves the model's real
+        // capability from the WebView-persisted "js_only_supports_screenshot" flag instead.
         val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
         val modelName = currentModel.name
-        val requiresScreenCapturePermission = currentModel.supportsScreenshot && modelName != "HUMAN_EXPERT"
+        val requiresScreenCapturePermission =
+            ActiveModelCapabilities.currentModelSupportsScreenshot(this) && modelName != "HUMAN_EXPERT"
         if (!_isMediaProjectionPermissionGranted.value && requiresScreenCapturePermission) {
             Log.d(TAG, "sendMessageFromWebView: MediaProjection not yet granted. Requesting permission first.")
             requestMediaProjectionPermission {
