@@ -5822,10 +5822,20 @@ function _appendUserToHistory(text, imageDataUri) {
     if (document.hidden) {
       clearTimeout(_pollTimer);
     } else {
-      // Sofort einen Check anstoßen (mit minimalem Delay damit das DOM settled ist)
       clearTimeout(_pollTimer);
       _pollTimer = setTimeout(_checkForUpdate, 0);
     }
+  });
+
+  // Zusätzliche Trigger für Android-WebView, wo visibilitychange nicht immer feuert.
+  window.addEventListener('pageshow', function () {
+    clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(_checkForUpdate, 0);
+  });
+
+  window.addEventListener('focus', function () {
+    clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(_checkForUpdate, 0);
   });
 
   // Erster Poll startet nach kurzem Delay, damit die App vollständig initialisiert ist.
