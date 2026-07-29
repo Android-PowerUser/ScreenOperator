@@ -60,11 +60,20 @@ class TaskListenerService : Service(), SignalingClient.SignalingListener {
     }
 
     private fun createForegroundNotification(): Notification {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            this, 0, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Human Operator Active")
             .setContentText("Listening for new tasks in the background")
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
             .build()
     }
 
@@ -73,10 +82,11 @@ class TaskListenerService : Service(), SignalingClient.SignalingListener {
         try {
             // Intent to open MainActivity on click
             val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
             val pendingIntent = android.app.PendingIntent.getActivity(
-                this, 0, intent, android.app.PendingIntent.FLAG_IMMUTABLE
+                this, taskId.hashCode(), intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
 
             val notification = NotificationCompat.Builder(this, "human_operator_tasks")
