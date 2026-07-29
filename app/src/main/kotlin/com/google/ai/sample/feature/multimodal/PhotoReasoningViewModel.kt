@@ -799,9 +799,6 @@ class PhotoReasoningViewModel(
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
-             // If we already have a specialized session running, maybe just send the text?
-             // For now, we assume the user hits "Send" to trigger the connection + task post.
-             
              // Initial task post message
              val userMessage = PhotoReasoningMessage(
                  text = userInput,
@@ -812,23 +809,15 @@ class PhotoReasoningViewModel(
              _chatState.addMessage(userMessage)
              _chatMessagesFlow.value = _chatState.getAllMessages()
 
-             _uiState.value = PhotoReasoningUiState.Loading
-             
-             // We need to ensure we have MediaProjection permission.
-             // The UI (PhotoReasoningScreen) calls requestMediaProjectionPermission before calling reason()
-             // if permission is missing. So here we should ideally rely on onMediaProjectionPermissionGranted
-             // having been called or already having the intent.
-             
-             // But valid intent handling happens in onMediaProjectionPermissionGranted.
-             // If reason() is called, it means we likely have permission or it was just granted.
-             
-             // Check if we are already connected?
-             if (signalingClient == null) {
-                 startHumanExpertSession(userInput)
-             } else {
-                 // Already connected, just post the new task text or send via DataChannel if paired
-                 postTaskToHumanExpert(userInput)
+             if (signalingClient != null) {
+                 // Already connected: do NOT post a new task or enter loading state.
+                 // The message is already shown on the right side in the chat; the expert sees it via screen share.
+                 Log.d(TAG, "Human Expert already connected: message sent in ongoing session without new connection")
+                 return
              }
+
+             _uiState.value = PhotoReasoningUiState.Loading
+             startHumanExpertSession(userInput)
              return
         }
 
@@ -1474,6 +1463,17 @@ class PhotoReasoningViewModel(
         }
     }
 
+    fun stopHumanExpertSessionIfActive() {
+        if (signalingClient != null) {
+            Log.d(TAG, "Stopping active Human Expert session due to model switch")
+            webRTCSender?.stop()
+            webRTCSender = null
+            signalingClient?.disconnect()
+            signalingClient = null
+            refreshStopButtonState()
+        }
+    }
+
     fun onStopClicked() {
         _showStopNotificationFlow.value = false
         // Stop muss auch während Wait(...) sofort wirken:
@@ -1507,7 +1507,6 @@ class PhotoReasoningViewModel(
             val stopMsg = "Connection terminated"
             _commandExecutionStatus.value = stopMsg
             replaceAiMessageText(stopMsg, isPending = false)
-            MainActivity.getInstance()?.sendAiMessageToWebView(stopMsg, false)
             refreshStopButtonState()
             return
         }
@@ -1721,7 +1720,6 @@ class PhotoReasoningViewModel(
                         val connectedMsg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_connected", "The connection has been successfully established. The expert is completing the task.")
                         _commandExecutionStatus.value = connectedMsg
                         replaceAiMessageText(connectedMsg, isPending = false)
-                        MainActivity.getInstance()?.sendAiMessageToWebView(connectedMsg, false)
                     } else if (state == "DISCONNECTED" || state == "FAILED") {
                          _commandExecutionStatus.value = "Expert disconnected."
                     }
@@ -1742,7 +1740,6 @@ class PhotoReasoningViewModel(
                     )
                     _chatState.addMessage(newMessage)
                     _chatMessagesFlow.value = _chatState.getAllMessages()
-                    MainActivity.getInstance()?.sendAiMessageToWebView(newMessage.text, false)
                 }
             }
 
@@ -1826,7 +1823,6 @@ class PhotoReasoningViewModel(
                     val msg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_disconnected", "Expert disconnected.")
                     _commandExecutionStatus.value = msg
                     replaceAiMessageText(msg, isPending = false)
-                    MainActivity.getInstance()?.sendAiMessageToWebView(msg, false)
                     webRTCSender?.stop()
                     webRTCSender = null
                     signalingClient?.disconnect()

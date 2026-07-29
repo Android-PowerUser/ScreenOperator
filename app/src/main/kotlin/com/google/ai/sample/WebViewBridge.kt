@@ -90,8 +90,11 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             com.google.ai.sample.util.CustomModelRegistry.setActiveModelId(id)
             com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, id)
             saveJsOnlyModelId(null)
+            GenerativeAiViewModelFactory.setModel(ModelOption.ONLINE_MODEL, context)
             mainActivity.runOnUiThread {
                 mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
+                mainActivity.getPhotoReasoningViewModel()?.stopHumanExpertSessionIfActive()
+                mainActivity.onModelChangedFromWebView()
             }
             Log.d(TAG, "setSelectedModel: activated custom model '$id'")
             return
@@ -105,6 +108,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             saveJsOnlyModelId(null)
             GenerativeAiViewModelFactory.setModel(builtInModel, context)
             mainActivity.runOnUiThread {
+                if (builtInModel != ModelOption.HUMAN_EXPERT) {
+                    mainActivity.getPhotoReasoningViewModel()?.stopHumanExpertSessionIfActive()
+                }
                 mainActivity.onModelChangedFromWebView()
             }
             Log.d(TAG, "setSelectedModel: activated built-in model '$id'")
@@ -117,9 +123,12 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         com.google.ai.sample.util.CustomModelRegistry.clearActiveModel()
         com.google.ai.sample.util.CustomModelPreferences.saveActiveModelId(context, null)
         saveJsOnlyModelId(id)
+        GenerativeAiViewModelFactory.setModel(ModelOption.ONLINE_MODEL, context)
         // Make sure no offline model stays loaded when switching to an online model
         mainActivity.runOnUiThread {
             mainActivity.getPhotoReasoningViewModel()?.closeOfflineModel()
+            mainActivity.getPhotoReasoningViewModel()?.stopHumanExpertSessionIfActive()
+            mainActivity.onModelChangedFromWebView()
         }
         Log.d(TAG, "setSelectedModel: stored JS-only model '$id'")
     }
