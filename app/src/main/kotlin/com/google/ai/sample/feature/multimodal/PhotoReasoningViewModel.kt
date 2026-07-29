@@ -799,6 +799,9 @@ class PhotoReasoningViewModel(
 
         // Check for Human Expert model
         if (currentModel == ModelOption.HUMAN_EXPERT) {
+             // If we already have a specialized session running, maybe just send the text?
+             // For now, we assume the user hits "Send" to trigger the connection + task post.
+             
              // Initial task post message
              val userMessage = PhotoReasoningMessage(
                  text = userInput,
@@ -809,6 +812,16 @@ class PhotoReasoningViewModel(
              _chatState.addMessage(userMessage)
              _chatMessagesFlow.value = _chatState.getAllMessages()
 
+             _uiState.value = PhotoReasoningUiState.Loading
+             
+             // We need to ensure we have MediaProjection permission.
+             // The UI (PhotoReasoningScreen) calls requestMediaProjectionPermission before calling reason()
+             // if permission is missing. So here we should ideally rely on onMediaProjectionPermissionGranted
+             // having been called or already having the intent.
+             
+             // But valid intent handling happens in onMediaProjectionPermissionGranted.
+             // If reason() is called, it means we likely have permission or it was just granted.
+             
              if (signalingClient != null) {
                  // Already connected: do NOT post a new task or enter loading state.
                  // The message is already shown on the right side in the chat; the expert sees it via screen share.
@@ -1463,17 +1476,6 @@ class PhotoReasoningViewModel(
         }
     }
 
-    fun stopHumanExpertSessionIfActive() {
-        if (signalingClient != null) {
-            Log.d(TAG, "Stopping active Human Expert session due to model switch")
-            webRTCSender?.stop()
-            webRTCSender = null
-            signalingClient?.disconnect()
-            signalingClient = null
-            refreshStopButtonState()
-        }
-    }
-
     fun onStopClicked() {
         _showStopNotificationFlow.value = false
         // Stop muss auch während Wait(...) sofort wirken:
@@ -1696,27 +1698,10 @@ class PhotoReasoningViewModel(
         // That lambda calls reason(). So reason() will be called immediately after this.
     }
 
-    fun isHumanExpertSessionActive(): Boolean {
-        return signalingClient != null
-    }
-
-    fun isHumanExpertConnected(): Boolean {
-        return signalingClient != null && _commandExecutionStatus.value.contains("successfully established")
-    }
-
-    fun startHumanExpertSessionFromJs(taskText: String) {
-        if (signalingClient != null) {
-            return
-        }
-        startHumanExpertSessionInternal(taskText)
-    }
-
     private fun startHumanExpertSession(taskText: String) {
-        startHumanExpertSessionInternal(taskText)
-    }
-
-    private fun startHumanExpertSessionInternal(taskText: String) {
         if (signalingClient != null) {
+            // Already connected
+            postTaskToHumanExpert(taskText)
             return
         }
 
@@ -1737,10 +1722,8 @@ class PhotoReasoningViewModel(
                         val connectedMsg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_connected", "The connection has been successfully established. The expert is completing the task.")
                         _commandExecutionStatus.value = connectedMsg
                         replaceAiMessageText(connectedMsg, isPending = false)
-                        MainActivity.getInstance()?.notifyHumanExpertStatusToWebView(connectedMsg, true, false, connectedMsg)
                     } else if (state == "DISCONNECTED" || state == "FAILED") {
                          _commandExecutionStatus.value = "Expert disconnected."
-                         MainActivity.getInstance()?.notifyHumanExpertStatusToWebView("Expert disconnected.", false, false, "Expert disconnected.")
                     }
                 }
             }
@@ -1759,7 +1742,6 @@ class PhotoReasoningViewModel(
                     )
                     _chatState.addMessage(newMessage)
                     _chatMessagesFlow.value = _chatState.getAllMessages()
-                    MainActivity.getInstance()?.notifyHumanExpertMessageToWebView(text)
                 }
             }
 
@@ -1778,16 +1760,13 @@ class PhotoReasoningViewModel(
                 viewModelScope.launch(Dispatchers.Main) {
                     val msg = "Task posted. Waiting for an expert to claim it..."
                     replaceAiMessageText(msg, isPending = true)
-                    MainActivity.getInstance()?.notifyHumanExpertStatusToWebView(msg, false, true, msg)
                 }
             }
 
             override fun onTaskClaimed(taskId: String) {
                 Log.d(TAG, "Task claimed! Requesting fresh MediaProjection for WebRTC.")
                 viewModelScope.launch(Dispatchers.Main) {
-                    val foundMsg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_found", "Expert found! Requesting screen capture permission...")
-                    replaceAiMessageText(foundMsg, isPending = true)
-                    MainActivity.getInstance()?.notifyHumanExpertStatusToWebView(foundMsg, false, true, foundMsg)
+                    replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_found", "Expert found! Requesting screen capture permission..."), isPending = true)
                     
                     // Request a fresh MediaProjection specifically for WebRTC.
                     // MainActivity startet bereits ACTION_KEEP_ALIVE_FOR_WEBRTC BEVOR dieser Callback gerufen wird.
@@ -1796,9 +1775,7 @@ class PhotoReasoningViewModel(
                     if (mainActivity != null) {
                         mainActivity.requestMediaProjectionForWebRTC { _, resultData ->
                             Log.d(TAG, "WebRTC MediaProjection granted. Service läuft bereits via KEEP_ALIVE. Starte Screen Capture.")
-                            val estMsg = com.google.ai.sample.util.UiStringsConfig.get("msg_establishing_video", "Establishing video connection...")
-                            replaceAiMessageText(estMsg, isPending = true)
-                            MainActivity.getInstance()?.notifyHumanExpertStatusToWebView(estMsg, false, true, estMsg)
+                            replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_establishing_video", "Establishing video connection..."), isPending = true)
                             
                             // KEIN startForegroundService() hier - MainActivity hat bereits ACTION_KEEP_ALIVE_FOR_WEBRTC gesendet.
                             // Das vermeidet doppelten Service-Start und ForegroundServiceDidNotStartInTimeException.
@@ -1848,7 +1825,6 @@ class PhotoReasoningViewModel(
                     val msg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_disconnected", "Expert disconnected.")
                     _commandExecutionStatus.value = msg
                     replaceAiMessageText(msg, isPending = false)
-                    MainActivity.getInstance()?.notifyHumanExpertStatusToWebView(msg, false, false, msg)
                     webRTCSender?.stop()
                     webRTCSender = null
                     signalingClient?.disconnect()
@@ -1866,7 +1842,6 @@ class PhotoReasoningViewModel(
         
         // Post the task immediately
         Log.d(TAG, "Signaling initialized. Posting task.")
-        refreshStopButtonState()
         postTaskToHumanExpert(taskText)
     }
 

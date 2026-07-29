@@ -1606,7 +1606,6 @@ class MainActivity : ComponentActivity() {
         // that offline models stream token-by-token just like online models do.
         var lastObservedUserMessageId: String? = null
         var lastObservedAiText: String? = null
-        var lastObservedAiPending: Boolean = false
         lifecycleScope.launch {
             vm.chatMessagesFlow.collect { messages ->
                 // ── User bubble ──────────────────────────────────────────────
@@ -1652,47 +1651,21 @@ class MainActivity : ComponentActivity() {
                 val lastAi = messages.lastOrNull {
                     it.participant == com.google.ai.sample.feature.multimodal.PhotoParticipant.MODEL
                 }
-                if (lastAi != null) {
+                if (lastAi != null && lastAi.isPending) {
                     val currentText = lastAi.text
-                    val isPending = lastAi.isPending
-                    if (currentText != lastObservedAiText || isPending != lastObservedAiPending) {
+                    if (currentText != lastObservedAiText) {
                         lastObservedAiText = currentText
-                        lastObservedAiPending = isPending
                         val escaped = escapeForJs(currentText)
                         wv.post {
-                            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', $isPending)", null)
+                            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', true)", null)
                         }
                     }
                 } else {
+                    // Reset tracker when the pending message is finalized or cleared so the
+                    // next turn starts fresh (avoids skipping the first chunk of the next turn).
                     lastObservedAiText = null
-                    lastObservedAiPending = false
                 }
             }
-        }
-    }
-
-    fun sendAiMessageToWebView(text: String, isPending: Boolean) {
-        val wv = webViewInstance ?: return
-        val escaped = escapeForJs(text)
-        wv.post {
-            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', $isPending)", null)
-        }
-    }
-
-    fun notifyHumanExpertStatusToWebView(status: String, isConnected: Boolean, isPending: Boolean, messageText: String) {
-        val wv = webViewInstance ?: return
-        val escStatus = escapeForJs(status)
-        val escMsg = escapeForJs(messageText)
-        wv.post {
-            wv.evaluateJavascript("window.onHumanExpertStatus && window.onHumanExpertStatus('$escStatus', $isConnected, $isPending, '$escMsg')", null)
-        }
-    }
-
-    fun notifyHumanExpertMessageToWebView(text: String) {
-        val wv = webViewInstance ?: return
-        val escText = escapeForJs(text)
-        wv.post {
-            wv.evaluateJavascript("window.onHumanExpertMessage && window.onHumanExpertMessage('$escText')", null)
         }
     }
 
