@@ -1185,6 +1185,7 @@ let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
 let _humanExpertConnected = false;
+let _humanExpertSessionActive = false;
 
 /* ════════════════════════════════════════════════════════
    INIT
@@ -1308,6 +1309,59 @@ function _updateHumanExpertInputArea() {
     if (wrap) wrap.style.display = 'block';
   }
 }
+
+window.onHumanExpertStatus = function(status, isConnected, isPending, messageText) {
+  console.log('[ScreenOperator] onHumanExpertStatus:', status, isConnected, isPending, messageText);
+  _humanExpertConnected = !!isConnected;
+  _humanExpertSessionActive = isConnected || isPending;
+
+  if (window.onCommandStatus && status) {
+    window.onCommandStatus(status);
+  }
+
+  const msgs = document.getElementById('chat-messages');
+  if (msgs && messageText) {
+    const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
+    const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
+    const parentWrap = last && last.closest('.bubble-wrap');
+    if (parentWrap && last.querySelector('.model-icon.loading')) {
+      const textSpan = last.querySelector('.model-text') || last;
+      textSpan.textContent = messageText;
+      if (!isPending) {
+        const icon = last.querySelector('.model-icon');
+        if (icon) icon.classList.remove('loading');
+      }
+    } else if (last && (last.querySelector('.model-text') || last).textContent === messageText) {
+      if (!isPending) {
+        const icon = last.querySelector('.model-icon');
+        if (icon) icon.classList.remove('loading');
+      }
+    } else {
+      addModelBubble(messageText, isPending);
+    }
+    scrollToBottom();
+  }
+
+  _updateHumanExpertInputArea();
+  if (!isConnected && !isPending) {
+    window.onGenerationStateChanged(false, false);
+  } else {
+    window.onGenerationStateChanged(true, false);
+  }
+};
+
+window.onHumanExpertMessage = function(text) {
+  console.log('[ScreenOperator] onHumanExpertMessage:', text);
+  const msgText = text.startsWith('Operator:') ? text : ('Operator: ' + text);
+  const msgs = document.getElementById('chat-messages');
+  const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
+  const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
+  if (last && (last.querySelector('.model-text') || last).textContent === msgText) {
+    return;
+  }
+  addModelBubble(msgText, false);
+  scrollToBottom();
+};
 
 window.onCommandStatus = function(status) {
   const wrap = document.getElementById('cmd-status-wrap');
@@ -3970,6 +4024,12 @@ function selectModel(id) {
     openHumanExpertPopup();
     return;
   }
+  if (currentModelId === 'HUMAN_EXPERT' && id !== 'HUMAN_EXPERT') {
+    _humanExpertConnected = false;
+    _humanExpertSessionActive = false;
+    if (getInAndroid()) Bridge.stopHumanExpertSession();
+    _updateHumanExpertInputArea();
+  }
   currentModelId = id;
   Bridge.setSelectedModel(id);
   // Persist supportsScreenshot for JS-only models so the native side can read it
@@ -5138,6 +5198,7 @@ function clearChat() {
   document.getElementById('chat-messages').innerHTML = '';
   document.getElementById('cmd-status-wrap').innerHTML = '';
   _humanExpertConnected = false;
+  _humanExpertSessionActive = false;
   _updateHumanExpertInputArea();
   Bridge.clearChatHistory();
   Bridge.clearChatHistoryJs();
@@ -5149,6 +5210,7 @@ function stopGeneration() {
   removeTermuxWaitingBubble();
   if (currentModelId === 'HUMAN_EXPERT') {
     _humanExpertConnected = false;
+    _humanExpertSessionActive = false;
     if (window.onCommandStatus) window.onCommandStatus('Connection terminated');
     const msgs = document.getElementById('chat-messages');
     const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
@@ -5161,6 +5223,7 @@ function stopGeneration() {
       const icon = last.querySelector('.model-icon');
       if (icon) icon.classList.remove('loading');
     }
+    if (getInAndroid()) Bridge.stopHumanExpertSession();
   }
   Bridge.stopGeneration();
   if (window.__customModelAbortController) {
@@ -5218,6 +5281,33 @@ function sendMessage() {
   const input = document.getElementById('task-input');
   const text = input.value.trim();
   if (!text && selectedImages.length === 0) return;
+
+  if (currentModelId === 'HUMAN_EXPERT') {
+    // Moved Human Expert session initiation & message handling to WebView JS
+    const firstThumb = selectedImages.find(img => !img.isVideo && img.objectUrl);
+    addUserBubble(text || "(attached images)", firstThumb ? firstThumb.objectUrl : null);
+    input.value = '';
+    input.style.height = '';
+    onTaskInput();
+    selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
+    selectedImages = [];
+    renderImagePreviews();
+
+    if (_humanExpertSessionActive || (getInAndroid() && Bridge.isHumanExpertSessionActive())) {
+      // Already connected / active: do not start a new session or show a loading spinner
+      console.log('[ScreenOperator] Human Expert already active: message sent in ongoing session');
+      return;
+    }
+    _humanExpertSessionActive = true;
+    _humanExpertConnected = false;
+    addModelBubble(DEFAULT_UI_STRINGS.msg_expert_found, true);
+    if (getInAndroid()) {
+      Bridge.startHumanExpertSession(text);
+    }
+    window.onGenerationStateChanged(true, false);
+    return;
+  }
+
   // In Android mode, onUserMessage() will add the user bubble after Android
   // has assembled the full message (text + screen context + Termux output).
   // Adding it here too would cause the bubble to appear twice.

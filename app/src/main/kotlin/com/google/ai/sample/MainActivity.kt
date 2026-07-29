@@ -1679,6 +1679,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    fun notifyHumanExpertStatusToWebView(status: String, isConnected: Boolean, isPending: Boolean, messageText: String) {
+        val wv = webViewInstance ?: return
+        val escStatus = escapeForJs(status)
+        val escMsg = escapeForJs(messageText)
+        wv.post {
+            wv.evaluateJavascript("window.onHumanExpertStatus && window.onHumanExpertStatus('$escStatus', $isConnected, $isPending, '$escMsg')", null)
+        }
+    }
+
+    fun notifyHumanExpertMessageToWebView(text: String) {
+        val wv = webViewInstance ?: return
+        val escText = escapeForJs(text)
+        wv.post {
+            wv.evaluateJavascript("window.onHumanExpertMessage && window.onHumanExpertMessage('$escText')", null)
+        }
+    }
+
     /**
      * Called by [WebViewBridge] with a streaming chunk (accumulated text so far) of a custom,
      * fully JSON-defined model's response (see [com.google.ai.sample.util.CustomModelRegistry]).

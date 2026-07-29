@@ -367,6 +367,32 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Human Expert Session Management (WebView JS Controlled) ──────────────
+
+    @JavascriptInterface
+    fun startHumanExpertSession(text: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.startHumanExpertSessionFromJs(text)
+        }
+    }
+
+    @JavascriptInterface
+    fun stopHumanExpertSession() {
+        mainActivity.runOnUiThread {
+            mainActivity.getPhotoReasoningViewModel()?.stopHumanExpertSessionIfActive()
+        }
+    }
+
+    @JavascriptInterface
+    fun isHumanExpertSessionActive(): Boolean {
+        return mainActivity.getPhotoReasoningViewModel()?.isHumanExpertSessionActive() ?: false
+    }
+
+    @JavascriptInterface
+    fun isHumanExpertConnected(): Boolean {
+        return mainActivity.getPhotoReasoningViewModel()?.isHumanExpertConnected() ?: false
+    }
+
     // ── Custom Model Responses ───────────────────────────────────────────────
     // Called by JS after it performed the actual fetch() to a custom model's endpoint. The
     // text is fed into the EXISTING, unmodified command-parsing/execution/persistence

@@ -41,6 +41,7 @@ Die JS-Schicht (5088 Zeilen) enthält bereits:
 - ✅ **Trial Engine** komplett im JS
 - ✅ **Operational Tuning** (Mistral-Coordinator, Error-Classification)
 - ✅ **Prompt-Engineering** (History-Sanitization, Truncation-Warnings)
+- ✅ **Human Expert Session-Logik & Chat-State** (`_humanExpertSessionActive`, `_humanExpertConnected`, `onHumanExpertStatus`, `onHumanExpertMessage`)
 
 ### 7. Architecture-Zielbild (erreicht)
 ```
@@ -55,6 +56,7 @@ Die JS-Schicht (5088 Zeilen) enthält bereits:
 │ ✅ Chat History (einzige Source of Truth)           │
 │ ✅ Trial Engine (Timer, State Machine)              │
 │ ✅ App Mappings (Fast-Path Resolution)              │
+│ ✅ Human Expert Session Controller & Chat State     │
 └────────────────────┬────────────────────────────────┘
                      │ @JavascriptInterface (WebViewBridge)
 ┌────────────────────┴────────────────────────────────┐
@@ -65,9 +67,15 @@ Die JS-Schicht (5088 Zeilen) enthält bereits:
 │ ✅ Screen Capture (MediaProjection)                 │
 │ ✅ Billing / API-Key-Storage (Security Boundary)    │
 │ ✅ Offline Models (LiteRT/GPU, ML Engine)           │
-│ ✅ WebRTC / Human Expert (Performance-kritisch)     │
+│ ✅ WebRTC / Signaling (Platform Network/Media API)  │
 └─────────────────────────────────────────────────────┘
 ```
+
+### 8. Human Expert Logic → WebView JS Migration
+Die gesamte Logik zur Steuerung und Verwaltung einer Human-Expert-Sitzung wurde in die WebView-Schicht (`index.html`) verlagert:
+- **Session Lifecycle Controller:** Der Start und Abbruch der Sitzung wird komplett im JS verwaltet (`_humanExpertSessionActive`, `_humanExpertConnected`, `Bridge.startHumanExpertSession()`, `Bridge.stopHumanExpertSession()`).
+- **Chat History & Deduplizierung:** Alle Chatnachrichten des Experten und Verbindungsstatus werden in JS (`onHumanExpertStatus`, `onHumanExpertMessage`) verarbeitet und dedupliziert. Folge-Nachrichten bei bestehender Verbindung werden direkt in den laufenden Chat eingefügt, ohne neue Signalisierungen auszulösen.
+- **Modellwechsel-Bereinigung:** Beim Wechsel zu anderen Online-Modellen bricht JS aktive Human-Expert-Sitzungen sofort ab und setzt das native Modell auf das `ONLINE_MODEL`-Fallback zurück.
 
 ## Verbleibende Chancen (für zukünftige Iterationen)
 
