@@ -535,6 +535,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       &nbsp;&nbsp;GPT-5.1 Codex Max: $1.25/M in | $10.00/M out<br>
       &nbsp;&nbsp;GPT-5.1 Codex Mini: $0.25/M in | $2.00/M out<br>
       &nbsp;&nbsp;GPT-5 Nano: $0.05/M in | $0.40/M out<br>
+      &nbsp;&nbsp;GLM 5V Turbo: $1.20/M in | $0.24/M cache read | $4/M out<br>
       &bull; When a model repeats tokens, lower Top K and Top P.<br>
       &bull; Google rate limits info: <a href="https://aistudio.google.com/rate-limit" style="color:var(--primary)">aistudio.google.com/rate-limit</a>
     </div>
@@ -1018,6 +1019,7 @@ let MODELS = [
   { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'4.92 GB download required.',    strike:false },
   { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'3.40 GB download required.',    strike:false },
   { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
+  { id:'GLM_5V_TURBO_VERCEL',       displayName:'GLM 5V Turbo (Vercel)',                    modelName:'zai/glm-5v-turbo',                         apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Credit or debit card required - $1.20/M input | $0.24/M cache read | $4/M output - caching and thinking enabled', strike:false },
   { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
   { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
   { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Vercel requires a credit card.',strike:false },
@@ -1492,7 +1494,7 @@ function buildModelDropdown() {
   };
 
   // Group: same order as native MenuScreen.kt
-  const vercelIds = new Set(['GPT_5_1_CODEX_MAX','GPT_5_1_CODEX_MINI','GPT_5_NANO']);
+  const vercelIds = new Set(['GPT_5_1_CODEX_MAX','GPT_5_1_CODEX_MINI','GPT_5_NANO','GLM_5V_TURBO_VERCEL']);
   const strikeIds = new Set(MODELS.filter(m=>m.strike).map(m=>m.id));
   const firstIds  = new Set(['PUTER_GPT_5_4_NANO','MISTRAL_MEDIUM_3_1','MISTRAL_MEDIUM_3_5']);
 
