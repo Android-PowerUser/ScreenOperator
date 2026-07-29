@@ -1316,6 +1316,17 @@ window.onCommandStatus = function(status) {
   if (currentModelId === 'HUMAN_EXPERT') {
     if (status.includes('The connection has been successfully established') || status.includes('Expert connected')) {
       _humanExpertConnected = true;
+      const msgs = document.getElementById('chat-messages');
+      if (msgs) {
+        const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
+        const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
+        if (last && last.querySelector('.model-icon.loading')) {
+          const textSpan = last.querySelector('.model-text') || last;
+          textSpan.textContent = 'The connection has been successfully established. The expert is completing the task.';
+          const icon = last.querySelector('.model-icon');
+          if (icon) icon.classList.remove('loading');
+        }
+      }
       _updateHumanExpertInputArea();
     } else if (status.includes('Connection terminated') || status.includes('Expert disconnected')) {
       _humanExpertConnected = false;

@@ -1476,6 +1476,17 @@ class PhotoReasoningViewModel(
         }
     }
 
+    fun stopHumanExpertSessionIfActive() {
+        if (signalingClient != null) {
+            Log.d(TAG, "Stopping active Human Expert session due to model switch")
+            webRTCSender?.stop()
+            webRTCSender = null
+            signalingClient?.disconnect()
+            signalingClient = null
+            refreshStopButtonState()
+        }
+    }
+
     fun onStopClicked() {
         _showStopNotificationFlow.value = false
         // Stop muss auch während Wait(...) sofort wirken:
