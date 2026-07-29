@@ -1019,7 +1019,7 @@ let MODELS = [
   { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'4.92 GB download required.',    strike:false },
   { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'3.40 GB download required.',    strike:false },
   { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
-  { id:'GLM_5V_TURBO_VERCEL',       displayName:'GLM 5V Turbo (Vercel)',                    modelName:'zai/glm-5v-turbo',                         apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Credit or debit card required - $1.20/M input | $0.24/M cache read | $4/M output', strike:false },
+  { id:'GLM_5V_TURBO_VERCEL',       displayName:'GLM 5V Turbo (Vercel)',                    modelName:'zai/glm-5v-turbo',                         apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Credit or debit card required - $1.20/M input | $0.24/M cache read | $4/M output - caching and thinking enabled', strike:false },
   { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
   { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Vercel requires a credit card.',strike:false },
   { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Vercel requires a credit card.',strike:false },
@@ -3024,10 +3024,11 @@ async function _callGroq(payload) {
   }
 }
 
-/* ── VERCEL API (dedicated - matches callVercelApi in ScreenCaptureVercelClient.kt) ──
-   NOTE: this is NOT the general Vercel AI Gateway - it's this project's own proxy at
-   v0-screen-operator-clon-pi.vercel.app, authenticated with an "x-api-key" header
-   (not "Authorization: Bearer"), plain string message content, streaming SSE. */
+/* ── VERCEL AI GATEWAY ───────────────────────────────────────────
+   Uses the public OpenAI-compatible Chat Completions endpoint directly from the
+   WebView. The former project-specific proxy no longer exists, which made WebView
+   fetches fail before the request could reach the model. AI Gateway accepts the
+   configured Vercel AI Gateway key as a Bearer token and supports CORS for WebViews. */
 async function _callVercel(payload) {
   const keys = Bridge.getAllApiKeys('VERCEL');
   if (!keys.length) {
@@ -3061,18 +3062,26 @@ async function _callVercel(payload) {
   const requestBody = { model: payload.modelName, messages, stream: true };
   if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
   if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
-  // Enable extended reasoning for Codex and other reasoning-capable models via Vercel proxy.
+  // AI Gateway's provider-neutral `reasoning` object enables reasoning for every
+  // supported model. GLM-5V-Turbo supports thinking but not a selectable effort
+  // level, so deliberately send only `enabled` for it. The gateway translates this
+  // to Z.AI's native thinking setting without sending an unsupported level.
   if (payload.supportsThinking) {
-    requestBody.reasoning_effort = 'high';
+    requestBody.reasoning = payload.modelName === 'zai/glm-5v-turbo'
+      ? { enabled: true }
+      : { effort: 'high' };
   }
+
+  const vercelChatEndpoint = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+  const vercelHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
 
   window.__customModelAbortController = new AbortController();
   let acc = '';
   let thinkingAcc = '';
   try {
-    let response = await fetch('https://v0-screen-operator-clon-pi.vercel.app/api/chat', {
+    let response = await fetch(vercelChatEndpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      headers: vercelHeaders,
       body: JSON.stringify(requestBody),
       signal: window.__customModelAbortController.signal,
     });
@@ -3091,9 +3100,9 @@ async function _callVercel(payload) {
           apiKey = keys[keyIdx];
           let retryResp;
           try {
-            retryResp = await fetch('https://v0-screen-operator-clon-pi.vercel.app/api/chat', {
+            retryResp = await fetch(vercelChatEndpoint, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
               body: JSON.stringify(requestBody),
               signal: window.__customModelAbortController.signal,
             });
