@@ -433,6 +433,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* Info dialog (dismissable, e.g. first-launch) */
 #trial-info-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:990;align-items:center;justify-content:center;padding:24px}
 #trial-info-overlay.open{display:flex}
+/* Human Expert paywall dialog */
+#human-expert-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:990;align-items:center;justify-content:center;padding:24px}
+#human-expert-overlay.open{display:flex}
 /* Payment method dialog */
 #payment-method-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:center;justify-content:center;padding:24px}
 #payment-method-overlay.open{display:flex}
@@ -579,9 +582,6 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
   <!-- Bottom input -->
   <div id="chat-bottom">
-    <div id="stop-btn-wrap" style="display:none">
-      <button id="stop-btn" onclick="stopGeneration()">Stop</button>
-    </div>
     <div id="chat-input-card">
       <div class="input-row">
         <div class="col" style="flex-shrink:0;gap:4px">
@@ -605,6 +605,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       </div>
       <div id="image-preview-row"></div>
       <input type="file" id="image-file-input" accept="image/*,video/*" multiple style="display:none" onchange="onFilesPicked(event)">
+    </div>
+    <div id="stop-btn-wrap" style="display:none">
+      <button id="stop-btn" onclick="stopGeneration()">Stop</button>
     </div>
   </div>
 
@@ -691,6 +694,14 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div class="trial-dialog-title" id="trial-info-title">Information</div>
     <div class="trial-dialog-body" id="trial-info-body"></div>
     <button class="btn btn-solid" id="trial-info-btn" onclick="closeTrialInfoDialog()">OK</button>
+  </div>
+</div>
+
+<!-- Human Expert Paywall Dialog -->
+<div id="human-expert-overlay" class="overlay" onclick="if(event.target.id==='human-expert-overlay')closeHumanExpertPopup()">
+  <div class="trial-dialog" onclick="event.stopPropagation()">
+    <div class="trial-dialog-body" id="human-expert-body">To ensure that a human expert accepts the task, you need to support them.</div>
+    <button class="btn btn-solid" id="human-expert-subscribe-btn" onclick="initiateGooglePlay()">Subscribe</button>
   </div>
 </div>
 
@@ -1104,7 +1115,7 @@ const DEFAULT_UI_STRINGS = {
 
   // feature/multimodal/PhotoReasoningViewModel.kt - inline AI-message status text
   msg_initializing_offline_model: "Initializing offline model...",
-  msg_expert_connected: "Expert connected! They can now see your screen and control your device.",
+  msg_expert_connected: "The connection has been successfully established. The expert is completing the task.",
   msg_expert_found: "Expert found! Requesting screen capture permission...",
   msg_establishing_video: "Establishing video connection...",
   msg_expert_disconnected: "Expert disconnected.",
@@ -1173,12 +1184,17 @@ let currentProviderId = 'PUTER';
 let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
+let _humanExpertConnected = false;
 
 /* ════════════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   currentModelId = Bridge.getSelectedModelId();
+  if (currentModelId === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
+    currentModelId = 'PUTER_QWEN2_5_VL_72B';
+    Bridge.setSelectedModel(currentModelId);
+  }
   buildModelDropdown();
   applyModelSelection(currentModelId);
   loadGenerationSettings();
@@ -1266,10 +1282,49 @@ window.onAiMessage = function(text, isPending) {
   scrollToBottom();
 };
 
+function openHumanExpertPopup() {
+  const el = document.getElementById('human-expert-overlay');
+  if (el) el.classList.add('open');
+  applyModelSelection(currentModelId);
+}
+
+function closeHumanExpertPopup() {
+  const el = document.getElementById('human-expert-overlay');
+  if (el) el.classList.remove('open');
+  applyModelSelection(currentModelId);
+}
+
+function _updateHumanExpertInputArea() {
+  const wrap = document.getElementById('stop-btn-wrap');
+  const inputCard = document.getElementById('chat-input-card');
+  if (currentModelId === 'HUMAN_EXPERT' && _humanExpertConnected) {
+    if (inputCard) inputCard.style.display = '';
+    if (wrap) wrap.style.display = 'block';
+  }
+}
+
 window.onCommandStatus = function(status) {
   const wrap = document.getElementById('cmd-status-wrap');
   if (!status || status === 'Processing screenshot...') { wrap.innerHTML=''; return; }
   wrap.innerHTML = `<div class="cmd-status-card">${escHtml(status)}</div>`;
+  if (currentModelId === 'HUMAN_EXPERT') {
+    if (status.includes('The connection has been successfully established') || status.includes('Expert connected')) {
+      _humanExpertConnected = true;
+      const msgs = document.getElementById('chat-messages');
+      const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
+      const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
+      if (last && last.querySelector('.model-icon.loading')) {
+        const textSpan = last.querySelector('.model-text') || last;
+        textSpan.textContent = 'The connection has been successfully established. The expert is completing the task.';
+        const icon = last.querySelector('.model-icon');
+        if (icon) icon.classList.remove('loading');
+      }
+      _updateHumanExpertInputArea();
+    } else if (status.includes('Connection terminated') || status.includes('Expert disconnected')) {
+      _humanExpertConnected = false;
+      _updateHumanExpertInputArea();
+    }
+  }
   scrollToBottom();
 };
 
@@ -1350,7 +1405,13 @@ window.onGenerationStateChanged = function(running, isOfflineLoaded) {
   if (running || isOfflineLoaded) {
     wrap.style.display = 'block';
     btn.textContent = running ? 'Stop' : 'Model Unload';
-    if (inputCard) inputCard.style.display = 'none';
+    if (inputCard) {
+      if (currentModelId === 'HUMAN_EXPERT' && _humanExpertConnected) {
+        inputCard.style.display = '';
+      } else {
+        inputCard.style.display = 'none';
+      }
+    }
   } else {
     wrap.style.display = 'none';
     if (inputCard) inputCard.style.display = '';
@@ -3908,6 +3969,10 @@ document.addEventListener('click', e => {
 });
 
 function selectModel(id) {
+  if (id === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
+    openHumanExpertPopup();
+    return;
+  }
   currentModelId = id;
   Bridge.setSelectedModel(id);
   // Persist supportsScreenshot for JS-only models so the native side can read it
@@ -4493,6 +4558,11 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
     _setConfirmedExpired(false);
     _applyTrialState(TrialState.PURCHASED, '');
     _stopTrialTimer();
+    const hexOverlay = document.getElementById('human-expert-overlay');
+    if (hexOverlay && hexOverlay.classList.contains('open')) {
+      hexOverlay.classList.remove('open');
+      selectModel('HUMAN_EXPERT');
+    }
     return;
   }
   if (isExpired) {
@@ -4808,6 +4878,10 @@ window.onCustomAction = window.onCustomAction || function(id, groups, batchSize)
 
 window.onAndroidReady = function() {
   currentModelId = Bridge.getSelectedModelId();
+  if (currentModelId === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
+    currentModelId = 'PUTER_QWEN2_5_VL_72B';
+    Bridge.setSelectedModel(currentModelId);
+  }
   buildModelDropdown();
   applyModelSelection(currentModelId);
   loadGenerationSettings();
@@ -4957,6 +5031,10 @@ window.onAndroidReady = function() {
 
 // Android System Back Button Handler (returns Boolean to WebViewBridge)
 window.onBackPressed = function() {
+  if (document.getElementById('human-expert-overlay') && document.getElementById('human-expert-overlay').classList.contains('open')) {
+    closeHumanExpertPopup();
+    return true;
+  }
   if (document.getElementById('ai-question-overlay').classList.contains('visible')) {
     _dismissAiQuestion();
     return true;
@@ -5062,6 +5140,8 @@ function undoLast(text) {
 function clearChat() {
   document.getElementById('chat-messages').innerHTML = '';
   document.getElementById('cmd-status-wrap').innerHTML = '';
+  _humanExpertConnected = false;
+  _updateHumanExpertInputArea();
   Bridge.clearChatHistory();
   Bridge.clearChatHistoryJs();
   _jsChatHistory = [];
@@ -5070,6 +5150,21 @@ function clearChat() {
 function stopGeneration() {
   _stopExecution = true;  // halt JS command executor
   removeTermuxWaitingBubble();
+  if (currentModelId === 'HUMAN_EXPERT') {
+    _humanExpertConnected = false;
+    if (window.onCommandStatus) window.onCommandStatus('Connection terminated');
+    const msgs = document.getElementById('chat-messages');
+    const allModelBubbles = [...msgs.querySelectorAll('.bubble.model')];
+    const last = allModelBubbles.length ? allModelBubbles[allModelBubbles.length - 1] : null;
+    if (last) {
+      const textSpan = last.querySelector('.model-text') || last;
+      if (textSpan && (textSpan.textContent.includes('Establishing') || textSpan.textContent.includes('Expert') || textSpan.textContent.includes('connection') || textSpan.textContent.includes('The connection has been successfully established'))) {
+        textSpan.textContent = 'Connection terminated';
+      }
+      const icon = last.querySelector('.model-icon');
+      if (icon) icon.classList.remove('loading');
+    }
+  }
   Bridge.stopGeneration();
   if (window.__customModelAbortController) {
     window.__customModelAbortController.abort();

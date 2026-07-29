@@ -1606,6 +1606,7 @@ class MainActivity : ComponentActivity() {
         // that offline models stream token-by-token just like online models do.
         var lastObservedUserMessageId: String? = null
         var lastObservedAiText: String? = null
+        var lastObservedAiPending: Boolean = false
         lifecycleScope.launch {
             vm.chatMessagesFlow.collect { messages ->
                 // ── User bubble ──────────────────────────────────────────────
@@ -1651,21 +1652,30 @@ class MainActivity : ComponentActivity() {
                 val lastAi = messages.lastOrNull {
                     it.participant == com.google.ai.sample.feature.multimodal.PhotoParticipant.MODEL
                 }
-                if (lastAi != null && lastAi.isPending) {
+                if (lastAi != null) {
                     val currentText = lastAi.text
-                    if (currentText != lastObservedAiText) {
+                    val isPending = lastAi.isPending
+                    if (currentText != lastObservedAiText || isPending != lastObservedAiPending) {
                         lastObservedAiText = currentText
+                        lastObservedAiPending = isPending
                         val escaped = escapeForJs(currentText)
                         wv.post {
-                            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', true)", null)
+                            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', $isPending)", null)
                         }
                     }
                 } else {
-                    // Reset tracker when the pending message is finalized or cleared so the
-                    // next turn starts fresh (avoids skipping the first chunk of the next turn).
                     lastObservedAiText = null
+                    lastObservedAiPending = false
                 }
             }
+        }
+    }
+
+    fun sendAiMessageToWebView(text: String, isPending: Boolean) {
+        val wv = webViewInstance ?: return
+        val escaped = escapeForJs(text)
+        wv.post {
+            wv.evaluateJavascript("window.onAiMessage && window.onAiMessage('$escaped', $isPending)", null)
         }
     }
 

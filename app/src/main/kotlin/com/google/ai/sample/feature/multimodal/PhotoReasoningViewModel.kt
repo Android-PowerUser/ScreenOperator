@@ -567,7 +567,7 @@ class PhotoReasoningViewModel(
             lastMessage?.participant == PhotoParticipant.MODEL && lastMessage.isPending
         val hasActiveJob =
             currentReasoningJob?.isActive == true || commandProcessingJob?.isActive == true
-        return !isTaskCompletedByAi && (hasPendingModelMessage || hasActiveJob)
+        return (!isTaskCompletedByAi && (hasPendingModelMessage || hasActiveJob)) || signalingClient != null
     }
 
     private fun isOfflineGpuModelLoaded(): Boolean {
@@ -1498,6 +1498,19 @@ class PhotoReasoningViewModel(
         if (isLiveMode) {
             liveApiManager?.close()
         }
+        if (signalingClient != null) {
+            Log.d(TAG, "Stop clicked while Human Expert connected: terminating session")
+            webRTCSender?.stop()
+            webRTCSender = null
+            signalingClient?.disconnect()
+            signalingClient = null
+            val stopMsg = "Connection terminated"
+            _commandExecutionStatus.value = stopMsg
+            replaceAiMessageText(stopMsg, isPending = false)
+            MainActivity.getInstance()?.sendAiMessageToWebView(stopMsg, false)
+            refreshStopButtonState()
+            return
+        }
 
         stopExecutionFlag.set(true)
         currentReasoningJob?.cancel()
@@ -1705,8 +1718,10 @@ class PhotoReasoningViewModel(
                 Log.d(TAG, "WebRTC State: $state")
                 viewModelScope.launch(Dispatchers.Main) {
                     if (state == "CONNECTED") {
-                        _commandExecutionStatus.value = "Expert connected. Sharing screen."
-                        replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_connected", "Expert connected! They can now see your screen and control your device."), isPending = false)
+                        val connectedMsg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_connected", "The connection has been successfully established. The expert is completing the task.")
+                        _commandExecutionStatus.value = connectedMsg
+                        replaceAiMessageText(connectedMsg, isPending = false)
+                        MainActivity.getInstance()?.sendAiMessageToWebView(connectedMsg, false)
                     } else if (state == "DISCONNECTED" || state == "FAILED") {
                          _commandExecutionStatus.value = "Expert disconnected."
                     }
@@ -1727,6 +1742,7 @@ class PhotoReasoningViewModel(
                     )
                     _chatState.addMessage(newMessage)
                     _chatMessagesFlow.value = _chatState.getAllMessages()
+                    MainActivity.getInstance()?.sendAiMessageToWebView(newMessage.text, false)
                 }
             }
 
@@ -1807,9 +1823,15 @@ class PhotoReasoningViewModel(
 
             override fun onPeerDisconnected() {
                  viewModelScope.launch(Dispatchers.Main) {
-                    _commandExecutionStatus.value = "Expert disconnected."
-                    replaceAiMessageText(com.google.ai.sample.util.UiStringsConfig.get("msg_expert_disconnected", "Expert disconnected."), isPending = false)
+                    val msg = com.google.ai.sample.util.UiStringsConfig.get("msg_expert_disconnected", "Expert disconnected.")
+                    _commandExecutionStatus.value = msg
+                    replaceAiMessageText(msg, isPending = false)
+                    MainActivity.getInstance()?.sendAiMessageToWebView(msg, false)
                     webRTCSender?.stop()
+                    webRTCSender = null
+                    signalingClient?.disconnect()
+                    signalingClient = null
+                    refreshStopButtonState()
                 }
             }
 
@@ -1822,6 +1844,7 @@ class PhotoReasoningViewModel(
         
         // Post the task immediately
         Log.d(TAG, "Signaling initialized. Posting task.")
+        refreshStopButtonState()
         postTaskToHumanExpert(taskText)
     }
 
