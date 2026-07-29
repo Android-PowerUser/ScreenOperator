@@ -5302,7 +5302,7 @@ function sendMessage() {
     _humanExpertConnected = false;
     addModelBubble(DEFAULT_UI_STRINGS.msg_expert_found, true);
     if (getInAndroid()) {
-      Bridge.startHumanExpertSession(text);
+      Bridge.sendMessage(text);
     }
     window.onGenerationStateChanged(true, false);
     return;
