@@ -3048,10 +3048,19 @@ async function _callVercel(payload) {
   mergedHistory.forEach(m => {
     if (m && m.text) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text });
   });
-  if (payload.userText) messages.push({ role: 'user', content: payload.userText });
-  // Note: the native Vercel client (ScreenCaptureVercelClient.kt) has no image support at all.
+  if (payload.images && payload.images.length && payload.supportsScreenshot !== false) {
+    const content = [];
+    if (payload.userText) content.push({ type: 'text', text: payload.userText });
+    payload.images.forEach(uri => content.push({ type: 'image_url', image_url: { url: uri } }));
+    messages.push({ role: 'user', content });
+  } else {
+    messages.push({ role: 'user', content: payload.userText || '' });
+  }
+  // Vision models (e.g. GLM 5V Turbo) send screenshots as image_url content parts.
 
   const requestBody = { model: payload.modelName, messages, stream: true };
+  if (payload.temperature !== undefined && payload.temperature > 0) requestBody.temperature = payload.temperature;
+  if (payload.topP !== undefined && payload.topP > 0) requestBody.top_p = payload.topP;
   // Enable extended reasoning for Codex and other reasoning-capable models via Vercel proxy.
   if (payload.supportsThinking) {
     requestBody.reasoning_effort = 'high';
