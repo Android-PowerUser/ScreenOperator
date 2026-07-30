@@ -3404,27 +3404,51 @@ async function _callOpenAiCompat(payload, provider) {
       const stoppedText = _composeThinkingAndAnswer(thinkingAcc, acc);
       Bridge.onCustomModelFinalResponse(stoppedText + (stoppedText ? '\n\n' : '') + '[stopped by user]');
     } else {
-      // Enrich generic network errors with diagnostic details so the user sees
-      // more than just "[Error] Failed to fetch".
+      // Enrich generic network errors with an actual diagnosis instead of a
+      // list of guesses. We distinguish "device has no internet at all" from
+      // "this specific host is unreachable/blocked" by probing a host that is
+      // virtually always reachable (a Google favicon, no-cors so it doesn't
+      // itself require CORS headers to succeed).
       const isFetchFail = e instanceof TypeError &&
                           (e.message === 'Failed to fetch' || e.message === 'Load failed' ||
                            e.message.toLowerCase().includes('failed to fetch') ||
                            e.message.toLowerCase().includes('network'));
       if (isFetchFail) {
-        const hasKey = !!(apiKey);
+        let deviceHasInternet = null; // null = couldn't determine
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          deviceHasInternet = false;
+        } else {
+          try {
+            const probeCtrl = new AbortController();
+            const probeTimeout = setTimeout(() => probeCtrl.abort(), 4000);
+            await fetch('https://www.google.com/favicon.ico', { mode: 'no-cors', signal: probeCtrl.signal, cache: 'no-store' });
+            clearTimeout(probeTimeout);
+            deviceHasInternet = true;
+          } catch (probeErr) {
+            deviceHasInternet = false;
+          }
+        }
+
+        let diagnosis;
+        if (deviceHasInternet === false) {
+          diagnosis = 'No internet connectivity detected on this device right now. Check the device\'s WiFi/mobile data connection.';
+        } else {
+          // Device is online, but the request to kilo.ai itself failed before
+          // getting any HTTP response (no status code at all) — this points
+          // specifically at api.kilo.ai being unreachable, DNS-failing, or
+          // blocking the request (e.g. via CORS), not at the device network.
+          diagnosis = 'Device is online, but the request to ' + (endpoint || 'the API') + ' failed before any response was received ' +
+                      '(no HTTP status code at all). This points to api.kilo.ai itself: either the host is down/unreachable ' +
+                      'right now, or it rejected the cross-origin request from this app (CORS). It is not a problem with the ' +
+                      'device\'s internet connection.';
+        }
+
         const diagLines = [
           'Network request failed (' + e.message + ').',
-          'Provider: ' + (provider || 'unknown'),
-          'Endpoint: ' + (endpoint || 'unknown'),
-          'API key present: ' + (hasKey ? 'yes' : 'no (anonymous / free tier)'),
-          'Possible causes:',
-          '  • kilo.ai server temporarily unreachable or down',
-          '  • The model nvidia/nemotron-3-ultra-550b-a55b:free may be offline on kilo.ai',
-          '  • Rate limit hit (200 req/h per IP for free tier)',
-          '  • CORS policy blocked the request in this WebView',
-          '  • No internet connectivity on the device',
-          '  • Request body too large or malformed (stream: true)',
-          'Tip: Try again in a moment. If it persists, check https://status.kilo.ai or add a paid API key.',
+          'Provider: ' + (provider || 'unknown') + '  |  Endpoint: ' + (endpoint || 'unknown'),
+          'API key present: ' + (apiKey ? 'yes' : 'no (anonymous / free tier)'),
+          '',
+          diagnosis,
         ];
         throw new Error(diagLines.join('\n'));
       }
@@ -6026,6 +6050,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
