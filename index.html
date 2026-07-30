@@ -960,10 +960,11 @@ const PROVIDERS = {
   GROQ:     { name:'Groq',      keyUrl:'https://console.groq.com/keys',             keyLabel:'Get API Key for Groq' },
   VERCEL:   { name:'Vercel',    keyUrl:'https://vercel.com/ai-gateway',             keyLabel:'Get API Key for Vercel' },
   CLOUDFLARE:{ name:'Cloudflare',keyUrl:'https://dash.cloudflare.com/',             keyLabel:'Get API Key for Cloudflare' },
+  KILO:     { name:'Kilo',      keyUrl:'https://app.kilo.ai/settings/api-keys',    keyLabel:'Get API Key for Kilo (optional)' },
   HUMAN_EXPERT:{ name:'Human Expert', keyUrl:'', keyLabel:'' },
 };
 
-const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLARE','PUTER'];
+const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLARE','KILO','PUTER'];
 
 /* ════════════════════════════════════════════════════════
    CUSTOM PROVIDERS — add a genuinely new provider/model here, entirely in
@@ -1018,6 +1019,7 @@ let MODELS = [
   { id:'PUTER_QWEN2_5_VL_72B',     displayName:'Qwen3.7 Plus (Puter)',                     modelName:'qwen/qwen3.7-plus',                        apiProvider:'PUTER',     supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'$0.32/M input | $1.28/M output – thinking enabled',  strike:false },
   { id:'PUTER_LING_3_FLASH',       displayName:'Ling 3.0 Flash (Puter)',                   modelName:'inclusionai/ling-3.0-flash:free',               apiProvider:'PUTER',     supportsScreenshot:false, supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Free - Free access is only available for a short time; after that, access will be interrupted server-side. – thinking enabled', strike:false },
   { id:'PUTER_NEMOTRON_3_NANO_OMNI_30B', displayName:'Nemotron 3 Nano Omni 30B A3B (Puter)', modelName:'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', apiProvider:'PUTER', supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'free - Can watch videos. Free models could be deactivated server-side at any time – thinking enabled', strike:false },
+  { id:'KILO_NEMOTRON_3_ULTRA_550B',    displayName:'Nemotron 3 Ultra 550B A55B (Kilo)',    modelName:'nvidia/nemotron-3-ultra-550b-a55b:free',           apiProvider:'KILO',      supportsScreenshot:false, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'200 requests/hour per IP address are free',             strike:false },
   { id:'GROQ_QWEN3_6_27B',         displayName:'Qwen3.6 27B (Groq)',                      modelName:'qwen/qwen3.6-27b',                         apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'30 free requests per min – thinking enabled',   strike:false },
   { id:'GROQ_GPT_OSS_120B',        displayName:'GPT-OSS 120B (Groq)',                     modelName:'openai/gpt-oss-120b',                      apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'30 free requests per min – thinking enabled',   strike:false },
   { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'',                              strike:false },
@@ -1506,6 +1508,8 @@ function hasRequiredApiKeyForCurrentModel() {
   if (!m) return true;
   if (m.id === 'HUMAN_EXPERT') return true;
   if (m.isOffline) return true;
+  // KILO free tier needs no API key (anonymous, 200 req/h per IP); key is optional for paid use.
+  if (m.apiProvider === 'KILO') return true;
   if (m.apiProvider === 'CUSTOM') {
     const keys = _getCustomModelApiKeys(m.id);
     return keys.length > 0;
@@ -2076,6 +2080,13 @@ const PROVIDER_API = {
     endpoint: (modelName) => `https://api.cloudflare.com/client/v4/accounts/auto/ai/v1/chat/completions`,
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
+  },
+  KILO: {
+    endpoint: () => 'https://api.kilo.ai/api/gateway/chat/completions',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+    // Free tier: no API key required (200 req/hour per IP); key is optional for paid use.
+    keyOptional: true,
   },
 };
 
@@ -3255,12 +3266,12 @@ async function _callOpenAiCompat(payload, provider) {
     keyHeader = provDef.keyHeader;
     keyPrefix = provDef.keyPrefix || '';
     keys = Bridge.getAllApiKeys(provider);
-    if (!keys.length) {
+    if (!keys.length && !provDef.keyOptional) {
       Bridge.onCustomModelError('No API key for ' + provider + '. Please add one in the menu.');
       return;
     }
     keyIdx = Bridge.getCurrentKeyIndex(provider) || 0;
-    apiKey = keys[keyIdx] || keys[0];
+    apiKey = keys.length ? (keys[keyIdx] || keys[0]) : undefined;
   } else {
     // Custom model (defined in CUSTOM_PROVIDERS above) – supports multiple keys with rotation
     endpoint = payload.endpoint;
@@ -5412,7 +5423,9 @@ function renderApiKeyChips() {
     link.style.display = 'none';
   }
   document.getElementById('new-key-input').placeholder =
-    currentProviderId==='PUTER' ? 'Enter Puter Auth Token' : 'Enter '+PROVIDERS[currentProviderId]?.name+' API Key';
+    currentProviderId==='PUTER' ? 'Enter Puter Auth Token' :
+    currentProviderId==='KILO'  ? 'Enter Kilo API Key (optional – free without key)' :
+    'Enter '+PROVIDERS[currentProviderId]?.name+' API Key';
 }
 function renderKeyList() {
   const list = document.getElementById('key-list');
