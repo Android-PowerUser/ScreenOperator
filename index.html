@@ -3404,6 +3404,30 @@ async function _callOpenAiCompat(payload, provider) {
       const stoppedText = _composeThinkingAndAnswer(thinkingAcc, acc);
       Bridge.onCustomModelFinalResponse(stoppedText + (stoppedText ? '\n\n' : '') + '[stopped by user]');
     } else {
+      // Enrich generic network errors with diagnostic details so the user sees
+      // more than just "[Error] Failed to fetch".
+      const isFetchFail = e instanceof TypeError &&
+                          (e.message === 'Failed to fetch' || e.message === 'Load failed' ||
+                           e.message.toLowerCase().includes('failed to fetch') ||
+                           e.message.toLowerCase().includes('network'));
+      if (isFetchFail) {
+        const hasKey = !!(apiKey);
+        const diagLines = [
+          'Network request failed (' + e.message + ').',
+          'Provider: ' + (provider || 'unknown'),
+          'Endpoint: ' + (endpoint || 'unknown'),
+          'API key present: ' + (hasKey ? 'yes' : 'no (anonymous / free tier)'),
+          'Possible causes:',
+          '  • kilo.ai server temporarily unreachable or down',
+          '  • The model nvidia/nemotron-3-ultra-550b-a55b:free may be offline on kilo.ai',
+          '  • Rate limit hit (200 req/h per IP for free tier)',
+          '  • CORS policy blocked the request in this WebView',
+          '  • No internet connectivity on the device',
+          '  • Request body too large or malformed (stream: true)',
+          'Tip: Try again in a moment. If it persists, check https://status.kilo.ai or add a paid API key.',
+        ];
+        throw new Error(diagLines.join('\n'));
+      }
       throw e;
     }
   } finally {
@@ -6002,6 +6026,7 @@ function _appendUserToHistory(text, imageDataUri) {
 </script>
 </body>
 </html>
+
 
 
 
