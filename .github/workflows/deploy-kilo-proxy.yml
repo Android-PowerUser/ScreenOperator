@@ -18,50 +18,31 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Create project if not exists
+      - name: Query Deno Deploy project info
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          curl -s -X POST "https://api.deno.com/v1/projects" \
-            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"name":"kilo-proxy"}' || true
+          echo "## Deno projects" >> $GITHUB_STEP_SUMMARY
+          PROJECTS=$(curl -s "https://api.deno.com/v1/projects" \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN")
+          echo "$PROJECTS" | python3 -c "
+import sys,json
+projects = json.load(sys.stdin)
+for p in projects:
+    name = p.get('name','?')
+    domains = [d.get('domain','?') for d in p.get('domains',[])]
+    print(f'Project: {name} | domains: {domains}')
+          " | tee -a $GITHUB_STEP_SUMMARY
 
-      - name: Deploy
+      - name: Redeploy existing project
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          deno run -A jsr:@deno/deployctl deploy \
+          OUTPUT=$(deno run -A jsr:@deno/deployctl deploy \
             --project=kilo-proxy \
             --token=$DENO_DEPLOY_TOKEN \
             --no-static \
-            cloudflare-worker/kilo-proxy/kilo_proxy.ts
-
-      - name: Get deployed URL and save as repo variable
-        env:
-          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Fetch project info from Deno Deploy API
-          PROJECT=$(curl -s "https://api.deno.com/v1/projects/kilo-proxy" \
-            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN")
-          echo "Project info: $PROJECT"
-          # Extract domains
-          DOMAINS=$(echo "$PROJECT" | python3 -c "import sys,json; p=json.load(sys.stdin); print('\n'.join(p.get('productionDeployment',{}).get('domains',[]) or [d.get('domain','') for d in p.get('domains',[])]))" 2>/dev/null || echo "")
-          echo "Domains: $DOMAINS"
-          URL=$(echo "$DOMAINS" | grep 'deno.dev' | head -1)
-          if [ -z "$URL" ]; then
-            URL="kilo-proxy.deno.dev"
-          fi
-          echo "PROXY_URL=https://$URL" >> $GITHUB_ENV
-          echo "Proxy URL: https://$URL"
-          # Save as GitHub Actions variable
-          curl -s -X PATCH "https://api.github.com/repos/${{ github.repository }}/actions/variables/KILO_PROXY_URL" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"name\":\"KILO_PROXY_URL\",\"value\":\"https://$URL\"}" || \
-          curl -s -X POST "https://api.github.com/repos/${{ github.repository }}/actions/variables" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"name\":\"KILO_PROXY_URL\",\"value\":\"https://$URL\"}"
-          echo "## Proxy live at: https://$URL" >> $GITHUB_STEP_SUMMARY
+            cloudflare-worker/kilo-proxy/kilo_proxy.ts 2>&1) || true
+          echo "$OUTPUT"
+          echo "## deployctl output" >> $GITHUB_STEP_SUMMARY
+          echo "$OUTPUT" >> $GITHUB_STEP_SUMMARY
