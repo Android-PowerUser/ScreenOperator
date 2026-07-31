@@ -1,4 +1,4 @@
-=== Attempting deploy ===
+=== Creating app (will fail if exists, that's ok) ===
 [0m[32mDownload[0m https://jsr.io/@deno/deploy/meta.json
 [0m[32mDownload[0m https://jsr.io/@deno/deploy/0.0.9904_meta.json
 [0m[32mDownload[0m https://jsr.io/@deno/deploy/0.0.9904/deno.json
@@ -350,16 +350,16 @@
 [0m[32mDownload[0m https://registry.npmjs.org/superjson/-/superjson-2.2.6.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/temporal-polyfill/-/temporal-polyfill-0.3.2.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/is-inside-container/-/is-inside-container-1.0.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/default-browser/-/default-browser-5.5.0.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/wsl-utils/-/wsl-utils-0.1.0.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/is-inside-container/-/is-inside-container-1.0.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/define-lazy-prop/-/define-lazy-prop-3.0.0.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/wsl-utils/-/wsl-utils-0.1.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/copy-anything/-/copy-anything-4.0.5.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/temporal-spec/-/temporal-spec-0.3.1.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/is-docker/-/is-docker-3.0.0.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/default-browser-id/-/default-browser-id-5.0.1.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/bundle-name/-/bundle-name-4.1.0.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/default-browser-id/-/default-browser-id-5.0.1.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/is-docker/-/is-docker-3.0.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/is-wsl/-/is-wsl-3.1.1.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/is-what/-/is-what-5.5.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/run-applescript/-/run-applescript-7.1.0.tgz
@@ -367,7 +367,43 @@
 [0m[32mDownload[0m https://registry.npmjs.org/utf-8-validate
 [0m[32mDownload[0m https://registry.npmjs.org/ws/-/ws-8.21.1.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/zod/-/zod-4.4.3.tgz
+Using the following build configuration:
+╭───────────────────────────────╮
+│ framework preset    no preset │
+│ install command     (n/a)     │
+│ build command       (n/a)     │
+│ pre-deploy command  (n/a)     │
+│ runtime mode        static    │
+│ static directory    .         │
+│ single page app     no        │
+╰───────────────────────────────╯
+[32m✔[39m Created app, view it at https://console.deno.com/android-poweruser/screenoperator-kilo-proxy
+You can view the revision here:
+  https://console.deno.com/android-poweruser/screenoperator-kilo-proxy/builds/8gdga1zj0yd3
 
-[31m✗[39m An error occurred:
-  The requested app was not found, or you do not have access to view it.
-  trace id: 9aacf66f58cf16a99683128f89a12be7
+[32m✔[39m Loaded previously uploaded files
+
+Successfully uploaded your application!
+
+Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.
+
+[32m✔[39m Successfully deployed your application!
+Production url:
+  https://screenoperator-kilo-proxy.android-poweruser.deno.net
+Preview url:
+  https://screenoperator-kilo-proxy-8gdga1zj0yd3.android-poweruser.deno.net
+Created configuration file at '/home/runner/work/ScreenOperator/ScreenOperator/deno.jsonc'
+=== Deploying ===
+You can view the revision here:
+  https://console.deno.com/android-poweruser/screenoperator-kilo-proxy/builds/p6gperjrft3d
+
+[32m✔[39m Loaded previously uploaded files
+No files were changed, so there is nothing to upload.
+
+Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.
+
+[32m✔[39m Successfully deployed your application!
+Production url:
+  https://screenoperator-kilo-proxy.android-poweruser.deno.net
+Preview url:
+  https://screenoperator-kilo-proxy-p6gperjrft3d.android-poweruser.deno.net
