@@ -22,20 +22,27 @@ jobs:
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "https://api.deno.com/v1/projects" \
+          curl -s -X POST "https://api.deno.com/v1/projects" \
             -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"name":"kilo-proxy"}')
-          echo "$RESP" >> $GITHUB_STEP_SUMMARY
-          echo "Project create response: $RESP"
+            -d '{"name":"kilo-proxy"}' || true
 
-      - name: Deploy via deployctl
+      - name: Deploy and capture URL
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          deno run -A jsr:@deno/deployctl deploy \
+          OUTPUT=$(deno run -A jsr:@deno/deployctl deploy \
             --project=kilo-proxy \
             --token=$DENO_DEPLOY_TOKEN \
             --no-static \
-            cloudflare-worker/kilo-proxy/kilo_proxy.ts 2>&1 | tee /tmp/deploy_out.txt
-          cat /tmp/deploy_out.txt >> $GITHUB_STEP_SUMMARY
+            cloudflare-worker/kilo-proxy/kilo_proxy.ts 2>&1)
+          echo "$OUTPUT"
+          echo "## Deploy Output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$OUTPUT" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          # Extract the URL from output
+          URL=$(echo "$OUTPUT" | grep -oP 'https://[a-z0-9-]+\.deno\.dev' | head -1)
+          echo "Deployed URL: $URL"
+          echo "PROXY_URL=$URL" >> $GITHUB_ENV
+          echo "## Proxy URL: $URL" >> $GITHUB_STEP_SUMMARY
