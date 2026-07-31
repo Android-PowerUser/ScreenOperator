@@ -1,0 +1,24 @@
+name: Deploy Kilo Proxy to Deno Deploy
+
+on:
+  push:
+    paths:
+      - 'cloudflare-worker/kilo-proxy/kilo_proxy.ts'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Deno Deploy
+        uses: denoland/deployctl@v1
+        with:
+          project: kilo-proxy
+          entrypoint: cloudflare-worker/kilo-proxy/kilo_proxy.ts
+          token: ${{ secrets.DENO_DEPLOY_TOKEN }}
