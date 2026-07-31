@@ -1,16 +1,7 @@
-Token length: 40
-Token prefix: ddo_K92x
---- deployctl output ---
-[?25l[36m⠋[39m Fetching project 'screenoperator-kilo-proxy' information...
-[1A[2K[-1C[36m⠙[39m Fetching project 'screenoperator-kilo-proxy' information...
-[1A[2K[-1C[36m⠹[39m Fetching project 'screenoperator-kilo-proxy' information...
-[1A[2K[-1C[36m⠸[39m Fetching project 'screenoperator-kilo-proxy' information...
-[0m[1m[31merror[0m: Uncaught (in promise) APIError: The authorization token is not valid: The bearer token is invalid.
-      throw new APIError(json.code, json.message, xDenoRay);
-[0m[31m            ^[0m
-    at [0m[1m[3mAPI.#requestJson[0m ([0m[36mhttps://jsr.io/@deno/deployctl/1.13.1/src/utils/api.ts[0m:[0m[33m183[0m:[0m[33m13[0m)
-    at async [0m[1m[3mAPI.getProject[0m ([0m[36mhttps://jsr.io/@deno/deployctl/1.13.1/src/utils/api.ts[0m:[0m[33m254[0m:[0m[33m14[0m)
-    at async [0m[1m[3mdeploy[0m ([0m[36mhttps://jsr.io/@deno/deployctl/1.13.1/src/subcommands/deploy.ts[0m:[0m[33m197[0m:[0m[33m17[0m)
-    at async [0m[1m[3mdefault[0m ([0m[36mhttps://jsr.io/@deno/deployctl/1.13.1/src/subcommands/deploy.ts[0m:[0m[33m166[0m:[0m[33m3[0m)
-    at async [0m[36mhttps://jsr.io/@deno/deployctl/1.13.1/deployctl.ts[0m:[0m[33m107[0m:[0m[33m5[0m
---- exit ---
+Token prefix: ddo_K92x... (len=40)
+=== Step 1: GET /user ===
+  [GET /user] HTTP ERROR 401: {
+  "code": "invalidToken",
+  "message": "The authorization token is not valid: The bearer token is invalid."
+}
+FATAL: /user returned 401
