@@ -11,7 +11,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Create app (idempotent) & Deploy
+      - name: Deploy to Deno Deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
@@ -29,7 +29,7 @@ jobs:
           APP="screenoperator-kilo-proxy"
           ENTRYPOINT="cloudflare-worker/kilo-proxy/kilo_proxy.ts"
 
-          echo "=== Creating app (will fail if exists, that's ok) ===" | tee /tmp/deploy_log.txt
+          # Create app if it doesn't exist yet (idempotent)
           deno deploy create \
             --org="$ORG" \
             --app="$APP" \
@@ -37,24 +37,12 @@ jobs:
             --source=local \
             --runtime-mode=dynamic \
             --entrypoint="$ENTRYPOINT" \
-            --region=us >> /tmp/deploy_log.txt 2>&1 || echo "(create failed or already exists, continuing)" >> /tmp/deploy_log.txt
+            --region=us 2>&1 || true
 
-          echo "=== Deploying ===" >> /tmp/deploy_log.txt
+          # Deploy to production
           deno deploy \
             --org="$ORG" \
             --app="$APP" \
             --token="$DENO_DEPLOY_TOKEN" \
             --prod \
-            "$ENTRYPOINT" >> /tmp/deploy_log.txt 2>&1
-
-          cat /tmp/deploy_log.txt
-
-      - name: Save log
-        if: always()
-        run: |
-          cp /tmp/deploy_log.txt scripts/deploy_log.txt
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
-          git add scripts/deploy_log.txt
-          git commit -m "ci: deploy log [skip ci]" || true
-          git push || true
+            "$ENTRYPOINT"
