@@ -22,21 +22,28 @@ jobs:
       humanoperator_changed: ${{ steps.changes.outputs.humanoperator }}
       shared_changed: ${{ steps.changes.outputs.shared }}
     steps:
+    - name: Wait for GitHub to propagate commit
+      run: sleep 10
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 2
+        fetch-depth: 0
 
     - name: Detect changed files
       id: changes
       run: |
-        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+        # Verify the expected commit is present
+        echo "Current HEAD: $(git rev-parse HEAD)"
+        echo "Parent commit: $(git rev-parse HEAD^ 2>/dev/null || echo 'none')"
+
+        CHANGED_FILES=$(git diff --name-only HEAD^ HEAD 2>/dev/null || echo "")
 
         if [ -z "$CHANGED_FILES" ]; then
           echo "app=true" >> $GITHUB_OUTPUT
           echo "humanoperator=true" >> $GITHUB_OUTPUT
           echo "shared=true" >> $GITHUB_OUTPUT
-          echo "No previous commit found - building all modules"
+          echo "No previous commit found or empty diff - building all modules"
           exit 0
         fi
 
