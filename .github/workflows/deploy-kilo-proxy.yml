@@ -6,6 +6,7 @@ on:
     paths:
       - 'cloudflare-worker/kilo-proxy/kilo_proxy.ts'
       - 'scripts/deno_deploy.py'
+      - '.github/workflows/deploy-kilo-proxy.yml'
 
 jobs:
   deploy:
