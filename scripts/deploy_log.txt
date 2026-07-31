@@ -1,4 +1,4 @@
-Token prefix: ddo_K92x... (len=40)
+Token prefix: ddo_050E... (len=40)
 === Step 1: GET /user ===
   [GET /user] HTTP ERROR 401: {
   "code": "invalidToken",
