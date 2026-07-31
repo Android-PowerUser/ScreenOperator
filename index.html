@@ -3851,6 +3851,36 @@ function _resetTermuxSession() {
   _termuxSessionArmed = false;
 }
 
+/* ── "The AI stopped Screen Operator" background toast ───── */
+// The toast itself is the native one (PhotoReasoningCommandUiNotifier / UiStringsConfig id
+// "toast_ai_stopped_app"), reached through the generic WebViewBridge.showToast channel - the
+// WebView only decides WHEN it fires: the AI ended the turn on its own (a response without
+// any command, or completed()) while the app is not in the foreground, so the in-page
+// generation-state change cannot be seen.
+const _AI_STOPPED_TOAST_ID = 'toast_ai_stopped_app';
+
+function _aiStoppedToastText() {
+  // Mirror of UiStringsConfig.get(id, default): an optional ui-strings-overrides.json value
+  // wins, non-blank strings only, otherwise the built-in default documented in
+  // DEFAULT_UI_STRINGS.
+  const fallback = DEFAULT_UI_STRINGS[_AI_STOPPED_TOAST_ID];
+  try {
+    if (getInAndroid() && typeof Android.getUiStringsOverrides === 'function') {
+      const override = JSON.parse(Android.getUiStringsOverrides() || '{}')[_AI_STOPPED_TOAST_ID];
+      if (typeof override === 'string' && override.trim()) return override;
+    }
+  } catch(e) { /* fall through to built-in default */ }
+  return fallback;
+}
+
+function _showAiStoppedToastInBackground() {
+  if (!getInAndroid()) return;
+  try {
+    if (Bridge.isAppInForeground()) return;
+    Bridge.showToast(_aiStoppedToastText(), false);
+  } catch(e) { console.warn('[ScreenOperator] AI-stopped toast failed', e); }
+}
+
 async function _executeCommandsFromResponse(text) {
   _stopExecution = false;
   // Reset batch answer collection for each new AI response so answers from a previous
@@ -3868,6 +3898,9 @@ async function _executeCommandsFromResponse(text) {
     if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
     // Clear any leftover commands bubble from the previous message
     if (window.onCommandStatus) window.onCommandStatus('');
+    // The AI stopped the turn - unless a popUp() question from this response is still
+    // waiting for the user's answer (that is a pause for input, not a stop).
+    if (!_activeAiQuestion && !_aiQuestionQueue.length) _showAiStoppedToastInBackground();
     return;
   }
 
@@ -3980,6 +4013,7 @@ async function _executeSingleCommand(cmd) {
       _stopExecution = true;
       generationRunning = false;
       if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
+      _showAiStoppedToastInBackground();
       break;
     default:
       console.log('[ScreenOperator] Unknown command type:', cmd.type, cmd);
