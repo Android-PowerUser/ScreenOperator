@@ -2092,6 +2092,56 @@ const PROVIDER_API = {
   },
 };
 
+/* ── KILO PROXY DEBUG: call window.debugKiloProxy() from console or Bridge ── */
+window.debugKiloProxy = async function() {
+  const url = 'https://screenoperator-kilo-proxy.android-poweruser.deno.net/api/gateway/chat/completions';
+  const results = [];
+  results.push('=== Kilo Proxy Debug ===');
+  results.push('Endpoint: ' + url);
+
+  // Step 1: OPTIONS preflight
+  try {
+    const opts = await fetch(url, {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': location.href,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type, Authorization',
+      },
+    });
+    results.push('OPTIONS status: ' + opts.status);
+    results.push('ACAO: ' + opts.headers.get('Access-Control-Allow-Origin'));
+    results.push('ACAM: ' + opts.headers.get('Access-Control-Allow-Methods'));
+    results.push('ACAH: ' + opts.headers.get('Access-Control-Allow-Headers'));
+  } catch(e) {
+    results.push('OPTIONS FAILED: ' + e.message);
+  }
+
+  // Step 2: POST with minimal body
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: false,
+        max_tokens: 5,
+      }),
+    });
+    results.push('POST status: ' + resp.status);
+    results.push('POST ACAO: ' + resp.headers.get('Access-Control-Allow-Origin'));
+    const text = await resp.text();
+    results.push('POST body (first 300): ' + text.slice(0, 300));
+  } catch(e) {
+    results.push('POST FAILED: ' + e.name + ': ' + e.message);
+  }
+
+  const out = results.join('\n');
+  if (typeof Bridge !== 'undefined') Bridge.onCustomModelError('DEBUG:\n' + out);
+  return out;
+};
+
 /* ── MAIN ENTRY POINT: called by Android for every AI turn ───── */
 window.onCustomModelRequest = async function(payloadJsonString) {
   _stopExecution = false;  // reset stop flag so new requests always run
