@@ -1530,4 +1530,3 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
 
 
-
