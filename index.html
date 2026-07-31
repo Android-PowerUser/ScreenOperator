@@ -2084,7 +2084,7 @@ const PROVIDER_API = {
   KILO: {
     // Requests go through a Cloudflare Worker proxy that forwards to api.kilo.ai
     // and adds CORS headers, because api.kilo.ai blocks direct browser/WebView requests.
-    endpoint: () => 'https://kilo-proxy.deno.dev/api/gateway/chat/completions',
+    endpoint: () => 'https://screenoperator-kilo-proxy.deno.dev/api/gateway/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
     // Free tier: no API key required (200 req/hour per IP); key is optional for paid use.
@@ -3440,7 +3440,7 @@ async function _callOpenAiCompat(payload, provider) {
           // specifically at api.kilo.ai being unreachable, DNS-failing, or
           // blocking the request (e.g. via CORS), not at the device network.
           diagnosis = 'Device is online, but the request to ' + (endpoint || 'the API') + ' failed before any response was received ' +
-                      '(no HTTP status code at all). This points to api.kilo.ai itself: either the host is down/unreachable ' +
+                      '(no HTTP status code at all). This points to the proxy (screenoperator-kilo-proxy.deno.dev → api.kilo.ai) being down/unreachable ' +
                       'right now, or it rejected the cross-origin request from this app (CORS). It is not a problem with the ' +
                       'device\'s internet connection.';
         }
