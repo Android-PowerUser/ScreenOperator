@@ -820,8 +820,17 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun isAppInForeground(): Boolean {
+        // hasWindowFocus() alone is not reliable here: it can remain true (or flip back to
+        // true) around system dialogs, IME transitions, or this app's own accessibility
+        // overlay while the Activity is no longer actually visible to the user - which
+        // previously made the "AI stopped Screen Operator" background toast silently never
+        // fire in exactly that situation. isAppVisible (set from MainActivity.onStart/onStop)
+        // tracks real Activity visibility and is used as the primary signal; hasWindowFocus()
+        // is kept as an additional check only to also catch the (rarer) foreground-but-
+        // unfocused case, e.g. a system dialog briefly covering the app.
         return !mainActivity.isFinishing &&
             !mainActivity.isDestroyed &&
+            mainActivity.isAppVisible &&
             mainActivity.hasWindowFocus()
     }
 

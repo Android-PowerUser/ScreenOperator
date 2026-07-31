@@ -120,6 +120,13 @@ class MainActivity : ComponentActivity() {
     private var webViewInstance: WebView? = null
     private var webViewObserversStarted = false
 
+    // True between onStart and onStop, i.e. while the Activity is actually visible to the
+    // user. Set from onStart/onStop. Used by WebViewBridge.isAppInForeground() as the
+    // primary foreground signal instead of the less reliable hasWindowFocus().
+    @Volatile
+    var isAppVisible: Boolean = false
+        private set
+
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
@@ -1304,6 +1311,24 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // hasWindowFocus() alone is not a reliable foreground signal: it can stay true or
+        // flip unpredictably around system dialogs, IME transitions, or the accessibility
+        // overlay this app itself shows, independent of whether the Activity is actually
+        // visible to the user. onStart/onStop track real visibility and are used by
+        // isAppVisible below, which WebViewBridge.isAppInForeground() now reads instead of
+        // (or in addition to) window focus - this fixes the AI-stopped background toast
+        // never firing while the app was actually backgrounded but window focus said
+        // otherwise.
+        isAppVisible = true
+    }
+
+    override fun onStop() {
+        isAppVisible = false
+        super.onStop()
     }
 
     override fun onResume() {
