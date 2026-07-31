@@ -639,6 +639,12 @@ class MainActivity : ComponentActivity() {
             val f = webViewCacheFile
             if (f.exists() && f.length() > 0) {
                 val content = f.readText(Charsets.UTF_8)
+                // Invalidate cache if it still contains the old dead proxy URL.
+                if (content.contains("screenoperator-kilo-proxy.deno.dev")) {
+                    Log.w(TAG, "readWebViewCache: Cache contains stale proxy URL (deno.dev) – discarding cache to force fresh load.")
+                    f.delete()
+                    return null
+                }
                 Log.d(TAG, "readWebViewCache: Loaded cached HTML ({} Zeichen).".format(content.length))
                 content
             } else {
