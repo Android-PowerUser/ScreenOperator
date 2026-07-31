@@ -2,6 +2,9 @@ name: Deploy Kilo Proxy to Deno Deploy
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'cloudflare-worker/kilo-proxy/kilo_proxy.ts'
 
 jobs:
   deploy:
