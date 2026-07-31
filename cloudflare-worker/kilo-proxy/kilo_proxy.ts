@@ -6,17 +6,18 @@
 
 const TARGET_BASE = "https://api.kilo.ai";
 
-const CORS_HEADERS = {
+const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Expose-Headers": "Content-Type, X-Request-Id",
   "Access-Control-Max-Age": "86400",
 };
 
 Deno.serve(async (request: Request): Promise<Response> => {
-  // CORS preflight
+  // CORS preflight – must respond immediately with 200 (not 204, some WebViews reject 204)
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, { status: 200, headers: CORS_HEADERS });
   }
 
   if (request.method !== "POST") {
@@ -29,15 +30,27 @@ Deno.serve(async (request: Request): Promise<Response> => {
   // Forward headers (pass Authorization through if present)
   const forwardHeaders = new Headers();
   forwardHeaders.set("Content-Type", "application/json");
+  forwardHeaders.set("Accept", "text/event-stream, application/json");
   const auth = request.headers.get("Authorization");
   if (auth) forwardHeaders.set("Authorization", auth);
+
+  let body: string;
+  try {
+    body = await request.text();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return new Response(
+      JSON.stringify({ error: { message: "Failed to read request body: " + msg, type: "proxy_error" } }),
+      { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+    );
+  }
 
   let upstreamResponse: Response;
   try {
     upstreamResponse = await fetch(targetUrl, {
       method: "POST",
       headers: forwardHeaders,
-      body: request.body,
+      body,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -47,15 +60,23 @@ Deno.serve(async (request: Request): Promise<Response> => {
     );
   }
 
-  // Pass upstream headers through, override CORS ones
-  const responseHeaders = new Headers(upstreamResponse.headers);
+  // Build response headers: start from upstream, overlay CORS headers
+  const responseHeaders = new Headers();
+  // Copy safe upstream headers
+  for (const [k, v] of upstreamResponse.headers.entries()) {
+    const kl = k.toLowerCase();
+    if (kl === "content-type" || kl === "x-request-id" || kl === "transfer-encoding") {
+      responseHeaders.set(k, v);
+    }
+  }
+  // Always set CORS headers (overrides anything upstream sent)
   for (const [k, v] of Object.entries(CORS_HEADERS)) {
     responseHeaders.set(k, v);
   }
 
   return new Response(upstreamResponse.body, {
     status: upstreamResponse.status,
-    statusText: upstreamResponse.statusText,
+    // statusText omitted intentionally – HTTP/2 ignores it and some Deno versions throw on non-empty values
     headers: responseHeaders,
   });
 });
