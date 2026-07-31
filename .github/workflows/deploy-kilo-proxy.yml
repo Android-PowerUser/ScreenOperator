@@ -13,11 +13,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install deployctl
+        run: deno install -gArf jsr:@deno/deployctl
+
       - name: Deploy to Deno Deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-        run: python3 scripts/deno_deploy.py
+        run: |
+          deployctl deploy \
+            --project=screenoperator-kilo-proxy \
+            --token="$DENO_DEPLOY_TOKEN" \
+            --entrypoint=cloudflare-worker/kilo-proxy/kilo_proxy.ts \
+            --no-static
