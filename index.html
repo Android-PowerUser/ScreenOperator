@@ -2084,7 +2084,7 @@ const PROVIDER_API = {
   KILO: {
     // Requests go through a Cloudflare Worker proxy that forwards to api.kilo.ai
     // and adds CORS headers, because api.kilo.ai blocks direct browser/WebView requests.
-    endpoint: () => 'https://kilo-proxy.screenoperator.workers.dev/api/gateway/chat/completions',
+    endpoint: () => 'https://kilo-proxy.deno.dev/api/gateway/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
     // Free tier: no API key required (200 req/hour per IP); key is optional for paid use.
