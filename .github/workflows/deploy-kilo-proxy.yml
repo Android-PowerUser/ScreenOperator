@@ -16,9 +16,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to Deno Deploy
-        uses: denoland/deployctl@v1
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
         with:
-          project: kilo-proxy
-          entrypoint: cloudflare-worker/kilo-proxy/kilo_proxy.ts
-          token: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          deno-version: v2.x
+
+      - name: Create project if not exists & deploy
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: |
+          # Install deployctl
+          deno install -gArf jsr:@deno/deployctl
+
+          # Try to create project (fails silently if already exists)
+          curl -s -X POST "https://api.deno.com/v1/projects" \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"kilo-proxy"}' || true
+
+          # Deploy
+          deployctl deploy \
+            --project=kilo-proxy \
+            --token=$DENO_DEPLOY_TOKEN \
+            cloudflare-worker/kilo-proxy/kilo_proxy.ts
