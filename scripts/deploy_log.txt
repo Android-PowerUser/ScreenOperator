@@ -351,16 +351,16 @@
 [0m[32mDownload[0m https://registry.npmjs.org/temporal-polyfill/-/temporal-polyfill-0.3.2.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/is-inside-container/-/is-inside-container-1.0.0.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/default-browser/-/default-browser-5.5.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/wsl-utils/-/wsl-utils-0.1.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/define-lazy-prop/-/define-lazy-prop-3.0.0.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/default-browser/-/default-browser-5.5.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/copy-anything/-/copy-anything-4.0.5.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/temporal-spec/-/temporal-spec-0.3.1.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/is-docker/-/is-docker-3.0.0.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/is-wsl/-/is-wsl-3.1.1.tgz
-[0m[32mDownload[0m https://registry.npmjs.org/bundle-name/-/bundle-name-4.1.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/default-browser-id/-/default-browser-id-5.0.1.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/bundle-name/-/bundle-name-4.1.0.tgz
+[0m[32mDownload[0m https://registry.npmjs.org/is-wsl/-/is-wsl-3.1.1.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/is-what/-/is-what-5.5.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/run-applescript/-/run-applescript-7.1.0.tgz
 [0m[32mDownload[0m https://registry.npmjs.org/bufferutil
@@ -370,4 +370,4 @@
 
 [31m✗[39m An error occurred:
   The requested app was not found, or you do not have access to view it.
-  trace id: 90296387d1d969f046c47112d474d7d7
+  trace id: 9aacf66f58cf16a99683128f89a12be7
