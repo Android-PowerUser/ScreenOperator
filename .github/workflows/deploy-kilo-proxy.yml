@@ -15,19 +15,62 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: Deploy via deployctl (create if missing)
+      - name: Deploy via Deno Deploy REST API
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
           set -e
-          deno run -A jsr:@deno/deployctl deploy \
-            --project=screenoperator-kilo-proxy \
-            --token="$DENO_DEPLOY_TOKEN" \
-            --no-static \
-            --create \
-            cloudflare-worker/kilo-proxy/kilo_proxy.ts
+
+          APP_NAME="screenoperator-kilo-proxy"
+          SOURCE_FILE="cloudflare-worker/kilo-proxy/kilo_proxy.ts"
+          DENO_API="https://api.deno.com/v1"
+
+          # 1. Get org slug from token
+          ORG=$(curl -sf -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            "$DENO_API/user" | python3 -c "
+import sys,json
+u=json.load(sys.stdin)
+orgs=u.get('organizations',[])
+print(orgs[0]['name'] if orgs else u.get('name',''))
+")
+          echo "Org: $ORG"
+
+          # 2. Create app (ignore 409 conflict = already exists)
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "$DENO_API/organizations/$ORG/projects" \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"$APP_NAME\"}")
+          echo "Create app HTTP: $HTTP"
+
+          # 3. Read source file and build assets payload
+          CODE=$(cat "$SOURCE_FILE")
+          PAYLOAD=$(python3 -c "
+import json, sys
+code = open('$SOURCE_FILE').read()
+assets = {
+  'main.ts': {
+    'kind': 'file',
+    'content': code,
+    'encoding': 'utf-8'
+  }
+}
+print(json.dumps({
+  'entryPointUrl': 'main.ts',
+  'assets': assets,
+  'envVars': {}
+}))
+")
+
+          # 4. Deploy
+          RESULT=$(curl -sf -X POST "$DENO_API/projects/$APP_NAME/deployments" \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+          echo "Deploy result: $RESULT"
+          echo "$RESULT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+domains=d.get('domains',[])
+print('Deployed to:', domains[0] if domains else 'check dashboard')
+"
