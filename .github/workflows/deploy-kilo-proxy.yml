@@ -9,9 +9,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -21,21 +18,24 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Create project if not exists & deploy
+      - name: Create Deno Deploy project
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          # Install deployctl
-          deno install -gArf jsr:@deno/deployctl
-
-          # Try to create project (fails silently if already exists)
-          curl -s -X POST "https://api.deno.com/v1/projects" \
+          RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "https://api.deno.com/v1/projects" \
             -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"name":"kilo-proxy"}' || true
+            -d '{"name":"kilo-proxy"}')
+          echo "$RESP" >> $GITHUB_STEP_SUMMARY
+          echo "Project create response: $RESP"
 
-          # Deploy
-          deployctl deploy \
+      - name: Deploy via deployctl
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: |
+          deno run -A jsr:@deno/deployctl deploy \
             --project=kilo-proxy \
             --token=$DENO_DEPLOY_TOKEN \
-            cloudflare-worker/kilo-proxy/kilo_proxy.ts
+            --no-static \
+            cloudflare-worker/kilo-proxy/kilo_proxy.ts 2>&1 | tee /tmp/deploy_out.txt
+          cat /tmp/deploy_out.txt >> $GITHUB_STEP_SUMMARY
