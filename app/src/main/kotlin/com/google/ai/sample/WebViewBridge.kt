@@ -132,21 +132,43 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     }
 
     // ── API Keys ──────────────────────────────────────────────────────────────
+    //
+    // Design: providers known to the ApiProvider enum are handled by ApiKeyManager
+    // (SharedPreferences file "api_key_prefs"). Any provider string NOT in the enum
+    // (e.g. newly added ones like KILO) is stored in a second SharedPreferences file
+    // "dynamic_api_key_prefs" using plain string keys. This way the WebView can add
+    // new providers at any time without requiring a native code change or APK rebuild.
+
+    private val dynamicKeyPrefs by lazy {
+        mainActivity.getSharedPreferences("dynamic_api_key_prefs", android.content.Context.MODE_PRIVATE)
+    }
+
+    private fun dynKeysKey(providerName: String) = "keys_$providerName"
+    private fun dynIdxKey(providerName: String)  = "idx_$providerName"
+
+    private fun dynGetKeys(providerName: String): List<String> {
+        val raw = dynamicKeyPrefs.getString(dynKeysKey(providerName), "") ?: ""
+        return if (raw.isEmpty()) emptyList() else raw.split(",")
+    }
+
+    private fun dynSaveKeys(providerName: String, keys: List<String>) {
+        dynamicKeyPrefs.edit().putString(dynKeysKey(providerName), keys.joinToString(",")).apply()
+    }
 
     @JavascriptInterface
     fun getAllApiKeys(providerName: String): String {
         return try {
             Log.d(TAG, "getAllApiKeys called with providerName: '$providerName'")
-            val provider = ApiProvider.valueOf(providerName)
-            Log.d(TAG, "ApiProvider resolved to: $provider")
-            val keys = mainActivity.apiKeyManager.getApiKeys(provider)
-            Log.d(TAG, "Retrieved ${keys.size} keys for $provider")
-            val result = JSONArray(keys).toString()
-            Log.d(TAG, "Returning JSON: $result")
-            result
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "getAllApiKeys: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
-            "[]"
+            val knownProvider = ApiProvider.values().firstOrNull { it.name == providerName }
+            if (knownProvider != null) {
+                val keys = mainActivity.apiKeyManager.getApiKeys(knownProvider)
+                Log.d(TAG, "Retrieved ${keys.size} keys for known provider $knownProvider")
+                JSONArray(keys).toString()
+            } else {
+                val keys = dynGetKeys(providerName)
+                Log.d(TAG, "Retrieved ${keys.size} keys for dynamic provider '$providerName'")
+                JSONArray(keys).toString()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "getAllApiKeys error for '$providerName': ${e.message}", e)
             "[]"
@@ -157,11 +179,20 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun addApiKey(key: String, providerName: String) {
         try {
             Log.d(TAG, "addApiKey called: provider='$providerName', key='${key.take(5)}...'")
-            val provider = ApiProvider.valueOf(providerName)
-            val success = mainActivity.apiKeyManager.addApiKey(key, provider)
-            Log.d(TAG, "addApiKey result: $success for $provider")
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "addApiKey: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
+            val knownProvider = ApiProvider.values().firstOrNull { it.name == providerName }
+            if (knownProvider != null) {
+                val success = mainActivity.apiKeyManager.addApiKey(key, knownProvider)
+                Log.d(TAG, "addApiKey result: $success for known provider $knownProvider")
+            } else {
+                val keys = dynGetKeys(providerName).toMutableList()
+                if (!keys.contains(key)) {
+                    keys.add(key)
+                    dynSaveKeys(providerName, keys)
+                    Log.d(TAG, "addApiKey: added key for dynamic provider '$providerName', total: ${keys.size}")
+                } else {
+                    Log.d(TAG, "addApiKey: key already exists for dynamic provider '$providerName'")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "addApiKey error: ${e.message}", e)
         }
@@ -171,11 +202,17 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun removeApiKey(key: String, providerName: String) {
         try {
             Log.d(TAG, "removeApiKey called: provider='$providerName', key='${key.take(5)}...'")
-            val provider = ApiProvider.valueOf(providerName)
-            val success = mainActivity.apiKeyManager.removeApiKey(key, provider)
-            Log.d(TAG, "removeApiKey result: $success for $provider")
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "removeApiKey: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
+            val knownProvider = ApiProvider.values().firstOrNull { it.name == providerName }
+            if (knownProvider != null) {
+                val success = mainActivity.apiKeyManager.removeApiKey(key, knownProvider)
+                Log.d(TAG, "removeApiKey result: $success for known provider $knownProvider")
+            } else {
+                val keys = dynGetKeys(providerName).toMutableList()
+                if (keys.remove(key)) {
+                    dynSaveKeys(providerName, keys)
+                    Log.d(TAG, "removeApiKey: removed key for dynamic provider '$providerName', remaining: ${keys.size}")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "removeApiKey error: ${e.message}", e)
         }
@@ -185,13 +222,16 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun getCurrentKeyIndex(providerName: String): Int {
         return try {
             Log.d(TAG, "getCurrentKeyIndex called for provider: '$providerName'")
-            val provider = ApiProvider.valueOf(providerName)
-            val index = mainActivity.apiKeyManager.getCurrentKeyIndex(provider)
-            Log.d(TAG, "getCurrentKeyIndex result: $index for $provider")
-            index
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "getCurrentKeyIndex: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
-            0
+            val knownProvider = ApiProvider.values().firstOrNull { it.name == providerName }
+            if (knownProvider != null) {
+                val index = mainActivity.apiKeyManager.getCurrentKeyIndex(knownProvider)
+                Log.d(TAG, "getCurrentKeyIndex result: $index for known provider $knownProvider")
+                index
+            } else {
+                val index = dynamicKeyPrefs.getInt(dynIdxKey(providerName), 0)
+                Log.d(TAG, "getCurrentKeyIndex result: $index for dynamic provider '$providerName'")
+                index
+            }
         } catch (e: Exception) {
             Log.e(TAG, "getCurrentKeyIndex error: ${e.message}", e)
             0
@@ -202,11 +242,14 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     fun setCurrentKeyIndex(index: Int, providerName: String) {
         try {
             Log.d(TAG, "setCurrentKeyIndex called: provider='$providerName', index=$index")
-            val provider = ApiProvider.valueOf(providerName)
-            val success = mainActivity.apiKeyManager.setCurrentKeyIndex(index, provider)
-            Log.d(TAG, "setCurrentKeyIndex result: $success for $provider")
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "setCurrentKeyIndex: Unknown provider '$providerName'. Available: ${ApiProvider.values().joinToString()}")
+            val knownProvider = ApiProvider.values().firstOrNull { it.name == providerName }
+            if (knownProvider != null) {
+                val success = mainActivity.apiKeyManager.setCurrentKeyIndex(index, knownProvider)
+                Log.d(TAG, "setCurrentKeyIndex result: $success for known provider $knownProvider")
+            } else {
+                dynamicKeyPrefs.edit().putInt(dynIdxKey(providerName), index).apply()
+                Log.d(TAG, "setCurrentKeyIndex: set index=$index for dynamic provider '$providerName'")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "setCurrentKeyIndex error: ${e.message}", e)
         }
@@ -1482,6 +1525,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
 
 
 
