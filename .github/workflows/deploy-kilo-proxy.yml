@@ -12,7 +12,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
 
     steps:
@@ -26,12 +26,30 @@ jobs:
       - name: Install deployctl
         run: deno install -gArf jsr:@deno/deployctl
 
-      - name: Deploy to Deno Deploy
+      - name: Deploy to Deno Deploy (capture output)
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
+          echo "Token length: ${#DENO_DEPLOY_TOKEN}" > /tmp/deploy_log.txt
+          echo "Token prefix: ${DENO_DEPLOY_TOKEN:0:8}" >> /tmp/deploy_log.txt
+          echo "--- deployctl output ---" >> /tmp/deploy_log.txt
           deployctl deploy \
             --project=screenoperator-kilo-proxy \
             --token="$DENO_DEPLOY_TOKEN" \
             --entrypoint=cloudflare-worker/kilo-proxy/kilo_proxy.ts \
-            --no-static
+            --no-static >> /tmp/deploy_log.txt 2>&1 || true
+          echo "--- exit ---" >> /tmp/deploy_log.txt
+          cat /tmp/deploy_log.txt
+
+      - name: Save log to repo
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p scripts
+          cp /tmp/deploy_log.txt scripts/deploy_log.txt
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add scripts/deploy_log.txt
+          git commit -m "ci: save deploy log [skip ci]" || true
+          git push || true
