@@ -5263,27 +5263,24 @@ window.onBackPressed = function() {
  * Collapses older "Screen elements:" user bubbles in the visible chat to
  * "no longer relevant", keeping only the N most recent intact
  * (N = _executionPolicy.maxRelevantScreenElementMessages, default 3).
- * Only user bubbles are affected. Termux output bubbles are not touched.
+ * Only user bubbles that contain "Screen elements:" are affected.
+ * Termux-only bubbles (no Screen elements section) are not touched.
  * Called after every addUserBubble() and after _renderRestoredChatBubbles().
  */
 function _truncateScreenElementBubblesInDom() {
   const marker = (_operationalTuning && _operationalTuning.screenElementsMarker)
     ? _operationalTuning.screenElementsMarker
     : 'Screen elements:';
-  const termuxMarker = 'Termux output:';
-  const noLongerRelevant = 'no longer relevant';
+  const NO_LONGER_RELEVANT = 'no longer relevant';
   const maxKeep = (_executionPolicy && typeof _executionPolicy.maxRelevantScreenElementMessages === 'number')
     ? _executionPolicy.maxRelevantScreenElementMessages
     : 3;
+  const markerLower = marker.toLowerCase();
 
-  // Collect all user bubbles that contain screen elements (but not termux-only bubbles)
+  // Collect all user bubbles whose innerHTML contains the Screen elements marker
   const allUserBubbles = [...document.querySelectorAll('#chat-messages .bubble-wrap.user-wrap .bubble.user')];
   const screenElementBubbles = allUserBubbles.filter(el => {
-    const text = el.textContent || '';
-    const hasScreen = text.toLowerCase().includes(marker.toLowerCase());
-    if (!hasScreen) return false;
-    // Exclude bubbles where the only output is Termux (no Screen elements section)
-    return true;
+    return el.innerHTML.toLowerCase().includes(markerLower);
   });
 
   if (screenElementBubbles.length <= maxKeep) return;
@@ -5291,37 +5288,21 @@ function _truncateScreenElementBubblesInDom() {
   // The oldest ones (all but the last maxKeep) get truncated
   const toTruncate = screenElementBubbles.slice(0, screenElementBubbles.length - maxKeep);
   for (const bubble of toTruncate) {
-    const text = bubble.textContent || '';
-    const markerIdx = text.toLowerCase().indexOf(marker.toLowerCase());
+    const html = bubble.innerHTML;
+    const htmlLower = html.toLowerCase();
+    const markerIdx = htmlLower.indexOf(markerLower);
     if (markerIdx < 0) continue;
     // Check if already replaced
-    const afterMarker = text.substring(markerIdx + marker.length).trim();
-    if (afterMarker.toLowerCase() === noLongerRelevant) continue;
-    // Replace the text content: keep everything before the marker, add marker + no longer relevant
-    const prefix = text.substring(0, markerIdx);
-    // We need to update only the text node (the bubble may contain an img child for screenshots)
-    // Strategy: walk child nodes, replace text nodes to rewrite content
-    _replaceBubbleTextUpToMarker(bubble, prefix, marker, noLongerRelevant);
+    const afterMarker = html.substring(markerIdx + marker.length).replace(/^\s+/, '');
+    if (afterMarker.toLowerCase().startsWith(NO_LONGER_RELEVANT)) continue;
+    // Keep everything up to and including the marker, add NO_LONGER_RELEVANT,
+    // and preserve any img elements (screenshot thumbnails) from the trailing part.
+    const beforeMarker = html.substring(0, markerIdx + marker.length);
+    const afterPart = html.substring(markerIdx + marker.length);
+    const imgMatches = afterPart.match(/<img[^>]*>/gi) || [];
+    const imgHtml = imgMatches.join('');
+    bubble.innerHTML = beforeMarker + ' ' + NO_LONGER_RELEVANT + imgHtml;
   }
-}
-
-/**
- * Rewrites the text content of a user bubble element so that everything from
- * the screen-elements marker onwards is replaced with "no longer relevant",
- * while preserving any non-text child elements (e.g. screenshot thumbnails).
- */
-function _replaceBubbleTextUpToMarker(bubble, prefix, marker, replacement) {
-  // Build the new plain-text portion
-  const newPlainText = prefix + marker + ' ' + replacement;
-  // Remove all text nodes (keep element children like img)
-  const childNodes = [...bubble.childNodes];
-  for (const node of childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      node.remove();
-    }
-  }
-  // Prepend the new text as a text node at the start
-  bubble.insertBefore(document.createTextNode(newPlainText), bubble.firstChild);
 }
 
 function addUserBubble(text, imageDataUri) {
