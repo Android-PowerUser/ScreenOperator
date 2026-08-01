@@ -2093,7 +2093,9 @@ const PROVIDER_API = {
     keyOptional: true,
   },
   OPENCODE: {
-    endpoint: () => 'https://opencode.ai/zen/v1/chat/completions',
+    // Requests go through a Deno Deploy proxy that forwards to opencode.ai/zen
+    // and adds CORS headers, because opencode.ai blocks OPTIONS preflight from WebViews.
+    endpoint: () => 'https://screenoperator-opencode-proxy.android-poweruser.deno.net/zen/v1/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
