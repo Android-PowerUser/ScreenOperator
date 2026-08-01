@@ -5259,6 +5259,71 @@ window.onBackPressed = function() {
 /* ════════════════════════════════════════════════════════
    CHAT
 ════════════════════════════════════════════════════════ */
+/**
+ * Collapses older "Screen elements:" user bubbles in the visible chat to
+ * "no longer relevant", keeping only the N most recent intact
+ * (N = _executionPolicy.maxRelevantScreenElementMessages, default 3).
+ * Only user bubbles are affected. Termux output bubbles are not touched.
+ * Called after every addUserBubble() and after _renderRestoredChatBubbles().
+ */
+function _truncateScreenElementBubblesInDom() {
+  const marker = (_operationalTuning && _operationalTuning.screenElementsMarker)
+    ? _operationalTuning.screenElementsMarker
+    : 'Screen elements:';
+  const termuxMarker = 'Termux output:';
+  const noLongerRelevant = 'no longer relevant';
+  const maxKeep = (_executionPolicy && typeof _executionPolicy.maxRelevantScreenElementMessages === 'number')
+    ? _executionPolicy.maxRelevantScreenElementMessages
+    : 3;
+
+  // Collect all user bubbles that contain screen elements (but not termux-only bubbles)
+  const allUserBubbles = [...document.querySelectorAll('#chat-messages .bubble-wrap.user-wrap .bubble.user')];
+  const screenElementBubbles = allUserBubbles.filter(el => {
+    const text = el.textContent || '';
+    const hasScreen = text.toLowerCase().includes(marker.toLowerCase());
+    if (!hasScreen) return false;
+    // Exclude bubbles where the only output is Termux (no Screen elements section)
+    return true;
+  });
+
+  if (screenElementBubbles.length <= maxKeep) return;
+
+  // The oldest ones (all but the last maxKeep) get truncated
+  const toTruncate = screenElementBubbles.slice(0, screenElementBubbles.length - maxKeep);
+  for (const bubble of toTruncate) {
+    const text = bubble.textContent || '';
+    const markerIdx = text.toLowerCase().indexOf(marker.toLowerCase());
+    if (markerIdx < 0) continue;
+    // Check if already replaced
+    const afterMarker = text.substring(markerIdx + marker.length).trim();
+    if (afterMarker.toLowerCase() === noLongerRelevant) continue;
+    // Replace the text content: keep everything before the marker, add marker + no longer relevant
+    const prefix = text.substring(0, markerIdx);
+    // We need to update only the text node (the bubble may contain an img child for screenshots)
+    // Strategy: walk child nodes, replace text nodes to rewrite content
+    _replaceBubbleTextUpToMarker(bubble, prefix, marker, noLongerRelevant);
+  }
+}
+
+/**
+ * Rewrites the text content of a user bubble element so that everything from
+ * the screen-elements marker onwards is replaced with "no longer relevant",
+ * while preserving any non-text child elements (e.g. screenshot thumbnails).
+ */
+function _replaceBubbleTextUpToMarker(bubble, prefix, marker, replacement) {
+  // Build the new plain-text portion
+  const newPlainText = prefix + marker + ' ' + replacement;
+  // Remove all text nodes (keep element children like img)
+  const childNodes = [...bubble.childNodes];
+  for (const node of childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      node.remove();
+    }
+  }
+  // Prepend the new text as a text node at the start
+  bubble.insertBefore(document.createTextNode(newPlainText), bubble.firstChild);
+}
+
 function addUserBubble(text, imageDataUri) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
@@ -5271,6 +5336,7 @@ function addUserBubble(text, imageDataUri) {
     : '';
   wrap.innerHTML = `<div class="bubble user">${escHtml(text)}${thumbHtml}</div>${undoBtnHtml}`;
   document.getElementById('chat-messages').appendChild(wrap);
+  _truncateScreenElementBubblesInDom();
   scrollToBottom();
 }
 /** Shows a placeholder user-side bubble with a spinner while waiting for Termux output. */
@@ -5954,6 +6020,8 @@ function _renderRestoredChatBubbles() {
     if (m.role === 'user') addUserBubble(m.text || '', m.imageDataUri);
     else addModelBubble(m.text, false);
   }
+  // After restoring all bubbles, apply screen-element truncation once
+  _truncateScreenElementBubblesInDom();
 }
 
 /**
