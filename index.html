@@ -3609,10 +3609,37 @@ function _isKeyError(status, errMsg) {
  */
 function _normalizeCommandText(text) {
   // Strip markdown bold/italic/code markers (* _ `) that AIs sometimes wrap
-  // around commands (e.g. **completed()** or __home()__).  These characters
-  // are never part of any command syntax, so removing them is safe and makes
-  // every command robust against markdown formatting.
-  return text.replace(/[*_`]/g, '').replace(/\s+/g, ' ').replace(/\r\n|\r/g, '\n').trim();
+  // around commands (e.g. **completed()** or __home()__), but ONLY outside of
+  // quoted strings.  Inside quoted strings these characters are valid shell
+  // syntax (glob *, variable _, backtick subshell) and must be preserved.
+  text = text.replace(/\r\n|\r/g, '\n');
+
+  // Tokenise into quoted / unquoted segments, then strip markdown chars only
+  // from the unquoted segments and collapse whitespace there too.
+  const parts = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'") {
+      // Quoted segment – scan to matching closing quote, honouring backslash escapes.
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === '\\') { j += 2; continue; }
+        if (text[j] === ch)   { j++; break; }
+        j++;
+      }
+      parts.push(text.slice(i, j));   // preserve verbatim
+      i = j;
+    } else {
+      // Unquoted segment – scan to next quote.
+      let j = i;
+      while (j < text.length && text[j] !== '"' && text[j] !== "'") j++;
+      parts.push(text.slice(i, j).replace(/[*_`]/g, '').replace(/\s+/g, ' '));
+      i = j;
+    }
+  }
+
+  return parts.join('').trim();
 }
 
 /* ── CommandPatternConfig (remote regex overrides for EXISTING command types) ── */
