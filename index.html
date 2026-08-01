@@ -2286,7 +2286,7 @@ function _composeThinkingAndAnswer(thinking, answer) {
   const t = (thinking || '').trim();
   const a = answer || '';
   if (!t) return a;
-  return '🧠 Thinking:\n' + t + '\n\n💬 Antwort:\n' + a;
+  return '🧠 Thinking:\n' + t + '\n\n💬 Answer:\n' + a;
 }
 
 /*
@@ -5957,12 +5957,31 @@ function _renderRestoredChatBubbles() {
 }
 
 /**
+ * Strips the 🧠 Thinking: / 💬 Answer: display headers that _composeThinkingAndAnswer
+ * adds for the UI. These must not be stored in history because they would be sent back
+ * to the model as assistant context, causing doubled headers on the next turn.
+ * Returns only the answer portion (the part after "💬 Answer:\n", or the full text if
+ * no such header is present).
+ */
+function _stripThinkingHeader(text) {
+  if (!text) return text;
+  // Match both old "Antwort" label and current "Answer" label for backwards compatibility
+  const marker = /\n\n💬 (?:Answer|Antwort):\n/;
+  const idx = text.search(marker);
+  if (idx !== -1) return text.slice(text.indexOf('\n', idx + 2) + 1);
+  return text;
+}
+
+/**
  * Called by window.onAiMessage when a final AI message arrives.
  * Appends it to _jsChatHistory and persists.
  */
 function _appendAssistantToHistory(text) {
   if (!text) return;
-  _jsChatHistory.push({ role: 'assistant', text });
+  // Strip thinking-block UI headers before storing so the model never sees them
+  // as part of the conversation context on the next turn.
+  const stored = _stripThinkingHeader(text);
+  _jsChatHistory.push({ role: 'assistant', text: stored });
   // Keep history manageable (last 40 messages)
   if (_jsChatHistory.length > 40) _jsChatHistory = _jsChatHistory.slice(-40);
   _saveJsChatHistory();
