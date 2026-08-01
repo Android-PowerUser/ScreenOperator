@@ -6061,6 +6061,29 @@ function _appendUserToHistory(text, imageDataUri) {
     } catch (e) {
       console.warn('[HotReload] document.write fehlgeschlagen, versuche location.reload()', e);
       try { window.location.reload(); } catch (_) {}
+      return;
+    }
+
+    // document.write/close ist KEINE echte Navigation: Android's
+    // WebViewClient.onPageFinished() (der native Callback, der normalerweise
+    // window.onAndroidReady() und window.onTrialStateChanged() auslöst) feuert
+    // dabei nicht erneut. Die frisch neu deklarierten Top-Level-Variablen aus
+    // der neuen index.html (u.a. currentModelId) bekommen dadurch NIE ihren
+    // Wert aus der nativen Bridge zugewiesen - das UI wirkt "vom nativen Code
+    // abgekoppelt" (Modellauswahl verloren, neue Modelle fehlen), bis die App
+    // komplett neu gestartet wird und ein echter onPageFinished-Zyklus läuft.
+    //
+    // Die JS-Bridge (window.Android, siehe addJavascriptInterface) bleibt beim
+    // document.write-Ersatz erhalten, da sie am WebView-Objekt hängt, nicht am
+    // DOM. Wir können also onAndroidReady() manuell erneut anstoßen, um exakt
+    // den Init-Flow nachzuholen, den der native onPageFinished-Handler sonst
+    // ausgelöst hätte.
+    try {
+      if (typeof window.onAndroidReady === 'function') {
+        window.onAndroidReady();
+      }
+    } catch (e) {
+      console.warn('[HotReload] onAndroidReady() nach Reload fehlgeschlagen', e);
     }
   }
 
