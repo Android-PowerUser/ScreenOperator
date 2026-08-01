@@ -3730,8 +3730,8 @@ function parseCommandsFromText(rawText) {
     { re: /\bwriteText\(["']([^"']+)["']\)/gi, type: 'WRITE_TEXT', single: false,
       build: (m) => ({ type: 'WRITE_TEXT', text: m[1] }) },
 
-    // Termux (supports escaped quotes inside)
-    { re: /\bTermux\(\s*(["'])((?:\\.|(?!\1\s*\)).)*)\1\s*\)/gi, type: 'TERMUX', single: false,
+    // Termux (supports escaped quotes inside; [\s\S] instead of . so newlines inside the command are matched too)
+    { re: /\bTermux\(\s*(["'])((?:\\[\s\S]|(?!\1\s*\))[\s\S])*)\1\s*\)/gi, type: 'TERMUX', single: false,
       build: (m) => ({ type: 'TERMUX', command: m[2].replace(/\\(['"])/g, '$1') }) },
 
     // Long click
