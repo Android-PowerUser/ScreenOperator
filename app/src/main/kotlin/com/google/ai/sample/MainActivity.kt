@@ -110,6 +110,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var billingClient: BillingClient
     private var monthlyDonationProductDetails: ProductDetails? = null
     private val subscriptionProductId = "donation_monthly_2_90_eur"
+    private val freedomProductId = "freedom_monthly_7_90_eur"
+    private var freedomProductDetails: ProductDetails? = null
 
     private var currentTrialState by mutableStateOf(TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET)
     private var showTrialInfoDialog by mutableStateOf(false)
@@ -1092,19 +1094,29 @@ class MainActivity : ComponentActivity() {
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(subscriptionProductId)
                 .setProductType(BillingClient.ProductType.SUBS)
+                .build(),
+            QueryProductDetailsParams.Product.newBuilder()
+                .setProductId(freedomProductId)
+                .setProductType(BillingClient.ProductType.SUBS)
                 .build()
         )
         val params = QueryProductDetailsParams.newBuilder().setProductList(productList).build()
-        Log.d(TAG, "queryProductDetails: Querying for product ID: $subscriptionProductId")
+        Log.d(TAG, "queryProductDetails: Querying for product IDs: $subscriptionProductId, $freedomProductId")
 
         billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
             Log.i(TAG, "queryProductDetailsAsync result: ResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}")
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
                 monthlyDonationProductDetails = productDetailsList.find { it.productId == subscriptionProductId }
+                freedomProductDetails = productDetailsList.find { it.productId == freedomProductId }
                 if (monthlyDonationProductDetails != null) {
-                    Log.i(TAG, "Product details loaded: ${monthlyDonationProductDetails?.name}, ID: ${monthlyDonationProductDetails?.productId}")
+                    Log.i(TAG, "Pro product details loaded: ${monthlyDonationProductDetails?.name}, ID: ${monthlyDonationProductDetails?.productId}")
                 } else {
                     Log.w(TAG, "Product details for $subscriptionProductId not found in the list despite OK response.")
+                }
+                if (freedomProductDetails != null) {
+                    Log.i(TAG, "Freedom product details loaded: ${freedomProductDetails?.name}, ID: ${freedomProductDetails?.productId}")
+                } else {
+                    Log.w(TAG, "Product details for $freedomProductId not found in the list despite OK response.")
                 }
             } else {
                 Log.e(TAG, "Failed to query product details: ${billingResult.debugMessage}. List size: ${productDetailsList.size}")
@@ -1182,6 +1194,61 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun launchGooglePlayBillingForFreedom() {
+        if (!::billingClient.isInitialized) {
+            Log.e(TAG, "launchGooglePlayBillingForFreedom: BillingClient not initialized.")
+            updateStatusMessage("Payment service not initialized. Please try again later.", true)
+            return
+        }
+        if (!billingClient.isReady) {
+            Log.e(TAG, "launchGooglePlayBillingForFreedom: BillingClient not ready.")
+            updateStatusMessage("Payment service not ready. Please try again later.", true)
+            if (MainActivityBillingClientState.shouldReconnect(billingClient.connectionState)) {
+                billingClient.startConnection(object : BillingClientStateListener {
+                    override fun onBillingSetupFinished(setupResult: BillingResult) {
+                        if (setupResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                            launchGooglePlayBillingForFreedom()
+                        }
+                    }
+                    override fun onBillingServiceDisconnected() { Log.w(TAG, "launchGooglePlayBillingForFreedom: BillingClient still disconnected.") }
+                })
+            }
+            return
+        }
+        if (freedomProductDetails == null) {
+            Log.e(TAG, "launchGooglePlayBillingForFreedom: Freedom product details not loaded yet.")
+            updateStatusMessage("Freedom subscription information is loading. Please wait a moment and try again.", true)
+            queryProductDetails()
+            return
+        }
+        freedomProductDetails?.let { productDetails ->
+            val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken
+            if (offerToken == null) {
+                Log.e(TAG, "No offer token found for Freedom product: ${productDetails.productId}")
+                updateStatusMessage("Freedom subscription offer not found.", true)
+                return@let
+            }
+            val productDetailsParamsList = listOf(
+                BillingFlowParams.ProductDetailsParams.newBuilder()
+                    .setProductDetails(productDetails)
+                    .setOfferToken(offerToken)
+                    .build()
+            )
+            val billingFlowParams = BillingFlowParams.newBuilder()
+                .setProductDetailsParamsList(productDetailsParamsList)
+                .build()
+            Log.d(TAG, "launchGooglePlayBillingForFreedom: Launching billing flow for Freedom.")
+            val billingResult = billingClient.launchBillingFlow(this, billingFlowParams)
+            if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                Log.e(TAG, "Failed to launch Freedom billing flow: ${billingResult.debugMessage}")
+                updateStatusMessage("Error starting Freedom subscription process: ${billingResult.debugMessage}", true)
+            }
+        } ?: run {
+            Log.e(TAG, "launchGooglePlayBillingForFreedom: Freedom product details are null.")
+            updateStatusMessage("Freedom subscription product not available.", true)
+        }
+    }
+
     private fun handlePurchase(purchase: Purchase) {
         Log.i(TAG, "handlePurchase called for purchase: OrderId: ${purchase.orderId}, Products: ${purchase.products}, State: ${purchase.purchaseState}, Token: ${purchase.purchaseToken}, Ack: ${purchase.isAcknowledged}")
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
@@ -1199,7 +1266,7 @@ class MainActivity : ComponentActivity() {
                             Log.i(TAG, "Subscription purchase acknowledged successfully.")
                             updateStatusMessage("Thank you for your subscription!")
                             TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.getTrialState(this, null)) // Update state after purchase
+                            updateTrialState(TrialManager.getTrialState(this, null))
                             Log.d(TAG, "handlePurchase: Stopping TrialTimerService as app is purchased.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
@@ -1213,10 +1280,43 @@ class MainActivity : ComponentActivity() {
                     Log.i(TAG, "handlePurchase: Subscription already acknowledged.")
                     updateStatusMessage("Subscription already active.")
                     TrialManager.markAsPurchased(this)
-                    updateTrialState(TrialManager.getTrialState(this, null)) // Update state after purchase
+                    updateTrialState(TrialManager.getTrialState(this, null))
+                }
+            } else if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, freedomProductId)) {
+                Log.d(TAG, "handlePurchase: Purchase contains Freedom product ID: $freedomProductId")
+                if (!purchase.isAcknowledged) {
+                    Log.i(TAG, "handlePurchase: Freedom purchase not acknowledged. Acknowledging now.")
+                    val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
+                        .setPurchaseToken(purchase.purchaseToken)
+                        .build()
+                    billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
+                        Log.i(TAG, "handlePurchase Freedom (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
+                        if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                            Log.i(TAG, "Freedom subscription purchase acknowledged successfully.")
+                            updateStatusMessage("Thank you for your Freedom subscription!")
+                            TrialManager.markAsFreedomPurchased(this)
+                            TrialManager.markAsPurchased(this)
+                            updateTrialState(TrialManager.getTrialState(this, null))
+                            evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                            Log.d(TAG, "handlePurchase Freedom: Stopping TrialTimerService.")
+                            val stopIntent = Intent(this, TrialTimerService::class.java)
+                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                            startService(stopIntent)
+                        } else {
+                            Log.e(TAG, "Failed to acknowledge Freedom purchase: ${ackBillingResult.debugMessage}")
+                            updateStatusMessage("Error confirming Freedom purchase: ${ackBillingResult.debugMessage}", true)
+                        }
+                    }
+                } else {
+                    Log.i(TAG, "handlePurchase: Freedom subscription already acknowledged.")
+                    updateStatusMessage("Freedom subscription already active.")
+                    TrialManager.markAsFreedomPurchased(this)
+                    TrialManager.markAsPurchased(this)
+                    updateTrialState(TrialManager.getTrialState(this, null))
+                    evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
                 }
             } else {
-                Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain the target product ID ($subscriptionProductId). Products: ${purchase.products}")
+                Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain any known product ID. Products: ${purchase.products}")
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
             Log.i(TAG, "handlePurchase: Purchase state is PENDING.")
@@ -1260,6 +1360,26 @@ class MainActivity : ComponentActivity() {
                         }
                         return@forEach 
                     }
+                    if (MainActivityBillingStateEvaluator.isPurchasedSubscription(purchase, freedomProductId)) {
+                        Log.i(TAG, "queryActiveSubscriptions: Active Freedom subscription found.")
+                        isSubscribedLocally = true
+                        if (!purchase.isAcknowledged) {
+                            Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged Freedom subscription. Handling purchase.")
+                            handlePurchase(purchase)
+                        } else {
+                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged Freedom subscription.")
+                            if (!TrialManager.isFreedomPurchased(this)) {
+                                TrialManager.markAsFreedomPurchased(this)
+                                TrialManager.markAsPurchased(this)
+                                updateTrialState(TrialManager.getTrialState(this, null))
+                                evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                            }
+                            val stopIntent = Intent(this, TrialTimerService::class.java)
+                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                            startService(stopIntent)
+                        }
+                        return@forEach
+                    }
                 }
                 if (isSubscribedLocally) {
                     Log.i(TAG, "queryActiveSubscriptions: User has an active subscription (final check after loop). Ensuring state is PURCHASED.")
@@ -1271,7 +1391,12 @@ class MainActivity : ComponentActivity() {
                          startService(stopIntent)
                     }
                 } else {
-                    Log.i(TAG, "queryActiveSubscriptions: User has no active subscription for $subscriptionProductId. Re-evaluating trial logic.")
+                    Log.i(TAG, "queryActiveSubscriptions: User has no active subscription. Re-evaluating trial logic.")
+                    if (TrialManager.isFreedomPurchased(this@MainActivity)) {
+                        Log.w(TAG, "queryActiveSubscriptions: No active Freedom subscription found by Google Play Billing, but was previously marked. Clearing Freedom mark.")
+                        TrialManager.clearFreedomMark(this@MainActivity)
+                        evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
+                    }
                     if (TrialManager.isPurchased(this@MainActivity)) {
                         Log.w(TAG, "queryActiveSubscriptions: No active subscription found by Google Play Billing, but app was previously marked as purchased. Clearing purchase mark.")
                         TrialManager.clearPurchaseMark(this@MainActivity)
@@ -1540,6 +1665,15 @@ class MainActivity : ComponentActivity() {
         launchGooglePlayBilling()
     }
 
+    fun initiateFreedomPurchaseFromWebView() {
+        Log.d(TAG, "initiateFreedomPurchaseFromWebView called. Launching Freedom billing flow.")
+        launchGooglePlayBillingForFreedom()
+    }
+
+    fun isFreedomPurchasedFromWebView(): Boolean {
+        return TrialManager.isFreedomPurchased(this)
+    }
+
     /**
      * Called by [WebViewBridge] to persist the "execute Termux commands in background" preference
      * when toggled from the WebView UI.
@@ -1735,6 +1869,7 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
 
 
 
