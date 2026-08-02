@@ -5978,10 +5978,7 @@ function _stripThinkingHeader(text) {
  */
 function _appendAssistantToHistory(text) {
   if (!text) return;
-  // Strip thinking-block UI headers before storing so the model never sees them
-  // as part of the conversation context on the next turn.
-  const stored = _stripThinkingHeader(text);
-  _jsChatHistory.push({ role: 'assistant', text: stored });
+  _jsChatHistory.push({ role: 'assistant', text });
   // Keep history manageable (last 40 messages)
   if (_jsChatHistory.length > 40) _jsChatHistory = _jsChatHistory.slice(-40);
   _saveJsChatHistory();
