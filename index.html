@@ -5259,52 +5259,6 @@ window.onBackPressed = function() {
 /* ════════════════════════════════════════════════════════
    CHAT
 ════════════════════════════════════════════════════════ */
-/**
- * Collapses older "Screen elements:" user bubbles in the visible chat to
- * "no longer relevant", keeping only the N most recent intact
- * (N = _executionPolicy.maxRelevantScreenElementMessages, default 3).
- * Only user bubbles that contain "Screen elements:" are affected.
- * Termux-only bubbles (no Screen elements section) are not touched.
- * Called after every addUserBubble() and after _renderRestoredChatBubbles().
- */
-function _truncateScreenElementBubblesInDom() {
-  const marker = (_operationalTuning && _operationalTuning.screenElementsMarker)
-    ? _operationalTuning.screenElementsMarker
-    : 'Screen elements:';
-  const NO_LONGER_RELEVANT = 'no longer relevant';
-  const maxKeep = (_executionPolicy && typeof _executionPolicy.maxRelevantScreenElementMessages === 'number')
-    ? _executionPolicy.maxRelevantScreenElementMessages
-    : 3;
-  const markerLower = marker.toLowerCase();
-
-  // Collect all user bubbles whose innerHTML contains the Screen elements marker
-  const allUserBubbles = [...document.querySelectorAll('#chat-messages .bubble-wrap.user-wrap .bubble.user')];
-  const screenElementBubbles = allUserBubbles.filter(el => {
-    return el.innerHTML.toLowerCase().includes(markerLower);
-  });
-
-  if (screenElementBubbles.length <= maxKeep) return;
-
-  // The oldest ones (all but the last maxKeep) get truncated
-  const toTruncate = screenElementBubbles.slice(0, screenElementBubbles.length - maxKeep);
-  for (const bubble of toTruncate) {
-    const html = bubble.innerHTML;
-    const htmlLower = html.toLowerCase();
-    const markerIdx = htmlLower.indexOf(markerLower);
-    if (markerIdx < 0) continue;
-    // Check if already replaced
-    const afterMarker = html.substring(markerIdx + marker.length).replace(/^\s+/, '');
-    if (afterMarker.toLowerCase().startsWith(NO_LONGER_RELEVANT)) continue;
-    // Keep everything up to and including the marker, add NO_LONGER_RELEVANT,
-    // and preserve any img elements (screenshot thumbnails) from the trailing part.
-    const beforeMarker = html.substring(0, markerIdx + marker.length);
-    const afterPart = html.substring(markerIdx + marker.length);
-    const imgMatches = afterPart.match(/<img[^>]*>/gi) || [];
-    const imgHtml = imgMatches.join('');
-    bubble.innerHTML = beforeMarker + ' ' + NO_LONGER_RELEVANT + imgHtml;
-  }
-}
-
 function addUserBubble(text, imageDataUri) {
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
@@ -5317,7 +5271,6 @@ function addUserBubble(text, imageDataUri) {
     : '';
   wrap.innerHTML = `<div class="bubble user">${escHtml(text)}${thumbHtml}</div>${undoBtnHtml}`;
   document.getElementById('chat-messages').appendChild(wrap);
-  _truncateScreenElementBubblesInDom();
   scrollToBottom();
 }
 /** Shows a placeholder user-side bubble with a spinner while waiting for Termux output. */
@@ -6001,8 +5954,6 @@ function _renderRestoredChatBubbles() {
     if (m.role === 'user') addUserBubble(m.text || '', m.imageDataUri);
     else addModelBubble(m.text, false);
   }
-  // After restoring all bubbles, apply screen-element truncation once
-  _truncateScreenElementBubblesInDom();
 }
 
 /**
