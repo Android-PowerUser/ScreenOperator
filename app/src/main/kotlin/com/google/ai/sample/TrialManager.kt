@@ -30,6 +30,7 @@ object TrialManager {
     private const val KEY_CFG_ST = "cfg_st_val" // Tarnung für trialConfirmedExpired (obfuskiert)
     private const val KEY_INITIAL_SETUP_FLAG = "initial_setup_complete" // Tarnung für trialAwaitingFirstInternetTime (unobfuskiert)
     private const val KEY_FEATURE_ACCESS_FLAG = "feature_access_granted" // Tarnung für appPurchased (unobfuskiert)
+    private const val KEY_FREEDOM_ACCESS_FLAG = "freedom_access_granted" // Freedom subscription purchased
     // --- END: Camouflage for Keys and Obfuscation ---
 
     private const val TAG = "TrialManager"
@@ -325,4 +326,26 @@ object TrialManager {
         getSharedPreferences(context).edit().putBoolean(KEY_INITIAL_SETUP_FLAG, awaiting).apply()
     }
     // --- END: WebView bridge accessors ---
+
+    // --- START: Freedom subscription ---
+    fun markAsFreedomPurchased(context: Context) {
+        Log.d(TAG, "markAsFreedomPurchased called")
+        getSharedPreferences(context).edit().putBoolean(KEY_FREEDOM_ACCESS_FLAG, true).apply()
+        Log.i(TAG, "App marked as Freedom-purchased.")
+    }
+
+    fun isFreedomPurchased(context: Context): Boolean {
+        Log.d(TAG, "isFreedomPurchased called, checking KEY_FREEDOM_ACCESS_FLAG")
+        val purchased = getSharedPreferences(context).getBoolean(KEY_FREEDOM_ACCESS_FLAG, false)
+        Log.d(TAG, "isFreedomPurchased returning: $purchased")
+        return purchased
+    }
+
+    fun clearFreedomMark(context: Context) {
+        Log.d(TAG, "clearFreedomMark called")
+        getSharedPreferences(context).edit().putBoolean(KEY_FREEDOM_ACCESS_FLAG, false).apply()
+        Log.i(TAG, "Freedom purchase mark cleared.")
+    }
+    // --- END: Freedom subscription ---
 }
+
