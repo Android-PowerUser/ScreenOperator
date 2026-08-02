@@ -6034,6 +6034,62 @@ function _appendUserToHistory(text, imageDataUri) {
   };
 })();
 
+/* Hook: after a new user turn is recorded, collapse older "Screen elements:"
+ * user bubbles - both in _jsChatHistory (persisted) and in the visible DOM -
+ * to "no longer relevant", keeping only the N most recent intact
+ * (N = _executionPolicy.maxRelevantScreenElementMessages). Termux-only
+ * messages (no Screen elements marker) are never touched. Reuses the exact
+ * same _sanitizeHistoryForScreenElements() logic already used for the API
+ * payload, so behavior is consistent everywhere. Runs via setTimeout so it
+ * never executes inside the same synchronous call stack as onUserMessage /
+ * native callbacks (avoids any race with stop/generation-state handling). */
+(function() {
+  const _origAppend = _appendUserToHistory;
+  _appendUserToHistory = function(text, imageDataUri) {
+    _origAppend(text, imageDataUri);
+    setTimeout(_collapseOldScreenElementBubbles, 0);
+  };
+})();
+
+function _collapseOldScreenElementBubbles() {
+  try {
+    if (!Array.isArray(_jsChatHistory) || _jsChatHistory.length === 0) return;
+    const sanitized = _sanitizeHistoryForScreenElements(_jsChatHistory);
+    // Detect which entries actually changed (were just collapsed) and update
+    // both the stored history and the matching DOM bubble in place.
+    const userWraps = [...document.querySelectorAll('#chat-messages .user-wrap')];
+    let userIdx = -1;
+    for (let i = 0; i < _jsChatHistory.length; i++) {
+      const before = _jsChatHistory[i];
+      const after = sanitized[i];
+      if (before.role !== 'user') continue;
+      userIdx++;
+      if (after.text !== before.text) {
+        _jsChatHistory[i] = after;
+        const wrap = userWraps[userIdx];
+        const bubble = wrap ? wrap.querySelector('.bubble.user') : null;
+        if (bubble) {
+          // Preserve any child elements (e.g. screenshot thumbnail <img>); only
+          // rewrite the leading text node that carries the message text.
+          let textNode = null;
+          for (const node of bubble.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) { textNode = node; break; }
+          }
+          if (textNode) {
+            textNode.data = after.text;
+          } else {
+            bubble.insertBefore(document.createTextNode(after.text), bubble.firstChild);
+          }
+        }
+      }
+    }
+    _saveJsChatHistory();
+  } catch (e) {
+    // Never let a truncation-display issue break the chat.
+    console.error('_collapseOldScreenElementBubbles failed', e);
+  }
+}
+
 /* ── Live hot-reload: prüft alle 5 Minuten ob index.html aktualisiert wurde ──
  *
  * Strategie (überarbeitet):
