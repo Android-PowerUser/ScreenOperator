@@ -476,6 +476,18 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return TrialManager.isPurchased(context)
     }
 
+    @JavascriptInterface
+    fun initiateFreedomPurchase() {
+        mainActivity.runOnUiThread {
+            mainActivity.initiateFreedomPurchaseFromWebView()
+        }
+    }
+
+    @JavascriptInterface
+    fun isFreedomPurchased(): Boolean {
+        return TrialManager.isFreedomPurchased(context)
+    }
+
     // ── Trial state (backs the WebView JS trial engine with TrialManager's real,
     //    obfuscated SharedPreferences store - file "AccessibilityService" - instead of a
     //    separate WebView localStorage store that would otherwise be a second, unsynchronized
@@ -1195,6 +1207,8 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 // ── Billing / Donation ────────────────────────────────────────
                 "initiateDonation"              -> { initiateDonation(); "" }
                 "isPurchased"                   -> isPurchased().toString()
+                "initiateFreedomPurchase"       -> { initiateFreedomPurchase(); "" }
+                "isFreedomPurchased"            -> isFreedomPurchased().toString()
                 // ── Termux ────────────────────────────────────────────────────
                 "setTermuxBackground"           -> { setTermuxBackground(a.getBoolean("background")); "" }
                 "getTermuxBackground"           -> getTermuxBackground().toString()
