@@ -523,9 +523,19 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="card" id="donation-card">
     <div class="row between" id="donation-row">
       <div class="title-md" style="flex:1">Support Improvements<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
-      <button class="btn btn-solid" onclick="initiateDonation()" style="margin-left:8px">Pro (2,90 €/Month)</button>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-left:8px;align-items:stretch">
+        <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn">Pro (2,90 €/Month)</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn" style="background:#7B4FA6">Freedom (7,90 €/Month)</button>
+      </div>
+    </div>
+    <div id="freedom-row" style="display:none">
+      <div class="row between" id="freedom-upgrade-row">
+        <div class="title-md" style="flex:1">or get all models, always and automatically<br><span style="visibility:hidden;white-space:nowrap">or get all</span>🎉</div>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="background:#7B4FA6;margin-left:8px">Freedom (7,90 €/Month)</button>
+      </div>
     </div>
     <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
+    <div id="freedom-thanks" class="pro-thanks" style="display:none">Thank you for your Freedom subscription! All models are now available! 🎉🚀</div>
   </div>
 
   <!-- Info -->
@@ -799,6 +809,8 @@ const Bridge = {
   /* Donation / trial */
   initiateDonation:()=>{ if(getInAndroid()) Android.initiateDonation(); else alert('Subscription flow would open here'); },
   isPurchased:()=> getInAndroid() ? Android.isPurchased() : false,
+  initiateFreedomPurchase:()=>{ if(getInAndroid()) Android.initiateFreedomPurchase(); else alert('Freedom subscription flow would open here'); },
+  isFreedomPurchased:()=> getInAndroid() ? Android.isFreedomPurchased() : false,
 
   /* Trial state - backed by TrialManager's real SharedPreferences store when running in
      Android, so the JS trial engine and native code share one single source of truth.
@@ -1089,6 +1101,7 @@ const DEFAULT_UI_STRINGS = {
   toast_cpu_selected: "CPU selected \u2013 Model stopped. Will load on next generation",
   toast_support_donation_emoji: "Please support the development of the app so that you can continue using it \uD83C\uDF89",
   menu_pro_price_label: "Pro (2,90 \u20ac/Month)",
+  menu_freedom_price_label: "Freedom (7,90 \u20ac/Month)",
 
   // ModelDownloadManager.kt
   notif_model_ready_text: "The model is ready to use.",
@@ -5865,12 +5878,24 @@ function importDatabase(event) {
 ════════════════════════════════════════════════════════ */
 function updateDonationCard() {
   const purchased = Bridge.isPurchased();
-  document.getElementById('donation-row').style.display = purchased ? 'none' : 'flex';
-  document.getElementById('pro-thanks').style.display = purchased ? 'block' : 'none';
+  const freedomPurchased = Bridge.isFreedomPurchased();
+  // donation-row: hide entire row if Pro OR Freedom purchased
+  document.getElementById('donation-row').style.display = (purchased || freedomPurchased) ? 'none' : 'flex';
+  // freedom-row: show "or get all models" row only if Pro purchased but NOT Freedom
+  document.getElementById('freedom-row').style.display = (purchased && !freedomPurchased) ? 'block' : 'none';
+  document.getElementById('pro-thanks').style.display = (purchased && !freedomPurchased) ? 'block' : 'none';
+  document.getElementById('freedom-thanks').style.display = freedomPurchased ? 'block' : 'none';
 }
 function initiateDonation() {
   Bridge.initiateDonation();
 }
+function initiateFreedomPurchase() {
+  Bridge.initiateFreedomPurchase();
+}
+// Called by native code after Freedom purchase state changes
+window.onFreedomPurchaseStateChanged = function(isFreedom) {
+  updateDonationCard();
+};
 
 /* ════════════════════════════════════════════════════════
    POPUP HELPERS
@@ -6268,6 +6293,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
