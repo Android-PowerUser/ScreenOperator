@@ -161,37 +161,24 @@ jobs:
       if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       run: ./gradlew :humanoperator:assembleDebug
 
-    - name: Install zstd
-      run: sudo apt-get install -y zstd
-
-    - name: Compress app APK with zstd
-      if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      run: zstd -19 --no-progress app/build/outputs/apk/debug/app-debug.apk -o app-debug.apk.zst
-
-    - name: Compress humanoperator APK with zstd
-      if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
-      run: zstd -19 --no-progress humanoperator/build/outputs/apk/debug/humanoperator-debug.apk -o humanoperator-debug.apk.zst
-
     - name: Upload app APK
       if: needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: app-debug.apk.zst
-        compression-level: 0
+        path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Upload humanoperator APK
       if: needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: humanoperator-debug
-        path: humanoperator-debug.apk.zst
-        compression-level: 0
+        path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
 
     - name: Build summary
       run: |
         echo "### APK Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "| Module | Built | Artefakte |" >> $GITHUB_STEP_SUMMARY
         echo "|--------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| app | ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug, zstd-19) |" >> $GITHUB_STEP_SUMMARY
-        echo "| humanoperator | ${{ needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug, zstd-19) |" >> $GITHUB_STEP_SUMMARY
+        echo "| app | ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
+        echo "| humanoperator | ${{ needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
