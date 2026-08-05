@@ -5703,7 +5703,6 @@ function deleteApiKey(key) {
   }
   Bridge.removeApiKey(key, currentProviderId);
   renderKeyList();
-  _syncProviderToFirebase(currentProviderId);
 }
 
 /* ════════════════════════════════════════════════════════
