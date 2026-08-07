@@ -2313,7 +2313,7 @@ function _createRepetitionState() {
   };
 }
 
-const REPETITION_TOKEN_WINDOW = 75;   // tokens ≈ chars / 4  → 300 chars
+const REPETITION_TOKEN_WINDOW = 40;   // tokens ≈ chars / 4  → 160 chars
 const REPETITION_WINDOW_CHARS = REPETITION_TOKEN_WINDOW * 4;
 
 function _checkRepetition(answerText, thinkingEndedSinceLastCheck, state) {
