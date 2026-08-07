@@ -2332,28 +2332,59 @@ function _thinkingFromOpenAiDelta(delta) {
 
 /* Some gateways put <think>…</think> directly in delta.content instead of in a
  * reasoning field. Re-parse the accumulated content on every update, which is
- * safe for SSE chunks split in the middle of either tag. */
+ * safe for SSE chunks split in the middle of either tag.
+ *
+ * Key rule: once the FIRST answer token has been emitted (i.e. the model
+ * produced text outside a <think> block for the first time), everything that
+ * follows is treated as answer – even if the model later opens another <think>
+ * block. This prevents models from interleaving thinking and answering, which
+ * would cause earlier answers to be silently ignored. */
 function _separateInlineThinking(content) {
   const source = typeof content === 'string' ? content : _reasoningText(content);
   let thinking = '';
   let answer = '';
   let cursor = 0;
+  let firstAnswerSeen = false;
   const openTag = /<think(?:ing)?>/ig;
   let open;
   while ((open = openTag.exec(source))) {
-    answer += source.slice(cursor, open.index);
-    const closeTag = /<\/think(?:ing)?>/ig;
-    closeTag.lastIndex = openTag.lastIndex;
-    const close = closeTag.exec(source);
-    if (!close) {
-      // An unfinished thinking block is still reasoning, not an answer.
-      thinking += source.slice(openTag.lastIndex);
-      cursor = source.length;
-      break;
+    const textBeforeTag = source.slice(cursor, open.index);
+    if (textBeforeTag) {
+      // Text outside a <think> block → answer
+      answer += textBeforeTag;
+      firstAnswerSeen = true;
     }
-    thinking += source.slice(openTag.lastIndex, close.index);
-    cursor = closeTag.lastIndex;
-    openTag.lastIndex = cursor;
+    if (firstAnswerSeen) {
+      // After the first answer token, any subsequent <think>…</think> block is
+      // also treated as answer (the model switched back to thinking mid-answer).
+      const closeTag = /<\/think(?:ing)?>/ig;
+      closeTag.lastIndex = openTag.lastIndex;
+      const close = closeTag.exec(source);
+      if (!close) {
+        // Unfinished – include opening tag and remainder as answer
+        answer += source.slice(open.index);
+        cursor = source.length;
+        break;
+      }
+      // Include the entire <think>…</think> block verbatim in the answer
+      answer += source.slice(open.index, closeTag.lastIndex);
+      cursor = closeTag.lastIndex;
+      openTag.lastIndex = cursor;
+    } else {
+      // No answer token yet – this is a proper pre-answer thinking block
+      const closeTag = /<\/think(?:ing)?>/ig;
+      closeTag.lastIndex = openTag.lastIndex;
+      const close = closeTag.exec(source);
+      if (!close) {
+        // An unfinished thinking block is still reasoning, not an answer.
+        thinking += source.slice(openTag.lastIndex);
+        cursor = source.length;
+        break;
+      }
+      thinking += source.slice(openTag.lastIndex, close.index);
+      cursor = closeTag.lastIndex;
+      openTag.lastIndex = cursor;
+    }
   }
   if (cursor < source.length) answer += source.slice(cursor);
   return { thinking, answer };
@@ -2617,6 +2648,7 @@ async function _callPuter(payload) {
 
     let rawContentAcc = '';
     let structuredThinkingAcc = '';
+    let puterFirstAnswerSeen = false;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -2636,8 +2668,19 @@ async function _callPuter(payload) {
           const d = json.choices?.[0]?.delta || {};
           const thinkingDelta = _thinkingFromOpenAiDelta(d);
           const delta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
-          if (thinkingDelta) structuredThinkingAcc += thinkingDelta;
-          if (delta) rawContentAcc += delta;
+          // Once the first answer token has been seen, any further structured
+          // reasoning_content is also treated as answer (appended to raw content).
+          if (thinkingDelta) {
+            if (puterFirstAnswerSeen) {
+              rawContentAcc += thinkingDelta;
+            } else {
+              structuredThinkingAcc += thinkingDelta;
+            }
+          }
+          if (delta) {
+            rawContentAcc += delta;
+            puterFirstAnswerSeen = true;
+          }
           if (thinkingDelta || delta) {
             const inline = _separateInlineThinking(rawContentAcc);
             Bridge.onCustomModelPartialResponse(
@@ -2913,7 +2956,11 @@ async function _callMistral(payload) {
             thinkingDelta = d.reasoning_content || d.reasoning || '';
             delta = (typeof d.content === 'string' ? d.content : '') || '';
           }
-          if (thinkingDelta) thinkingAcc += thinkingDelta;
+          // Once the first answer token has been seen, any further structured
+          // thinking deltas are treated as answer content, not reasoning.
+          if (thinkingDelta) {
+            if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
+          }
           if (delta) acc += delta;
           if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
         } catch(e2) { /* ignore bad SSE chunk */ }
@@ -3038,7 +3085,10 @@ async function _callCerebras(payload) {
           // delta.reasoning_content (or delta.reasoning) alongside delta.content.
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
-          if (thinkingDelta) thinkingAcc += thinkingDelta;
+          // Once the first answer token has been seen, further thinking deltas are answer.
+          if (thinkingDelta) {
+            if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
+          }
           if (delta) acc += delta;
           if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
         } catch(e2) { /* ignore bad SSE chunk */ }
@@ -3160,7 +3210,10 @@ async function _callGroq(payload) {
           const d = json.choices?.[0]?.delta || {};
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
-          if (thinkingDelta) thinkingAcc += thinkingDelta;
+          // Once the first answer token has been seen, further thinking deltas are answer.
+          if (thinkingDelta) {
+            if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
+          }
           if (delta) acc += delta;
           if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
         } catch(e2) { /* ignore bad SSE chunk */ }
@@ -3297,7 +3350,10 @@ async function _callVercel(payload) {
           // under delta.reasoning_content (or delta.reasoning) alongside delta.content.
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
-          if (thinkingDelta) thinkingAcc += thinkingDelta;
+          // Once the first answer token has been seen, further thinking deltas are answer.
+          if (thinkingDelta) {
+            if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
+          }
           if (delta) acc += delta;
           if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
         } catch(e2) { /* ignore bad SSE chunk */ }
@@ -3460,7 +3516,10 @@ async function _callOpenAiCompat(payload, provider) {
             // expose thinking under delta.reasoning_content or delta.reasoning.
             const thinkingDelta = d.reasoning_content || d.reasoning || '';
             const delta = d.content || '';
-            if (thinkingDelta) thinkingAcc += thinkingDelta;
+            // Once the first answer token has been seen, further thinking deltas are answer.
+            if (thinkingDelta) {
+              if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
+            }
             if (delta) acc += delta;
             if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
           } catch(e2) { /* ignore */ }
