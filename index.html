@@ -3328,20 +3328,20 @@ async function _callGroq(payload) {
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
           // Once the first answer token has been seen, further thinking deltas are answer.
-          const _vHadThinking = !!thinkingAcc && !acc;
+          const _gHadThinking = !!thinkingAcc && !acc;
           if (thinkingDelta) {
             if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
           }
           if (delta) acc += delta;
-          if (_vHadThinking && acc) _vercelThinkingEndedSinceCheck = true;
+          if (_gHadThinking && acc) _groqThinkingEndedSinceCheck = true;
           if (thinkingDelta || delta) {
             Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
-            if (_checkRepetition(acc, _vercelThinkingEndedSinceCheck, _vercelRepState)) {
-              _vercelThinkingEndedSinceCheck = false;
+            if (_checkRepetition(acc, _groqThinkingEndedSinceCheck, _groqRepState)) {
+              _groqThinkingEndedSinceCheck = false;
               _handleRepetition(window.__customModelAbortController);
               return;
             }
-            _vercelThinkingEndedSinceCheck = false;
+            _groqThinkingEndedSinceCheck = false;
           }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
@@ -3480,20 +3480,20 @@ async function _callVercel(payload) {
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
           // Once the first answer token has been seen, further thinking deltas are answer.
-          const _gHadThinking = !!thinkingAcc && !acc;
+          const _vHadThinking = !!thinkingAcc && !acc;
           if (thinkingDelta) {
             if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
           }
           if (delta) acc += delta;
-          if (_gHadThinking && acc) _groqThinkingEndedSinceCheck = true;
+          if (_vHadThinking && acc) _vercelThinkingEndedSinceCheck = true;
           if (thinkingDelta || delta) {
             Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
-            if (_checkRepetition(acc, _groqThinkingEndedSinceCheck, _groqRepState)) {
-              _groqThinkingEndedSinceCheck = false;
+            if (_checkRepetition(acc, _vercelThinkingEndedSinceCheck, _vercelRepState)) {
+              _vercelThinkingEndedSinceCheck = false;
               _handleRepetition(window.__customModelAbortController);
               return;
             }
-            _groqThinkingEndedSinceCheck = false;
+            _vercelThinkingEndedSinceCheck = false;
           }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
