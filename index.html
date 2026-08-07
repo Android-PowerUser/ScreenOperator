@@ -2292,7 +2292,70 @@ function _parseJsonArray(str) {
 }
 
 /* ── GEMINI REST API ─────────────────────────────────────────── */
-/* ── THINKING DISPLAY HELPER ─────────────────────────────────────
+
+/* ── REPETITION DETECTOR ──────────────────────────────────────────
+   Checks whether the model has repeated a 75-token (~300-char) window
+   at least twice in the ANSWER portion of the accumulated text.
+   Repetition is only flagged if no thinking block ended BETWEEN the
+   two occurrences (a model legitimately restating something after
+   reasoning is fine).
+
+   Returns true when repetition is detected and the stream should be
+   aborted. Call once per streaming delta with the current raw answer
+   text (NOT the composed thinking+answer string).
+
+   State is kept in the returned object so callers can reset between
+   requests by calling _createRepetitionState(). */
+function _createRepetitionState() {
+  return {
+    lastThinkingEndIdx: 0,  // char index in answer where the last </think> was closed
+    checked: false,         // true once we have enough text to start checking
+  };
+}
+
+const REPETITION_TOKEN_WINDOW = 75;   // tokens ≈ chars / 4  → 300 chars
+const REPETITION_WINDOW_CHARS = REPETITION_TOKEN_WINDOW * 4;
+
+function _checkRepetition(answerText, thinkingEndedSinceLastCheck, state) {
+  // Need at least 2× window to find a repeat
+  if (answerText.length < REPETITION_WINDOW_CHARS * 2) return false;
+
+  // If thinking ended since we last checked, reset the "last thinking end" marker
+  // so a repetition across a thinking boundary is forgiven.
+  if (thinkingEndedSinceLastCheck) {
+    state.lastThinkingEndIdx = answerText.length;
+  }
+
+  // Only inspect the portion of the answer produced AFTER the last thinking block ended
+  const relevantText = answerText.slice(state.lastThinkingEndIdx);
+  if (relevantText.length < REPETITION_WINDOW_CHARS * 2) return false;
+
+  // Slide a window of REPETITION_WINDOW_CHARS over relevantText and look for
+  // a duplicate earlier in the same text.
+  const window = relevantText.slice(-REPETITION_WINDOW_CHARS);
+  const searchIn = relevantText.slice(0, relevantText.length - REPETITION_WINDOW_CHARS);
+  if (searchIn.indexOf(window) !== -1) return true;
+
+  return false;
+}
+
+/* ── REPETITION STOP HELPER ───────────────────────────────────────
+   Call when repetition is detected. Aborts the stream and injects a
+   user-side "you're repeating yourself" bubble + sends it as the next
+   user message to the model, so the model can recover. */
+function _handleRepetition(abortController) {
+  if (abortController) {
+    try { abortController.abort(); } catch(e) {}
+  }
+  const repeatMsg = "You're repeating yourself. If necessary, write an EOF token.";
+  // Show as a right-side user bubble immediately
+  addUserBubble(repeatMsg);
+  // Send to model as next user message
+  Bridge.sendMessage(repeatMsg);
+  window.onGenerationStateChanged(true, false);
+}
+
+/* ── THINKING / ANSWER SEPARATOR (INLINE) ─────────────────────── */
    Combines a model's thinking/reasoning text with its final answer into a single
    plain-text string, since the native chat bubble only renders plain text (no
    separate channel for reasoning exists in the WebView<->native bridge). The
@@ -2446,6 +2509,8 @@ async function _callGemini(payload) {
   window.__customModelAbortController = new AbortController();
   let acc = '';
   let thinkingAcc = '';
+  const _geminiRepState = _createRepetitionState();
+  let _geminiThinkingEndedSinceCheck = false;
   try {
     let response = await fetch(url, {
       method: 'POST',
@@ -2507,14 +2572,28 @@ async function _callGemini(payload) {
           const json = JSON.parse(data);
           const parts = json.candidates?.[0]?.content?.parts || [];
           let text = '';
+          let gotThinkingEnd = false;
           for (const part of parts) {
             if (!part.text) continue;
-            if (part.thought) thinkingAcc += part.text;
-            else text += part.text;
+            if (part.thought) {
+              const prevLen = thinkingAcc.length;
+              thinkingAcc += part.text;
+            } else {
+              text += part.text;
+            }
           }
+          // Track whether a thinking block finished (thought→non-thought transition)
+          if (text && thinkingAcc) gotThinkingEnd = true;
+          if (gotThinkingEnd) _geminiThinkingEndedSinceCheck = true;
           if (text || thinkingAcc) {
             acc += text;
             Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+            if (_checkRepetition(acc, _geminiThinkingEndedSinceCheck, _geminiRepState)) {
+              _geminiThinkingEndedSinceCheck = false;
+              _handleRepetition(window.__customModelAbortController);
+              return;
+            }
+            _geminiThinkingEndedSinceCheck = false;
           }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
@@ -2649,6 +2728,8 @@ async function _callPuter(payload) {
     let rawContentAcc = '';
     let structuredThinkingAcc = '';
     let puterFirstAnswerSeen = false;
+    const _puterRepState = _createRepetitionState();
+    let _puterThinkingEndedSinceCheck = false;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -2670,6 +2751,7 @@ async function _callPuter(payload) {
           const delta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
           // Once the first answer token has been seen, any further structured
           // reasoning_content is also treated as answer (appended to raw content).
+          const hadThinking = !!structuredThinkingAcc;
           if (thinkingDelta) {
             if (puterFirstAnswerSeen) {
               rawContentAcc += thinkingDelta;
@@ -2681,11 +2763,20 @@ async function _callPuter(payload) {
             rawContentAcc += delta;
             puterFirstAnswerSeen = true;
           }
+          // Thinking ended if we had thinking before and now have answer delta
+          if (hadThinking && delta) _puterThinkingEndedSinceCheck = true;
           if (thinkingDelta || delta) {
             const inline = _separateInlineThinking(rawContentAcc);
             Bridge.onCustomModelPartialResponse(
               _composeThinkingAndAnswer(structuredThinkingAcc + inline.thinking, inline.answer)
             );
+            const answerSoFar = inline.answer;
+            if (_checkRepetition(answerSoFar, _puterThinkingEndedSinceCheck, _puterRepState)) {
+              _puterThinkingEndedSinceCheck = false;
+              _handleRepetition(window.__customModelAbortController);
+              return;
+            }
+            _puterThinkingEndedSinceCheck = false;
           }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
@@ -2892,6 +2983,8 @@ async function _callMistral(payload) {
   window.__customModelAbortController = new AbortController();
   let acc = '';
   let thinkingAcc = '';
+  const _mistralRepState = _createRepetitionState();
+  let _mistralThinkingEndedSinceCheck = false;
   try {
     const { response } = await _mistralCoordinatedFetch(
       apiKeys, maxAttempts, minIntervalMs,
@@ -2958,11 +3051,21 @@ async function _callMistral(payload) {
           }
           // Once the first answer token has been seen, any further structured
           // thinking deltas are treated as answer content, not reasoning.
+          const _mHadThinking = !!thinkingAcc && !acc;
           if (thinkingDelta) {
             if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
           }
           if (delta) acc += delta;
-          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+          if (_mHadThinking && acc) _mistralThinkingEndedSinceCheck = true;
+          if (thinkingDelta || delta) {
+            Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+            if (_checkRepetition(acc, _mistralThinkingEndedSinceCheck, _mistralRepState)) {
+              _mistralThinkingEndedSinceCheck = false;
+              _handleRepetition(window.__customModelAbortController);
+              return;
+            }
+            _mistralThinkingEndedSinceCheck = false;
+          }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
     }
@@ -3022,6 +3125,8 @@ async function _callCerebras(payload) {
   window.__customModelAbortController = new AbortController();
   let acc = '';
   let thinkingAcc = '';
+  const _cerebrasRepState = _createRepetitionState();
+  let _cerebrasThinkingEndedSinceCheck = false;
   try {
     let response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',
@@ -3086,11 +3191,21 @@ async function _callCerebras(payload) {
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
           // Once the first answer token has been seen, further thinking deltas are answer.
+          const _cHadThinking = !!thinkingAcc && !acc;
           if (thinkingDelta) {
             if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
           }
           if (delta) acc += delta;
-          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+          if (_cHadThinking && acc) _cerebrasThinkingEndedSinceCheck = true;
+          if (thinkingDelta || delta) {
+            Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+            if (_checkRepetition(acc, _cerebrasThinkingEndedSinceCheck, _cerebrasRepState)) {
+              _cerebrasThinkingEndedSinceCheck = false;
+              _handleRepetition(window.__customModelAbortController);
+              return;
+            }
+            _cerebrasThinkingEndedSinceCheck = false;
+          }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
     }
@@ -3191,6 +3306,8 @@ async function _callGroq(payload) {
 
     let acc = '';
     let thinkingAcc = '';
+    const _groqRepState = _createRepetitionState();
+    let _groqThinkingEndedSinceCheck = false;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -3211,11 +3328,21 @@ async function _callGroq(payload) {
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
           // Once the first answer token has been seen, further thinking deltas are answer.
+          const _vHadThinking = !!thinkingAcc && !acc;
           if (thinkingDelta) {
             if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
           }
           if (delta) acc += delta;
-          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+          if (_vHadThinking && acc) _vercelThinkingEndedSinceCheck = true;
+          if (thinkingDelta || delta) {
+            Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+            if (_checkRepetition(acc, _vercelThinkingEndedSinceCheck, _vercelRepState)) {
+              _vercelThinkingEndedSinceCheck = false;
+              _handleRepetition(window.__customModelAbortController);
+              return;
+            }
+            _vercelThinkingEndedSinceCheck = false;
+          }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
     }
@@ -3288,6 +3415,8 @@ async function _callVercel(payload) {
   window.__customModelAbortController = new AbortController();
   let acc = '';
   let thinkingAcc = '';
+  const _vercelRepState = _createRepetitionState();
+  let _vercelThinkingEndedSinceCheck = false;
   try {
     let response = await fetch(vercelChatEndpoint, {
       method: 'POST',
@@ -3351,11 +3480,21 @@ async function _callVercel(payload) {
           const thinkingDelta = d.reasoning_content || d.reasoning || '';
           const delta = d.content || '';
           // Once the first answer token has been seen, further thinking deltas are answer.
+          const _gHadThinking = !!thinkingAcc && !acc;
           if (thinkingDelta) {
             if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
           }
           if (delta) acc += delta;
-          if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+          if (_gHadThinking && acc) _groqThinkingEndedSinceCheck = true;
+          if (thinkingDelta || delta) {
+            Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+            if (_checkRepetition(acc, _groqThinkingEndedSinceCheck, _groqRepState)) {
+              _groqThinkingEndedSinceCheck = false;
+              _handleRepetition(window.__customModelAbortController);
+              return;
+            }
+            _groqThinkingEndedSinceCheck = false;
+          }
         } catch(e2) { /* ignore bad SSE chunk */ }
       }
     }
@@ -3445,6 +3584,8 @@ async function _callOpenAiCompat(payload, provider) {
   window.__customModelAbortController = new AbortController();
   let acc = '';
   let thinkingAcc = '';
+  const _oaicRepState = _createRepetitionState();
+  let _oaicThinkingEndedSinceCheck = false;
   try {
     let response = await fetch(endpoint, {
       method: 'POST',
@@ -3517,11 +3658,21 @@ async function _callOpenAiCompat(payload, provider) {
             const thinkingDelta = d.reasoning_content || d.reasoning || '';
             const delta = d.content || '';
             // Once the first answer token has been seen, further thinking deltas are answer.
+            const _oHadThinking = !!thinkingAcc && !acc;
             if (thinkingDelta) {
               if (acc) { acc += thinkingDelta; } else { thinkingAcc += thinkingDelta; }
             }
             if (delta) acc += delta;
-            if (thinkingDelta || delta) Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+            if (_oHadThinking && acc) _oaicThinkingEndedSinceCheck = true;
+            if (thinkingDelta || delta) {
+              Bridge.onCustomModelPartialResponse(_composeThinkingAndAnswer(thinkingAcc, acc));
+              if (_checkRepetition(acc, _oaicThinkingEndedSinceCheck, _oaicRepState)) {
+                _oaicThinkingEndedSinceCheck = false;
+                _handleRepetition(window.__customModelAbortController);
+                return;
+              }
+              _oaicThinkingEndedSinceCheck = false;
+            }
           } catch(e2) { /* ignore */ }
         }
       }
