@@ -3527,7 +3527,8 @@ async function _callCloudflareUnsupported(payload) {
 }
 
 /* ── OPENAI-COMPATIBLE (Mistral, Cerebras, Groq, Vercel, Cloudflare, custom) ── */
-async function _callOpenAiCompat(payload, provider) {
+async function _callOpenAiCompat(payload, provider, _emptyRetryCount) {
+  _emptyRetryCount = _emptyRetryCount || 0;
   const provDef = PROVIDER_API[provider];
   let endpoint, keyHeader, keyPrefix, apiKey;
 
@@ -3684,6 +3685,16 @@ async function _callOpenAiCompat(payload, provider) {
     }
 
     const finalText = _composeThinkingAndAnswer(thinkingAcc, acc);
+
+    // Kilo (Nemotron 3 Ultra 550B A55B) intermittently returns a completed,
+    // error-free HTTP 200 stream that carries no content/reasoning deltas at all
+    // (~10% of requests per user reports). There's no distinguishing error signal
+    // for this - the response is just empty - so we detect the empty result itself
+    // and silently retry a couple of times before surfacing anything to the user.
+    if (!finalText && provider === 'KILO' && _emptyRetryCount < 2 && !_stopExecution) {
+      return _callOpenAiCompat(payload, provider, _emptyRetryCount + 1);
+    }
+
     Bridge.onCustomModelFinalResponse(finalText);
     await _executeCommandsFromResponse(acc);
   } catch(e) {
