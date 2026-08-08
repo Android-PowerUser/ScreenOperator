@@ -4094,6 +4094,55 @@ let _stopExecution = false;
 let _termuxSessionArmed = false;
 /* Placeholder user bubble shown while waiting for Termux output */
 let _termuxPendingBubbleWrap = null;
+/* Timer handle for the 15-second Termux no-response warning */
+let _termuxTimeoutHandle = null;
+
+/** Keywords that indicate a long-running command → no timeout. */
+const _TERMUX_NO_TIMEOUT_RE = /\b(pkg|apt|curl|wget|make)\b/;
+
+/**
+ * Extracts the total seconds from all sleep calls in a command string.
+ * e.g. "sleep 5 && sleep 3" → 8
+ */
+function _extractSleepSeconds(command) {
+  let total = 0;
+  const re = /\bsleep\s+(\d+(?:\.\d+)?)/g;
+  let m;
+  while ((m = re.exec(command)) !== null) {
+    total += parseFloat(m[1]);
+  }
+  return total;
+}
+
+/** Cancels any pending Termux no-response timeout. */
+function _clearTermuxTimeout() {
+  if (_termuxTimeoutHandle !== null) {
+    clearTimeout(_termuxTimeoutHandle);
+    _termuxTimeoutHandle = null;
+  }
+}
+
+/**
+ * Arms the Termux no-response timeout for the given command.
+ * After (15 + sleep seconds) the AI gets an automatic warning message,
+ * but we keep waiting for Termux (the waiting bubble stays).
+ */
+function _armTermuxTimeout(command) {
+  _clearTermuxTimeout();
+  if (_TERMUX_NO_TIMEOUT_RE.test(command)) return; // long-running tools → no timeout
+  const sleepSecs = _extractSleepSeconds(command);
+  const delayMs = (15 + sleepSecs) * 1000;
+  _termuxTimeoutHandle = setTimeout(() => {
+    _termuxTimeoutHandle = null;
+    // Only fire if we are still waiting for Termux (bubble still present)
+    if (!_termuxPendingBubbleWrap) return;
+    const msg = "Termux didn't respond after 15 seconds. If this is normal for your command, do nothing. Otherwise, write a new command.";
+    addUserBubble(msg);
+    Bridge.sendMessage(msg);
+    window.onGenerationStateChanged(true, false);
+    // Do NOT remove the waiting bubble — we keep waiting for Termux in parallel.
+  }, delayMs);
+}
 
 const _TERMUX_SETUP_SCRIPT =
   'rm -f ~/cmdpipe ~/outpipe\n' +
@@ -4219,7 +4268,7 @@ async function _executeSingleCommand(cmd) {
   switch (cmd.type) {
     case 'ENTER':        Bridge.pressEnterKey(); break;
     case 'WRITE_TEXT':   Bridge.writeText(cmd.text); break;
-    case 'TERMUX':       showTermuxWaitingBubble(); Bridge.runTermuxCommand(_buildTermuxSessionCommand(cmd.command)); break;
+    case 'TERMUX':       showTermuxWaitingBubble(); _armTermuxTimeout(cmd.command); Bridge.runTermuxCommand(_buildTermuxSessionCommand(cmd.command)); break;
     case 'CLICK':        Bridge.tapByText(cmd.text); break;
     case 'LONG_CLICK':   Bridge.longTapByText(cmd.text); break;
     case 'TAP':          Bridge.tapAtCoordinates(cmd.x, cmd.y); break;
@@ -5527,6 +5576,7 @@ function removeTermuxWaitingBubble() {
     _termuxPendingBubbleWrap.remove();
     _termuxPendingBubbleWrap = null;
   }
+  _clearTermuxTimeout();
 }
 // Tapping a screenshot thumbnail opens it full-size in a simple lightbox overlay.
 function _showThumbLightbox(src) {
@@ -6571,6 +6621,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
