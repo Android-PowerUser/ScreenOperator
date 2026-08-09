@@ -332,6 +332,28 @@ html.dark-mode .task-input { color: var(--text-primary); }
 #stop-btn:active{opacity:.85}
 /* ── chat-bottom fixed positioning when keyboard open ────── */
 #chat-bottom{transition:bottom .1s}
+/* ── Scroll-to-bottom button ─────────────────────────────── */
+#scroll-to-bottom-btn{
+  position:absolute;
+  bottom:12px;
+  left:50%;
+  transform:translateX(-50%);
+  width:40px;height:40px;
+  border-radius:50%;
+  border:none;
+  background:var(--bubble-model-bg);
+  color:var(--bubble-model-text);
+  display:none;
+  align-items:center;justify-content:center;
+  cursor:pointer;
+  font-size:20px;
+  box-shadow:0 2px 8px rgba(0,0,0,.35),0 1px 3px rgba(0,0,0,.2);
+  z-index:20;
+  flex-shrink:0;
+  transition:opacity .2s;
+}
+#scroll-to-bottom-btn:active{opacity:.7}
+#chat-messages-wrap{position:relative}
 
 /* ── Key list ────────────────────────────────────────────── */
 .key-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--divider)}
@@ -604,6 +626,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div id="chat-messages-wrap">
     <div id="chat-messages"></div>
     <div id="cmd-status-wrap"></div>
+    <button id="scroll-to-bottom-btn" onclick="scrollToBottom(true)" title="Nach unten">&#8595;</button>
   </div>
 
   <!-- Bottom input -->
@@ -1402,6 +1425,10 @@ function _consumePendingRetrievedInfo() {
 }
 
 window.onUserMessage = function(text, imageDataUri) {
+  // New user message → reset scroll state so the response is auto-scrolled.
+  _userScrolledUp = false;
+  const _scrollBtn = document.getElementById('scroll-to-bottom-btn');
+  if (_scrollBtn) _scrollBtn.style.display = 'none';
   // Remove Termux waiting placeholder (if any) so the real bubble replaces it.
   removeTermuxWaitingBubble();
   if (text || imageDataUri) {
@@ -5659,8 +5686,26 @@ function addErrorBubble(text) {
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
 }
-function scrollToBottom() {
+/* ── Scroll state for chat ───────────────────────────────── */
+let _userScrolledUp = false;
+(function _initChatScrollListener() {
+  function setup() {
+    const w = document.getElementById('chat-messages-wrap');
+    if (!w) { requestAnimationFrame(setup); return; }
+    const btn = document.getElementById('scroll-to-bottom-btn');
+    w.addEventListener('scroll', () => {
+      const atBottom = w.scrollHeight - w.scrollTop - w.clientHeight < 48;
+      _userScrolledUp = !atBottom;
+      if (btn) btn.style.display = _userScrolledUp ? 'flex' : 'none';
+    }, { passive: true });
+  }
+  setup();
+})();
+
+function scrollToBottom(force) {
   const w = document.getElementById('chat-messages-wrap');
+  // If user has scrolled up and this isn't a forced scroll (button tap), don't auto-scroll.
+  if (_userScrolledUp && !force) return;
   // Double rAF: the first frame lets the browser finish any pending layout/reflow
   // (e.g. after textContent changes or new bubbles are appended), the second frame
   // reads the updated scrollHeight and applies the scroll. Using only a single rAF
@@ -5668,7 +5713,12 @@ function scrollToBottom() {
   // chat to scroll to the wrong position and making earlier messages disappear off
   // the top instead of staying anchored at the bottom.
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => { w.scrollTop = w.scrollHeight; });
+    requestAnimationFrame(() => {
+      w.scrollTop = w.scrollHeight;
+      _userScrolledUp = false;
+      const btn = document.getElementById('scroll-to-bottom-btn');
+      if (btn) btn.style.display = 'none';
+    });
   });
 }
 function _resendLastUserMessage() {
@@ -6817,6 +6867,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
