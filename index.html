@@ -6626,6 +6626,11 @@ function _collapseOldScreenElementBubbles() {
   var _pollTimer = null;
   var _polling = false;
   var _consecutiveFailures = 0;
+  // Neue HTML, deren Anwendung verschoben wurde, weil beim Erkennen gerade
+  // eine AI-Generierung lief (siehe _applyNewHtml). Wird beim nächsten Poll
+  // (oder sofort, falls die Generierung inzwischen beendet ist) angewendet,
+  // ohne erneut einen Netzwerk-Request zu brauchen.
+  var _pendingHtml = null;
 
   // Einfacher, schneller String-Hash (djb2), reicht als Change-Discriminator
   // völlig aus - es geht nur darum, "gleich" von "unterschiedlich" zu
@@ -6639,6 +6644,24 @@ function _collapseOldScreenElementBubbles() {
   }
 
   function _applyNewHtml(html) {
+    // Falls gerade eine AI-Antwort läuft (offener fetch()/Stream, ausstehende
+    // Timeouts wie der Termux-Timeout, etc.), würde document.write() den
+    // kompletten alten JS-Kontext samt aller laufenden Promises/Timer sofort
+    // zerstören - der Stream bricht klanglos ab und nichts ruft je wieder in
+    // die (inzwischen ersetzte) Chat-UI zurück. Das wirkt für den Nutzer wie
+    // "das Update wurde nicht übernommen". Stattdessen verschieben wir die
+    // Anwendung auf den nächsten Poll und wenden sie an, sobald keine
+    // Generierung mehr läuft (spätestens beim nächsten Sichtbarwerden der App).
+    try {
+      if (typeof Bridge !== 'undefined' && Bridge.isGenerationRunning && Bridge.isGenerationRunning()) {
+        console.log('[HotReload] Generierung läuft, verschiebe Anwendung des Updates.');
+        _pendingHtml = html;
+        _schedulePoll();
+        return;
+      }
+    } catch (_) { /* Bridge evtl. noch nicht bereit - einfach fortfahren */ }
+    _pendingHtml = null;
+
     try {
       // document.write ersetzt den kompletten DOM-Baum; anschließend laufen
       // alle <script>-Tags in der neuen HTML normal durch.
@@ -6646,25 +6669,48 @@ function _collapseOldScreenElementBubbles() {
       document.write(html);
       document.close();
     } catch (e) {
-      console.warn('[HotReload] document.write fehlgeschlagen, versuche location.reload()', e);
-      try { window.location.reload(); } catch (_) {}
+      console.warn('[HotReload] document.write fehlgeschlagen, wende Update beim nächsten Neustart an.', e);
+      // KEIN window.location.reload() hier: die Seite wurde per
+      // loadDataWithBaseURL() geladen, daher zeigt location.href nicht auf
+      // eine echte, erneut ladbare URL. Ein reload()/href-Wechsel würde außerdem
+      // von MainActivity.shouldOverrideUrlLoading() abgefangen und stattdessen
+      // im externen Browser geöffnet werden, statt den WebView zu aktualisieren.
+      _schedulePoll();
       return;
     }
 
     // document.write/close ist KEINE echte Navigation: Android's
     // WebViewClient.onPageFinished() (der native Callback, der normalerweise
     // window.onAndroidReady() und window.onTrialStateChanged() auslöst) feuert
-    // dabei nicht erneut. Die frisch neu deklarierten Top-Level-Variablen aus
-    // der neuen index.html (u.a. currentModelId) bekommen dadurch NIE ihren
-    // Wert aus der nativen Bridge zugewiesen - das UI wirkt "vom nativen Code
-    // abgekoppelt" (Modellauswahl verloren, neue Modelle fehlen), bis die App
+    // dabei nicht erneut - und ob der Browser-eigene 'DOMContentLoaded'-Event
+    // nach document.write() zuverlässig (erneut) feuert, ist je nach
+    // WebView-Version uneinheitlich. Jede Initialisierung, die nur in einem
+    // dieser beiden Trigger hängt, würde nach einem Hot-Reload sonst
+    // verlorengehen (z. B. die popstate-/visualViewport-Listener, die bisher
+    // ausschließlich im DOMContentLoaded-Handler registriert wurden) - das UI
+    // wirkt "vom nativen Code abgekoppelt" (Modellauswahl verloren, neue
+    // Modelle fehlen, Zurück-Taste/Tastatur-Verhalten kaputt), bis die App
     // komplett neu gestartet wird und ein echter onPageFinished-Zyklus läuft.
+    //
+    // Fix: wir lösen deterministisch BEIDE Init-Trigger selbst aus, statt uns
+    // auf den Browser zu verlassen:
+    //  1. Ein synthetisches 'DOMContentLoaded'-Event, das der frisch aus der
+    //     neuen HTML registrierte Listener garantiert genau einmal empfängt
+    //     (unabhängig davon, ob die WebView-Engine es zusätzlich selbst auch
+    //     feuert oder nicht - der Listener ist idempotent, siehe seinen Code).
+    //  2. window.onAndroidReady() manuell, um den kompletten native-Bridge-
+    //     Init-Flow nachzuholen (Modellauswahl, Trial-State, alle
+    //     Remote-Config-Fetches), exakt wie es der native onPageFinished-
+    //     Handler sonst ausgelöst hätte.
     //
     // Die JS-Bridge (window.Android, siehe addJavascriptInterface) bleibt beim
     // document.write-Ersatz erhalten, da sie am WebView-Objekt hängt, nicht am
-    // DOM. Wir können also onAndroidReady() manuell erneut anstoßen, um exakt
-    // den Init-Flow nachzuholen, den der native onPageFinished-Handler sonst
-    // ausgelöst hätte.
+    // DOM - beide Aufrufe können sie also normal verwenden.
+    try {
+      document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true, cancelable: true }));
+    } catch (e) {
+      console.warn('[HotReload] synthetisches DOMContentLoaded fehlgeschlagen', e);
+    }
     try {
       if (typeof window.onAndroidReady === 'function') {
         window.onAndroidReady();
@@ -6672,6 +6718,8 @@ function _collapseOldScreenElementBubbles() {
     } catch (e) {
       console.warn('[HotReload] onAndroidReady() nach Reload fehlgeschlagen', e);
     }
+
+    console.log('[HotReload] Update angewendet und Init-Flow nachgeholt.');
   }
 
   function _buildFetchUrl() {
@@ -6681,6 +6729,15 @@ function _collapseOldScreenElementBubbles() {
 
   function _checkForUpdate() {
     if (_polling) return;
+    // Ein zuvor wegen laufender Generierung verschobenes Update zuerst
+    // versuchen anzuwenden, bevor ein neuer Netzwerk-Request gestartet wird -
+    // _applyNewHtml prüft selbst erneut, ob inzwischen noch generiert wird,
+    // und verschiebt notfalls wieder.
+    if (_pendingHtml !== null) {
+      var pending = _pendingHtml;
+      _applyNewHtml(pending);
+      return;
+    }
     _polling = true;
     fetch(_buildFetchUrl(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) {
@@ -6722,7 +6779,11 @@ function _collapseOldScreenElementBubbles() {
 
   function _schedulePoll() {
     clearTimeout(_pollTimer);
-    _pollTimer = setTimeout(_checkForUpdate, POLL_INTERVAL_MS);
+    // Mit einem verschobenen Update kurz erneut versuchen (statt bis zu 5
+    // Minuten zu warten), damit es angewendet wird, sobald die Generierung
+    // fertig ist - ohne dafür extra einen Netzwerk-Request zu brauchen.
+    var delay = _pendingHtml !== null ? 15000 : POLL_INTERVAL_MS;
+    _pollTimer = setTimeout(_checkForUpdate, delay);
   }
 
   // Sichtbarkeitssteuerung: pausieren wenn App in Hintergrund, sofort prüfen
