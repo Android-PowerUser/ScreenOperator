@@ -1207,6 +1207,7 @@ let currentProviderId = 'PUTER';
 let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
+let _resendInProgress = false;
 let _humanExpertConnected = false;
 
 /* ════════════════════════════════════════════════════════
@@ -1395,7 +1396,12 @@ window.onUserMessage = function(text, imageDataUri) {
     text = _applyPendingTruncationWarning(text || '');
     // Then prepend retrieved DB info so it is always absolute top, same as AI payload.
     text = _applyPendingRetrievedInfo(text || '');
-    addUserBubble(text, imageDataUri);
+    if (_resendInProgress) {
+      // Resend: the existing last user bubble stays — don't add a duplicate.
+      _resendInProgress = false;
+    } else {
+      addUserBubble(text, imageDataUri);
+    }
   }
 };
 
@@ -5642,6 +5648,8 @@ function _resendLastUserMessage() {
   const text = lastWrap.dataset.resendText || '';
   const imageDataUri = lastWrap.dataset.resendImage || null;
   if (!text && !imageDataUri) return;
+  // Signal onUserMessage to skip adding a new bubble (the existing one stays)
+  _resendInProgress = true;
   // Re-send via Bridge just like sendMessage does
   if (imageDataUri) {
     Bridge.sendMessageWithImages(text, imageDataUri);
