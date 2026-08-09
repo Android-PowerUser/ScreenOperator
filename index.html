@@ -5776,6 +5776,11 @@ function onTaskKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
 function sendMessage() {
+  // If Accessibility Service is not enabled, redirect to its settings instead of sending.
+  if (getInAndroid() && !Bridge.isAccessibilityServiceEnabled()) {
+    activateAccessibilityService();
+    return;
+  }
   const input = document.getElementById('task-input');
   const text = input.value.trim();
   if (!text && selectedImages.length === 0) return;
