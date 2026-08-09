@@ -376,6 +376,17 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .db-popup{background:var(--db-yellow-1);width:95%;max-width:560px;max-height:600px;display:flex;flex-direction:column;margin:0 auto}
 .db-popup #db-list{flex:1;min-height:0}
 .db-filler-row{height:56px;flex-shrink:0}
+.db-hint{font-size:13px;color:rgba(0,0,0,.6)}
+/* AI-generated skills header */
+.db-ai-header{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:6px 10px;background:var(--db-yellow-2);border-top:1px solid rgba(0,0,0,.15);border-bottom:1px solid rgba(0,0,0,.15)}
+.db-ai-header-label{font-size:13px;font-weight:600;color:rgba(0,0,0,.7);flex:1;text-align:right}
+/* Toggle switch */
+.db-ai-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0}
+.db-ai-toggle input{opacity:0;width:0;height:0;position:absolute}
+.db-ai-toggle-slider{display:inline-block;width:38px;height:22px;background:#bbb;border-radius:11px;position:relative;transition:background .2s}
+.db-ai-toggle input:checked+.db-ai-toggle-slider{background:#4caf50}
+.db-ai-toggle-slider::after{content:'';position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.db-ai-toggle input:checked+.db-ai-toggle-slider::after{left:19px}
 .db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;display:flex;flex-direction:column;margin:auto}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000;font-size:17px}
 .db-edit-input::placeholder{color:#888}
@@ -573,7 +584,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
         <span class="title-md" style="color:#4A6FE3;padding-top:2px">System Message</span>
         <div class="row" style="gap:6px;flex-shrink:0">
           <button class="btn btn-outline" onclick="restoreSystemMessage()">Restore<br>System Message</button>
-          <button class="btn btn-outline" onclick="openDatabasePopup()">Database</button>
+          <button class="btn btn-outline" onclick="openDatabasePopup()">Skill Set</button>
         </div>
       </div>
       <textarea id="sys-msg-textarea" class="collapsed" rows="3" placeholder="Enter a system message here…" oninput="onSystemMessageChange()" onfocus="onSysTextareaFocus()" onblur="onSysTextareaBlur()"></textarea>
@@ -665,14 +676,17 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   </div>
 </div>
 
-<!-- Database Popup -->
+<!-- Skill Set Popup -->
 <div id="popup-db" class="overlay" onclick="overlayClose(event,'popup-db')">
   <div class="popup db-popup" onclick="event.stopPropagation()">
     <div id="db-list" style="overflow-y:auto;margin-bottom:8px"></div>
-    <div class="row" style="justify-content:flex-end;gap:8px">
-      <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
-      <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
-      <button class="btn btn-solid" onclick="exportDatabase()">Export</button>
+    <div class="row" style="justify-content:space-between;gap:8px;align-items:center">
+      <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
+      <div class="row" style="gap:8px">
+        <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
+        <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
+        <button class="btn btn-solid" onclick="exportDatabase()">Export</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1065,7 +1079,7 @@ let MODELS = [
 /* ════════════════════════════════════════════════════════
    DEFAULT SYSTEM MESSAGE
 ════════════════════════════════════════════════════════ */
-const DEFAULT_SYSTEM_MSG = `You are on the app Screen Operator on a Smartphone. You start from this app. Proceed step by step! DON'T USE TOOL CALL OR CODE! You can only operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" If a field is not be spelled out, such as "Search for apps and ga...". In such a case, you must always enter the full version: click("Search for apps and games")" "tapAtCoordinates(x, y)"  "tapAtCoordinates(x percent of screen%, y percent of screen%)"  "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown/Up/Left/Right(x, y, dist_px, ms) - also with % coordinates" scroll status bar down: "scrollUp(540, 0, 1100, 50)" "Wait(seconds)" To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist. If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field. "Termux("command")" You don't need to open Termux because a run.command intent is being called. DO NOT use wait(seconds) commands when using Termux. Combine commands with && instead of writing Termux("command") multiple times. Retrieve independently information from the database you might need using "retrieve("sample")" If you have a question or are stuck, write "popUp("Question", "Answer Option", "Answer Option")". Include as many answer options as possible, for example more than two. Say "completed()" and you won't get response. Plan your response carefully and consider whether it conflicts with instructions and whether the instruction can function as intended. Also, think about what response you expect from the Screen Operator and whether it aligns with the goal before executing anything. Use heightened reasoning and thinking.`;
+const DEFAULT_SYSTEM_MSG = `You are on the app Screen Operator on a Smartphone. You start from this app. Proceed step by step! DON'T USE TOOL CALL OR CODE! You can only operate the screen with exactly following commands: "home()" "back()" "recentApps()" "openApp("sample")" for buttons and words: "click("sample")" "longClick("sample")" If a field is not be spelled out, such as "Search for apps and ga...". In such a case, you must always enter the full version: click("Search for apps and games")" "tapAtCoordinates(x, y)"  "tapAtCoordinates(x percent of screen%, y percent of screen%)"  "scrollDown()" "scrollUp()" "scrollLeft()" "scrollRight()" "scrollDown/Up/Left/Right(x, y, dist_px, ms) - also with % coordinates" scroll status bar down: "scrollUp(540, 0, 1100, 50)" "Wait(seconds)" To write text, click the textfield, thereafter: "writeText("sample text")" You need to write the already existing text, if it should continue exist. If the keyboard is displayed, you can press "Enter()". Otherwise, you have to open the keyboard by clicking on the text field. "Termux("command")" You don't need to open Termux because a run.command intent is being called. DO NOT use wait(seconds) commands when using Termux. Combine commands with && instead of writing Termux("command") multiple times. Retrieve independently information from the skill set you might need using "retrieve("sample")" You can also add a new skill using "newSkill("Title", "Guide")" If you have a question or are stuck, write "popUp("Question", "Answer Option", "Answer Option")". Include as many answer options as possible, for example more than two. Say "completed()" and you won't get response. Plan your response carefully and consider whether it conflicts with instructions and whether the instruction can function as intended. Also, think about what response you expect from the Screen Operator and whether it aligns with the goal before executing anything. Use heightened reasoning and thinking.`;
 
 /* ════════════════════════════════════════════════════════
    NATIVE (Compose-screen) UI STRINGS
@@ -1144,7 +1158,7 @@ const DEFAULT_UI_STRINGS = {
   toast_add_screenshot_error: "Error adding screenshot: {0}",
 
   // feature/multimodal/PhotoReasoningScreen.kt
-  screen_database_button: "Database",
+  screen_database_button: "Skill Set",
   screen_sysmsg_placeholder: "Enter a system message here that will be sent with every request",
   screen_accessibility_not_enabled_title: "Accessibility Service is not enabled",
   screen_accessibility_not_enabled_body: "The click functionality requires the Accessibility Service. Please enable it in the settings.",
@@ -2206,8 +2220,13 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   }
   try {
     const dbEntries = Bridge.getDatabaseEntries() || [];
-    payload.databaseEntries = dbEntries.length
-      ? 'Retrievable information: ' + dbEntries.map(e => e.title).join(',\n') + ','
+    const aiSkillEntries = _getAiSkills() || [];
+    const allTitles = [
+      ...dbEntries.map(e => e.title),
+      ...aiSkillEntries.map(e => e.title)
+    ];
+    payload.databaseEntries = allTitles.length
+      ? 'Skill set: ' + allTitles.join(',\n') + ','
       : '';
   } catch (e) {
     payload.databaseEntries = '';
@@ -2644,7 +2663,7 @@ async function _callPuter(payload) {
   const messages = [];
   const sysParts = [];
   if (payload.systemMessage) sysParts.push(payload.systemMessage);
-  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (payload.databaseEntries) sysParts.push('Skill set:\n' + payload.databaseEntries);
   if (sysParts.length) {
     messages.push({ role: 'system', content: [{ type: 'text', text: sysParts.join('\n\n') }] });
   }
@@ -2949,7 +2968,7 @@ async function _callMistral(payload) {
   const systemContent = [];
   if (payload.systemMessage) systemContent.push({ type: 'text', text: payload.systemMessage });
   if (payload.databaseEntries) {
-    systemContent.push({ type: 'text', text: 'Additional context from database:\n' + payload.databaseEntries });
+    systemContent.push({ type: 'text', text: 'Additional context from skill set:\n' + payload.databaseEntries });
   }
   if (systemContent.length) apiMessages.push({ role: 'system', content: systemContent });
 
@@ -3252,7 +3271,7 @@ async function _callGroq(payload) {
   const apiMessages = [];
   const sysParts = [];
   if (payload.systemMessage) sysParts.push(payload.systemMessage);
-  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (payload.databaseEntries) sysParts.push('Skill set:\n' + payload.databaseEntries);
   if (sysParts.length) apiMessages.push({ role: 'system', content: [{ type: 'text', text: sysParts.join('\n\n') }] });
 
   const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
@@ -3392,7 +3411,7 @@ async function _callVercel(payload) {
   const messages = [];
   const sysParts = [];
   if (payload.systemMessage) sysParts.push(payload.systemMessage);
-  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (payload.databaseEntries) sysParts.push('Skill set:\n' + payload.databaseEntries);
   if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
 
   const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
@@ -3796,7 +3815,7 @@ function _mergeConsecutiveSameRole(historyMessages) {
 function _buildSystemParts(payload) {
   const parts = [];
   if (payload.systemMessage) parts.push({ text: payload.systemMessage });
-  if (payload.databaseEntries) parts.push({ text: 'Retrievable information:\n' + payload.databaseEntries });
+  if (payload.databaseEntries) parts.push({ text: 'Skill set:\n' + payload.databaseEntries });
   return parts;
 }
 
@@ -3804,7 +3823,7 @@ function _buildOpenAiMessages(payload) {
   const messages = [];
   const sysParts = [];
   if (payload.systemMessage) sysParts.push(payload.systemMessage);
-  if (payload.databaseEntries) sysParts.push('Retrievable information:\n' + payload.databaseEntries);
+  if (payload.databaseEntries) sysParts.push('Skill set:\n' + payload.databaseEntries);
   if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
 
   const sanitizedHistory = _sanitizeHistoryForScreenElements(payload.history || []);
@@ -4041,9 +4060,13 @@ function parseCommandsFromText(rawText) {
       type: 'PINCH', single: false,
       build: (m) => ({ type: 'PINCH', cx: m[1], cy: m[2], sd: m[3], ed: m[4], dur: parseInt(m[5], 10) }) },
 
-    // Retrieve database entry
+    // Retrieve skill set entry
     { re: /\bretrieve\(["']([^"']+)["']\)/gi, type: 'RETRIEVE', single: false,
       build: (m) => ({ type: 'RETRIEVE', title: m[1] }) },
+
+    // AI adds a new skill to the skill set
+    { re: /\bnewSkill\(["']([^"']+)["']\s*,\s*["']([^"']+)["']\)/gi, type: 'NEW_SKILL', single: false,
+      build: (m) => ({ type: 'NEW_SKILL', title: m[1], guide: m[2] }) },
 
     // Copy to clipboard
     { re: /\bcopyToClipboard\(["']([^"']*)["']\)/gi, type: 'COPY_CLIP', single: false,
@@ -4325,7 +4348,9 @@ async function _executeSingleCommand(cmd) {
 
       if (!alreadyRetrieved) {
         const entries = Bridge.getDatabaseEntries();
-        const entry = entries.find(e => e.title.toLowerCase() === (cmd.title || '').toLowerCase());
+        const titleLc = (cmd.title || '').toLowerCase();
+        const entry = entries.find(e => e.title.toLowerCase() === titleLc)
+                   || _getAiSkills().find(e => e.title.toLowerCase() === titleLc);
         const body = entry ? entry.guide : 'The information is not available';
         _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
           + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
@@ -4333,6 +4358,9 @@ async function _executeSingleCommand(cmd) {
       // No screenshot here – handled by auto-appended SCREENSHOT.
       break;
     }
+    case 'NEW_SKILL':
+      newSkill(cmd.title, cmd.guide);
+      break;
     case 'SCREENSHOT':
       // Kotlin pipeline: captures screen → addScreenshotToConversation → reason() → onCustomModelRequest.
       // Always request here, for every model (text-only or not): the native side
@@ -6082,56 +6110,74 @@ function openDatabasePopup() {
   openPopup('popup-db');
   fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
+function _makeEntryRow(e, isAi) {
+  const row = document.createElement('div');
+  row.className = 'db-entry';
+  row.innerHTML = `
+    <div class="db-entry-pill" style="cursor:pointer">
+      <div class="db-entry-title">${escHtml(e.title)}</div>
+    </div>
+    <div style="position:relative;flex-shrink:0">
+      <button class="db-entry-menu-btn" title="More options">&#8942;</button>
+      <div class="db-entry-menu">
+        <button type="button" data-action="delete">Delete</button>
+      </div>
+    </div>`;
+  row.querySelector('.db-entry-pill').onclick = () => openEditEntry(e);
+  const menuBtn = row.querySelector('.db-entry-menu-btn');
+  const menu = row.querySelector('.db-entry-menu');
+  menuBtn.onclick = (ev) => {
+    ev.stopPropagation();
+    const wasOpen = menu.classList.contains('open');
+    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
+    if (!wasOpen) menu.classList.add('open');
+  };
+  menu.querySelector('[data-action="delete"]').onclick = (ev) => {
+    ev.stopPropagation();
+    menu.classList.remove('open');
+    if (isAi) deleteAiSkill(e.title); else deleteEntry(e.title);
+  };
+  return row;
+}
+
 function renderDbList() {
   const list = document.getElementById('db-list');
   const entries = Bridge.getDatabaseEntries();
+  const aiSkills = _getAiSkills();
 
   list.innerHTML = '';
-  entries.forEach((e, i) => {
-    const row = document.createElement('div');
-    row.className='db-entry';
-    row.innerHTML=`
-      <div class="db-entry-pill" style="cursor:pointer">
-        <div class="db-entry-title">${escHtml(e.title)}</div>
-      </div>
-      <div style="position:relative;flex-shrink:0">
-        <button class="db-entry-menu-btn" title="More options">&#8942;</button>
-        <div class="db-entry-menu">
-          <button type="button" data-action="delete">Delete</button>
-        </div>
-      </div>`;
-    row.querySelector('.db-entry-pill').onclick = () => openEditEntry(e);
-    const menuBtn = row.querySelector('.db-entry-menu-btn');
-    const menu = row.querySelector('.db-entry-menu');
-    menuBtn.onclick = (ev) => {
-      ev.stopPropagation();
-      const wasOpen = menu.classList.contains('open');
-      document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
-      if (!wasOpen) menu.classList.add('open');
-    };
-    menu.querySelector('[data-action="delete"]').onclick = (ev) => {
-      ev.stopPropagation();
-      menu.classList.remove('open');
-      deleteEntry(e.title);
-    };
-    list.appendChild(row);
-  });
 
-  const newRow = document.createElement('div');
-  newRow.className = (entries.length % 2 === 0) ? 'db-entry' : 'db-entry';
-  newRow.style.background = (entries.length % 2 === 0) ? 'var(--db-yellow-1)' : 'var(--db-yellow-2)';
-  newRow.innerHTML = `
-    <div class="db-new-row" style="flex:1">
-      <div class="db-hint">The headings are sent to the AI and the content is included on request</div>
-      <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
-    </div>`;
-  list.appendChild(newRow);
+  // ── Human entries ──
+  entries.forEach((e) => list.appendChild(_makeEntryRow(e, false)));
 
-  // Native (Compose) always renders 15 row-slots and fills unused ones with a plain
-  // alternating-color box, so the popup stays visually full instead of collapsing
-  // to a sliver when there are few/no entries. Mirror that here.
+  const hintRow = document.createElement('div');
+  hintRow.className = 'db-entry';
+  hintRow.innerHTML = `<div class="db-hint" style="flex:1;padding:6px 8px">The headings are sent to the AI and the content is included on request</div>`;
+  list.appendChild(hintRow);
+
+  // ── AI-generated skills section header ──
+  const aiEnabled = _aiSkillsEnabled();
+  const headerRow = document.createElement('div');
+  headerRow.className = 'db-ai-header';
+  headerRow.innerHTML = `
+    <span class="db-ai-header-label">AI-generated skills</span>
+    <label class="db-ai-toggle" title="Allow AI to add skills">
+      <input type="checkbox" id="ai-skills-toggle" ${aiEnabled ? 'checked' : ''}>
+      <span class="db-ai-toggle-slider"></span>
+    </label>`;
+  headerRow.querySelector('#ai-skills-toggle').onchange = (ev) => {
+    localStorage.setItem('aiSkillsEnabled', ev.target.checked ? '1' : '0');
+    const msg = ev.target.checked ? 'AI-generated skills are stored.' : 'AI-generated skills are not saved';
+    _showToast(msg);
+  };
+  list.appendChild(headerRow);
+
+  // ── AI skill entries ──
+  aiSkills.forEach((e) => list.appendChild(_makeEntryRow(e, true)));
+
+  // Filler rows so the popup stays visually full (≥15 rows total)
   const MIN_ROWS = 15;
-  const rowsSoFar = entries.length + 1; // entries + the "New" row
+  const rowsSoFar = entries.length + 1 + 1 + aiSkills.length; // human + hint + header + ai
   for (let i = rowsSoFar; i < MIN_ROWS; i++) {
     const filler = document.createElement('div');
     filler.className = 'db-entry db-filler-row';
@@ -6141,6 +6187,41 @@ function renderDbList() {
   document.addEventListener('click', () => {
     document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
   }, { once: true });
+}
+
+function _aiSkillsEnabled() {
+  const v = localStorage.getItem('aiSkillsEnabled');
+  return v === null ? true : v === '1';
+}
+function _getAiSkills() {
+  try { return JSON.parse(localStorage.getItem('aiSkills') || '[]'); } catch(e) { return []; }
+}
+function _saveAiSkills(arr) {
+  localStorage.setItem('aiSkills', JSON.stringify(arr));
+}
+function deleteAiSkill(title) {
+  if (!confirm('Delete "'+title+'"?')) return;
+  _saveAiSkills(_getAiSkills().filter(e => e.title !== title));
+  renderDbList();
+}
+function _showToast(msg) {
+  // Prefer native bridge toast; fall back to a simple in-page toast
+  try { Bridge.showToast(msg, false); } catch(e) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 18px;border-radius:20px;z-index:9999;font-size:14px;pointer-events:none;opacity:1;transition:opacity .4s';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),400); }, 2200);
+  }
+}
+// Called by AI via newSkill("Title","Guide")
+function newSkill(title, guide) {
+  if (!title || !guide) return;
+  if (!_aiSkillsEnabled()) return; // toggle off → silently ignore
+  const existing = _getAiSkills();
+  if (existing.some(e => e.title.toLowerCase() === title.toLowerCase())) return; // no duplicates
+  existing.push({ title, guide });
+  _saveAiSkills(existing);
 }
 
 function copyToSystemMessage(text) {
@@ -6219,7 +6300,7 @@ function exportDatabase() {
   const json = JSON.stringify(entries, null, 2);
   const blob = new Blob([json], {type:'application/json'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorDatabase.json'; a.click();
+  const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
   URL.revokeObjectURL(url);
 }
 function importDatabase(event) {
@@ -6666,6 +6747,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
