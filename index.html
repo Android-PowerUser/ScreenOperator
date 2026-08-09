@@ -4524,6 +4524,10 @@ function applyModelSelection(id) {
   // Top K slider
   document.getElementById('topk-row').style.display = m.supportsTopK ? 'block' : 'none';
 
+  // + button (image/video picker): hide for models that do not support screenshots
+  const pickBtn = document.querySelector('button[onclick="pickImage()"]');
+  if (pickBtn) pickBtn.style.display = m.supportsScreenshot ? '' : 'none';
+
   // Try it card text
   if (id === 'HUMAN_EXPERT') {
     document.getElementById('try-title').textContent = 'Operate with Human Expert';
