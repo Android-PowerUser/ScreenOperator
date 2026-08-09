@@ -5610,7 +5610,7 @@ function addUserBubble(text, imageDataUri) {
     ? `\n    <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`
     : '';
   // Resend button: shown only when generation is not running (managed by onGenerationStateChanged)
-  const resendBtnHtml = `<button class="bubble-resend-btn" onclick="_resendLastUserMessage()" title="Erneut senden" style="display:${generationRunning ? 'none' : 'flex'}"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>`;
+  const resendBtnHtml = `<button class="bubble-resend-btn" onclick="_resendLastUserMessage()" title="Erneut senden" style="display:${generationRunning ? 'none' : 'flex'}">&#10227;</button>`;
   wrap.innerHTML = `<div class="bubble user has-resend">${escHtml(text)}${thumbHtml}${resendBtnHtml}</div>${undoBtnHtml}`;
   // Store resend data on the wrap element
   wrap.dataset.resendText = text;
