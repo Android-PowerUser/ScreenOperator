@@ -5723,6 +5723,11 @@ function scrollToBottom(force) {
   });
 }
 function _resendLastUserMessage() {
+  // If Accessibility Service is not enabled, redirect to its settings instead of resending.
+  if (getInAndroid() && !Bridge.isAccessibilityServiceEnabled()) {
+    activateAccessibilityService();
+    return;
+  }
   // Find the last user bubble wrap and extract stored resend data
   const userWraps = document.querySelectorAll('#chat-messages .user-wrap');
   if (!userWraps.length) return;
