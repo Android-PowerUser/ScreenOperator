@@ -559,16 +559,18 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
   <!-- Pro / Donation -->
   <div class="card" id="donation-card">
+    <!-- Shown when no subscription: both buttons -->
     <div class="row between" id="donation-row">
-      <div class="title-md" style="flex:1">Support Improvements<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
+      <div class="title-md" style="flex:1">Support improvements or get all models, always and automatically with freedom<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-left:8px;align-items:stretch">
         <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn">Pro (2,90 €/Month)</button>
         <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn" style="background:#7B4FA6">Freedom (7,90 €/Month)</button>
       </div>
     </div>
+    <!-- Shown when Pro purchased but not Freedom: upgrade to Freedom -->
     <div id="freedom-row" style="display:none">
       <div class="row between" id="freedom-upgrade-row">
-        <div class="title-md" style="flex:1">or get all models, always and automatically<br><span style="visibility:hidden;white-space:nowrap">or get all</span>🎉</div>
+        <div class="title-md" style="flex:1">get all models, always and automatically<br><span style="visibility:hidden;white-space:nowrap">or get all</span>🎉</div>
         <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="background:#7B4FA6;margin-left:8px">Freedom (7,90 €/Month)</button>
       </div>
     </div>
@@ -6872,6 +6874,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
