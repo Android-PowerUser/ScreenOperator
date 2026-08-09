@@ -323,10 +323,9 @@ html.dark-mode .task-input { color: var(--text-primary); }
 
 /* ── Resend button inside last user bubble ───────────────── */
 .bubble.user{position:relative}
-.bubble.user.has-resend{padding-bottom:36px}
-.bubble-resend-btn{position:absolute;bottom:4px;right:4px;width:32px;height:32px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0.65;transition:opacity .15s;padding:0}
-.bubble-resend-btn:active{opacity:.4}
-.bubble-resend-btn svg{color:var(--bubble-user-text)}
+.bubble.user.has-resend{padding-bottom:40px}
+.bubble-resend-btn{position:absolute;bottom:2px;right:2px;width:36px;height:36px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-primary);cursor:pointer;font-size:20px;flex-shrink:0}
+.bubble-resend-btn:active{background:var(--item-hover)}
 /* ── Stop / Unload button ────────────────────────────────── */
 #stop-btn-wrap{margin-top:6px}
 #stop-btn{width:100%;padding:10px;background:#B3261E;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit}
@@ -5579,7 +5578,7 @@ function addUserBubble(text, imageDataUri) {
     ? `\n    <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`
     : '';
   // Resend button: shown only when generation is not running (managed by onGenerationStateChanged)
-  const resendBtnHtml = `<button class="bubble-resend-btn" onclick="_resendLastUserMessage()" title="Erneut senden" style="display:${generationRunning ? 'none' : 'flex'}"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>`;
+  const resendBtnHtml = `<button class="bubble-resend-btn" onclick="_resendLastUserMessage()" title="Erneut senden" style="display:${generationRunning ? 'none' : 'flex'}"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>`;
   wrap.innerHTML = `<div class="bubble user has-resend">${escHtml(text)}${thumbHtml}${resendBtnHtml}</div>${undoBtnHtml}`;
   // Store resend data on the wrap element
   wrap.dataset.resendText = text;
