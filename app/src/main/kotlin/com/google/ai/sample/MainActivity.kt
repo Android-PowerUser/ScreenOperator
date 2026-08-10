@@ -1461,6 +1461,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         instance = this
         Log.d(TAG, "onResume: MainActivity instance set.")
+        Log.d(TAG, "onResume: Reloading WebView content (same as app start).")
+        loadWebViewContent()
         Log.d(TAG, "onResume: Calling refreshAccessibilityServiceStatus.")
         refreshAccessibilityServiceStatus() 
 
