@@ -152,10 +152,9 @@ html.dark-mode {
 }
 #ctx-incoming.sliding{display:flex}
 
-/* Indicator */
+/* Indicator — sits inline inside the sys-wrap header row */
 #ctx-indicator{
-  position:absolute;top:6px;left:50%;transform:translateX(-50%);
-  display:flex;gap:6px;align-items:center;z-index:30;pointer-events:none
+  display:flex;gap:6px;align-items:center;flex-shrink:0;pointer-events:none
 }
 .ctx-dot{
   width:8px;height:8px;border-radius:50%;
@@ -627,9 +626,6 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 ═══════════════════════════════════════════════════════════ -->
 <div id="screen-chat" class="screen">
 
-  <!-- Context dots indicator -->
-  <div id="ctx-indicator"></div>
-
   <!-- Incoming context panel (used during swipe animation) -->
   <div id="ctx-incoming"></div>
 
@@ -638,6 +634,8 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div class="card-accent">
       <div class="row between" style="align-items:flex-start;gap:8px">
         <span class="title-md" style="color:#4A6FE3;padding-top:2px">System Message</span>
+        <!-- Context dots indicator: between title and buttons -->
+        <div id="ctx-indicator" style="flex:1;justify-content:center;padding-top:4px"></div>
         <div class="row" style="gap:6px;flex-shrink:0">
           <button class="btn btn-outline" onclick="restoreSystemMessage()">Restore<br>System Message</button>
           <button class="btn btn-outline" onclick="openDatabasePopup()">Skill Set</button>
