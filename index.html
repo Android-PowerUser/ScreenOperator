@@ -139,7 +139,8 @@ html.dark-mode {
 
 /* ── CHAT SCREEN ─────────────────────────────────────────── */
 #screen-chat{overflow:hidden;position:relative}
-#chat-sys-wrap{flex-shrink:0;padding:8px 14px 0}
+#chat-sys-wrap{flex-shrink:0;padding:0 14px 0}
+#chat-sys-wrap .card-accent{margin-top:0;border-top-left-radius:0;border-top-right-radius:0}
 #chat-messages-wrap{flex:1;overflow-y:auto;padding:4px 14px 4px;display:flex;flex-direction:column;gap:2px}
 #chat-bottom{flex-shrink:0;padding:0 14px 8px;position:relative}
 
@@ -635,7 +636,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       <div class="row between" style="align-items:flex-start;gap:8px">
         <span class="title-md" style="color:#4A6FE3;padding-top:2px">System Message</span>
         <!-- Context dots indicator: between title and buttons -->
-        <div id="ctx-indicator" style="flex:1;justify-content:center;padding-top:4px"></div>
+        <div id="ctx-indicator" style="flex:1;justify-content:center"></div>
         <div class="row" style="gap:6px;flex-shrink:0">
           <button class="btn btn-outline" onclick="restoreSystemMessage()">Restore<br>System Message</button>
           <button class="btn btn-outline" onclick="openDatabasePopup()">Skill Set</button>
