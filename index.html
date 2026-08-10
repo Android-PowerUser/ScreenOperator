@@ -144,22 +144,29 @@ html.dark-mode {
 #chat-bottom{flex-shrink:0;padding:0 14px 8px;position:relative}
 
 /* ── MULTI-CONTEXT SWIPE ─────────────────────────────────── */
+/* Incoming context panel for slide animation */
+#ctx-incoming{
+  position:absolute;inset:0;z-index:20;
+  background:var(--bg);display:none;flex-direction:column;
+  overflow:hidden;pointer-events:none
+}
+#ctx-incoming.sliding{display:flex}
+
+/* Indicator */
 #ctx-indicator{
   position:absolute;top:6px;left:50%;transform:translateX(-50%);
-  display:flex;gap:5px;z-index:10;pointer-events:none;
-  opacity:0;transition:opacity .3s
+  display:flex;gap:6px;align-items:center;z-index:30;pointer-events:none
 }
-#ctx-indicator.visible{opacity:1}
 .ctx-dot{
-  width:6px;height:6px;border-radius:50%;
-  background:var(--outline-variant);transition:background .2s
+  width:8px;height:8px;border-radius:50%;
+  background:var(--outline-variant);transition:background .2s;flex-shrink:0
 }
 .ctx-dot.active{background:var(--primary)}
-#ctx-swipe-hint{
-  position:absolute;bottom:70px;left:50%;transform:translateX(-50%);
-  font-size:11px;color:var(--text-secondary);opacity:0;
-  transition:opacity .5s;pointer-events:none;white-space:nowrap;
-  background:var(--bg-card);border-radius:8px;padding:4px 10px;z-index:10
+.ctx-dot-plus{
+  width:16px;height:16px;border-radius:50%;
+  border:1.5px solid var(--outline-variant);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;line-height:1;color:var(--outline-variant);font-weight:bold;flex-shrink:0
 }
 
 /* ── Card ────────────────────────────────────────────────── */
@@ -622,7 +629,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
   <!-- Context dots indicator -->
   <div id="ctx-indicator"></div>
-  <div id="ctx-swipe-hint"></div>
+
+  <!-- Incoming context panel (used during swipe animation) -->
+  <div id="ctx-incoming"></div>
 
   <!-- System message -->
   <div id="chat-sys-wrap">
@@ -6896,28 +6905,28 @@ function _collapseOldScreenElementBubbles() {
 
 
 /* ════════════════════════════════════════════════════════
-   MULTI-CONTEXT CHAT MANAGEMENT
-   Supports multiple chat histories. Swipe left on chat →
-   new context on the right. Swipe right → previous context.
-   "New" button clears current context only. Navigating away
-   from a cleared (empty) context removes it automatically.
+   MULTI-CONTEXT CHAT MANAGEMENT  v2
+   • Swipe left  → next context (or new one if at rightmost)
+   • Swipe right → previous context
+   • "New" btn   → clears current context only; navigating
+                   away from empty context removes it
+   • No new context created when current is already empty
+   • Real-time sliding animation during swipe gesture
+   • Indicator always visible; "+" dot shows new-context slot
 ════════════════════════════════════════════════════════ */
 (function() {
 
   /* ── State ─────────────────────────────────────────── */
-  // Each context: { history: [], domHTML: '', cmdStatusHTML: '' }
   const _contexts = [{ history: [], domHTML: '', cmdStatusHTML: '' }];
-  let _ctxIdx = 0;          // currently active context index
-  let _ctxClearedByNew = false; // true when the current ctx was cleared by "New" btn
+  let _ctxIdx = 0;
+  let _ctxClearedByNew = false;
+  let _animating = false; // guard against concurrent animations
 
-  /* ── Persistence keys ──────────────────────────────── */
-  const STORAGE_KEY = 'multiCtx_v1';
-
+  /* ── Persistence ────────────────────────────────────── */
   function _saveAllContexts() {
     try {
-      // Snapshot the current context's live DOM before saving
       _snapshotCurrentCtx();
-      const payload = JSON.stringify({ idx: _ctxIdx, contexts: _contexts });
+      const payload = JSON.stringify({ v:2, idx: _ctxIdx, contexts: _contexts });
       if (getInAndroid()) Android.saveChatHistory(payload);
     } catch(e) { console.warn('[MultiCtx] save error', e); }
   }
@@ -6928,9 +6937,8 @@ function _collapseOldScreenElementBubbles() {
       const raw = Android.loadChatHistory();
       if (!raw) return;
       const data = JSON.parse(raw);
-      // Detect old format (plain array from single-context version)
       if (Array.isArray(data)) {
-        // Migrate: treat as single context history
+        // Migrate from old single-context format
         _contexts[0].history = data;
         _ctxIdx = 0;
         return;
@@ -6940,13 +6948,10 @@ function _collapseOldScreenElementBubbles() {
         data.contexts.forEach(c => _contexts.push(c));
         _ctxIdx = Math.min(data.idx || 0, _contexts.length - 1);
       }
-    } catch(e) {
-      console.warn('[MultiCtx] load error', e);
-      // Keep default empty context
-    }
+    } catch(e) { console.warn('[MultiCtx] load error', e); }
   }
 
-  /* ── Context snapshot / restore ────────────────────── */
+  /* ── Snapshot / restore ─────────────────────────────── */
   function _snapshotCurrentCtx() {
     const msgs = document.getElementById('chat-messages');
     const cmds = document.getElementById('cmd-status-wrap');
@@ -6955,7 +6960,7 @@ function _collapseOldScreenElementBubbles() {
     _contexts[_ctxIdx].history = _jsChatHistory.slice();
   }
 
-  function _restoreCtx(idx) {
+  function _applyCtxToDOM(idx) {
     const ctx = _contexts[idx];
     const msgs = document.getElementById('chat-messages');
     const cmds = document.getElementById('cmd-status-wrap');
@@ -6965,96 +6970,186 @@ function _collapseOldScreenElementBubbles() {
     scrollToBottom();
   }
 
-  /* ── Indicator dots ────────────────────────────────── */
+  function _isCtxEmpty(idx) {
+    const c = _contexts[idx];
+    return (!c.domHTML || c.domHTML.trim() === '') &&
+           (!c.history || c.history.length === 0);
+  }
+
+  /* ── Indicator ──────────────────────────────────────── */
   function _updateIndicator() {
     const el = document.getElementById('ctx-indicator');
     if (!el) return;
     el.innerHTML = '';
-    if (_contexts.length <= 1) { el.classList.remove('visible'); return; }
-    el.classList.add('visible');
+
+    // Existing context dots
     _contexts.forEach((_, i) => {
       const d = document.createElement('span');
       d.className = 'ctx-dot' + (i === _ctxIdx ? ' active' : '');
       el.appendChild(d);
     });
+
+    // "+" dot for new context — always shown, greyed out if current ctx is empty
+    const plus = document.createElement('span');
+    plus.className = 'ctx-dot-plus';
+    plus.textContent = '+';
+    // Dim if we're already on an empty context (can't create another)
+    const canCreate = !_isCtxEmpty(_ctxIdx);
+    plus.style.opacity = canCreate ? '1' : '0.35';
+    el.appendChild(plus);
   }
 
-  function _showSwipeHint(text) {
-    const el = document.getElementById('ctx-swipe-hint');
-    if (!el) return;
-    el.textContent = text;
-    el.style.opacity = '1';
-    clearTimeout(el._timer);
-    el._timer = setTimeout(() => { el.style.opacity = '0'; }, 1500);
+  /* ── Animated swipe transition ──────────────────────── */
+  /*
+   * incoming panel slides in from the given direction while
+   * the main content slides out to the opposite direction.
+   * direction: 'left' = incoming comes from right (swiped left)
+   *            'right'= incoming comes from left (swiped right)
+   */
+  function _animateSwitch(targetIdx, direction, onCommit) {
+    if (_animating) return;
+    _animating = true;
+
+    const chatScreen  = document.getElementById('screen-chat');
+    const incomingEl  = document.getElementById('ctx-incoming');
+    const msgsWrap    = document.getElementById('chat-messages-wrap');
+    const sysWrap     = document.getElementById('chat-sys-wrap');
+    const bottom      = document.getElementById('chat-bottom');
+    if (!incomingEl || !chatScreen) {
+      _animating = false;
+      onCommit();
+      return;
+    }
+
+    // Build incoming content
+    const tCtx = _contexts[targetIdx];
+    incomingEl.innerHTML = '';
+
+    // Clone sys-wrap area (static header)
+    const sysClone = sysWrap ? sysWrap.cloneNode(true) : null;
+    if (sysClone) {
+      sysClone.style.cssText = sysWrap.style.cssText;
+      incomingEl.appendChild(sysClone);
+    }
+
+    // Messages area
+    const inMsgsWrap = document.createElement('div');
+    inMsgsWrap.id = 'ctx-incoming-msgs';
+    inMsgsWrap.style.cssText = 'flex:1;overflow-y:auto;padding:4px 14px;display:flex;flex-direction:column;gap:2px';
+    const inMsgs = document.createElement('div');
+    inMsgs.innerHTML = tCtx.domHTML || '';
+    inMsgsWrap.appendChild(inMsgs);
+    incomingEl.appendChild(inMsgsWrap);
+
+    // Position incoming panel off-screen
+    const fromRight = direction === 'left';
+    incomingEl.style.transition  = 'none';
+    incomingEl.style.transform   = fromRight ? 'translateX(100%)' : 'translateX(-100%)';
+    incomingEl.style.display     = 'flex';
+
+    // Outgoing elements: slide them out
+    const outElements = [sysWrap, msgsWrap, bottom].filter(Boolean);
+    outElements.forEach(el => {
+      el.style.transition = 'none';
+      el.style.transform  = 'translateX(0)';
+    });
+
+    // Force reflow
+    void incomingEl.offsetHeight;
+
+    const DURATION = '280ms';
+    const EASING   = 'cubic-bezier(0.4,0,0.2,1)';
+
+    // Slide in incoming
+    incomingEl.style.transition = `transform ${DURATION} ${EASING}`;
+    incomingEl.style.transform  = 'translateX(0)';
+
+    // Slide out current
+    const outX = fromRight ? '-30%' : '30%';
+    outElements.forEach(el => {
+      el.style.transition = `transform ${DURATION} ${EASING}`;
+      el.style.transform  = `translateX(${outX})`;
+    });
+
+    incomingEl.addEventListener('transitionend', function _done() {
+      incomingEl.removeEventListener('transitionend', _done);
+      // Reset outgoing elements
+      outElements.forEach(el => {
+        el.style.transition = '';
+        el.style.transform  = '';
+      });
+      incomingEl.style.display = 'none';
+      incomingEl.style.transition = '';
+      incomingEl.innerHTML = '';
+      _animating = false;
+      onCommit();
+    });
   }
 
-  /* ── Switch context ────────────────────────────────── */
-  function _switchToCtx(newIdx) {
-    if (newIdx === _ctxIdx) return;
+  /* ── Context switch logic ───────────────────────────── */
+  function _switchToCtx(targetIdx, direction) {
     _snapshotCurrentCtx();
 
-    // If the context we're leaving was cleared by "New" and is now empty
-    // (domHTML == '' and history == []), remove it
+    // Remove empty "New"-cleared context when navigating away
     if (_ctxClearedByNew && _isCtxEmpty(_ctxIdx)) {
       _contexts.splice(_ctxIdx, 1);
-      // Adjust target index after removal
-      if (newIdx > _ctxIdx) newIdx--;
+      if (targetIdx > _ctxIdx) targetIdx--;
       _ctxClearedByNew = false;
     }
 
-    _ctxIdx = Math.max(0, Math.min(newIdx, _contexts.length - 1));
-    _restoreCtx(_ctxIdx);
+    targetIdx = Math.max(0, Math.min(targetIdx, _contexts.length - 1));
+    if (targetIdx === _ctxIdx) {
+      _updateIndicator();
+      return;
+    }
+
+    _animateSwitch(targetIdx, direction, () => {
+      _ctxIdx = targetIdx;
+      _applyCtxToDOM(_ctxIdx);
+      _updateIndicator();
+      _saveAllContexts();
+    });
+
+    // Update indicator immediately so dots change during animation
     _updateIndicator();
-    _saveAllContexts();
   }
 
-  function _isCtxEmpty(idx) {
-    const c = _contexts[idx];
-    return (!c.domHTML || c.domHTML.trim() === '') && (!c.history || c.history.length === 0);
-  }
-
-  /* ── Swipe to new context (right edge → new ctx) ─── */
-  function _swipeToNewContext() {
-    _snapshotCurrentCtx();
-    _ctxClearedByNew = false;
-    // New context always appended at the end
-    _contexts.push({ history: [], domHTML: '', cmdStatusHTML: '' });
-    _ctxIdx = _contexts.length - 1;
-    _restoreCtx(_ctxIdx);
-    _updateIndicator();
-    _saveAllContexts();
-    _showSwipeHint('New context');
-  }
-
-  function _swipeToPrev() {
-    if (_ctxIdx === 0) return;
-    _switchToCtx(_ctxIdx - 1);
-    _showSwipeHint((_ctxIdx + 1) + ' / ' + _contexts.length); // already decremented by _switchToCtx? No, _ctxIdx IS updated
-  }
-
-  function _swipeToNext() {
+  /* ── Swipe handlers ─────────────────────────────────── */
+  function _swipeLeft() {
+    // Swipe left = go to next context (right side)
     if (_ctxIdx < _contexts.length - 1) {
-      _switchToCtx(_ctxIdx + 1);
-      _showSwipeHint((_ctxIdx + 1) + ' / ' + _contexts.length);
+      _switchToCtx(_ctxIdx + 1, 'left');
     } else {
-      // Rightmost: create new context
-      _swipeToNewContext();
+      // At rightmost — only create new context if current is not empty
+      if (_isCtxEmpty(_ctxIdx)) return; // already empty, nothing to do
+      _snapshotCurrentCtx();
+      _ctxClearedByNew = false;
+      _contexts.push({ history: [], domHTML: '', cmdStatusHTML: '' });
+      const newIdx = _contexts.length - 1;
+      _animateSwitch(newIdx, 'left', () => {
+        _ctxIdx = newIdx;
+        _applyCtxToDOM(_ctxIdx);
+        _updateIndicator();
+        _saveAllContexts();
+      });
+      _updateIndicator();
     }
   }
 
+  function _swipeRight() {
+    if (_ctxIdx === 0) return;
+    _switchToCtx(_ctxIdx - 1, 'right');
+  }
+
   /* ── Override clearChat (New button) ───────────────── */
-  const _origClearChat = window.clearChat;
   window.clearChat = function() {
-    // Clear DOM
     const msgs = document.getElementById('chat-messages');
     const cmds = document.getElementById('cmd-status-wrap');
     if (msgs) msgs.innerHTML = '';
     if (cmds) cmds.innerHTML = '';
     _humanExpertConnected = false;
     if (window._updateHumanExpertInputArea) _updateHumanExpertInputArea();
-    // Clear native history
     if (Bridge && Bridge.clearChatHistory) Bridge.clearChatHistory();
-    if (Bridge && Bridge.clearChatHistoryJs) Bridge.clearChatHistoryJs();
     // Clear local context
     _jsChatHistory = [];
     _contexts[_ctxIdx] = { history: [], domHTML: '', cmdStatusHTML: '' };
@@ -7064,82 +7159,162 @@ function _collapseOldScreenElementBubbles() {
     _saveAllContexts();
   };
 
-  /* ── Touch / Swipe detection on chat screen ─────── */
+  /* ── Touch / swipe with live drag feedback ──────────── */
   (function() {
     const chatScreen = document.getElementById('screen-chat');
     if (!chatScreen) return;
 
-    let _tx = 0, _ty = 0, _active = false;
-    const THRESHOLD = 60;   // px horizontal needed
-    const RATIO = 1.5;      // must be more horizontal than vertical
+    let _tx = 0, _ty = 0;
+    let _tracking = false;   // gesture being tracked
+    let _dragging = false;   // confirmed horizontal drag
+    let _cancelled = false;  // gesture was ruled out as vertical
+    const COMMIT_THRESHOLD = 80; // px to commit switch
+    const RATIO = 1.5;
+
+    // Elements that move during drag
+    const _getOutEls = () => [
+      document.getElementById('chat-sys-wrap'),
+      document.getElementById('chat-messages-wrap'),
+      document.getElementById('chat-bottom')
+    ].filter(Boolean);
+
+    // Peek panel: shows a glimpse of the incoming context
+    const incomingEl = document.getElementById('ctx-incoming');
+
+    function _setDragOffset(dx) {
+      // Clamp: allow drag only in valid directions
+      if (dx > 0 && _ctxIdx === 0) dx = Math.min(dx * 0.15, 20); // rubber-band
+      if (dx < 0 && _ctxIdx === _contexts.length - 1 && _isCtxEmpty(_ctxIdx)) dx = Math.max(dx * 0.15, -20);
+
+      const els = _getOutEls();
+      els.forEach(el => {
+        el.style.transition = 'none';
+        el.style.transform  = `translateX(${dx}px)`;
+      });
+      // Show incoming peek
+      if (incomingEl) {
+        const fromRight = dx < 0;
+        const screenW   = chatScreen.offsetWidth || 400;
+        const inX       = fromRight
+          ? screenW + dx           // slides in from right as you drag left
+          : -screenW + dx;         // slides in from left as you drag right
+        incomingEl.style.transition = 'none';
+        incomingEl.style.transform  = `translateX(${inX}px)`;
+      }
+    }
+
+    function _clearDragOffset() {
+      const els = _getOutEls();
+      els.forEach(el => {
+        el.style.transition = '';
+        el.style.transform  = '';
+      });
+      if (incomingEl) {
+        incomingEl.style.transition = '';
+        incomingEl.style.transform  = '';
+        incomingEl.style.display    = 'none';
+        incomingEl.innerHTML        = '';
+      }
+    }
+
+    function _prepareIncomingPeek(fromRight) {
+      if (!incomingEl) return;
+      // Decide what to show in peek
+      const peekIdx = fromRight ? _ctxIdx + 1 : _ctxIdx - 1;
+      if (fromRight && peekIdx < _contexts.length) {
+        incomingEl.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:14px">'
+          + (_isCtxEmpty(peekIdx) ? '(empty)' : _contexts[peekIdx].domHTML ? '' : '') + '</div>';
+        // Just show the dom
+        incomingEl.innerHTML = _contexts[peekIdx].domHTML
+          ? '<div style="flex:1;overflow:hidden;padding:4px 14px;opacity:.6">' + _contexts[peekIdx].domHTML + '</div>'
+          : '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:14px">Empty chat</div>';
+      } else if (fromRight) {
+        // New context
+        incomingEl.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:14px">New chat</div>';
+      } else if (!fromRight && peekIdx >= 0) {
+        incomingEl.innerHTML = _contexts[peekIdx].domHTML
+          ? '<div style="flex:1;overflow:hidden;padding:4px 14px;opacity:.6">' + _contexts[peekIdx].domHTML + '</div>'
+          : '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:14px">Empty chat</div>';
+      }
+      const screenW = chatScreen.offsetWidth || 400;
+      incomingEl.style.display    = 'flex';
+      incomingEl.style.transition = 'none';
+      incomingEl.style.transform  = fromRight ? `translateX(${screenW}px)` : `translateX(${-screenW}px)`;
+    }
 
     chatScreen.addEventListener('touchstart', function(e) {
-      // Only track single-finger swipes; ignore multi-touch (pinch etc.)
-      if (e.touches.length !== 1) { _active = false; return; }
+      if (_animating) return;
+      if (e.touches.length !== 1) { _tracking = false; return; }
       _tx = e.touches[0].clientX;
       _ty = e.touches[0].clientY;
-      _active = true;
+      _tracking = true;
+      _dragging = false;
+      _cancelled = false;
     }, { passive: true });
 
     chatScreen.addEventListener('touchmove', function(e) {
-      // Cancel swipe tracking if a second finger appears
-      if (e.touches.length !== 1) { _active = false; }
+      if (!_tracking || _cancelled || _animating) return;
+      if (e.touches.length !== 1) { _cancelled = true; _clearDragOffset(); return; }
+
+      const dx = e.touches[0].clientX - _tx;
+      const dy = e.touches[0].clientY - _ty;
+
+      if (!_dragging) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // wait for intent
+        if (Math.abs(dy) > Math.abs(dx) * RATIO) { _cancelled = true; _clearDragOffset(); return; }
+        // Confirmed horizontal — check if scroll area is at edge
+        const wrap = document.getElementById('chat-messages-wrap');
+        if (wrap) {
+          const atLeft  = wrap.scrollTop <= 0 || wrap.scrollHeight <= wrap.clientHeight;
+          const atRight = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 2;
+          // Vertical scroll dominance is already ruled out above; but if the
+          // list itself scrolls horizontally (it shouldn't), guard here too.
+        }
+        _dragging = true;
+        _prepareIncomingPeek(dx < 0);
+      }
+
+      _setDragOffset(dx);
     }, { passive: true });
 
     chatScreen.addEventListener('touchend', function(e) {
-      if (!_active) return;
-      _active = false;
+      if (!_tracking) return;
+      _tracking = false;
+      if (_cancelled || !_dragging) { _clearDragOffset(); return; }
+
       const dx = e.changedTouches[0].clientX - _tx;
-      const dy = e.changedTouches[0].clientY - _ty;
-      if (Math.abs(dx) < THRESHOLD) return;
-      if (Math.abs(dx) < Math.abs(dy) * RATIO) return;
-      // Only trigger when not scrolling the messages list
-      const wrap = document.getElementById('chat-messages-wrap');
-      if (wrap && wrap.contains(e.target)) {
-        // Allow swipe only if the message list isn't scrollable (or is at edge)
-        const atLeft = wrap.scrollLeft <= 0;
-        const atRight = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
-        if (dx < 0 && !atRight) return; // swiping left while list has content right
-        if (dx > 0 && !atLeft) return;  // swiping right while list has content left
-      }
-      if (dx < 0) {
-        // Swipe left → go to next (right) context / create new
-        _swipeToNext();
-      } else {
-        // Swipe right → go to previous (left) context
-        if (_ctxIdx > 0) {
-          _swipeToPrev();
-        }
-      }
+      _clearDragOffset();
+
+      if (Math.abs(dx) < COMMIT_THRESHOLD) return; // not far enough
+
+      if (dx < 0) _swipeLeft();
+      else        _swipeRight();
+    }, { passive: true });
+
+    chatScreen.addEventListener('touchcancel', function() {
+      _tracking = false;
+      _clearDragOffset();
     }, { passive: true });
   })();
 
-  /* ── Override _saveJsChatHistory to also save all contexts ── */
-  const _origSave = window._saveJsChatHistory;
+  /* ── Override _saveJsChatHistory ────────────────────── */
   window._saveJsChatHistory = function() {
-    // Keep per-context history in sync with _jsChatHistory
     _contexts[_ctxIdx].history = _jsChatHistory.slice();
     _saveAllContexts();
   };
 
-  /* ── Init: load persisted contexts on startup ───── */
+  /* ── Init ───────────────────────────────────────────── */
   (function _init() {
-    // Wait for DOM + Bridge to be ready (DOMContentLoaded already fired by
-    // the time scripts execute in a bottom-loaded script block, but the
-    // native Bridge may not be ready synchronously).
     function _doInit() {
       _loadAllContexts();
-      _restoreCtx(_ctxIdx);
+      _applyCtxToDOM(_ctxIdx);
       _updateIndicator();
-      // Override Bridge save/load to use our multi-context storage
-      Bridge.saveChatHistory = function(json) {
-        // Called by _saveJsChatHistory with single-context JSON.
-        // We intercept and use our own full save instead.
+
+      Bridge.saveChatHistory = function() {
         _contexts[_ctxIdx].history = _jsChatHistory.slice();
         _saveAllContexts();
       };
       Bridge.loadChatHistory = function() {
-        // Return the current context's history as JSON array
         return JSON.stringify(_contexts[_ctxIdx].history || []);
       };
       Bridge.clearChatHistoryJs = function() {
@@ -7150,12 +7325,11 @@ function _collapseOldScreenElementBubbles() {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', _doInit);
     } else {
-      // Small timeout to let all other init code run first
       setTimeout(_doInit, 50);
     }
   })();
 
-})(); // end MULTI-CONTEXT
+})(); // end MULTI-CONTEXT v2
 
 </script>
 </body>
