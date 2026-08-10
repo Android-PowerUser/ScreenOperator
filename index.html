@@ -165,10 +165,13 @@ html.dark-mode {
 .ctx-dot.active{background:var(--primary)}
 .ctx-dot-plus{
   width:16px;height:16px;border-radius:50%;
-  border:1.5px solid var(--outline-variant);
+  border:2px solid var(--primary);
   display:flex;align-items:center;justify-content:center;
-  font-size:12px;line-height:1;color:var(--outline-variant);font-weight:bold;flex-shrink:0
+  font-size:12px;line-height:1;color:var(--primary);font-weight:bold;flex-shrink:0;
+  transition:all .2s
 }
+.ctx-dot-plus.active{background:var(--primary);color:var(--bg)}
+.ctx-dot-plus.disabled{border-color:var(--outline-variant);color:var(--outline-variant);opacity:0.4}
 
 /* ── Card ────────────────────────────────────────────────── */
 .card{background:var(--bg-card);border-radius:18px;padding:16px;margin:8px 0}
@@ -6982,20 +6985,29 @@ function _collapseOldScreenElementBubbles() {
     if (!el) return;
     el.innerHTML = '';
 
-    // Existing context dots
+    // Only render dots for contexts that have content OR are not the current one.
+    // If the current context is empty, it is represented by the active "+" dot instead.
+    const currentIsEmpty = _isCtxEmpty(_ctxIdx);
+
     _contexts.forEach((_, i) => {
+      // Skip current context if it's empty — it will be shown as active "+" instead
+      if (i === _ctxIdx && currentIsEmpty) return;
       const d = document.createElement('span');
       d.className = 'ctx-dot' + (i === _ctxIdx ? ' active' : '');
       el.appendChild(d);
     });
 
-    // "+" dot for new context — always shown, greyed out if current ctx is empty
+    // "+" dot — always shown
     const plus = document.createElement('span');
     plus.className = 'ctx-dot-plus';
     plus.textContent = '+';
-    // Dim if we're already on an empty context (can't create another)
-    const canCreate = !_isCtxEmpty(_ctxIdx);
-    plus.style.opacity = canCreate ? '1' : '0.35';
+    if (currentIsEmpty) {
+      // We're on an empty (fresh) context: "+" is the active indicator for this page
+      plus.classList.add('active');
+    } else {
+      // We're on a context with content: "+" means "new context available"
+      // No additional class = blue border, clearly available
+    }
     el.appendChild(plus);
   }
 
@@ -7297,6 +7309,8 @@ function _collapseOldScreenElementBubbles() {
   window._saveJsChatHistory = function() {
     _contexts[_ctxIdx].history = _jsChatHistory.slice();
     _saveAllContexts();
+    // Refresh indicator: a newly filled context should gain its dot
+    _updateIndicator();
   };
 
   /* ── Init ───────────────────────────────────────────── */
