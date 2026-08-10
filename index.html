@@ -6735,6 +6735,84 @@ function _collapseOldScreenElementBubbles() {
     return hash.toString(36) + ':' + str.length;
   }
 
+  // IDs aller Overlays/Popups/Menüs, die per `.open`-Klasse sichtbar geschaltet
+  // werden. Vor einem Hot-Reload wird gemerkt, welche davon gerade offen waren,
+  // damit _applyNewHtml sie nach dem Neuaufbau des DOM wiederherstellen kann -
+  // sonst wirkt jedes Update wie ein Sprung zurück auf die Hauptseite, weil
+  // document.write() den kompletten alten DOM (inkl. aller offenen
+  // Dialoge/Menüs) verwirft und die neue HTML immer im "Grundzustand" startet.
+  var _PRESERVED_OVERLAY_IDS = [
+    'ai-question-overlay', 'popup-apikey', 'popup-db', 'popup-edit-entry',
+    'trial-expired-overlay', 'trial-info-overlay', 'human-expert-overlay',
+    'payment-method-overlay', 'model-dropdown-menu'
+  ];
+
+  // Erfasst den Teil des UI-Zustands, der rein im DOM lebt (welche Dialoge
+  // offen sind, wo im Chat gescrollt wurde, was gerade im Eingabefeld steht)
+  // und beim document.write-Ersatz sonst stillschweigend verlorenginge, obwohl
+  // der eigentliche Chatverlauf über Bridge.saveChatHistory/_loadJsChatHistory
+  // bereits persistiert wird.
+  function _captureUiState() {
+    var state = { openOverlays: [], scrollTop: null, inputValue: null, inputSelStart: null, inputSelEnd: null };
+    try {
+      _PRESERVED_OVERLAY_IDS.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && el.classList.contains('open')) state.openOverlays.push(id);
+      });
+    } catch (e) { console.warn('[HotReload] Erfassen offener Overlays fehlgeschlagen', e); }
+    try {
+      var msgs = document.getElementById('chat-messages');
+      if (msgs) state.scrollTop = msgs.scrollTop;
+    } catch (e) { console.warn('[HotReload] Erfassen der Scroll-Position fehlgeschlagen', e); }
+    try {
+      var input = document.getElementById('task-input');
+      if (input && document.activeElement === input) {
+        state.inputValue = input.value;
+        state.inputSelStart = input.selectionStart;
+        state.inputSelEnd = input.selectionEnd;
+      }
+    } catch (e) { console.warn('[HotReload] Erfassen des Eingabefelds fehlgeschlagen', e); }
+    return state;
+  }
+
+  // Stellt den zuvor erfassten Zustand nach dem Neuaufbau des DOM wieder her.
+  // Läuft nach onAndroidReady(), damit z. B. das Eingabefeld/die Overlays
+  // bereits existieren und applyModelSelection/updateDonationCard etc. schon
+  // gelaufen sind (manche openXPopup-Funktionen lesen currentModelId o. Ä.).
+  function _restoreUiState(state) {
+    if (!state) return;
+    try {
+      state.openOverlays.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.add('open');
+      });
+    } catch (e) { console.warn('[HotReload] Wiederherstellen offener Overlays fehlgeschlagen', e); }
+    try {
+      if (state.inputValue !== null) {
+        var input = document.getElementById('task-input');
+        if (input) {
+          input.value = state.inputValue;
+          input.focus();
+          if (state.inputSelStart !== null && state.inputSelEnd !== null) {
+            input.setSelectionRange(state.inputSelStart, state.inputSelEnd);
+          }
+          // Falls das Eingabefeld an ein input-Event gekoppelte Auto-Resize-
+          // oder Zeichenzähler-Logik hat, diese nach dem programmatischen
+          // Setzen von .value einmal anstoßen.
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    } catch (e) { console.warn('[HotReload] Wiederherstellen des Eingabefelds fehlgeschlagen', e); }
+    try {
+      if (state.scrollTop !== null) {
+        var msgs = document.getElementById('chat-messages');
+        // rAF, damit das Layout der neu eingefügten Chat-Bubbles (aus
+        // _loadJsChatHistory) bereits berechnet ist, bevor scrollTop gesetzt wird.
+        if (msgs) requestAnimationFrame(function () { msgs.scrollTop = state.scrollTop; });
+      }
+    } catch (e) { console.warn('[HotReload] Wiederherstellen der Scroll-Position fehlgeschlagen', e); }
+  }
+
   function _applyNewHtml(html) {
     // Falls gerade eine AI-Antwort läuft (offener fetch()/Stream, ausstehende
     // Timeouts wie der Termux-Timeout, etc.), würde document.write() den
@@ -6753,6 +6831,8 @@ function _collapseOldScreenElementBubbles() {
       }
     } catch (_) { /* Bridge evtl. noch nicht bereit - einfach fortfahren */ }
     _pendingHtml = null;
+
+    var _uiState = _captureUiState();
 
     try {
       // document.write ersetzt den kompletten DOM-Baum; anschließend laufen
@@ -6809,6 +6889,17 @@ function _collapseOldScreenElementBubbles() {
       }
     } catch (e) {
       console.warn('[HotReload] onAndroidReady() nach Reload fehlgeschlagen', e);
+    }
+
+    // Erst NACH onAndroidReady() wiederherstellen: dort wird u. a. der
+    // Chatverlauf neu aus Bridge.loadChatHistory() aufgebaut
+    // (_loadJsChatHistory) und Overlays wie das Modell-Dropdown neu
+    // initialisiert - die Wiederherstellung soll darauf aufsetzen, nicht davor
+    // laufen und dann von der Neuinitialisierung überschrieben werden.
+    try {
+      _restoreUiState(_uiState);
+    } catch (e) {
+      console.warn('[HotReload] Wiederherstellen des UI-Zustands fehlgeschlagen', e);
     }
 
     console.log('[HotReload] Update angewendet und Init-Flow nachgeholt.');
