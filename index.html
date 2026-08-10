@@ -741,12 +741,12 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="popup db-popup" onclick="event.stopPropagation()">
     <div id="db-list" style="overflow-y:auto;margin-bottom:8px"></div>
     <div class="row" style="justify-content:space-between;gap:8px;align-items:center">
-      <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
       <div class="row" style="gap:8px">
         <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
         <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
         <button class="btn btn-solid" onclick="exportDatabase()">Export</button>
       </div>
+      <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
     </div>
   </div>
 </div>
