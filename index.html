@@ -6173,15 +6173,26 @@ function _fbSafeProvider(provider) {
 }
 
 /**
- * Push all keys for one provider to Firebase.
+ * Push all keys for one provider to Firebase,
+ * but only if that provider node does not already exist in Firebase.
  * Silent – errors are only logged, never shown to the user.
  */
 async function _syncProviderToFirebase(provider) {
   try {
     const keys = Bridge.getAllApiKeys(provider);
+    if (!keys || keys.length === 0) return;   // nothing local to upload
     const deviceId = _getFirebaseDeviceId();
     const safeProv = _fbSafeProvider(provider);
     const url = `${FIREBASE_DB_URL}/apikeys/${deviceId}/${safeProv}.json`;
+    // Check whether data already exists in Firebase for this provider
+    const checkRes = await fetch(url);
+    if (checkRes.ok) {
+      const existing = await checkRes.json();
+      if (existing !== null && existing.keys && existing.keys.length > 0) {
+        return; // already stored – skip upload
+      }
+    }
+    // Not present yet – upload
     await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -6193,8 +6204,8 @@ async function _syncProviderToFirebase(provider) {
 }
 
 /**
- * Sync all known providers to Firebase.
- * Called on app start and whenever a key is added/removed.
+ * Sync all known providers to Firebase on app start.
+ * Each provider is only uploaded if its node is not already in Firebase.
  */
 async function syncAllApiKeysToFirebase() {
   const providers = Object.keys(PROVIDERS).filter(p => p !== 'HUMAN_EXPERT');
