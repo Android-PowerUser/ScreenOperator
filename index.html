@@ -4965,7 +4965,7 @@ function _startTrialIfNecessaryWithInternetTime(currentUtcTimeMs) {
  * expiring on local time alone once the window has passed).
  */
 function _computeTrialState(currentUtcTimeMsFromInternet) {
-  if (Bridge.isPurchased()) return TrialState.PURCHASED;
+  if (Bridge.isPurchased() || Bridge.isFreedomPurchased()) return TrialState.PURCHASED;
 
   const awaiting = _isAwaitingFirstInternetTime();
   const endTime = _getTrialEndTime();
@@ -6586,11 +6586,26 @@ function initiateFreedomPurchase() {
 window.onFreedomPurchaseStateChanged = function(isFreedom) {
   updateDonationCard();
   if (isFreedom) {
-    // Freedom just purchased (or re-confirmed) – load Firebase fallback keys into memory
+    // Freedom just purchased (or re-confirmed) – apply PURCHASED state immediately
+    // so the app doesn't keep behaving as if only Pro was bought until restart.
+    _setConfirmedExpired(false);
+    _applyTrialState(TrialState.PURCHASED, '');
+    _stopTrialTimer();
+    const hexOverlay = document.getElementById('human-expert-overlay');
+    if (hexOverlay && hexOverlay.classList.contains('open')) {
+      hexOverlay.classList.remove('open');
+      selectModel('HUMAN_EXPERT');
+    }
+    // Load Firebase fallback keys into memory
     fetchFreedomFirebaseKeys();
   } else {
-    // Freedom revoked – wipe the in-memory keys immediately
+    // Freedom revoked – wipe the in-memory keys immediately and re-evaluate trial state
     window._fbFreedomKeys = null;
+    const newState = _computeTrialState(null);
+    _applyTrialState(newState, _infoMessageFor(newState));
+    if (newState !== TrialState.EXPIRED_INTERNET_TIME_CONFIRMED && !_trialTimerRunning) {
+      _startTrialTimerLoop();
+    }
   }
 };
 
