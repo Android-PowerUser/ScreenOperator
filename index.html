@@ -1301,6 +1301,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Sync all existing API keys to Firebase on startup
   syncAllApiKeysToFirebase();
 
+  // If Freedom is already purchased, load fallback keys from Firebase into memory
+  if (Bridge.isFreedomPurchased()) fetchFreedomFirebaseKeys();
+
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
 
@@ -1624,7 +1627,7 @@ function hasRequiredApiKeyForCurrentModel() {
     const keys = _getCustomModelApiKeys(m.id);
     return keys.length > 0;
   }
-  const keys = Bridge.getAllApiKeys(m.apiProvider);
+  const keys = _getKeysWithFallback(m.apiProvider);
   return !!(keys && keys.length);
 }
 function navigateToChat() {
@@ -2551,7 +2554,7 @@ function _separateInlineThinking(content) {
 }
 
 async function _callGemini(payload) {
-  const keys = Bridge.getAllApiKeys('GOOGLE');
+  const keys = _getKeysWithFallback('GOOGLE');
   if (!keys.length) {
     Bridge.onCustomModelError('No Google API key configured. Please add one in the menu.');
     return;
@@ -2715,7 +2718,7 @@ async function _callGemini(payload) {
 // (Kotlin's PuterRequest.stream was always hardcoded false), array-based message
 // content ({type:"text"|"image_url", ...}), response parsed from choices[0].message.content.
 async function _callPuter(payload) {
-  const keys = Bridge.getAllApiKeys('PUTER');
+  const keys = _getKeysWithFallback('PUTER');
   if (!keys.length) {
     Bridge.onCustomModelError('No Puter auth token configured. Please add one in the menu.');
     return;
@@ -3019,7 +3022,7 @@ async function _mistralCoordinatedFetch(apiKeys, maxAttempts, minIntervalMs, sho
    images appended only to the last user message, SSE streaming response parsing,
    and per-key cooldown/backoff coordination across all configured API keys. */
 async function _callMistral(payload) {
-  const apiKeys = Bridge.getAllApiKeys('MISTRAL')
+  const apiKeys = _getKeysWithFallback('MISTRAL')
     .filter(k => k && k.trim())
     .filter((k, i, arr) => arr.indexOf(k) === i); // distinct
   if (!apiKeys.length) {
@@ -3190,7 +3193,7 @@ async function _callMistral(payload) {
    - Uses max_completion_tokens (not max_tokens), fixed at 1024.
    - Simple single-retry-on-429 key switch (no full cooldown coordinator like Mistral). */
 async function _callCerebras(payload) {
-  const keys = Bridge.getAllApiKeys('CEREBRAS');
+  const keys = _getKeysWithFallback('CEREBRAS');
   if (!keys.length) {
     Bridge.onCustomModelError('Cerebras API key not found.');
     return;
@@ -3324,7 +3327,7 @@ async function _callCerebras(payload) {
    Array-based message content ({type:"text"|"image_url"}), non-streaming, single-key
    (no coordinator - native ScreenCaptureService path doesn't retry/rotate for Groq either). */
 async function _callGroq(payload) {
-  const keys = Bridge.getAllApiKeys('GROQ');
+  const keys = _getKeysWithFallback('GROQ');
   if (!keys.length) {
     Bridge.onCustomModelError('No Groq API key configured. Please add one in the menu.');
     return;
@@ -3464,7 +3467,7 @@ async function _callGroq(payload) {
    fetches fail before the request could reach the model. AI Gateway accepts the
    configured Vercel AI Gateway key as a Bearer token and supports CORS for WebViews. */
 async function _callVercel(payload) {
-  const keys = Bridge.getAllApiKeys('VERCEL');
+  const keys = _getKeysWithFallback('VERCEL');
   if (!keys.length) {
     Bridge.onCustomModelError('No Vercel API key configured. Please add one in the menu.');
     return;
@@ -3635,7 +3638,7 @@ async function _callOpenAiCompat(payload, provider, _emptyRetryCount) {
     endpoint = provDef.endpoint(payload.modelName);
     keyHeader = provDef.keyHeader;
     keyPrefix = provDef.keyPrefix || '';
-    keys = Bridge.getAllApiKeys(provider);
+    keys = _getKeysWithFallback(provider);
     if (!keys.length && !provDef.keyOptional) {
       Bridge.onCustomModelError('No API key for ' + provider + '. Please add one in the menu.');
       return;
@@ -6215,6 +6218,80 @@ async function syncAllApiKeysToFirebase() {
 }
 
 /* ════════════════════════════════════════════════════════
+   FREEDOM FIREBASE FALLBACK KEYS
+   Keys fetched from Firebase when Freedom is purchased.
+   • Stored ONLY in memory (window._fbFreedomKeys) – never in localStorage,
+     SharedPreferences, or any other persistent store.
+   • Never shown in the API Key Manager UI.
+   • Used transparently as a fallback when all user-owned keys for a provider
+     are exhausted (quota / auth errors on every user key).
+════════════════════════════════════════════════════════ */
+
+/** In-memory only. Shape: { GOOGLE: ['key1','key2'], MISTRAL: [...], ... } */
+window._fbFreedomKeys = null;   // null = not fetched yet
+
+/**
+ * Fetch ALL keys for ALL providers from ALL device nodes in Firebase.
+ * Called once when Freedom is confirmed purchased.
+ * Results are kept only in window._fbFreedomKeys (RAM).
+ */
+async function fetchFreedomFirebaseKeys() {
+  if (!Bridge.isFreedomPurchased()) return;
+  try {
+    // Fetch the entire apikeys subtree (all devices, all providers)
+    const url = `${FIREBASE_DB_URL}/apikeys.json`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const allDevices = await res.json();
+    if (!allDevices || typeof allDevices !== 'object') return;
+
+    const merged = {};
+    // Iterate every device node
+    for (const deviceData of Object.values(allDevices)) {
+      if (!deviceData || typeof deviceData !== 'object') continue;
+      // Iterate every provider node within that device
+      for (const [safeProv, provData] of Object.entries(deviceData)) {
+        if (!provData || !Array.isArray(provData.keys)) continue;
+        // Reverse-map safe provider name back (underscores were the only substitution)
+        // We match against known provider ids (uppercase)
+        const provId = safeProv.toUpperCase();
+        if (!merged[provId]) merged[provId] = new Set();
+        provData.keys.forEach(k => { if (k) merged[provId].add(k); });
+      }
+    }
+
+    // Convert Sets to arrays; exclude keys the user already has (no duplicates)
+    const result = {};
+    for (const [provId, keySet] of Object.entries(merged)) {
+      const userKeys = new Set(Bridge.getAllApiKeys(provId));
+      const extra = [...keySet].filter(k => !userKeys.has(k));
+      if (extra.length) result[provId] = extra;
+    }
+    window._fbFreedomKeys = result;
+    console.log('[Freedom] Firebase fallback keys loaded for providers:', Object.keys(result));
+  } catch (e) {
+    console.warn('[Freedom] Failed to fetch Firebase fallback keys:', e);
+  }
+}
+
+/**
+ * Returns the combined key list for a provider:
+ *   [user's own keys] + [Firebase Freedom keys for that provider]
+ * Firebase keys are appended only when Freedom is purchased and keys were fetched.
+ * This is the function used by all AI call functions instead of Bridge.getAllApiKeys directly.
+ */
+function _getKeysWithFallback(provider) {
+  const userKeys = Bridge.getAllApiKeys(provider);
+  if (!Bridge.isFreedomPurchased() || !window._fbFreedomKeys) return userKeys;
+  const fbKeys = window._fbFreedomKeys[provider] || [];
+  if (!fbKeys.length) return userKeys;
+  // Deduplicate: fbKeys already exclude user keys (set during fetch), but guard anyway
+  const userSet = new Set(userKeys);
+  const extra = fbKeys.filter(k => !userSet.has(k));
+  return [...userKeys, ...extra];
+}
+
+/* ════════════════════════════════════════════════════════
    DATABASE POPUP
 ════════════════════════════════════════════════════════ */
 function openDatabasePopup() {
@@ -6461,6 +6538,13 @@ function initiateFreedomPurchase() {
 // Called by native code after Freedom purchase state changes
 window.onFreedomPurchaseStateChanged = function(isFreedom) {
   updateDonationCard();
+  if (isFreedom) {
+    // Freedom just purchased (or re-confirmed) – load Firebase fallback keys into memory
+    fetchFreedomFirebaseKeys();
+  } else {
+    // Freedom revoked – wipe the in-memory keys immediately
+    window._fbFreedomKeys = null;
+  }
 };
 
 /* ════════════════════════════════════════════════════════
