@@ -768,6 +768,19 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     </div>
   </div>
 </div>
+<!-- Key View Popup -->
+<div id="popup-keyview" class="overlay" onclick="overlayClose(event,'popup-keyview')">
+  <div class="popup" onclick="event.stopPropagation()" style="max-width:420px">
+    <button class="popup-close" onclick="closePopup('popup-keyview')">✕</button>
+    <div class="popup-title">API Key</div>
+    <div id="keyview-text" style="font-size:13px;word-break:break-all;background:var(--surface);border-radius:10px;padding:12px 14px;color:var(--text-primary);margin-bottom:14px;user-select:all"></div>
+    <div class="popup-actions">
+      <button class="btn btn-text" onclick="closePopup('popup-keyview')">Close</button>
+      <button class="btn btn-solid" id="keyview-copy-btn" onclick="copyKeyFromPopup()">Copy</button>
+    </div>
+  </div>
+</div>
+
 <!-- Trial Expired Dialog (persistent - not dismissable) -->
 <div id="trial-expired-overlay">
   <div class="trial-dialog">
@@ -6084,6 +6097,7 @@ function renderKeyList() {
         if (e.target.classList.contains('key-del')) return;
         const radio = row.querySelector('.key-radio');
         if (radio && !radio.checked) { radio.checked=true; _setCustomKeyIndex(modelId, i); }
+        showKeyPopup(k);
       });
       list.appendChild(row);
     });
@@ -6109,6 +6123,7 @@ function renderKeyList() {
         radio.checked = true;
         Bridge.setCurrentKeyIndex(i, currentProviderId);
       }
+      showKeyPopup(k);
     });
     list.appendChild(row);
   });
@@ -6151,6 +6166,38 @@ function deleteApiKey(key) {
   }
   Bridge.removeApiKey(key, currentProviderId);
   renderKeyList();
+}
+
+function showKeyPopup(key) {
+  document.getElementById('keyview-text').textContent = key;
+  const btn = document.getElementById('keyview-copy-btn');
+  btn.textContent = 'Copy';
+  btn.disabled = false;
+  openPopup('popup-keyview');
+}
+function copyKeyFromPopup() {
+  const key = document.getElementById('keyview-text').textContent;
+  const btn = document.getElementById('keyview-copy-btn');
+  navigator.clipboard.writeText(key).then(() => {
+    btn.textContent = 'Copied ✓';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = 'Copy'; btn.disabled = false; }, 2000);
+  }).catch(() => {
+    // Fallback for environments without clipboard API
+    try {
+      const el = document.getElementById('keyview-text');
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('copy');
+      sel.removeAllRanges();
+      btn.textContent = 'Copied ✓';
+      btn.disabled = true;
+      setTimeout(() => { btn.textContent = 'Copy'; btn.disabled = false; }, 2000);
+    } catch(e) {}
+  });
 }
 
 /* ════════════════════════════════════════════════════════
