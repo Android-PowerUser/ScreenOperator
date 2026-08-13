@@ -1297,7 +1297,7 @@ class MainActivity : ComponentActivity() {
                             TrialManager.markAsFreedomPurchased(this)
                             TrialManager.markAsPurchased(this)
                             updateTrialState(TrialManager.getTrialState(this, null))
-                            evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                            evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
                             Log.d(TAG, "handlePurchase Freedom: Stopping TrialTimerService.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
@@ -1313,7 +1313,7 @@ class MainActivity : ComponentActivity() {
                     TrialManager.markAsFreedomPurchased(this)
                     TrialManager.markAsPurchased(this)
                     updateTrialState(TrialManager.getTrialState(this, null))
-                    evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                    evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
                 }
             } else {
                 Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain any known product ID. Products: ${purchase.products}")
@@ -1372,7 +1372,7 @@ class MainActivity : ComponentActivity() {
                                 TrialManager.markAsFreedomPurchased(this)
                                 TrialManager.markAsPurchased(this)
                                 updateTrialState(TrialManager.getTrialState(this, null))
-                                evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                                evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
                             }
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
@@ -1395,7 +1395,7 @@ class MainActivity : ComponentActivity() {
                     if (TrialManager.isFreedomPurchased(this@MainActivity)) {
                         Log.w(TAG, "queryActiveSubscriptions: No active Freedom subscription found by Google Play Billing, but was previously marked. Clearing Freedom mark.")
                         TrialManager.clearFreedomMark(this@MainActivity)
-                        evaluateWebViewJs("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
+                        evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
                     }
                     if (TrialManager.isPurchased(this@MainActivity)) {
                         Log.w(TAG, "queryActiveSubscriptions: No active subscription found by Google Play Billing, but app was previously marked as purchased. Clearing purchase mark.")
@@ -1698,6 +1698,27 @@ class MainActivity : ComponentActivity() {
     fun evaluateWebViewJs(js: String) {
         webViewInstance?.post {
             webViewInstance?.evaluateJavascript(js, null)
+        }
+    }
+
+    /**
+     * Like [evaluateWebViewJs], but re-sends the same JS a few times with a delay in between.
+     *
+     * Purchase-completion callbacks (e.g. window.onFreedomPurchaseStateChanged) were previously
+     * sent exactly once, right when Google Play's billing callback fires. If webViewInstance was
+     * null or the page/JS wasn't fully attached yet at that exact moment (e.g. because the
+     * Activity was still transitioning back from the Play billing sheet), the single
+     * evaluateJavascript call was silently dropped and the WebView kept showing the old
+     * (pre-purchase) state until the next full app restart, even though the native purchase
+     * flag was already set correctly. Retrying a few times over a couple of seconds makes
+     * delivery robust without needing a full native rewrite of the purchase flow.
+     */
+    fun evaluateWebViewJsWithRetry(js: String, attempts: Int = 5, delayMs: Long = 400L) {
+        lifecycleScope.launch {
+            repeat(attempts) { attempt ->
+                evaluateWebViewJs(js)
+                if (attempt < attempts - 1) kotlinx.coroutines.delay(delayMs)
+            }
         }
     }
 
