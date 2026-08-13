@@ -6566,9 +6566,12 @@ function importDatabase(event) {
 /* ════════════════════════════════════════════════════════
    DONATION
 ════════════════════════════════════════════════════════ */
-function updateDonationCard() {
+function updateDonationCard(freedomOverride) {
   const purchased = Bridge.isPurchased();
-  const freedomPurchased = Bridge.isFreedomPurchased();
+  // freedomOverride allows the callback to pass the value directly, bypassing
+  // a potential race condition where Android.isFreedomPurchased() hasn't been
+  // committed to SharedPreferences yet when this function is called.
+  const freedomPurchased = (freedomOverride !== undefined) ? freedomOverride : Bridge.isFreedomPurchased();
   // donation-row: hide entire row if Pro OR Freedom purchased
   document.getElementById('donation-row').style.display = (purchased || freedomPurchased) ? 'none' : 'flex';
   // freedom-row: show "or get all models" row only if Pro purchased but NOT Freedom
@@ -6584,7 +6587,7 @@ function initiateFreedomPurchase() {
 }
 // Called by native code after Freedom purchase state changes
 window.onFreedomPurchaseStateChanged = function(isFreedom) {
-  updateDonationCard();
+  updateDonationCard(isFreedom);
   if (isFreedom) {
     // Freedom just purchased (or re-confirmed) – apply PURCHASED state immediately
     // so the app doesn't keep behaving as if only Pro was bought until restart.
