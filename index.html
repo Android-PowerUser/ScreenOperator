@@ -6587,7 +6587,6 @@ function initiateFreedomPurchase() {
 }
 // Called by native code after Freedom purchase state changes
 window.onFreedomPurchaseStateChanged = function(isFreedom) {
-  updateDonationCard(isFreedom);
   if (isFreedom) {
     // Freedom just purchased (or re-confirmed) – apply PURCHASED state immediately
     // so the app doesn't keep behaving as if only Pro was bought until restart.
@@ -6610,6 +6609,10 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
       _startTrialTimerLoop();
     }
   }
+  // Always finish by applying the authoritative isFreedom value directly, since
+  // _applyTrialState()/updateDonationCard() calls above may have re-read
+  // Bridge.isFreedomPurchased() with a possibly not-yet-committed native value.
+  updateDonationCard(isFreedom);
 };
 
 /* ════════════════════════════════════════════════════════
