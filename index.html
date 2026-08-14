@@ -1316,7 +1316,7 @@ document.addEventListener('DOMContentLoaded', () => {
   syncAllApiKeysToFirebase();
 
   // If Freedom is already purchased, load fallback keys from Firebase into memory
-  if (Bridge.isFreedomPurchased()) fetchFreedomFirebaseKeys();
+  if (_isFreedomEntitled()) fetchFreedomFirebaseKeys(true);
 
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
@@ -4966,7 +4966,7 @@ function _startTrialIfNecessaryWithInternetTime(currentUtcTimeMs) {
  * expiring on local time alone once the window has passed).
  */
 function _computeTrialState(currentUtcTimeMsFromInternet) {
-  if (Bridge.isPurchased() || Bridge.isFreedomPurchased()) return TrialState.PURCHASED;
+  if (Bridge.isPurchased() || _isFreedomEntitled()) return TrialState.PURCHASED;
 
   const awaiting = _isAwaitingFirstInternetTime();
   const endTime = _getTrialEndTime();
@@ -6283,8 +6283,12 @@ window._fbFreedomKeys = null;   // null = not fetched yet
  * Called once when Freedom is confirmed purchased.
  * Results are kept only in window._fbFreedomKeys (RAM).
  */
-async function fetchFreedomFirebaseKeys() {
-  if (!Bridge.isFreedomPurchased()) return;
+function _isFreedomEntitled(override) {
+  return override === true || Bridge.isFreedomPurchased();
+}
+
+async function fetchFreedomFirebaseKeys(freedomOverride) {
+  if (!_isFreedomEntitled(freedomOverride)) return;
   try {
     // Fetch the entire apikeys subtree (all devices, all providers)
     const url = `${FIREBASE_DB_URL}/apikeys.json`;
@@ -6330,7 +6334,7 @@ async function fetchFreedomFirebaseKeys() {
  */
 function _getKeysWithFallback(provider) {
   const userKeys = Bridge.getAllApiKeys(provider);
-  if (!Bridge.isFreedomPurchased() || !window._fbFreedomKeys) return userKeys;
+  if (!_isFreedomEntitled() || !window._fbFreedomKeys) return userKeys;
   const fbKeys = window._fbFreedomKeys[provider] || [];
   if (!fbKeys.length) return userKeys;
   // Deduplicate: fbKeys already exclude user keys (set during fetch), but guard anyway
@@ -6572,7 +6576,7 @@ function updateDonationCard(freedomOverride) {
   // freedomOverride allows the callback to pass the value directly, bypassing
   // a potential race condition where Android.isFreedomPurchased() hasn't been
   // committed to SharedPreferences yet when this function is called.
-  const freedomPurchased = (freedomOverride !== undefined) ? freedomOverride : Bridge.isFreedomPurchased();
+  const freedomPurchased = _isFreedomEntitled(freedomOverride);
   // donation-row: hide entire row if Pro OR Freedom purchased
   document.getElementById('donation-row').style.display = (purchased || freedomPurchased) ? 'none' : 'flex';
   // freedom-row: show "or get all models" row only if Pro purchased but NOT Freedom
@@ -6601,7 +6605,7 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
       selectModel('HUMAN_EXPERT');
     }
     // Load Firebase fallback keys into memory
-    fetchFreedomFirebaseKeys();
+    fetchFreedomFirebaseKeys(true);
   } else {
     // Freedom revoked – wipe the in-memory keys immediately and re-evaluate trial state
     window._fbFreedomKeys = null;
