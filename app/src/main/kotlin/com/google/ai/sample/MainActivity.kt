@@ -1341,25 +1341,6 @@ class MainActivity : ComponentActivity() {
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 purchases.forEach { purchase ->
                     Log.d(TAG, "queryActiveSubscriptions: Checking purchase - Products: ${purchase.products}, State: ${purchase.purchaseState}")
-                    if (MainActivityBillingStateEvaluator.isPurchasedSubscription(purchase, subscriptionProductId)) {
-                        Log.i(TAG, "queryActiveSubscriptions: Active subscription found for $subscriptionProductId.")
-                        isSubscribedLocally = true
-                        if (!purchase.isAcknowledged) {
-                            Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged subscription. Handling purchase.")
-                            handlePurchase(purchase) 
-                        } else {
-                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged subscription.")
-                            if (currentTrialState != TrialManager.TrialState.PURCHASED) {
-                                TrialManager.markAsPurchased(this)
-                                updateTrialState(TrialManager.getTrialState(this, null))
-                            }
-                            Log.d(TAG, "queryActiveSubscriptions: Stopping TrialTimerService due to active acknowledged subscription.")
-                            val stopIntent = Intent(this, TrialTimerService::class.java)
-                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent)
-                        }
-                        return@forEach 
-                    }
                     if (MainActivityBillingStateEvaluator.isPurchasedSubscription(purchase, freedomProductId)) {
                         Log.i(TAG, "queryActiveSubscriptions: Active Freedom subscription found.")
                         isSubscribedLocally = true
@@ -1368,12 +1349,29 @@ class MainActivity : ComponentActivity() {
                             handlePurchase(purchase)
                         } else {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged Freedom subscription.")
-                            if (!TrialManager.isFreedomPurchased(this)) {
-                                TrialManager.markAsFreedomPurchased(this)
+                            TrialManager.markAsFreedomPurchased(this)
+                            TrialManager.markAsPurchased(this)
+                            updateTrialState(TrialManager.getTrialState(this, null))
+                            evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                            val stopIntent = Intent(this, TrialTimerService::class.java)
+                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                            startService(stopIntent)
+                        }
+                        return@forEach
+                    }
+                    if (MainActivityBillingStateEvaluator.isPurchasedSubscription(purchase, subscriptionProductId)) {
+                        Log.i(TAG, "queryActiveSubscriptions: Active subscription found for $subscriptionProductId.")
+                        isSubscribedLocally = true
+                        if (!purchase.isAcknowledged) {
+                            Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged subscription. Handling purchase.")
+                            handlePurchase(purchase)
+                        } else {
+                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged subscription.")
+                            if (currentTrialState != TrialManager.TrialState.PURCHASED) {
                                 TrialManager.markAsPurchased(this)
                                 updateTrialState(TrialManager.getTrialState(this, null))
-                                evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
                             }
+                            Log.d(TAG, "queryActiveSubscriptions: Stopping TrialTimerService due to active acknowledged subscription.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
                             startService(stopIntent)
