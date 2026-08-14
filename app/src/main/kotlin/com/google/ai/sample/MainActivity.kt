@@ -1253,7 +1253,40 @@ class MainActivity : ComponentActivity() {
         Log.i(TAG, "handlePurchase called for purchase: OrderId: ${purchase.orderId}, Products: ${purchase.products}, State: ${purchase.purchaseState}, Token: ${purchase.purchaseToken}, Ack: ${purchase.isAcknowledged}")
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
             Log.d(TAG, "handlePurchase: Purchase state is PURCHASED.")
-            if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, subscriptionProductId)) {
+            if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, freedomProductId)) {
+                Log.d(TAG, "handlePurchase: Purchase contains Freedom product ID: $freedomProductId")
+                if (!purchase.isAcknowledged) {
+                    Log.i(TAG, "handlePurchase: Purchase not acknowledged. Acknowledging now.")
+                    val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
+                        .setPurchaseToken(purchase.purchaseToken)
+                        .build()
+                    billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
+                        Log.i(TAG, "handlePurchase (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
+                        if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                            Log.i(TAG, "Freedom subscription purchase acknowledged successfully.")
+                            updateStatusMessage("Thank you for your Freedom subscription!")
+                            TrialManager.markAsFreedomPurchased(this)
+                            TrialManager.markAsPurchased(this)
+                            updateTrialState(TrialManager.getTrialState(this, null))
+                            evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                            Log.d(TAG, "handlePurchase Freedom: Stopping TrialTimerService.")
+                            val stopIntent = Intent(this, TrialTimerService::class.java)
+                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                            startService(stopIntent)
+                        } else {
+                            Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
+                            updateStatusMessage("Error confirming purchase: ${ackBillingResult.debugMessage}", true)
+                        }
+                    }
+                } else {
+                    Log.i(TAG, "handlePurchase: Freedom subscription already acknowledged.")
+                    updateStatusMessage("Freedom subscription already active.")
+                    TrialManager.markAsFreedomPurchased(this)
+                    TrialManager.markAsPurchased(this)
+                    updateTrialState(TrialManager.getTrialState(this, null))
+                    evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                }
+            } else if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, subscriptionProductId)) {
                 Log.d(TAG, "handlePurchase: Purchase contains target product ID: $subscriptionProductId")
                 if (!purchase.isAcknowledged) {
                     Log.i(TAG, "handlePurchase: Purchase not acknowledged. Acknowledging now.")
@@ -1281,39 +1314,6 @@ class MainActivity : ComponentActivity() {
                     updateStatusMessage("Subscription already active.")
                     TrialManager.markAsPurchased(this)
                     updateTrialState(TrialManager.getTrialState(this, null))
-                }
-            } else if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, freedomProductId)) {
-                Log.d(TAG, "handlePurchase: Purchase contains Freedom product ID: $freedomProductId")
-                if (!purchase.isAcknowledged) {
-                    Log.i(TAG, "handlePurchase: Freedom purchase not acknowledged. Acknowledging now.")
-                    val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
-                        .setPurchaseToken(purchase.purchaseToken)
-                        .build()
-                    billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
-                        Log.i(TAG, "handlePurchase Freedom (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
-                        if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                            Log.i(TAG, "Freedom subscription purchase acknowledged successfully.")
-                            updateStatusMessage("Thank you for your Freedom subscription!")
-                            TrialManager.markAsFreedomPurchased(this)
-                            TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.getTrialState(this, null))
-                            evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
-                            Log.d(TAG, "handlePurchase Freedom: Stopping TrialTimerService.")
-                            val stopIntent = Intent(this, TrialTimerService::class.java)
-                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent)
-                        } else {
-                            Log.e(TAG, "Failed to acknowledge Freedom purchase: ${ackBillingResult.debugMessage}")
-                            updateStatusMessage("Error confirming Freedom purchase: ${ackBillingResult.debugMessage}", true)
-                        }
-                    }
-                } else {
-                    Log.i(TAG, "handlePurchase: Freedom subscription already acknowledged.")
-                    updateStatusMessage("Freedom subscription already active.")
-                    TrialManager.markAsFreedomPurchased(this)
-                    TrialManager.markAsPurchased(this)
-                    updateTrialState(TrialManager.getTrialState(this, null))
-                    evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
                 }
             } else {
                 Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain any known product ID. Products: ${purchase.products}")
