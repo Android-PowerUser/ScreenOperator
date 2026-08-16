@@ -2794,15 +2794,26 @@ async function _callPuter(payload) {
   const PUTER_MAX_TOKENS_CEILING = 131072;
   requestBody.max_tokens = Math.min(PUTER_MAX_TOKENS_CEILING, 50000);
 
+  // Wrap the OpenAI-style requestBody into the /drivers/call envelope.
+  // /drivers/call is available to ALL Puter accounts (free and paid), whereas
+  // the /puterai/openai/v1/chat/completions endpoint requires a paid
+  // subscription and returns 402 subscription_required for free accounts.
+  const driversCallBody = {
+    interface: 'puter-chat-completion',
+    driver: 'openai-completion',
+    method: 'complete',
+    args: requestBody,
+  };
+
   window.__customModelAbortController = new AbortController();
   try {
-    let response = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
+    let response = await fetch('https://api.puter.com/drivers/call', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + apiKey,
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(driversCallBody),
       signal: window.__customModelAbortController.signal,
     });
 
@@ -2820,10 +2831,10 @@ async function _callPuter(payload) {
           apiKey = keys[keyIdx];
           let retryResp;
           try {
-            retryResp = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
+            retryResp = await fetch('https://api.puter.com/drivers/call', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-              body: JSON.stringify(requestBody),
+              body: JSON.stringify(driversCallBody),
               signal: window.__customModelAbortController.signal,
             });
           } catch(fe) { throw fe; }
@@ -2855,16 +2866,33 @@ async function _callPuter(payload) {
       buf = lines.pop();
       for (const line of lines) {
         const t = line.trim();
-        if (!t.startsWith('data:')) continue;
-        const data = t.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
+        if (!t) continue;
+        // /drivers/call streams NDJSON lines: {"type":"text","text":"..."} or
+        // {"type":"thinking","text":"..."} etc. — no "data:" prefix.
+        // The old /puterai/openai/v1/ endpoint sent SSE ("data: {...}").
+        // We handle both formats so the parser is resilient.
+        let json = null;
         try {
-          const json = JSON.parse(data);
-          const d = json.choices?.[0]?.delta || {};
-          const thinkingDelta = _thinkingFromOpenAiDelta(d);
-          const delta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
-          // Once the first answer token has been seen, any further structured
-          // reasoning_content is also treated as answer (appended to raw content).
+          if (t.startsWith('data:')) {
+            // Legacy SSE format (fallback / future endpoint changes)
+            const data = t.slice(5).trim();
+            if (!data || data === '[DONE]') continue;
+            const parsed = JSON.parse(data);
+            // Convert OpenAI SSE delta format to drivers/call NDJSON-like shape
+            const d = parsed.choices?.[0]?.delta || {};
+            const thinkingDelta = _thinkingFromOpenAiDelta(d);
+            const textDelta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
+            if (thinkingDelta) json = { type: 'thinking', text: thinkingDelta };
+            else if (textDelta) json = { type: 'text', text: textDelta };
+          } else {
+            // /drivers/call NDJSON format
+            json = JSON.parse(t);
+          }
+        } catch(e2) { continue; /* ignore unparseable lines */ }
+        if (!json) continue;
+        try {
+          const thinkingDelta = json.type === 'thinking' ? (json.text || '') : '';
+          const delta = json.type === 'text' ? (json.text || '') : '';
           const hadThinking = !!structuredThinkingAcc;
           if (thinkingDelta) {
             if (puterFirstAnswerSeen) {
@@ -2892,7 +2920,7 @@ async function _callPuter(payload) {
             }
             _puterThinkingEndedSinceCheck = false;
           }
-        } catch(e2) { /* ignore bad SSE chunk */ }
+        } catch(e2) { /* ignore bad chunk */ }
       }
     }
     const inline = _separateInlineThinking(rawContentAcc);
