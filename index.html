@@ -2798,22 +2798,27 @@ async function _callPuter(payload) {
   // /drivers/call is available to ALL Puter accounts (free and paid), whereas
   // the /puterai/openai/v1/chat/completions endpoint requires a paid
   // subscription and returns 402 subscription_required for free accounts.
-  const driversCallBody = {
+  // The driver name must be 'ai-chat' (not 'openai-completion') and the
+  // Content-Type must be 'text/plain;actually=json' as required by Puter's
+  // driver endpoint. The auth_token is sent in the body (not just the header).
+  const buildDriversCallBody = (token) => JSON.stringify({
     interface: 'puter-chat-completion',
-    driver: 'openai-completion',
+    driver: 'ai-chat',
+    test_mode: false,
     method: 'complete',
     args: requestBody,
-  };
+    auth_token: token,
+  });
 
   window.__customModelAbortController = new AbortController();
   try {
     let response = await fetch('https://api.puter.com/drivers/call', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain;actually=json',
         'Authorization': 'Bearer ' + apiKey,
       },
-      body: JSON.stringify(driversCallBody),
+      body: buildDriversCallBody(apiKey),
       signal: window.__customModelAbortController.signal,
     });
 
@@ -2833,8 +2838,8 @@ async function _callPuter(payload) {
           try {
             retryResp = await fetch('https://api.puter.com/drivers/call', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-              body: JSON.stringify(driversCallBody),
+              headers: { 'Content-Type': 'text/plain;actually=json', 'Authorization': 'Bearer ' + apiKey },
+              body: buildDriversCallBody(apiKey),
               signal: window.__customModelAbortController.signal,
             });
           } catch(fe) { throw fe; }
