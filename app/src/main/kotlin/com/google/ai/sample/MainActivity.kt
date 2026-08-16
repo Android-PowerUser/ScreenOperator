@@ -1391,9 +1391,43 @@ class MainActivity : ComponentActivity() {
                 } else {
                     Log.i(TAG, "queryActiveSubscriptions: User has no active subscription. Re-evaluating trial logic.")
                     if (TrialManager.isFreedomPurchased(this@MainActivity)) {
-                        Log.w(TAG, "queryActiveSubscriptions: No active Freedom subscription found by Google Play Billing, but was previously marked. Clearing Freedom mark.")
-                        TrialManager.clearFreedomMark(this@MainActivity)
-                        evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
+                        // IMPORTANT: Google Play Billing sometimes returns an empty purchases list
+                        // on the very first query after app start (cache not yet warm, network
+                        // latency, etc.) even though the subscription IS active.
+                        // Clearing the Freedom mark immediately on the first empty result caused
+                        // the bug where a purchased Freedom subscription appeared as not purchased
+                        // until the next app restart.
+                        //
+                        // Fix: do NOT clear the Freedom mark on the first empty result.
+                        // Instead, schedule a second verification query after 5 seconds.
+                        // Only if that second query also returns an empty list do we clear.
+                        Log.w(TAG, "queryActiveSubscriptions: No active Freedom sub in first query. Scheduling verification re-query in 5 s before clearing.")
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            if (!::billingClient.isInitialized || !billingClient.isReady) {
+                                Log.w(TAG, "queryActiveSubscriptions re-verify: BillingClient not ready, skipping clear.")
+                                return@postDelayed
+                            }
+                            billingClient.queryPurchasesAsync(
+                                QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
+                            ) { result2, purchases2 ->
+                                if (result2.responseCode == BillingClient.BillingResponseCode.OK) {
+                                    val stillHasFreedom = purchases2.any { p ->
+                                        MainActivityBillingStateEvaluator.isPurchasedSubscription(p, freedomProductId)
+                                    }
+                                    if (!stillHasFreedom) {
+                                        Log.w(TAG, "queryActiveSubscriptions re-verify: Still no active Freedom subscription. Clearing Freedom mark.")
+                                        TrialManager.clearFreedomMark(this@MainActivity)
+                                        evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
+                                    } else {
+                                        Log.i(TAG, "queryActiveSubscriptions re-verify: Freedom subscription found in second query. NOT clearing. Marking as purchased.")
+                                        TrialManager.markAsFreedomPurchased(this@MainActivity)
+                                        evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                                    }
+                                } else {
+                                    Log.w(TAG, "queryActiveSubscriptions re-verify: Second query failed (${result2.responseCode}). Keeping Freedom mark intact.")
+                                }
+                            }
+                        }, 5000L)
                     }
                     if (TrialManager.isPurchased(this@MainActivity)) {
                         Log.w(TAG, "queryActiveSubscriptions: No active subscription found by Google Play Billing, but app was previously marked as purchased. Clearing purchase mark.")
