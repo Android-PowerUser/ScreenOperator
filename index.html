@@ -5055,7 +5055,10 @@ function _applyTrialState(newState, infoMessage) {
   const oldState = _currentTrialState;
   _currentTrialState = newState;
 
-  updateDonationCard();
+  // Use cached freedom value if available to avoid a Bridge read before Billing is ready.
+  // Falls back to Bridge.isFreedomPurchased() when cache is not yet populated.
+  const _dtsFreedom = (window._cachedIsFreedom !== null) ? window._cachedIsFreedom : Bridge.isFreedomPurchased();
+  _applyDonationState(Bridge.isPurchased(), _dtsFreedom);
 
   if (newState === TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
     showTrialExpiredDialog();
@@ -6604,31 +6607,115 @@ function importDatabase(event) {
 /* ════════════════════════════════════════════════════════
    DONATION
 ════════════════════════════════════════════════════════ */
-function updateDonationCard(freedomOverride) {
-  const purchased = Bridge.isPurchased();
-  // freedomOverride allows the callback to pass the value directly, bypassing
-  // a potential race condition where Android.isFreedomPurchased() hasn't been
-  // committed to SharedPreferences yet when this function is called.
-  const freedomPurchased = _isFreedomEntitled(freedomOverride);
-  // donation-row: hide entire row if Pro OR Freedom purchased
-  document.getElementById('donation-row').style.display = (purchased || freedomPurchased) ? 'none' : 'flex';
-  // freedom-row: show "or get all models" row only if Pro purchased but NOT Freedom
-  document.getElementById('freedom-row').style.display = (purchased && !freedomPurchased) ? 'block' : 'none';
-  document.getElementById('pro-thanks').style.display = (purchased && !freedomPurchased) ? 'block' : 'none';
-  document.getElementById('freedom-thanks').style.display = freedomPurchased ? 'block' : 'none';
-  document.getElementById('donation-card').classList.toggle('freedom-active', freedomPurchased);
+// Cached purchase states – written only by _applyDonationState().
+// null = not yet known (startup), true/false = known value.
+window._cachedIsPurchased = null;
+window._cachedIsFreedom = null;
+
+/**
+ * Single source of truth for rendering the donation card.
+ * Always call this instead of touching the DOM directly.
+ * purchased / freedomPurchased must be the authoritative booleans
+ * (never read from Bridge here – pass the values in).
+ */
+function _applyDonationState(purchased, freedomPurchased) {
+  window._cachedIsPurchased = purchased;
+  window._cachedIsFreedom = freedomPurchased;
+
+  const donationRow  = document.getElementById('donation-row');
+  const freedomRow   = document.getElementById('freedom-row');
+  const proThanks    = document.getElementById('pro-thanks');
+  const freedomThanks = document.getElementById('freedom-thanks');
+  const card         = document.getElementById('donation-card');
+
+  if (!donationRow || !freedomRow || !proThanks || !freedomThanks || !card) return;
+
+  // Neither purchased → show both buy buttons
+  if (!purchased && !freedomPurchased) {
+    donationRow.style.display   = 'flex';
+    freedomRow.style.display    = 'none';
+    proThanks.style.display     = 'none';
+    freedomThanks.style.display = 'none';
+    card.classList.remove('freedom-active');
+    return;
+  }
+
+  // Freedom purchased (with or without Pro) → show freedom-thanks only
+  if (freedomPurchased) {
+    donationRow.style.display   = 'none';
+    freedomRow.style.display    = 'none';
+    proThanks.style.display     = 'none';
+    freedomThanks.style.display = 'block';
+    card.classList.add('freedom-active');
+    return;
+  }
+
+  // Pro purchased but NOT Freedom → show upgrade row + pro-thanks
+  donationRow.style.display   = 'none';
+  freedomRow.style.display    = 'block';
+  proThanks.style.display     = 'block';
+  freedomThanks.style.display = 'none';
+  card.classList.remove('freedom-active');
 }
+
+/**
+ * Read current purchase state from Bridge and apply it.
+ * Safe to call any number of times; Bridge calls are cheap.
+ */
+function updateDonationCard(freedomOverride) {
+  const purchased      = Bridge.isPurchased();
+  const freedomVal     = (freedomOverride === true) ? true : Bridge.isFreedomPurchased();
+  _applyDonationState(purchased, freedomVal);
+}
+
+/**
+ * Startup polling: Android Billing is sometimes not ready on the first
+ * DOMContentLoaded call. Poll every 300 ms for up to 5 s; stop as soon
+ * as isFreedomPurchased() returns true or isPurchased() stabilises.
+ * This replaces all previous race-condition workarounds.
+ */
+(function _startDonationPolling() {
+  const MAX_MS   = 5000;
+  const INTERVAL = 300;
+  let elapsed    = 0;
+  let lastPro    = null;
+  let lastFree   = null;
+
+  const timer = setInterval(function() {
+    elapsed += INTERVAL;
+    const pro  = Bridge.isPurchased();
+    const free = Bridge.isFreedomPurchased();
+
+    // Apply whenever the value changes or on very first poll
+    if (pro !== lastPro || free !== lastFree) {
+      lastPro  = pro;
+      lastFree = free;
+      _applyDonationState(pro, free);
+
+      // If Freedom confirmed → trigger side-effects once and stop polling
+      if (free) {
+        fetchFreedomFirebaseKeys(true);
+        clearInterval(timer);
+        return;
+      }
+    }
+
+    if (elapsed >= MAX_MS) {
+      clearInterval(timer);
+    }
+  }, INTERVAL);
+})();
+
 function initiateDonation() {
   Bridge.initiateDonation();
 }
 function initiateFreedomPurchase() {
   Bridge.initiateFreedomPurchase();
 }
+
 // Called by native code after Freedom purchase state changes
 window.onFreedomPurchaseStateChanged = function(isFreedom) {
   if (isFreedom) {
-    // Freedom just purchased (or re-confirmed) – apply PURCHASED state immediately
-    // so the app doesn't keep behaving as if only Pro was bought until restart.
     _setConfirmedExpired(false);
     _applyTrialState(TrialState.PURCHASED, '');
     _stopTrialTimer();
@@ -6637,10 +6724,8 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
       hexOverlay.classList.remove('open');
       selectModel('HUMAN_EXPERT');
     }
-    // Load Firebase fallback keys into memory
     fetchFreedomFirebaseKeys(true);
   } else {
-    // Freedom revoked – wipe the in-memory keys immediately and re-evaluate trial state
     window._fbFreedomKeys = null;
     const newState = _computeTrialState(null);
     _applyTrialState(newState, _infoMessageFor(newState));
@@ -6648,10 +6733,8 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
       _startTrialTimerLoop();
     }
   }
-  // Always finish by applying the authoritative isFreedom value directly, since
-  // _applyTrialState()/updateDonationCard() calls above may have re-read
-  // Bridge.isFreedomPurchased() with a possibly not-yet-committed native value.
-  updateDonationCard(isFreedom);
+  // Pass the authoritative value directly – no Bridge re-read.
+  _applyDonationState(Bridge.isPurchased(), isFreedom === true);
 };
 
 /* ════════════════════════════════════════════════════════
