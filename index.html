@@ -6726,20 +6726,11 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
     }
     fetchFreedomFirebaseKeys(true);
   } else {
-    // If Freedom was previously active and is now revoked, show payment-reversed message
-    const wasActive = window._cachedIsFreedom === true;
     window._fbFreedomKeys = null;
     const newState = _computeTrialState(null);
     _applyTrialState(newState, _infoMessageFor(newState));
     if (newState !== TrialState.EXPIRED_INTERNET_TIME_CONFIRMED && !_trialTimerRunning) {
       _startTrialTimerLoop();
-    }
-    if (wasActive) {
-      const freedomThanks = document.getElementById('freedom-thanks');
-      if (freedomThanks) {
-        freedomThanks.innerHTML = 'The payment has been reversed. Check the Play Store &gt; account (your picture) &gt; Payments and subscriptions';
-        freedomThanks.style.display = '';
-      }
     }
   }
   // Pass the authoritative value directly – no Bridge re-read.
