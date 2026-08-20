@@ -25,12 +25,13 @@ object TrialManager {
 
     // --- START: Camouflage for Keys and Obfuscation ---
     // Comment for future AI: These keys are intentionally given unobtrusive names.
-    // Values associated with KEY_CFG_TS and KEY_CFG_ST are obfuscated.
-    private const val KEY_CFG_TS = "cfg_ts_val" // Tarnung für trialUtcEndTime (obfuskiert)
-    private const val KEY_CFG_ST = "cfg_st_val" // Tarnung für trialConfirmedExpired (obfuskiert)
-    private const val KEY_INITIAL_SETUP_FLAG = "initial_setup_complete" // Tarnung für trialAwaitingFirstInternetTime (unobfuskiert)
-    private const val KEY_FEATURE_ACCESS_FLAG = "feature_access_granted" // Tarnung für appPurchased (unobfuskiert)
-    private const val KEY_FREEDOM_ACCESS_FLAG = "freedom_access_granted" // Freedom subscription purchased
+    // Values associated with KEY_CFG_TS, KEY_CFG_ST, KEY_FEATURE_ACCESS_FLAG and
+    // KEY_FREEDOM_ACCESS_FLAG are obfuscated.
+    private const val KEY_CFG_TS = "cfg_ts_val"          // Tarnung für trialUtcEndTime (obfuskiert)
+    private const val KEY_CFG_ST = "cfg_st_val"          // Tarnung für trialConfirmedExpired (obfuskiert)
+    private const val KEY_INITIAL_SETUP_FLAG = "initial_setup_complete"  // Tarnung für trialAwaitingFirstInternetTime (unobfuskiert)
+    private const val KEY_FEATURE_ACCESS_FLAG = "feature_access_granted" // Tarnung für appPurchased (obfuskiert)
+    private const val KEY_FREEDOM_ACCESS_FLAG = "freedom_access_granted" // Freedom subscription purchased (obfuskiert)
     // --- END: Camouflage for Keys and Obfuscation ---
 
     private const val TAG = "TrialManager"
@@ -178,7 +179,7 @@ object TrialManager {
         Log.d(TAG, "getTrialState called with currentUtcTimeMsFromInternet: $currentUtcTimeMsFromInternet")
         val prefs = getSharedPreferences(context)
 
-        if (isPurchased(context)) { // Uses camouflaged KEY_FEATURE_ACCESS_FLAG
+        if (isPurchased(context)) { // Uses obfuscated KEY_FEATURE_ACCESS_FLAG
             Log.d(TAG, "getTrialState: App is purchased. Returning TrialState.PURCHASED")
             return TrialState.PURCHASED
         }
@@ -236,17 +237,26 @@ object TrialManager {
         editor.remove(KEY_CFG_TS)
         editor.remove(KEY_INITIAL_SETUP_FLAG)
         editor.remove(KEY_CFG_ST)
-        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG indicates the app has been purchased.
-        Log.d(TAG, "Setting KEY_FEATURE_ACCESS_FLAG to true")
-        editor.putBoolean(KEY_FEATURE_ACCESS_FLAG, true)
+        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG stores the obfuscated "true" string
+        // to indicate the app has been purchased. It is NOT stored as a plain boolean.
+        val obfuscatedTrue = obfuscateData("true")
+        Log.d(TAG, "Setting KEY_FEATURE_ACCESS_FLAG to obfuscated 'true'")
+        editor.putString(KEY_FEATURE_ACCESS_FLAG, obfuscatedTrue)
         editor.apply()
-        Log.i(TAG, "App marked as purchased. Trial data (including obfuscated end time and confirmed expired flag) cleared. Purchase status stored in KEY_FEATURE_ACCESS_FLAG.")
+        Log.i(TAG, "App marked as purchased. Trial data (including obfuscated end time and confirmed expired flag) cleared. Purchase status stored obfuscated in KEY_FEATURE_ACCESS_FLAG.")
     }
 
     internal fun isPurchased(context: Context): Boolean {
-        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG indicates the app has been purchased.
+        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG stores the obfuscated purchase flag.
         Log.d(TAG, "isPurchased called, checking KEY_FEATURE_ACCESS_FLAG")
-        val purchased = getSharedPreferences(context).getBoolean(KEY_FEATURE_ACCESS_FLAG, false)
+        val prefs = getSharedPreferences(context)
+        val obfuscatedValue = prefs.getString(KEY_FEATURE_ACCESS_FLAG, null)
+        if (obfuscatedValue == null) {
+            Log.d(TAG, "isPurchased: KEY_FEATURE_ACCESS_FLAG not set, returning false")
+            return false
+        }
+        val deobfuscated = deobfuscateData(obfuscatedValue)
+        val purchased = deobfuscated?.toBoolean() ?: false
         Log.d(TAG, "isPurchased (KEY_FEATURE_ACCESS_FLAG) returning: $purchased")
         return purchased
     }
@@ -254,16 +264,18 @@ object TrialManager {
     fun clearPurchaseMark(context: Context) {
         Log.d(TAG, "clearPurchaseMark called")
         val editor = getSharedPreferences(context).edit()
-        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG is set to false to indicate the feature is no longer accessed via purchase.
-        Log.d(TAG, "Setting KEY_FEATURE_ACCESS_FLAG to false")
-        editor.putBoolean(KEY_FEATURE_ACCESS_FLAG, false)
+        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG is set to obfuscated 'false' to indicate
+        // the feature is no longer accessed via purchase.
+        val obfuscatedFalse = obfuscateData("false")
+        Log.d(TAG, "Setting KEY_FEATURE_ACCESS_FLAG to obfuscated 'false'")
+        editor.putString(KEY_FEATURE_ACCESS_FLAG, obfuscatedFalse)
         // Comment for future AI: KEY_INITIAL_SETUP_FLAG is reset to true to allow trial re-evaluation.
         Log.d(TAG, "Setting KEY_INITIAL_SETUP_FLAG to true")
         editor.putBoolean(KEY_INITIAL_SETUP_FLAG, true)
         // IMPORTANT: KEY_CFG_TS (obfuscated trial end time) and KEY_CFG_ST (obfuscated confirmed expired flag)
         // are intentionally NOT cleared here. The original trial period might still be relevant.
         editor.apply()
-        Log.i(TAG, "Purchase mark cleared. Feature access flag set to false, initial setup flag reset to true. Trial end time and expired flag preserved.")
+        Log.i(TAG, "Purchase mark cleared. Feature access flag set to obfuscated false, initial setup flag reset to true. Trial end time and expired flag preserved.")
     }
 
     fun initializeTrialStateFlagsIfNecessary(context: Context) {
@@ -330,22 +342,32 @@ object TrialManager {
     // --- START: Freedom subscription ---
     fun markAsFreedomPurchased(context: Context) {
         Log.d(TAG, "markAsFreedomPurchased called")
-        getSharedPreferences(context).edit().putBoolean(KEY_FREEDOM_ACCESS_FLAG, true).apply()
-        Log.i(TAG, "App marked as Freedom-purchased.")
+        val obfuscatedTrue = obfuscateData("true")
+        getSharedPreferences(context).edit().putString(KEY_FREEDOM_ACCESS_FLAG, obfuscatedTrue).apply()
+        Log.i(TAG, "App marked as Freedom-purchased (obfuscated).")
     }
 
     fun isFreedomPurchased(context: Context): Boolean {
         Log.d(TAG, "isFreedomPurchased called, checking KEY_FREEDOM_ACCESS_FLAG")
-        val purchased = getSharedPreferences(context).getBoolean(KEY_FREEDOM_ACCESS_FLAG, false)
+        val prefs = getSharedPreferences(context)
+        val obfuscatedValue = prefs.getString(KEY_FREEDOM_ACCESS_FLAG, null)
+        if (obfuscatedValue == null) {
+            Log.d(TAG, "isFreedomPurchased: KEY_FREEDOM_ACCESS_FLAG not set, returning false")
+            return false
+        }
+        val deobfuscated = deobfuscateData(obfuscatedValue)
+        val purchased = deobfuscated?.toBoolean() ?: false
         Log.d(TAG, "isFreedomPurchased returning: $purchased")
         return purchased
     }
 
     fun clearFreedomMark(context: Context) {
         Log.d(TAG, "clearFreedomMark called")
-        getSharedPreferences(context).edit().putBoolean(KEY_FREEDOM_ACCESS_FLAG, false).apply()
-        Log.i(TAG, "Freedom purchase mark cleared.")
+        val obfuscatedFalse = obfuscateData("false")
+        getSharedPreferences(context).edit().putString(KEY_FREEDOM_ACCESS_FLAG, obfuscatedFalse).apply()
+        Log.i(TAG, "Freedom purchase mark cleared (obfuscated false stored).")
     }
     // --- END: Freedom subscription ---
 }
+
 
