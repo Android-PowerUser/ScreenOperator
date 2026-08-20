@@ -68,7 +68,6 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.PendingPurchasesParams
-import com.android.billingclient.api.QueryProductDetailsResult
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.ui.theme.GenerativeAISample
@@ -1104,8 +1103,7 @@ class MainActivity : ComponentActivity() {
         val params = QueryProductDetailsParams.newBuilder().setProductList(productList).build()
         Log.d(TAG, "queryProductDetails: Querying for product IDs: $subscriptionProductId, $freedomProductId")
 
-        billingClient.queryProductDetailsAsync(params) { result ->
-            val billingResult = result.billingResult
+        billingClient.queryProductDetailsAsync(params) { billingResult, result ->
             val productDetailsList = result.productDetailsList
             Log.i(TAG, "queryProductDetailsAsync result: ResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}")
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
