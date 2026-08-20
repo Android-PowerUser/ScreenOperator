@@ -1252,72 +1252,119 @@ class MainActivity : ComponentActivity() {
         Log.i(TAG, "handlePurchase called for purchase: OrderId: ${purchase.orderId}, Products: ${purchase.products}, State: ${purchase.purchaseState}, Token: ${purchase.purchaseToken}, Ack: ${purchase.isAcknowledged}")
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
             Log.d(TAG, "handlePurchase: Purchase state is PURCHASED.")
-            if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, freedomProductId)) {
-                Log.d(TAG, "handlePurchase: Purchase contains Freedom product ID: $freedomProductId")
-                // Mark as purchased IMMEDIATELY (before acknowledgement) so that any concurrent
-                // queryActiveSubscriptions() or WebView reload already sees the correct state.
-                // purchaseState == PURCHASED already confirms the payment; acknowledgement is
-                // just a server-side confirmation step that must not gate the UI update.
-                TrialManager.markAsFreedomPurchased(this)
-                TrialManager.markAsPurchased(this)
-                updateTrialState(TrialManager.getTrialState(this, null))
-                evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
-                if (!purchase.isAcknowledged) {
-                    Log.i(TAG, "handlePurchase: Purchase not acknowledged. Acknowledging now.")
-                    val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
-                        .setPurchaseToken(purchase.purchaseToken)
-                        .build()
-                    billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
-                        Log.i(TAG, "handlePurchase (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
-                        if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                            Log.i(TAG, "Freedom subscription purchase acknowledged successfully.")
-                            updateStatusMessage("Thank you for your Freedom subscription!")
-                            val stopIntent = Intent(this, TrialTimerService::class.java)
-                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent)
-                        } else {
-                            Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
-                            updateStatusMessage("Error confirming purchase: ${ackBillingResult.debugMessage}", true)
-                        }
-                    }
-                } else {
-                    Log.i(TAG, "handlePurchase: Freedom subscription already acknowledged.")
-                    updateStatusMessage("Freedom subscription already active.")
-                    val stopIntent = Intent(this, TrialTimerService::class.java)
-                    stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                    startService(stopIntent)
-                }
-            } else if (MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, subscriptionProductId)) {
-                Log.d(TAG, "handlePurchase: Purchase contains target product ID: $subscriptionProductId")
-                if (!purchase.isAcknowledged) {
-                    Log.i(TAG, "handlePurchase: Purchase not acknowledged. Acknowledging now.")
-                    val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
-                        .setPurchaseToken(purchase.purchaseToken)
-                        .build()
-                    billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
-                        Log.i(TAG, "handlePurchase (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
-                        if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                            Log.i(TAG, "Subscription purchase acknowledged successfully.")
-                            updateStatusMessage("Thank you for your subscription!")
-                            TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.getTrialState(this, null))
-                            Log.d(TAG, "handlePurchase: Stopping TrialTimerService as app is purchased.")
-                            val stopIntent = Intent(this, TrialTimerService::class.java)
-                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent)
-                        } else {
-                            Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
-                            updateStatusMessage("Error confirming purchase: ${ackBillingResult.debugMessage}", true)
-                        }
-                    }
-                } else {
-                    Log.i(TAG, "handlePurchase: Subscription already acknowledged.")
-                    updateStatusMessage("Subscription already active.")
-                    TrialManager.markAsPurchased(this)
-                    updateTrialState(TrialManager.getTrialState(this, null))
-                }
-            } else {
+
+            // Determine which product this purchase is for
+            val isFreedom = MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, freedomProductId)
+            val isPro = MainActivityBillingStateEvaluator.containsSubscriptionProduct(purchase, subscriptionProductId)
+            val matchedProductId = when {
+                isFreedom -> freedomProductId
+                isPro -> subscriptionProductId
+                else -> null
+            }
+
+            if (matchedProductId == null) {
                 Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain any known product ID. Products: ${purchase.products}")
+                return
+            }
+
+            Log.d(TAG, "handlePurchase: Matched product: $matchedProductId. Starting server-side verification...")
+
+            // ── Server-side purchase verification ─────────────────────────────
+            // Before trusting the local Purchase object (which could be forged by
+            // Lucky Patcher / Zygisk hooks), verify the purchaseToken with our
+            // Deno Deploy backend, which checks it directly against Google's
+            // Play Developer API. Only if the server confirms the token is
+            // genuine do we call TrialManager.markAsPurchased().
+            lifecycleScope.launch {
+                val verification = PurchaseVerifier.verifyPurchase(
+                    purchaseToken = purchase.purchaseToken,
+                    productId = matchedProductId,
+                    packageName = packageName,
+                )
+
+                if (!verification.valid) {
+                    // ── VERIFICATION FAILED ────────────────────────────────────
+                    // The purchaseToken was not recognised by Google's servers.
+                    // This is the telltale sign of a forged local Purchase object
+                    // (Lucky Patcher, Zygisk billing hook, etc.).
+                    // DO NOT call markAsPurchased, DO NOT acknowledge the purchase.
+                    Log.e(TAG, "handlePurchase: SERVER VERIFICATION FAILED for productId=$matchedProductId, reason=${verification.reason}. " +
+                            "This purchase is likely forged (Lucky Patcher / Zygisk hook). Refusing to mark as purchased.")
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Purchase verification failed. Please try again or contact support.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                // ── VERIFICATION PASSED ────────────────────────────────────────
+                Log.i(TAG, "handlePurchase: Server verification PASSED for productId=$matchedProductId. Proceeding with purchase.")
+
+                if (isFreedom) {
+                    Log.d(TAG, "handlePurchase: Processing verified Freedom purchase.")
+                    TrialManager.markAsFreedomPurchased(this@MainActivity)
+                    TrialManager.markAsPurchased(this@MainActivity)
+                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                    evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                    if (!purchase.isAcknowledged) {
+                        Log.i(TAG, "handlePurchase: Freedom purchase not acknowledged. Acknowledging now.")
+                        val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
+                            .setPurchaseToken(purchase.purchaseToken)
+                            .build()
+                        billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
+                            Log.i(TAG, "handlePurchase (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
+                            if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                                Log.i(TAG, "Freedom subscription purchase acknowledged successfully.")
+                                updateStatusMessage("Thank you for your Freedom subscription!")
+                                val stopIntent = Intent(this@MainActivity, TrialTimerService::class.java)
+                                stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                                startService(stopIntent)
+                            } else {
+                                Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
+                                updateStatusMessage("Error confirming purchase: ${ackBillingResult.debugMessage}", true)
+                            }
+                        }
+                    } else {
+                        Log.i(TAG, "handlePurchase: Freedom subscription already acknowledged.")
+                        updateStatusMessage("Freedom subscription already active.")
+                        val stopIntent = Intent(this@MainActivity, TrialTimerService::class.java)
+                        stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                        startService(stopIntent)
+                    }
+                } else {
+                    // Pro subscription
+                    Log.d(TAG, "handlePurchase: Processing verified Pro purchase.")
+                    if (!purchase.isAcknowledged) {
+                        Log.i(TAG, "handlePurchase: Purchase not acknowledged. Acknowledging now.")
+                        val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
+                            .setPurchaseToken(purchase.purchaseToken)
+                            .build()
+                        billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
+                            Log.i(TAG, "handlePurchase (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
+                            if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                                Log.i(TAG, "Subscription purchase acknowledged successfully.")
+                                updateStatusMessage("Thank you for your subscription!")
+                                TrialManager.markAsPurchased(this@MainActivity)
+                                updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                                Log.d(TAG, "handlePurchase: Stopping TrialTimerService as app is purchased.")
+                                val stopIntent = Intent(this@MainActivity, TrialTimerService::class.java)
+                                stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                                startService(stopIntent)
+                            } else {
+                                Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
+                                updateStatusMessage("Error confirming purchase: ${ackBillingResult.debugMessage}", true)
+                            }
+                        }
+                    } else {
+                        Log.i(TAG, "handlePurchase: Subscription already acknowledged.")
+                        updateStatusMessage("Subscription already active.")
+                        TrialManager.markAsPurchased(this@MainActivity)
+                        updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                    }
+                }
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
             Log.i(TAG, "handlePurchase: Purchase state is PENDING.")
@@ -1349,14 +1396,38 @@ class MainActivity : ComponentActivity() {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged Freedom subscription. Handling purchase.")
                             handlePurchase(purchase)
                         } else {
-                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged Freedom subscription.")
-                            TrialManager.markAsFreedomPurchased(this)
-                            TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.getTrialState(this, null))
-                            evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
-                            val stopIntent = Intent(this, TrialTimerService::class.java)
-                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent)
+                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged Freedom subscription. Verifying server-side...")
+                            // ── Server-side verification before trusting this purchase ──
+                            lifecycleScope.launch {
+                                val verification = PurchaseVerifier.verifyPurchase(
+                                    purchaseToken = purchase.purchaseToken,
+                                    productId = freedomProductId,
+                                    packageName = packageName,
+                                )
+                                if (verification.valid) {
+                                    Log.i(TAG, "queryActiveSubscriptions: Freedom subscription verified by server.")
+                                    TrialManager.markAsFreedomPurchased(this@MainActivity)
+                                    TrialManager.markAsPurchased(this@MainActivity)
+                                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                                    evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+                                    val stopIntent = Intent(this@MainActivity, TrialTimerService::class.java)
+                                    stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                                    startService(stopIntent)
+                                } else {
+                                    Log.e(TAG, "queryActiveSubscriptions: Freedom subscription FAILED server verification. Reason: ${verification.reason}. Refusing to mark as purchased.")
+                                    // Clear any previously stored purchase marks since this
+                                    // subscription is not actually valid according to Google.
+                                    if (TrialManager.isFreedomPurchased(this@MainActivity)) {
+                                        TrialManager.clearFreedomMark(this@MainActivity)
+                                        evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
+                                    }
+                                    if (TrialManager.isPurchased(this@MainActivity)) {
+                                        TrialManager.clearPurchaseMark(this@MainActivity)
+                                    }
+                                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                                    startTrialServiceIfNeeded()
+                                }
+                            }
                         }
                         return@forEach
                     }
@@ -1367,28 +1438,42 @@ class MainActivity : ComponentActivity() {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged subscription. Handling purchase.")
                             handlePurchase(purchase)
                         } else {
-                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged subscription.")
-                            if (currentTrialState != TrialManager.TrialState.PURCHASED) {
-                                TrialManager.markAsPurchased(this)
-                                updateTrialState(TrialManager.getTrialState(this, null))
+                            Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged subscription. Verifying server-side...")
+                            // ── Server-side verification before trusting this purchase ──
+                            lifecycleScope.launch {
+                                val verification = PurchaseVerifier.verifyPurchase(
+                                    purchaseToken = purchase.purchaseToken,
+                                    productId = subscriptionProductId,
+                                    packageName = packageName,
+                                )
+                                if (verification.valid) {
+                                    Log.i(TAG, "queryActiveSubscriptions: Pro subscription verified by server.")
+                                    if (currentTrialState != TrialManager.TrialState.PURCHASED) {
+                                        TrialManager.markAsPurchased(this@MainActivity)
+                                        updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                                    }
+                                    Log.d(TAG, "queryActiveSubscriptions: Stopping TrialTimerService due to active acknowledged subscription.")
+                                    val stopIntent = Intent(this@MainActivity, TrialTimerService::class.java)
+                                    stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                                    startService(stopIntent)
+                                } else {
+                                    Log.e(TAG, "queryActiveSubscriptions: Pro subscription FAILED server verification. Reason: ${verification.reason}. Refusing to mark as purchased.")
+                                    if (TrialManager.isPurchased(this@MainActivity)) {
+                                        TrialManager.clearPurchaseMark(this@MainActivity)
+                                    }
+                                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
+                                    startTrialServiceIfNeeded()
+                                }
                             }
-                            Log.d(TAG, "queryActiveSubscriptions: Stopping TrialTimerService due to active acknowledged subscription.")
-                            val stopIntent = Intent(this, TrialTimerService::class.java)
-                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent)
                         }
                         return@forEach
                     }
                 }
                 if (isSubscribedLocally) {
-                    Log.i(TAG, "queryActiveSubscriptions: User has an active subscription (final check after loop). Ensuring state is PURCHASED.")
-                    if (currentTrialState != TrialManager.TrialState.PURCHASED) {
-                         TrialManager.markAsPurchased(this)
-                         updateTrialState(TrialManager.getTrialState(this, null))
-                         val stopIntent = Intent(this, TrialTimerService::class.java)
-                         stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                         startService(stopIntent)
-                    }
+                    // The actual markAsPurchased is now handled inside the forEach
+                    // branches above (with server verification). This block only
+                    // logs that we found something.
+                    Log.i(TAG, "queryActiveSubscriptions: User has an active subscription (final check after loop). Verification is handled within each branch.")
                 } else {
                     Log.i(TAG, "queryActiveSubscriptions: User has no active subscription. Re-evaluating trial logic.")
                     if (TrialManager.isFreedomPurchased(this@MainActivity)) {
