@@ -138,10 +138,17 @@ async function verifySubscription(
 
   if (!resp.ok) {
     let reason = `Google API returned HTTP ${resp.status}`;
+    let errorStatus = "";
     try {
       const errBody = await resp.json();
-      reason = errBody?.error?.message || errBody?.error?.status || JSON.stringify(errBody);
+      errorStatus = errBody?.error?.status || "";
+      reason = `[HTTP ${resp.status}] [${errorStatus}] ${errBody?.error?.message || JSON.stringify(errBody)}`;
     } catch { /* keep generic */ }
+    // HTTP 404 with "purchaseTokenNotFound" means the token doesn't exist at Google
+    // → this is a forged/invalid token
+    if (resp.status === 404 || errorStatus === "NOT_FOUND") {
+      return { valid: false, reason: "Invalid/forged purchase token (Google does not recognise it)" };
+    }
     return { valid: false, reason };
   }
 
