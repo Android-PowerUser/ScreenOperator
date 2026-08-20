@@ -64,29 +64,33 @@ jobs:
             exit 1
           fi
 
-          # 3) Set environment variables (service account JSON + allowed package)
-          # The GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret must contain the full
-          # JSON content of a Google Cloud service-account key file.
-          if [ -n "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" ]; then
-            echo "Setting GOOGLE_PLAY_SERVICE_ACCOUNT_JSON env var on Deno Deploy..."
-            curl -sS -X PATCH \
-              -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "{\"envVars\":{\"GOOGLE_PLAY_SERVICE_ACCOUNT_JSON\":$(echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' | jq -Rs .),\"ALLOWED_PACKAGE_NAME\":\"io.github.android_poweruser\"}}" \
-              "$API/apps/$APP" || echo "Warning: could not set env vars (may need manual configuration)"
-          else
-            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret not set. Set it manually in Deno Deploy dashboard."
-          fi
-
-          # 4) Deploy to production
+          # 3) Deploy to production with environment variables
+          # Use --env flag to pass secrets directly to the deployment
           cd "$SRC_DIR"
-          deno deploy \
-            --org="$ORG" \
-            --app="$APP" \
-            --token="$DENO_DEPLOY_TOKEN" \
-            --json --non-interactive \
-            --prod \
-            .
+          
+          if [ -n "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "Deploying with GOOGLE_PLAY_SERVICE_ACCOUNT_JSON..."
+            # Escape the JSON for shell (newlines, quotes)
+            SA_JSON=$(echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' | jq -c .)
+            deno deploy \
+              --org="$ORG" \
+              --app="$APP" \
+              --token="$DENO_DEPLOY_TOKEN" \
+              --json --non-interactive \
+              --prod \
+              --env="GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=$SA_JSON" \
+              --env="ALLOWED_PACKAGE_NAME=io.github.android_poweruser" \
+              .
+          else
+            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret not set. Deploying without service account."
+            deno deploy \
+              --org="$ORG" \
+              --app="$APP" \
+              --token="$DENO_DEPLOY_TOKEN" \
+              --json --non-interactive \
+              --prod \
+              .
+          fi
 
       - name: Verify service is alive
         run: |
