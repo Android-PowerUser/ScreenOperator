@@ -24,6 +24,7 @@ jobs:
       - name: Deploy to Deno Deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          GOOGLE_PLAY_SA_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
 
@@ -68,17 +69,16 @@ jobs:
           # Use --env flag to pass secrets directly to the deployment
           cd "$SRC_DIR"
           
-          if [ -n "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" ]; then
+          if [ -n "$GOOGLE_PLAY_SA_JSON" ]; then
             echo "Deploying with GOOGLE_PLAY_SERVICE_ACCOUNT_JSON..."
-            # Escape the JSON for shell (newlines, quotes)
-            SA_JSON=$(echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' | jq -c .)
+            # Use the env var directly - it's already valid JSON
             deno deploy \
               --org="$ORG" \
               --app="$APP" \
               --token="$DENO_DEPLOY_TOKEN" \
               --json --non-interactive \
               --prod \
-              --env="GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=$SA_JSON" \
+              --env="GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=$GOOGLE_PLAY_SA_JSON" \
               --env="ALLOWED_PACKAGE_NAME=io.github.android_poweruser" \
               .
           else
