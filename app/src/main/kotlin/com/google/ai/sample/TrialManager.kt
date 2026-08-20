@@ -246,19 +246,44 @@ object TrialManager {
         Log.i(TAG, "App marked as purchased. Trial data (including obfuscated end time and confirmed expired flag) cleared. Purchase status stored obfuscated in KEY_FEATURE_ACCESS_FLAG.")
     }
 
-    internal fun isPurchased(context: Context): Boolean {
-        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG stores the obfuscated purchase flag.
-        Log.d(TAG, "isPurchased called, checking KEY_FEATURE_ACCESS_FLAG")
+    /**
+     * Reads a purchase flag that is now stored as an obfuscated String but may still be a raw
+     * Boolean in SharedPreferences for users who installed a build before the obfuscation
+     * migration. Returns the flag value and migrates the on-disk entry to the obfuscated
+     * String format in the same call so subsequent reads always find a String.
+     */
+    private fun readObfuscatedBooleanFlag(context: Context, key: String): Boolean {
         val prefs = getSharedPreferences(context)
-        val obfuscatedValue = prefs.getString(KEY_FEATURE_ACCESS_FLAG, null)
+
+        // --- migration: legacy Boolean entry ---
+        // Before the obfuscation change, these flags were stored with putBoolean().
+        // getString() on a Boolean entry throws ClassCastException on Android, so we must
+        // probe the raw map first and migrate on the fly.
+        val allEntries = prefs.all
+        val rawValue = allEntries[key]
+        if (rawValue is Boolean) {
+            Log.d(TAG, "readObfuscatedBooleanFlag($key): found legacy Boolean=$rawValue, migrating to obfuscated String")
+            val obfuscated = obfuscateData(rawValue.toString())
+            prefs.edit().putString(key, obfuscated).apply()
+            return rawValue
+        }
+        // --- end migration ---
+
+        val obfuscatedValue = prefs.getString(key, null)
         if (obfuscatedValue == null) {
-            Log.d(TAG, "isPurchased: KEY_FEATURE_ACCESS_FLAG not set, returning false")
+            Log.d(TAG, "readObfuscatedBooleanFlag($key): not set, returning false")
             return false
         }
         val deobfuscated = deobfuscateData(obfuscatedValue)
-        val purchased = deobfuscated?.toBoolean() ?: false
-        Log.d(TAG, "isPurchased (KEY_FEATURE_ACCESS_FLAG) returning: $purchased")
-        return purchased
+        val result = deobfuscated?.toBoolean() ?: false
+        Log.d(TAG, "readObfuscatedBooleanFlag($key) returning: $result")
+        return result
+    }
+
+    internal fun isPurchased(context: Context): Boolean {
+        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG stores the obfuscated purchase flag.
+        Log.d(TAG, "isPurchased called, checking KEY_FEATURE_ACCESS_FLAG")
+        return readObfuscatedBooleanFlag(context, KEY_FEATURE_ACCESS_FLAG)
     }
 
     fun clearPurchaseMark(context: Context) {
@@ -349,16 +374,7 @@ object TrialManager {
 
     fun isFreedomPurchased(context: Context): Boolean {
         Log.d(TAG, "isFreedomPurchased called, checking KEY_FREEDOM_ACCESS_FLAG")
-        val prefs = getSharedPreferences(context)
-        val obfuscatedValue = prefs.getString(KEY_FREEDOM_ACCESS_FLAG, null)
-        if (obfuscatedValue == null) {
-            Log.d(TAG, "isFreedomPurchased: KEY_FREEDOM_ACCESS_FLAG not set, returning false")
-            return false
-        }
-        val deobfuscated = deobfuscateData(obfuscatedValue)
-        val purchased = deobfuscated?.toBoolean() ?: false
-        Log.d(TAG, "isFreedomPurchased returning: $purchased")
-        return purchased
+        return readObfuscatedBooleanFlag(context, KEY_FREEDOM_ACCESS_FLAG)
     }
 
     fun clearFreedomMark(context: Context) {
@@ -369,5 +385,6 @@ object TrialManager {
     }
     // --- END: Freedom subscription ---
 }
+
 
 
