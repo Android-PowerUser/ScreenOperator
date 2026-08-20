@@ -114,7 +114,7 @@ fun parseLoadAlignments(readelfOutput: String): List<Long> {
     val alignments = mutableListOf<Long>()
     for (index in 0 until lines.lastIndex) {
         if (!lines[index].trimStart().startsWith("LOAD")) continue
-        val alignToken = lines[index + 1].trim().split(Regex("\\s+")).lastOrNull() ?: continue
+        val alignToken = lines[index + 1].trim().split(Regex("\s+")).lastOrNull() ?: continue
         val alignValue = alignToken.removePrefix("0x").toLongOrNull(16) ?: continue
         alignments += alignValue
     }
@@ -175,8 +175,10 @@ androidComponents {
 
                 if (invalidLibraries.isNotEmpty()) {
                     throw GradleException(
-                        "Found native libraries without required 16KB alignment in variant '$variantName':\n" +
-                            invalidLibraries.joinToString("\n")
+                        "Found native libraries without required 16KB alignment in variant '$variantName':
+" +
+                            invalidLibraries.joinToString("
+")
                     )
                 }
             }
@@ -234,7 +236,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
 
     // Google Play Billing Library
-    implementation("com.android.billingclient:billing-ktx:7.1.1") // Latest version as per documentation
+    implementation("com.android.billingclient:billing-ktx:9.1.0") // Latest version as per documentation
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
