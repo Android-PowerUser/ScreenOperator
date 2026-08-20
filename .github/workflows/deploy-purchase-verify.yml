@@ -74,51 +74,65 @@ jobs:
             --json --non-interactive \
             --prod \
             .
-          
-          # 4) Set environment variables via Deno Deploy API
-          if [ -n "$GOOGLE_PLAY_SA_JSON" ]; then
-            echo "Setting environment variables via Deno Deploy API..."
-            # Write the JSON to a temp file to avoid shell escaping issues
-            echo "$GOOGLE_PLAY_SA_JSON" > /tmp/sa.json
-            
-            # Create the env vars payload
-            python3 << 'PYEOF'
-import json, sys
 
-with open('/tmp/sa.json') as f:
-    sa_json = f.read().strip()
+      - name: Set environment variables
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          GOOGLE_PLAY_SA_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          APP="screenoperator-purchase-verify"
+          API="https://console.deno.com/api/v2"
 
-payload = {
-    "envVars": {
-        "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON": sa_json,
-        "ALLOWED_PACKAGE_NAME": "io.github.android_poweruser"
-    }
-}
-
-with open('/tmp/env_payload.json', 'w') as f:
-    json.dump(payload, f)
-PYEOF
-            
-            # Set env vars via API
-            HTTP_CODE=$(curl -sS -o /tmp/env_response.json -w '%{http_code}' \
-              -X PATCH \
-              -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d @/tmp/env_payload.json \
-              "$API/apps/$APP")
-            
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✓ Environment variables set successfully"
-              cat /tmp/env_response.json | jq -r '.env_vars | keys[]' 2>/dev/null || echo "(env vars set)"
-            else
-              echo "::warning::Failed to set environment variables (HTTP $HTTP_CODE)"
-              cat /tmp/env_response.json
-            fi
-            
-            rm -f /tmp/sa.json /tmp/env_payload.json /tmp/env_response.json
-          else
-            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret not set. Skipping env var configuration."
+          if [ -z "$GOOGLE_PLAY_SA_JSON" ]; then
+            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON not set"
+            exit 0
           fi
+
+          echo "Setting environment variables via Deno Deploy API..."
+
+          # Write SA JSON to file to avoid shell escaping issues
+          printf '%s' "$GOOGLE_PLAY_SA_JSON" > /tmp/sa_raw.json
+
+          # Build the JSON payload using node (always available on GitHub runners)
+          node -e "
+            const fs = require('fs');
+            const saJson = fs.readFileSync('/tmp/sa_raw.json', 'utf8');
+            // Validate it's proper JSON
+            JSON.parse(saJson);
+            const payload = {
+              envVars: {
+                GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: saJson,
+                ALLOWED_PACKAGE_NAME: 'io.github.android_poweruser'
+              }
+            };
+            fs.writeFileSync('/tmp/env_payload.json', JSON.stringify(payload));
+          "
+
+          echo "Payload created, sending to Deno Deploy..."
+
+          HTTP_CODE=$(curl -sS -o /tmp/env_response.json -w '%{http_code}' \
+            -X PATCH \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/env_payload.json \
+            "$API/apps/$APP")
+
+          echo "Response HTTP: $HTTP_CODE"
+          cat /tmp/env_response.json | node -e "
+            let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+              try { const j=JSON.parse(d); console.log('env_vars:', JSON.stringify(j.env_vars||[])); }
+              catch(e) { console.log(d.substring(0,500)); }
+            });
+          "
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Failed to set env vars (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+          echo "Environment variables set successfully!"
+          rm -f /tmp/sa_raw.json /tmp/env_payload.json /tmp/env_response.json
 
       - name: Verify service is alive
         run: |
