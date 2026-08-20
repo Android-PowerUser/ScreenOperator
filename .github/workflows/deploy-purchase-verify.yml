@@ -65,31 +65,59 @@ jobs:
             exit 1
           fi
 
-          # 3) Deploy to production with environment variables
-          # Use --env flag to pass secrets directly to the deployment
+          # 3) Deploy to production
           cd "$SRC_DIR"
+          deno deploy \
+            --org="$ORG" \
+            --app="$APP" \
+            --token="$DENO_DEPLOY_TOKEN" \
+            --json --non-interactive \
+            --prod \
+            .
           
+          # 4) Set environment variables via Deno Deploy API
           if [ -n "$GOOGLE_PLAY_SA_JSON" ]; then
-            echo "Deploying with GOOGLE_PLAY_SERVICE_ACCOUNT_JSON..."
-            # Use the env var directly - it's already valid JSON
-            deno deploy \
-              --org="$ORG" \
-              --app="$APP" \
-              --token="$DENO_DEPLOY_TOKEN" \
-              --json --non-interactive \
-              --prod \
-              --env="GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=$GOOGLE_PLAY_SA_JSON" \
-              --env="ALLOWED_PACKAGE_NAME=io.github.android_poweruser" \
-              .
+            echo "Setting environment variables via Deno Deploy API..."
+            # Write the JSON to a temp file to avoid shell escaping issues
+            echo "$GOOGLE_PLAY_SA_JSON" > /tmp/sa.json
+            
+            # Create the env vars payload
+            python3 << 'PYEOF'
+import json, sys
+
+with open('/tmp/sa.json') as f:
+    sa_json = f.read().strip()
+
+payload = {
+    "envVars": {
+        "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON": sa_json,
+        "ALLOWED_PACKAGE_NAME": "io.github.android_poweruser"
+    }
+}
+
+with open('/tmp/env_payload.json', 'w') as f:
+    json.dump(payload, f)
+PYEOF
+            
+            # Set env vars via API
+            HTTP_CODE=$(curl -sS -o /tmp/env_response.json -w '%{http_code}' \
+              -X PATCH \
+              -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d @/tmp/env_payload.json \
+              "$API/apps/$APP")
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Environment variables set successfully"
+              cat /tmp/env_response.json | jq -r '.env_vars | keys[]' 2>/dev/null || echo "(env vars set)"
+            else
+              echo "::warning::Failed to set environment variables (HTTP $HTTP_CODE)"
+              cat /tmp/env_response.json
+            fi
+            
+            rm -f /tmp/sa.json /tmp/env_payload.json /tmp/env_response.json
           else
-            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret not set. Deploying without service account."
-            deno deploy \
-              --org="$ORG" \
-              --app="$APP" \
-              --token="$DENO_DEPLOY_TOKEN" \
-              --json --non-interactive \
-              --prod \
-              .
+            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret not set. Skipping env var configuration."
           fi
 
       - name: Verify service is alive
