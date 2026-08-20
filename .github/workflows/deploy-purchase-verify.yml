@@ -22,7 +22,7 @@ jobs:
           deno-version: v2.x
 
       - name: Install deployctl
-        run: deno install -Arf jsr:@deno/deployctl
+        run: deno install -gArf jsr:@deno/deployctl
 
       - name: Deploy to Deno Deploy
         env:
