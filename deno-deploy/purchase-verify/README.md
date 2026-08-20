@@ -23,25 +23,38 @@ forged ones.
 
 ## Setup
 
-### 1. Create a Google Cloud Service Account
+### 1. Google Cloud Console Setup
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Select your project (the one linked to your Google Play Console)
-3. Navigate to **IAM & Admin → Service Accounts**
-4. Click **Create Service Account**
+3. **APIs & Services → Library** → search for **"Google Play Android Developer API"** → **Enable**
+4. Navigate to **IAM & Admin → Service Accounts**
+5. Click **Create Service Account**
    - Name: `play-purchase-verifier`
-   - Role: **Google Play Android Developer → View financial data** (or the broader "Financial Data" role)
-5. After creation, click the service account → **Keys** → **Add Key → Create new key → JSON**
-6. Download the JSON file — this is your service account key
+   - Role: **Basic → Viewer** (the real permissions are granted in Play Console, not here)
+6. After creation, click the service account → **Keys** → **Add Key → Create new key → JSON**
+7. Download the JSON file — this is your service account key
+8. Copy the service account email address (looks like `play-purchase-verifier@your-project.iam.gserviceaccount.com`)
 
-### 2. Link Service Account to Google Play Console
+### 2. Google Play Console — Grant Permissions
+
+The "View financial data" permission does NOT exist in Google Cloud IAM — it is granted
+exclusively through the Google Play Console's user management:
 
 1. Go to [Google Play Console](https://play.google.com/console/)
-2. Navigate to **Settings → Developer account → Users & permissions**
+2. Navigate to **Users and permissions** (left sidebar)
 3. Click **Invite new users**
-4. Enter the service account's email address (from the JSON: `client_email`)
-5. Under **Account permissions**, grant **View financial data** (or "Financial data" access)
-6. Save
+4. Paste the service account's email address (from step 1.8)
+5. Under **App permissions** → select your app → **Apply**
+6. Under **Account permissions**, tick these three checkboxes:
+   - ✅ View app information and download bulk reports (read-only)
+   - ✅ View financial data, orders, and cancellation survey responses
+   - ✅ Manage orders and subscriptions
+7. Click **Invite user**
+
+> ⚠️ It can take up to 24 hours for Google to propagate new service-account
+> permissions to the Play Developer API. If you get 403 errors initially,
+> wait a few hours and retry.
 
 ### 3. Configure Deno Deploy Secrets
 
