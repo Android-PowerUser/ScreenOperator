@@ -21,9 +21,6 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Install deployctl
-        run: deno install -gArf jsr:@deno/deployctl
-
       - name: Deploy to Deno Deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
@@ -35,28 +32,124 @@ jobs:
           APP="screenoperator-purchase-verify"
           SRC_DIR="deno-deploy/purchase-verify"
           ENTRYPOINT="purchase_verify.ts"
+          API="https://console.deno.com/api/v2"
 
-          cd "$SRC_DIR"
+          # 1) Create the app if it does not exist yet.
+          deno deploy create \
+            --org="$ORG" \
+            --app="$APP" \
+            --token="$DENO_DEPLOY_TOKEN" \
+            --json --non-interactive \
+            --source=local \
+            --runtime-mode=dynamic \
+            --entrypoint="$ENTRYPOINT" \
+            --region=us \
+            "$SRC_DIR" 2>&1 || echo "create skipped (app probably already exists)"
 
-          if [ -n "$GOOGLE_PLAY_SA_JSON" ]; then
-            echo "Deploying with GOOGLE_PLAY_SERVICE_ACCOUNT_JSON..."
-            deployctl deploy \
-              --org="$ORG" \
-              --project="$APP" \
-              --token="$DENO_DEPLOY_TOKEN" \
-              --prod \
-              --entrypoint="$ENTRYPOINT" \
-              --env="GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=$GOOGLE_PLAY_SA_JSON" \
-              --env="ALLOWED_PACKAGE_NAME=io.github.android_poweruser"
-          else
-            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON not set. Deploying without."
-            deployctl deploy \
-              --org="$ORG" \
-              --project="$APP" \
-              --token="$DENO_DEPLOY_TOKEN" \
-              --prod \
-              --entrypoint="$ENTRYPOINT"
+          # 2) Enforce dynamic runtime mode
+          echo "Current app config:"
+          curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            "$API/apps/$APP" | tee current-config.json
+          echo
+
+          echo "Forcing runtime mode: dynamic (entrypoint: $ENTRYPOINT)"
+          HTTP_CODE=$(curl -sS -o patched-config.json -w '%{http_code}' \
+            -X PATCH \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"config\":{\"runtime\":{\"type\":\"dynamic\",\"entrypoint\":\"$ENTRYPOINT\"}}}" \
+            "$API/apps/$APP")
+          cat patched-config.json; echo
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Could not set runtime mode to dynamic (HTTP $HTTP_CODE)"
+            exit 1
           fi
+
+          # 3) Deploy to production
+          cd "$SRC_DIR"
+          deno deploy \
+            --org="$ORG" \
+            --app="$APP" \
+            --token="$DENO_DEPLOY_TOKEN" \
+            --json --non-interactive \
+            --prod \
+            .
+
+      - name: Set environment variables via v2 API
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          GOOGLE_PLAY_SA_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          APP="screenoperator-purchase-verify"
+          API="https://console.deno.com/api/v2"
+
+          if [ -z "$GOOGLE_PLAY_SA_JSON" ]; then
+            echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON not set"
+            exit 0
+          fi
+
+          echo "=== Setting environment variables ==="
+
+          # Write SA JSON to file
+          printf '%s' "$GOOGLE_PLAY_SA_JSON" > /tmp/sa_raw.json
+
+          # Try setting env vars using the v2 API with node to build correct payload
+          node -e "
+            const fs = require('fs');
+            const https = require('https');
+
+            const saJson = fs.readFileSync('/tmp/sa_raw.json', 'utf8');
+            JSON.parse(saJson); // validate
+
+            const token = process.env.DENO_DEPLOY_TOKEN;
+            const app = process.env.APP_NAME || 'screenoperator-purchase-verify';
+            const apiUrl = 'console.deno.com';
+
+            // Try the envVars format as object
+            const payload = JSON.stringify({
+              envVars: {
+                GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: saJson,
+                ALLOWED_PACKAGE_NAME: 'io.github.android_poweruser'
+              }
+            });
+
+            const options = {
+              hostname: apiUrl,
+              path: '/api/v2/apps/' + app,
+              method: 'PATCH',
+              headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+              }
+            };
+
+            const req = https.request(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => data += chunk);
+              res.on('end', () => {
+                console.log('HTTP Status:', res.statusCode);
+                console.log('Response:', data);
+                if (res.statusCode === 200) {
+                  console.log('SUCCESS: Environment variables set!');
+                } else {
+                  console.log('FAILED with status', res.statusCode);
+                  process.exit(1);
+                }
+              });
+            });
+
+            req.on('error', (e) => {
+              console.error('Error:', e.message);
+              process.exit(1);
+            });
+
+            req.write(payload);
+            req.end();
+          "
+
+          echo "=== Done ==="
 
       - name: Verify service is alive
         run: |
