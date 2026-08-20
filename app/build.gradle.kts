@@ -114,7 +114,7 @@ fun parseLoadAlignments(readelfOutput: String): List<Long> {
     val alignments = mutableListOf<Long>()
     for (index in 0 until lines.lastIndex) {
         if (!lines[index].trimStart().startsWith("LOAD")) continue
-        val alignToken = lines[index + 1].trim().split(Regex("\s+")).lastOrNull() ?: continue
+        val alignToken = lines[index + 1].trim().split(Regex("\\s+")).lastOrNull() ?: continue
         val alignValue = alignToken.removePrefix("0x").toLongOrNull(16) ?: continue
         alignments += alignValue
     }
@@ -175,10 +175,8 @@ androidComponents {
 
                 if (invalidLibraries.isNotEmpty()) {
                     throw GradleException(
-                        "Found native libraries without required 16KB alignment in variant '$variantName':
-" +
-                            invalidLibraries.joinToString("
-")
+                        "Found native libraries without required 16KB alignment in variant '$variantName':\n" +
+                            invalidLibraries.joinToString("\n")
                     )
                 }
             }
@@ -268,3 +266,4 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
     implementation("com.google.firebase:firebase-database")
 }
+
