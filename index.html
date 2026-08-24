@@ -5238,6 +5238,16 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
     }
     return;
   }
+  // Subscription just cancelled (isPurchased went from true to false):
+  // set confirmedExpired=true immediately so the paywall is shown right away.
+  // The user has already used their trial period before subscribing, so no
+  // new trial window is granted after cancellation.
+  if (!isPurchased && !isExpired) {
+    _setConfirmedExpired(true);
+    _applyTrialState(TrialState.EXPIRED_INTERNET_TIME_CONFIRMED, '');
+    _stopTrialTimer();
+    return;
+  }
   if (isExpired) {
     // Trust the native signal directly as a safety net: native TrialManager is the ultimate
     // authority here (it's the same SharedPreferences store JS now reads via Bridge, but this
