@@ -153,11 +153,18 @@ async function verifySubscription(
   }
 
   const purchase: SubscriptionPurchase = await resp.json();
-  if (purchase.purchaseState === undefined) {
-    return { valid: false, reason: "Google returned a response but purchaseState is missing", details: purchase };
+
+  // The v3 subscriptions API does NOT return a `purchaseState` field.
+  // Instead, it returns: paymentState, expiryTimeMillis, startTimeMillis,
+  // autoRenewing, orderId, acknowledgementState, etc.
+  // A successful HTTP 200 with an orderId is sufficient proof that Google
+  // recognises this purchase token as genuine.
+  if (purchase.orderId || purchase.startTimeMillis || purchase.paymentState !== undefined) {
+    return { valid: true, details: purchase };
   }
 
-  return { valid: true, details: purchase };
+  // If we got a 200 but no recognizable subscription fields, something is off.
+  return { valid: false, reason: "Google returned 200 but response has no recognisable subscription fields", details: purchase };
 }
 
 // ── Check if service account is available ─────────────────────────────────────
