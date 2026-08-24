@@ -905,6 +905,14 @@ const Bridge = {
   initiateFreedomPurchase:()=>{ if(getInAndroid()) Android.initiateFreedomPurchase(); else alert('Freedom subscription flow would open here'); },
   isFreedomPurchased:()=> getInAndroid() ? Android.isFreedomPurchased() : false,
 
+  /* Server-side verified purchase flag management (called by WebView after
+     verifying the purchaseToken against the Deno Deploy backend) */
+  markAsPurchased:()=>{ if(getInAndroid()) Android.markAsPurchased(); },
+  markAsFreedomPurchased:()=>{ if(getInAndroid()) Android.markAsFreedomPurchased(); },
+  clearPurchaseMark:()=>{ if(getInAndroid()) Android.clearPurchaseMark(); },
+  clearFreedomMark:()=>{ if(getInAndroid()) Android.clearFreedomMark(); },
+  acknowledgePurchase:(token)=>{ if(getInAndroid()) Android.acknowledgePurchase(token); },
+
   /* Trial state - backed by TrialManager's real SharedPreferences store when running in
      Android, so the JS trial engine and native code share one single source of truth.
      Falls back to localStorage only when running outside Android (browser testing). */
@@ -6714,6 +6722,122 @@ function initiateFreedomPurchase() {
 }
 
 // Called by native code after Freedom purchase state changes
+/* ═══════════════════════════════════════════════════════════
+   SERVER-SIDE PURCHASE VERIFICATION
+   Called by native code when a new purchase arrives or when
+   active subscriptions are queried on app start. The WebView
+   verifies the purchaseToken against our Deno Deploy backend
+   which checks it directly with Google's Play Developer API.
+   Only if the server confirms the token is genuine do we set
+   the purchase flags via Bridge.markAsPurchased().
+   This prevents Lucky Patcher / Zygisk billing hooks from
+   bypassing the paywall with forged local Purchase objects.
+════════════════════════════════════════════════════════════ */
+const PURCHASE_VERIFY_URL = 'https://screenoperator-purchase-verify.android-poweruser.deno.net/verify';
+
+async function _verifyPurchaseToken(productId, purchaseToken) {
+  try {
+    const resp = await fetch(PURCHASE_VERIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        purchaseToken: purchaseToken,
+        productId: productId,
+        packageName: 'io.github.android_poweruser'
+      })
+    });
+    const data = await resp.json();
+    console.log('[PurchaseVerify] productId=' + productId + ', valid=' + data.valid + ', reason=' + (data.reason || 'ok'));
+    return data.valid === true;
+  } catch (e) {
+    console.error('[PurchaseVerify] Network error:', e);
+    // On network failure, don't accept the purchase (fail closed)
+    return false;
+  }
+}
+
+/**
+ * Called by native code (MainActivity.handlePurchase) when a new purchase
+ * is reported by the BillingClient. The WebView verifies the token server-
+ * side and only sets purchase flags if Google confirms it as genuine.
+ */
+window.onPurchaseForVerification = async function(productId, purchaseToken, isAcknowledged) {
+  console.log('[PurchaseVerify] New purchase for verification: productId=' + productId + ', isAck=' + isAcknowledged);
+
+  const valid = await _verifyPurchaseToken(productId, purchaseToken);
+
+  if (!valid) {
+    console.warn('[PurchaseVerify] REJECTED — token not recognised by Google. Likely forged (Lucky Patcher).');
+    Bridge.showToast('Purchase verification failed. Please try again.', true);
+    return;
+  }
+
+  // Token is genuine — set the purchase flags via bridge
+  console.log('[PurchaseVerify] ACCEPTED — token verified by Google.');
+  if (productId === 'freedom_monthly_7_90_eur') {
+    Bridge.markAsFreedomPurchased();
+  } else {
+    Bridge.markAsPurchased();
+  }
+
+  // Acknowledge the purchase with Google Play (prevents refund)
+  if (!isAcknowledged) {
+    Bridge.acknowledgePurchase(purchaseToken);
+  }
+};
+
+/**
+ * Called by native code (MainActivity.queryActiveSubscriptions) on app start
+ * and resume with all active subscriptions. The WebView verifies each token
+ * server-side. If a token is not recognised by Google, the purchase flags
+ * are cleared (protects against previously-forged purchases that were accepted
+ * before the server-side verification was added).
+ */
+window.onActiveSubscriptionsForVerification = async function(subscriptionsJson) {
+  let subscriptions;
+  try {
+    subscriptions = JSON.parse(subscriptionsJson);
+  } catch (e) {
+    console.error('[PurchaseVerify] Failed to parse subscriptions JSON:', e);
+    return;
+  }
+  if (!Array.isArray(subscriptions) || subscriptions.length === 0) return;
+
+  console.log('[PurchaseVerify] Verifying ' + subscriptions.length + ' active subscription(s)...');
+
+  let anyValid = false;
+  let freedomValid = false;
+
+  for (const sub of subscriptions) {
+    const valid = await _verifyPurchaseToken(sub.productId, sub.purchaseToken);
+    if (valid) {
+      anyValid = true;
+      if (sub.productId === 'freedom_monthly_7_90_eur') {
+        freedomValid = true;
+      }
+      // Acknowledge if not yet done
+      if (!sub.isAcknowledged) {
+        Bridge.acknowledgePurchase(sub.purchaseToken);
+      }
+    } else {
+      console.warn('[PurchaseVerify] Active subscription REJECTED: productId=' + sub.productId);
+    }
+  }
+
+  // Update flags based on verification results
+  if (anyValid) {
+    Bridge.markAsPurchased();
+    if (freedomValid) {
+      Bridge.markAsFreedomPurchased();
+    }
+  } else {
+    // No valid subscriptions found — clear any stale marks
+    console.log('[PurchaseVerify] No valid subscriptions. Clearing purchase marks.');
+    Bridge.clearPurchaseMark();
+    Bridge.clearFreedomMark();
+  }
+};
+
 window.onFreedomPurchaseStateChanged = function(isFreedom) {
   if (isFreedom) {
     _setConfirmedExpired(false);

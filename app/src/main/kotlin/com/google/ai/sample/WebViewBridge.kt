@@ -488,6 +488,54 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return TrialManager.isFreedomPurchased(context)
     }
 
+    // ── Server-side verified purchase flags (called by WebView after verification) ──
+
+    @JavascriptInterface
+    fun markAsPurchased() {
+        Log.d(TAG, "markAsPurchased called from WebView after server verification")
+        TrialManager.markAsPurchased(context)
+        mainActivity.runOnUiThread {
+            mainActivity.updateTrialStateFromWebView()
+        }
+    }
+
+    @JavascriptInterface
+    fun markAsFreedomPurchased() {
+        Log.d(TAG, "markAsFreedomPurchased called from WebView after server verification")
+        TrialManager.markAsFreedomPurchased(context)
+        TrialManager.markAsPurchased(context)
+        mainActivity.runOnUiThread {
+            mainActivity.updateTrialStateFromWebView()
+            mainActivity.evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(true)")
+        }
+    }
+
+    @JavascriptInterface
+    fun clearPurchaseMark() {
+        Log.d(TAG, "clearPurchaseMark called from WebView (server verification failed)")
+        TrialManager.clearPurchaseMark(context)
+        mainActivity.runOnUiThread {
+            mainActivity.updateTrialStateFromWebView()
+        }
+    }
+
+    @JavascriptInterface
+    fun clearFreedomMark() {
+        Log.d(TAG, "clearFreedomMark called from WebView (server verification failed)")
+        TrialManager.clearFreedomMark(context)
+        mainActivity.runOnUiThread {
+            mainActivity.evaluateWebViewJsWithRetry("window.onFreedomPurchaseStateChanged && window.onFreedomPurchaseStateChanged(false)")
+        }
+    }
+
+    @JavascriptInterface
+    fun acknowledgePurchase(purchaseToken: String) {
+        Log.d(TAG, "acknowledgePurchase called from WebView after server verification")
+        mainActivity.runOnUiThread {
+            mainActivity.acknowledgePurchaseFromWebView(purchaseToken)
+        }
+    }
+
     // ── Trial state (backs the WebView JS trial engine with TrialManager's real,
     //    obfuscated SharedPreferences store - file "AccessibilityService" - instead of a
     //    separate WebView localStorage store that would otherwise be a second, unsynchronized
@@ -1209,6 +1257,11 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "isPurchased"                   -> isPurchased().toString()
                 "initiateFreedomPurchase"       -> { initiateFreedomPurchase(); "" }
                 "isFreedomPurchased"            -> isFreedomPurchased().toString()
+                "markAsPurchased"               -> { markAsPurchased(); "" }
+                "markAsFreedomPurchased"        -> { markAsFreedomPurchased(); "" }
+                "clearPurchaseMark"             -> { clearPurchaseMark(); "" }
+                "clearFreedomMark"              -> { clearFreedomMark(); "" }
+                "acknowledgePurchase"           -> { acknowledgePurchase(a.getString("purchaseToken")); "" }
                 // ── Termux ────────────────────────────────────────────────────
                 "setTermuxBackground"           -> { setTermuxBackground(a.getBoolean("background")); "" }
                 "getTermuxBackground"           -> getTermuxBackground().toString()
