@@ -294,23 +294,13 @@ object TrialManager {
         val obfuscatedFalse = obfuscateData("false")
         Log.d(TAG, "Setting KEY_FEATURE_ACCESS_FLAG to obfuscated 'false'")
         editor.putString(KEY_FEATURE_ACCESS_FLAG, obfuscatedFalse)
-        // KEY_INITIAL_SETUP_FLAG is set to false (not true) because:
-        // - setting it to true would make startTrialIfNecessaryWithInternetTime() try to start
-        //   a new trial, but that is blocked by the existing endTime (KEY_CFG_TS != null), so
-        //   it was a no-op anyway and only caused confusion.
-        // - the trial period already ran (or is still running); we do not grant a second trial.
-        Log.d(TAG, "Setting KEY_INITIAL_SETUP_FLAG to false")
-        editor.putBoolean(KEY_INITIAL_SETUP_FLAG, false)
-        // KEY_CFG_ST (confirmedExpired) is set to true so that the paywall is shown immediately
-        // after the subscription lapses, regardless of whether the original trial window has
-        // already ended. A cancelled subscriber must re-subscribe, not get a free trial extension.
-        Log.d(TAG, "Setting KEY_CFG_ST (confirmedExpired) to obfuscated 'true'")
-        editor.putString(KEY_CFG_ST, obfuscateData("true"))
-        // KEY_CFG_TS (trial end time) is intentionally preserved so the expiry timestamp
-        // remains readable in logs for debugging, but it no longer affects gating because
-        // confirmedExpired=true takes priority in getTrialState().
+        // Comment for future AI: KEY_INITIAL_SETUP_FLAG is reset to true to allow trial re-evaluation.
+        Log.d(TAG, "Setting KEY_INITIAL_SETUP_FLAG to true")
+        editor.putBoolean(KEY_INITIAL_SETUP_FLAG, true)
+        // IMPORTANT: KEY_CFG_TS (obfuscated trial end time) and KEY_CFG_ST (obfuscated confirmed expired flag)
+        // are intentionally NOT cleared here. The original trial period might still be relevant.
         editor.apply()
-        Log.i(TAG, "Purchase mark cleared. Feature access revoked, confirmedExpired set to true → paywall will be shown immediately.")
+        Log.i(TAG, "Purchase mark cleared. Feature access flag set to obfuscated false, initial setup flag reset to true. Trial end time and expired flag preserved.")
     }
 
     fun initializeTrialStateFlagsIfNecessary(context: Context) {
