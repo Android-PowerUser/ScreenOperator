@@ -5139,6 +5139,28 @@ async function _fetchInternetUtcTimeMsWithRetry() {
 
 /** One full check cycle: fetch internet time, update state, refresh dialogs. */
 async function _trialCheckCycle() {
+  // Fast-path: check local clock immediately before any network call.
+  // If the trial is already past its end time locally, show the paywall right away
+  // without waiting up to 90 seconds for internet-time retries.
+  // This fixes the case where the app is restarted after 7 days with no/slow internet:
+  // the paywall was never shown because the local-clock check only ran AFTER all network
+  // retries timed out, which could take ~90 s (3 attempts × 30 s timeout).
+  if (!Bridge.isPurchased() && !_isFreedomEntitled()) {
+    const localNow = Date.now();
+    const endTime = _getTrialEndTime();
+    if (endTime !== null && localNow >= endTime && !Bridge.hasConfirmedExpired()) {
+      _setConfirmedExpired(true);
+      _applyTrialState(TrialState.EXPIRED_INTERNET_TIME_CONFIRMED, '');
+      _stopTrialTimer();
+      return;
+    }
+    if (Bridge.hasConfirmedExpired()) {
+      _applyTrialState(TrialState.EXPIRED_INTERNET_TIME_CONFIRMED, '');
+      _stopTrialTimer();
+      return;
+    }
+  }
+
   const internetTimeMs = await _fetchInternetUtcTimeMsWithRetry();
 
   if (internetTimeMs != null) {
