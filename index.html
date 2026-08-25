@@ -5054,6 +5054,27 @@ function _initializeTrialStateFlagsIfNecessary() {
   }
 }
 
+/* ── Ever-entitled memory (WebView localStorage) ─────────────────
+   Remembers that this installation has at some point OBSERVED an active
+   purchase entitlement (Pro or Freedom). It exists only so that
+   onTrialStateChanged() can tell a real subscription cancellation apart
+   from the routine non-purchased pushes: native pushes
+   (isExpired=false, isPurchased=false) not only after a cancellation, but
+   also from onPageFinished() on every load (with an awaiting or active
+   trial state) and from the TrialTimerService internet-time broadcasts.
+   Without this memory those routine pushes cannot be distinguished from
+   a cancellation - which is exactly what the regression of 2026-08-25
+   (cf2c889) got wrong: every fresh install and every active trial was
+   immediately and permanently flagged as expired. Not a security feature
+   (same caveat as the other camouflaged values - a determined user can
+   clear WebView storage); it only guards the cancellation semantics. */
+function _markEverEntitled() {
+  try { LS.setItem('entitlement_seen_once', 'true'); } catch (e) { /* LS unavailable - degrade gracefully */ }
+}
+function _wasEverEntitled() {
+  try { return LS.getItem('entitlement_seen_once') === 'true'; } catch (e) { return false; }
+}
+
 /**
  * Applies a newly computed trial state: persists as needed (handled by _computeTrialState
  * itself for the expiry flag), updates the dialogs, and returns whether the app content
@@ -5242,7 +5263,13 @@ window.onTrialStateChanged = function(isExpired, isPurchased, message) {
   // set confirmedExpired=true immediately so the paywall is shown right away.
   // The user has already used their trial period before subscribing, so no
   // new trial window is granted after cancellation.
-  if (!isPurchased && !isExpired) {
+  // GUARD: only when this install was ever entitled. The very same
+  // (isExpired=false, isPurchased=false) signature is ALSO pushed routinely -
+  // by onPageFinished() on every load (with a fresh/awaiting or active trial
+  // state) and by the TrialTimerService internet-time broadcasts. Treating
+  // those as a cancellation is what falsely expired every fresh install and
+  // every active trial in the regression of 2026-08-25 (cf2c889).
+  if (!isPurchased && !isExpired && _wasEverEntitled()) {
     _setConfirmedExpired(true);
     _applyTrialState(TrialState.EXPIRED_INTERNET_TIME_CONFIRMED, '');
     _stopTrialTimer();
@@ -6661,6 +6688,12 @@ window._cachedIsFreedom = null;
 function _applyDonationState(purchased, freedomPurchased) {
   window._cachedIsPurchased = purchased;
   window._cachedIsFreedom = freedomPurchased;
+
+  // Remember any observed entitlement (Pro or Freedom) so a later
+  // (isExpired=false, isPurchased=false) push from native can be recognised
+  // as a subscription cancellation instead of a routine trial-state push.
+  // See _markEverEntitled / onTrialStateChanged.
+  if (purchased || freedomPurchased) _markEverEntitled();
 
   const donationRow  = document.getElementById('donation-row');
   const freedomRow   = document.getElementById('freedom-row');
