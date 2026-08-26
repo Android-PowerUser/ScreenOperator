@@ -8282,10 +8282,14 @@ function _collapseOldScreenElementBubbles() {
     };
   })();
 
-  /* ── Hook: user/AI stop → "Stop", light off, 3 s hold ───── */
+  /* ── Hook: AI ended the task → "Stop", light off, 3 s hold ─
+     "Stop" means the AI finished on its own: it sent completed(), or its response
+     contained no recognized command. Both cases (and ONLY those — a pending popUp()
+     question is a pause, not a stop) already funnel through
+     _showAiStoppedToastInBackground(), so that is the single hook point. */
   (function() {
-    const _orig = window.stopGeneration;
-    window.stopGeneration = function() {
+    const _orig = window._showAiStoppedToastInBackground;
+    window._showAiStoppedToastInBackground = function() {
       slSet('stop');
       return _orig ? _orig.apply(this, arguments) : undefined;
     };
