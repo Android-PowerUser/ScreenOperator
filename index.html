@@ -401,7 +401,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 #model-select-options{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
 .model-select-option{display:block;width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1.5px solid var(--outline-variant);background:var(--bg-surface-variant);color:var(--text-primary);font-size:15px;cursor:pointer;transition:background .15s}
 .model-select-option:active{background:var(--bg-primary-container)}
-.model-select-option.retry-option{border-color:var(--primary);background:var(--bg-primary-container);font-weight:600}
+.model-select-option.retry-option{font-weight:600}
 
 /* ── Overlays / Popups ───────────────────────────────────── */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
@@ -2372,55 +2372,110 @@ async function _dispatchToModel(modelId, payload) {
 
 let _modelSelectResolve = null;
 let _modelSelectReject  = null;
+let _modelSelectShownNatively = false;
+
+/* Returns the model list in the same order as buildModelDropdown(),
+   with failedModelId prepended at position 0.                       */
+function _getModelSelectOrder(failedModelId) {
+  const vercelIds  = new Set(['GPT_5_1_CODEX_MAX','GPT_5_1_CODEX_MINI','GPT_5_NANO','GLM_5V_TURBO_VERCEL']);
+  const strikeIds  = new Set(MODELS.filter(m => m.strike).map(m => m.id));
+  const firstIds   = new Set(['PUTER_GPT_5_4_NANO','MISTRAL_MEDIUM_3_1','MISTRAL_MEDIUM_3_5']);
+
+  const ordered = [
+    ...MODELS.filter(m => firstIds.has(m.id)),
+    ...MODELS.filter(m => !firstIds.has(m.id) && !vercelIds.has(m.id) && !strikeIds.has(m.id) && m.apiProvider !== 'HUMAN_EXPERT' && m.apiProvider !== 'CUSTOM'),
+    ...MODELS.filter(m => m.apiProvider === 'HUMAN_EXPERT' && !strikeIds.has(m.id)),
+    ...MODELS.filter(m => vercelIds.has(m.id) && !strikeIds.has(m.id)),
+    ...MODELS.filter(m => m.apiProvider === 'CUSTOM' && !strikeIds.has(m.id)),
+    ...MODELS.filter(m => strikeIds.has(m.id)),
+  ];
+
+  // Move the failed model to the front (without duplication)
+  const withoutFailed = ordered.filter(m => m.id !== failedModelId);
+  const failedDef = MODELS.find(m => m.id === failedModelId);
+  return failedDef ? [failedDef, ...withoutFailed] : ordered;
+}
 
 function _showModelSelectPopup(errorMessage, failedModelId, payload) {
   return new Promise((resolve, reject) => {
     _modelSelectResolve = resolve;
     _modelSelectReject  = reject;
+    _modelSelectShownNatively = false;
 
-    const overlay  = document.getElementById('model-select-overlay');
-    const errTitle = document.getElementById('model-select-error-title');
-    const options  = document.getElementById('model-select-options');
-    if (!overlay || !errTitle || !options) { reject(new Error('Model select popup unavailable')); return; }
+    const orderedModels = _getModelSelectOrder(failedModelId);
+    const answerLabels  = orderedModels.map(m =>
+      m.id === failedModelId ? '↺ ' + m.displayName : m.displayName
+    );
+    const title = (errorMessage || 'Model error') + '\nWhich model should be used now?';
 
-    // Title = the error message
-    errTitle.textContent = errorMessage || '';
-
-    // Build ordered model list: failed model first, then circle members (excl. failed),
-    // then remaining non-offline models (excl. already listed).
-    const failedDef = MODELS.find(m => m.id === failedModelId);
-    const listed = new Set();
-
-    const orderedIds = [];
-    if (failedDef) { orderedIds.push(failedModelId); listed.add(failedModelId); }
-    for (const id of _FALLBACK_CIRCLE) {
-      if (!listed.has(id)) { orderedIds.push(id); listed.add(id); }
-    }
-    for (const m of MODELS) {
-      if (!listed.has(m.id) && !m.isOffline) { orderedIds.push(m.id); listed.add(m.id); }
+    // Background: use native accessibility overlay if available
+    const useNative = getInAndroid() && !Bridge.isAppInForeground();
+    if (useNative) {
+      _modelSelectShownNatively = Bridge.showQuestionOverlay(title, answerLabels);
+      if (_modelSelectShownNatively) {
+        // Response comes via onNativeAiQuestionAnswer — we temporarily hook it
+        _installModelSelectNativeHandler(orderedModels, payload);
+        return;
+      }
+      // Fallback: bring app to foreground, show WebView popup
+      Bridge.openAppByNameOrPackage('io.github.android_poweruser');
     }
 
-    options.replaceChildren();
-    for (const id of orderedIds) {
-      const def = MODELS.find(m => m.id === id);
-      if (!def) continue;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'model-select-option' + (id === failedModelId ? ' retry-option' : '');
-      btn.textContent = id === failedModelId
-        ? '↺ ' + def.displayName + ' (retry)'
-        : def.displayName;
-      btn.addEventListener('click', () => _resolveModelSelect(id, payload));
-      options.appendChild(btn);
-    }
-
-    // Size popup similar to ai-question popup
-    const available = Math.max(220, Math.floor(window.innerHeight - 48));
-    const popup = overlay.querySelector('.model-select-popup');
-    if (popup) popup.style.maxHeight = available + 'px';
-
-    overlay.classList.add('visible');
+    _showModelSelectWebPopup(errorMessage, failedModelId, orderedModels, payload);
   });
+}
+
+function _showModelSelectWebPopup(errorMessage, failedModelId, orderedModels, payload) {
+  const overlay  = document.getElementById('model-select-overlay');
+  const errTitle = document.getElementById('model-select-error-title');
+  const options  = document.getElementById('model-select-options');
+  if (!overlay || !errTitle || !options) {
+    if (_modelSelectReject) _modelSelectReject(new Error('Model select popup unavailable'));
+    return;
+  }
+
+  errTitle.textContent = errorMessage || '';
+  options.replaceChildren();
+
+  for (const def of orderedModels) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'model-select-option' + (def.id === failedModelId ? ' retry-option' : '');
+    btn.textContent = def.id === failedModelId ? '↺ ' + def.displayName : def.displayName;
+    btn.addEventListener('click', () => _resolveModelSelect(def.id, payload));
+    options.appendChild(btn);
+  }
+
+  const available = Math.max(220, Math.floor(window.innerHeight - 48));
+  const popup = overlay.querySelector('.model-select-popup');
+  if (popup) popup.style.maxHeight = available + 'px';
+  overlay.classList.add('visible');
+}
+
+/* Temporarily override onNativeAiQuestionAnswer to capture the model choice. */
+function _installModelSelectNativeHandler(orderedModels, payload) {
+  const _prev = window.onNativeAiQuestionAnswer;
+  const _prevDismiss = window.onNativeAiQuestionDismissed;
+  window.onNativeAiQuestionAnswer = function(answer) {
+    window.onNativeAiQuestionAnswer   = _prev;
+    window.onNativeAiQuestionDismissed = _prevDismiss;
+    // Match the label back to a model id
+    const label = String(answer || '');
+    const chosen = orderedModels.find(m =>
+      label === m.displayName || label === '↺ ' + m.displayName
+    );
+    if (chosen) {
+      _resolveModelSelect(chosen.id, payload);
+    } else {
+      if (_modelSelectReject) _modelSelectReject(new Error('Model selection cancelled'));
+      _modelSelectResolve = null; _modelSelectReject = null;
+    }
+  };
+  window.onNativeAiQuestionDismissed = function() {
+    window.onNativeAiQuestionAnswer    = _prev;
+    window.onNativeAiQuestionDismissed = _prevDismiss;
+    _dismissModelSelectPopup();
+  };
 }
 
 function _resolveModelSelect(chosenModelId, payload) {
