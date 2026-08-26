@@ -3519,18 +3519,13 @@ async function _callGroq(payload) {
 /* Distinguishes *why* a fetch to the Vercel AI Gateway failed, since the Fetch API
    collapses CORS rejection, DNS failure, TLS/cert error, and dropped connections into
    the identical opaque "TypeError: Failed to fetch" with no further detail (by spec,
-   so pages can't probe cross-origin state). Three follow-up probes narrow it down:
+   so pages can't probe cross-origin state). Two follow-up probes narrow it down:
      1. navigator.onLine — rules out "device has no network at all".
      2. A GET to the same origin with no custom headers — a GET has no preflight, so if
         THIS also fails it's a connectivity/DNS/TLS problem, not CORS; if THIS succeeds
         but the real POST didn't, the POST's preflight (triggered by the Content-Type
         and Authorization headers) is what's being rejected — consistent with Android
-        WebViews sending "Origin: null", which some CORS configs reject.
-     3. If probe 2 also failed: a GET to an unrelated, essentially-always-reachable host
-        (google.com) — if THIS also fails, it's a device/network-wide DNS or TLS problem
-        (captive portal, restrictive DNS, mid-request network switch); if THIS succeeds,
-        something is specifically blocking/failing to resolve ai-gateway.vercel.sh (DNS
-        filter, ad-blocking VPN, ISP/mobile-carrier interference with that specific host). */
+        WebViews sending "Origin: null", which some CORS configs reject. */
 async function _diagnoseVercelFetchFailure() {
   const parts = [];
   parts.push(navigator.onLine ? 'Device reports online.' : 'Device reports OFFLINE (no network at all).');
@@ -3539,12 +3534,6 @@ async function _diagnoseVercelFetchFailure() {
     parts.push('Bare GET (no custom headers, no preflight) reached the server, status ' + r.status + ' — connectivity to the host is fine, so the POST failure is likely a CORS preflight rejection (Android WebView sends "Origin: null").');
   } catch (probeErr) {
     parts.push('Bare GET (no custom headers, no preflight) ALSO failed: ' + (probeErr && probeErr.message) + ' — this points to DNS/TLS/connectivity to ai-gateway.vercel.sh itself, not CORS.');
-    try {
-      await fetch('https://www.google.com/generate_204', { method: 'GET', mode: 'no-cors' });
-      parts.push('A GET to google.com succeeded — so the device/network can reach the internet fine; something is specifically blocking or failing to resolve ai-gateway.vercel.sh (DNS filter, ad-blocking VPN, or carrier-level interference with that host).');
-    } catch (probeErr2) {
-      parts.push('A GET to google.com ALSO failed: ' + (probeErr2 && probeErr2.message) + ' — this is a device/network-wide problem (captive portal, broken DNS, or the network changed mid-request), not specific to Vercel.');
-    }
   }
   return parts.join(' ');
 }
