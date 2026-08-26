@@ -929,6 +929,22 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         )
     }
 
+    // ── Background status light ("traffic light") ───────────────────────────
+    // Presentation-only, like showQuestionOverlay: the WebView owns the whole state machine
+    // (which text/color when, visibility, timers) and just sends a ready-to-render JSON spec.
+    // Any future change to wording, colors, sizes or timing is a pure index.html change.
+
+    @JavascriptInterface
+    fun updateStatusLight(json: String): Boolean {
+        val safeJson = json.take(4_000)
+        return ScreenOperatorAccessibilityService.updateStatusLight(safeJson)
+    }
+
+    @JavascriptInterface
+    fun hideStatusLight() {
+        ScreenOperatorAccessibilityService.hideStatusLight()
+    }
+
     // ── Toast ────────────────────────────────────────────────────────────────
     // Generic bridge method to show an Android Toast from JavaScript. Exists so a
     // custom-action-types.json entry (e.g. an AI-emitted toast("message") command) can show
@@ -1296,6 +1312,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                     a.getString("question"), a.getString("answersJson")
                 ).toString()
                 "showToast"                     -> { showToast(a.getString("message"), a.optBoolean("isLong", false)); "" }
+                // ── Background status light ───────────────────────────────────
+                "updateStatusLight"             -> updateStatusLight(a.optString("json", a.toString())).toString()
+                "hideStatusLight"               -> { hideStatusLight(); "" }
                 // ── Device Control ────────────────────────────────────────────
                 "tapByText"                     -> { tapByText(a.getString("buttonText")); "" }
                 "longTapByText"                 -> { longTapByText(a.getString("buttonText")); "" }

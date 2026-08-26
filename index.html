@@ -8068,6 +8068,241 @@ function _collapseOldScreenElementBubbles() {
 
 })(); // end MULTI-CONTEXT v2
 
+/* ════════════════════════════════════════════════════════
+   BACKGROUND STATUS LIGHT ("Ampel")  — entire state machine lives here in JS.
+
+   Small, unobtrusive indicator near the top-right screen edge, shown ONLY while
+   Screen Operator is in the background and working. Rendered natively via the
+   accessibility service (Android.updateStatusLight / hideStatusLight), which is a
+   dumb JSON renderer — all wording, colors, sizes, timing and visibility rules are
+   defined right here and can be changed without an app release.
+
+   States:
+     screenshot → "Sending Screenshot"  + red circle   (white ring)
+     waiting    → "Waiting for AI"      + yellow circle
+     responding → "AI responds"         + green circle
+     commands   → received command text + black circle
+     termux     → "Waiting for Termux"  + black circle
+     error/stop → "Error"/"Stop", NO circle (light off), auto-clears after 3 s
+                  or as soon as Screen Operator returns to the foreground.
+
+   Old APKs without Android.updateStatusLight: module stays inert (no errors).
+════════════════════════════════════════════════════════ */
+(function() {
+  'use strict';
+
+  const SL_CFG = {
+    textColor:  '#E8D66B',   // yellowish, always
+    textSizeSp: 11,
+    ringColor:  '#FFFFFF',   // white outer circle, always
+    ringWidthDp: 1.5,
+    circleSizeDp: 10,
+    gapDp: 5,
+    marginTopDp: 4,
+    marginEndDp: 6,
+    pollMs: 800,             // foreground/background re-check interval
+    holdMs: 3000,            // how long Error/Stop stays visible
+    maxCmdChars: 60          // received-commands text is truncated to stay small
+  };
+
+  const SL_STATES = {
+    screenshot: { text: 'Sending Screenshot', circleColor: '#E53935' },
+    waiting:    { text: 'Waiting for AI',     circleColor: '#FBC02D' },
+    responding: { text: 'AI responds',        circleColor: '#43A047' },
+    commands:   { text: 'Commands',           circleColor: '#000000' },
+    termux:     { text: 'Waiting for Termux', circleColor: '#000000' },
+    error:      { text: 'Error',              circleColor: '' },   // '' = light off, word stays
+    stop:       { text: 'Stop',               circleColor: '' }
+  };
+
+  let _slState = null;        // current state key or null (hidden)
+  let _slText = '';           // resolved label text
+  let _slShown = false;       // whether the native overlay is currently visible
+  let _slPollTimer = null;
+  let _slHoldTimer = null;
+
+  function _slAvailable() {
+    return typeof Android !== 'undefined' && typeof Android.updateStatusLight === 'function';
+  }
+
+  function _slInBackground() {
+    try { return !Bridge.isAppInForeground(); } catch (e) { return false; }
+  }
+
+  function _slRender() {
+    if (!_slAvailable()) return;
+    if (_slState && _slInBackground()) {
+      const st = SL_STATES[_slState];
+      try {
+        Android.updateStatusLight(JSON.stringify({
+          text: _slText,
+          textColor: SL_CFG.textColor,
+          textSizeSp: SL_CFG.textSizeSp,
+          circleColor: st.circleColor,
+          ringColor: SL_CFG.ringColor,
+          ringWidthDp: SL_CFG.ringWidthDp,
+          circleSizeDp: SL_CFG.circleSizeDp,
+          gapDp: SL_CFG.gapDp,
+          marginTopDp: SL_CFG.marginTopDp,
+          marginEndDp: SL_CFG.marginEndDp
+        }));
+        _slShown = true;
+      } catch (e) { /* purely cosmetic — never break execution */ }
+    } else {
+      // Foreground, or no active state → light must not be visible.
+      if (_slShown) {
+        try { Android.hideStatusLight(); } catch (e) {}
+        _slShown = false;
+      }
+      // Error/Stop hold ends early the moment the app returns to the foreground.
+      if (_slState && (_slState === 'error' || _slState === 'stop') && !_slInBackground()) {
+        _slClearInternal();
+      }
+    }
+  }
+
+  function _slStartPolling() {
+    if (_slPollTimer) return;
+    _slPollTimer = setInterval(_slRender, SL_CFG.pollMs);
+  }
+
+  function _slStopPolling() {
+    if (_slPollTimer) { clearInterval(_slPollTimer); _slPollTimer = null; }
+  }
+
+  function _slClearInternal() {
+    _slState = null;
+    _slText = '';
+    if (_slHoldTimer) { clearTimeout(_slHoldTimer); _slHoldTimer = null; }
+    _slStopPolling();
+    if (_slShown) {
+      try { Android.hideStatusLight(); } catch (e) {}
+      _slShown = false;
+    }
+  }
+
+  function slSet(stateKey, overrideText) {
+    if (!_slAvailable()) return;
+    const st = SL_STATES[stateKey];
+    if (!st) return;
+    if (_slHoldTimer) { clearTimeout(_slHoldTimer); _slHoldTimer = null; }
+    _slState = stateKey;
+    _slText = overrideText || st.text;
+    if (_slText.length > SL_CFG.maxCmdChars) _slText = _slText.slice(0, SL_CFG.maxCmdChars - 1) + '…';
+    if (stateKey === 'error' || stateKey === 'stop') {
+      // Light goes out but the word stays for 3 s (or until app is foregrounded again,
+      // which the poll handles).
+      _slHoldTimer = setTimeout(_slClearInternal, SL_CFG.holdMs);
+    }
+    _slStartPolling();
+    _slRender();
+  }
+
+  function slOff() { _slClearInternal(); }
+
+  // Exposed for debugging / remote tweaking from the console if ever needed.
+  window.__statusLight = { set: slSet, off: slOff, cfg: SL_CFG, states: SL_STATES };
+
+  if (!_slAvailable()) return; // old APK — leave everything untouched
+
+  /* ── Hook: screenshot request → RED ─────────────────────── */
+  (function() {
+    const _orig = Bridge.requestScreenshot;
+    Bridge.requestScreenshot = function() {
+      slSet('screenshot');
+      return _orig.apply(this, arguments);
+    };
+  })();
+
+  /* ── Hook: request payload handed to the model → YELLOW ─── */
+  (function() {
+    const _orig = window.onCustomModelRequest;
+    window.onCustomModelRequest = async function(payloadJsonString) {
+      slSet('waiting');
+      return _orig ? _orig(payloadJsonString) : undefined;
+    };
+  })();
+
+  /* ── Hook: first streaming delta → GREEN ────────────────── */
+  (function() {
+    const _orig = Bridge.onCustomModelPartialResponse;
+    Bridge.onCustomModelPartialResponse = function(text) {
+      if (_slState === 'waiting') slSet('responding');
+      return _orig.apply(this, arguments);
+    };
+  })();
+
+  /* ── Hook: received commands → BLACK (shows the commands) ─ */
+  (function() {
+    const _orig = window.onCommandStatus;
+    window.onCommandStatus = function(status) {
+      if (status && status.indexOf('Commands: ') === 0) {
+        slSet('commands', status.slice('Commands: '.length));
+      }
+      return _orig ? _orig(status) : undefined;
+    };
+  })();
+
+  /* ── Hook: Termux wait → BLACK "Waiting for Termux" ─────── */
+  (function() {
+    const _orig = window.showTermuxWaitingBubble;
+    window.showTermuxWaitingBubble = function() {
+      slSet('termux');
+      return _orig ? _orig.apply(this, arguments) : undefined;
+    };
+  })();
+
+  /* ── Hook: errors → "Error", light off, 3 s hold ────────── */
+  (function() {
+    const _orig = Bridge.onCustomModelError;
+    Bridge.onCustomModelError = function(message) {
+      slSet('error');
+      return _orig.apply(this, arguments);
+    };
+  })();
+  (function() {
+    // Native-side errors surface as "[Error]..." via onAiMessage instead. Also: offline
+    // models stream through the native pipeline (not onCustomModelPartialResponse), so a
+    // pending onAiMessage is the streaming signal there → switch to GREEN as well.
+    const _orig = window.onAiMessage;
+    window.onAiMessage = function(text, isPending) {
+      if (!isPending && text && text.indexOf('[Error]') === 0) {
+        slSet('error');
+      } else if (isPending && !text && _slState === 'screenshot') {
+        // Native pipeline's Loading ping (onAiMessage('', true)): request is out,
+        // nothing streamed yet → YELLOW. (JS-handled models get this transition
+        // from the onCustomModelRequest hook instead.)
+        slSet('waiting');
+      } else if (isPending && text && (_slState === 'waiting' || _slState === 'screenshot')) {
+        // Non-empty pending text = actual streamed tokens (native/offline pipeline)
+        // → GREEN.
+        slSet('responding');
+      }
+      return _orig ? _orig(text, isPending) : undefined;
+    };
+  })();
+
+  /* ── Hook: user/AI stop → "Stop", light off, 3 s hold ───── */
+  (function() {
+    const _orig = window.stopGeneration;
+    window.stopGeneration = function() {
+      slSet('stop');
+      return _orig ? _orig.apply(this, arguments) : undefined;
+    };
+  })();
+
+  /* ── Hook: generation ended normally → light disappears ─── */
+  (function() {
+    const _orig = window.onGenerationStateChanged;
+    window.onGenerationStateChanged = function(running, isOfflineLoaded) {
+      // Keep Error/Stop visible for their 3 s hold; everything else turns off
+      // as soon as the turn is over (COMPLETED, no commands, model unloaded).
+      if (!running && _slState && _slState !== 'error' && _slState !== 'stop') slOff();
+      return _orig ? _orig(running, isOfflineLoaded) : undefined;
+    };
+  })();
+})();
+
 </script>
 </body>
 </html>

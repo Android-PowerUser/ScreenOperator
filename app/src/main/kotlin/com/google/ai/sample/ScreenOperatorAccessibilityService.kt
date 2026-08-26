@@ -145,6 +145,39 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
 
         /**
+         * Renders (or updates) the small background status "traffic light" near the top-right
+         * screen edge. Presentation-only: the WebView owns the entire state machine and sends
+         * a ready-to-render JSON spec (see AccessibilityStatusLightOverlay for the schema).
+         * Returns false when the service isn't connected so JS can know nothing was shown.
+         */
+        fun updateStatusLight(json: String): Boolean {
+            val instance = serviceInstance
+            if (!isServiceConnected.get() || instance == null) return false
+            mainHandler.post {
+                try {
+                    val overlay = instance.statusLightOverlay
+                        ?: AccessibilityStatusLightOverlay(instance).also { instance.statusLightOverlay = it }
+                    overlay.update(json)
+                } catch (error: Exception) {
+                    Log.e(TAG, "Could not update status light overlay", error)
+                }
+            }
+            return true
+        }
+
+        /** Removes the background status light overlay, if it is currently shown. */
+        fun hideStatusLight() {
+            val instance = serviceInstance ?: return
+            mainHandler.post {
+                try {
+                    instance.statusLightOverlay?.dismiss()
+                } catch (error: Exception) {
+                    Log.e(TAG, "Could not hide status light overlay", error)
+                }
+            }
+        }
+
+        /**
          * Show a toast message on the main thread
          */
         private fun showToast(message: String, isError: Boolean) {
@@ -172,6 +205,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private var pendingDelayedScreenshotRunnable: Runnable? = null
     private var sawNonTermuxCommandSinceLastScreenshot: Boolean = false
     private var questionOverlay: AccessibilityQuestionOverlay? = null
+    internal var statusLightOverlay: AccessibilityStatusLightOverlay? = null
 
     private fun showQuestionOverlayInternal(
         question: String,
@@ -900,6 +934,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         questionOverlay?.dismiss()
         questionOverlay = null
+        statusLightOverlay?.dismiss()
+        statusLightOverlay = null
         super.onDestroy()
         Log.d(TAG, "Accessibility service destroyed")
         
