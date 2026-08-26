@@ -2207,7 +2207,7 @@ const PROVIDER_API = {
     keyPrefix: 'Bearer ',
   },
   VERCEL: {
-    endpoint: () => 'https://screenoperator-vercel-proxy.android-poweruser.workers.dev/v1/chat/completions',
+    endpoint: () => 'https://ai-gateway.vercel.sh/v1/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
@@ -3564,10 +3564,7 @@ async function _callVercel(payload) {
       : { effort: 'high' };
   }
 
-  // Requests go through a Cloudflare Worker proxy that forwards to ai-gateway.vercel.sh
-  // and adds CORS headers, because Android WebViews send Origin: null which
-  // Vercel AI Gateway rejects, causing intermittent "Failed to fetch" errors.
-  const vercelChatEndpoint = 'https://screenoperator-vercel-proxy.android-poweruser.workers.dev/v1/chat/completions';
+  const vercelChatEndpoint = 'https://ai-gateway.vercel.sh/v1/chat/completions';
   const vercelHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
 
   window.__customModelAbortController = new AbortController();
@@ -3576,12 +3573,27 @@ async function _callVercel(payload) {
   const _vercelRepState = _createRepetitionState();
   let _vercelThinkingEndedSinceCheck = false;
   try {
-    let response = await fetch(vercelChatEndpoint, {
-      method: 'POST',
-      headers: vercelHeaders,
-      body: JSON.stringify(requestBody),
-      signal: window.__customModelAbortController.signal,
-    });
+    // Vercel AI Gateway can intermittently drop connections ("Failed to fetch").
+    // Retry up to 3 times with a short delay on network-level errors.
+    let response;
+    for (let _vAttempt = 0; _vAttempt < 3; _vAttempt++) {
+      try {
+        response = await fetch(vercelChatEndpoint, {
+          method: 'POST',
+          headers: vercelHeaders,
+          body: JSON.stringify(requestBody),
+          signal: window.__customModelAbortController.signal,
+        });
+        break; // success
+      } catch(fe) {
+        if (fe && fe.name === 'AbortError') throw fe;
+        if (_vAttempt < 2) {
+          await new Promise(r => setTimeout(r, 1500 * (_vAttempt + 1)));
+        } else {
+          throw fe;
+        }
+      }
+    }
 
     if (!response.ok) {
       let detail = '';
