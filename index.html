@@ -8083,7 +8083,7 @@ function _collapseOldScreenElementBubbles() {
      responding → "AI responds"         + green circle
      commands   → received command text + black circle
      termux     → "Waiting for Termux"  + black circle
-     error/stop → "Error"/"Stop", NO circle (light off), auto-clears after 3 s
+     error/stop → "Error"/"stopped", NO circle (light off), auto-clears after 3 s
                   or as soon as Screen Operator returns to the foreground.
 
    Old APKs without Android.updateStatusLight: module stays inert (no errors).
@@ -8112,7 +8112,7 @@ function _collapseOldScreenElementBubbles() {
     commands:   { text: 'Commands',           circleColor: '#000000' },
     termux:     { text: 'Waiting for Termux', circleColor: '#000000' },
     error:      { text: 'Error',              circleColor: '' },   // '' = light off, word stays
-    stop:       { text: 'Stop',               circleColor: '' }
+    stop:       { text: 'stopped',            circleColor: '' }
   };
 
   let _slState = null;        // current state key or null (hidden)
