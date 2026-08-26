@@ -3516,6 +3516,28 @@ async function _callGroq(payload) {
   }
 }
 
+/* Distinguishes *why* a fetch to the Vercel AI Gateway failed, since the Fetch API
+   collapses CORS rejection, DNS failure, TLS/cert error, and dropped connections into
+   the identical opaque "TypeError: Failed to fetch" with no further detail (by spec,
+   so pages can't probe cross-origin state). Two follow-up probes narrow it down:
+     1. navigator.onLine — rules out "device has no network at all".
+     2. A GET to the same origin with no custom headers — a GET has no preflight, so if
+        THIS also fails it's a connectivity/DNS/TLS problem, not CORS; if THIS succeeds
+        but the real POST didn't, the POST's preflight (triggered by the Content-Type
+        and Authorization headers) is what's being rejected — consistent with Android
+        WebViews sending "Origin: null", which some CORS configs reject. */
+async function _diagnoseVercelFetchFailure() {
+  const parts = [];
+  parts.push(navigator.onLine ? 'Device reports online.' : 'Device reports OFFLINE (no network at all).');
+  try {
+    const r = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', { method: 'GET' });
+    parts.push('Bare GET (no custom headers, no preflight) reached the server, status ' + r.status + ' — connectivity to the host is fine, so the POST failure is likely a CORS preflight rejection (Android WebView sends "Origin: null").');
+  } catch (probeErr) {
+    parts.push('Bare GET (no custom headers, no preflight) ALSO failed: ' + (probeErr && probeErr.message) + ' — this points to DNS/TLS/connectivity to ai-gateway.vercel.sh itself, not CORS.');
+  }
+  return parts.join(' ');
+}
+
 /* ── VERCEL AI GATEWAY ───────────────────────────────────────────
    Uses the public OpenAI-compatible Chat Completions endpoint directly from the
    WebView. The former project-specific proxy no longer exists, which made WebView
@@ -3590,7 +3612,14 @@ async function _callVercel(payload) {
         if (_vAttempt < 2) {
           await new Promise(r => setTimeout(r, 1500 * (_vAttempt + 1)));
         } else {
-          throw fe;
+          // All retries exhausted on a network-level failure. "Failed to fetch" from
+          // the Fetch API is deliberately vague (spec-mandated, to avoid leaking
+          // cross-origin info) — it means the SAME thing whether the cause is CORS
+          // rejection, DNS failure, TLS error, or a dropped connection. Run a
+          // diagnostic pass so the surfaced error tells us which one it actually was,
+          // instead of guessing again.
+          const diag = await _diagnoseVercelFetchFailure();
+          throw new Error('Vercel fetch failed after 3 attempts. ' + diag + ' Original: ' + (fe && fe.message));
         }
       }
     }
