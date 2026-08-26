@@ -79,6 +79,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -975,6 +980,19 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
+                    } else {
+                        Log.d(TAG, "setContent: No content yet (first start, no cache). Showing internet hint.")
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "The app requires internet access",
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
