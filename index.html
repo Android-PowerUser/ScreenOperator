@@ -8209,7 +8209,10 @@ function _collapseOldScreenElementBubbles() {
   (function() {
     const _orig = Bridge.requestScreenshot;
     Bridge.requestScreenshot = function() {
-      slSet('screenshot');
+      // After a termux(...) command the pipeline auto-appends a SCREENSHOT, but the
+      // native side defers it until the Termux output has arrived. During that whole
+      // wait "Waiting for Termux" must stay visible, so don't overwrite it here.
+      if (_slState !== 'termux') slSet('screenshot');
       return _orig.apply(this, arguments);
     };
   })();
@@ -8268,14 +8271,22 @@ function _collapseOldScreenElementBubbles() {
     window.onAiMessage = function(text, isPending) {
       if (!isPending && text && text.indexOf('[Error]') === 0) {
         slSet('error');
-      } else if (isPending && !text && _slState === 'screenshot') {
+      } else if (isPending && !text && (_slState === 'screenshot' || _slState === 'termux')) {
         // Native pipeline's Loading ping (onAiMessage('', true)): request is out,
-        // nothing streamed yet → YELLOW. (JS-handled models get this transition
+        // nothing streamed yet → YELLOW. Also the exit from "Waiting for Termux":
+        // once the Termux output arrived, the native side starts the next turn and
+        // this ping is its first signal. (JS-handled models get this transition
         // from the onCustomModelRequest hook instead.)
         slSet('waiting');
-      } else if (isPending && text && (_slState === 'waiting' || _slState === 'screenshot')) {
+      } else if (isPending && text && _slState === 'waiting') {
         // Non-empty pending text = actual streamed tokens (native/offline pipeline)
-        // → GREEN.
+        // → GREEN. Deliberately ONLY from 'waiting': after command execution the
+        // native ViewModel flows asynchronously echo the final response text back
+        // as pending onAiMessage calls, and those late echoes must not overwrite
+        // the 'screenshot'/'termux'/'commands' state with "AI responds" (that was
+        // exactly the bug where "AI responds" showed instead of "Waiting for
+        // Termux"). The real streaming start always passes through 'waiting'
+        // first (Loading ping above or the onCustomModelRequest hook).
         slSet('responding');
       }
       return _orig ? _orig(text, isPending) : undefined;
