@@ -2285,6 +2285,110 @@ window.debugKiloProxy = async function() {
 };
 
 /* ── MAIN ENTRY POINT: called by Android for every AI turn ───── */
+/* ── PROVIDER FALLBACK CIRCLE ─────────────────────────────────────────────────
+   When any provider fails with a non-key error (network, 5xx, service down) OR
+   when all API keys for a provider are exhausted, the request is automatically
+   retried on the next model in this fixed circle:
+
+     GLM 5V Turbo (Vercel) → Qwen3.7 Plus (Puter) → Gemini 3 Flash → Mistral Medium 3.5
+
+   Models outside the circle fall in at GLM 5V Turbo (the first circle member).
+   A model already IN the circle falls in at its own successor.
+   If every circle member also fails, the original error is surfaced.
+
+   Key errors (401/402/403/429/quota) within a provider trigger key rotation
+   inside the individual _call* function; only when all keys of that provider
+   are exhausted does the error propagate here and trigger the circle.
+
+   A native Toast announces the switch: "Vercel produced errors and the model
+   was changed to '<displayName>'" — or just "Vercel produced errors" if the
+   whole circle failed.
+
+   The circle can also be triggered from JS by calling
+   window.triggerFallbackCircle(modelId) — useful for WebViewBridge callers. */
+
+const _FALLBACK_CIRCLE = [
+  'GLM_5V_TURBO_VERCEL',   // GLM 5V Turbo (Vercel)
+  'PUTER_QWEN3_7_PLUS',    // Qwen3.7 Plus (Puter)
+  'GEMINI_3_FLASH',        // Gemini 3 Flash
+  'MISTRAL_MEDIUM_3_5',    // Mistral Medium 3.5
+];
+
+async function _dispatchToModel(modelId, payload) {
+  const modelDef = MODELS.find(m => m.id === modelId);
+  if (!modelDef) throw new Error('Unknown model id: ' + modelId);
+  const p = Object.assign({}, payload, {
+    apiProvider:        modelDef.apiProvider,
+    modelName:          modelDef.modelName,
+    modelId:            modelDef.id,
+    supportsThinking:   !!modelDef.supportsThinking,
+    supportsTopK:       !!modelDef.supportsTopK,
+    supportsScreenshot: !!modelDef.supportsScreenshot,
+  });
+  const prov = modelDef.apiProvider;
+  if (prov === 'GOOGLE')     return _callGemini(p);
+  if (prov === 'PUTER')      return _callPuter(p);
+  if (prov === 'MISTRAL')    return _callMistral(p);
+  if (prov === 'CEREBRAS')   return _callCerebras(p);
+  if (prov === 'GROQ')       return _callGroq(p);
+  if (prov === 'VERCEL')     return _callVercel(p);
+  if (prov === 'CLOUDFLARE') return _callCloudflareUnsupported(p);
+  return _callOpenAiCompat(p, prov);
+}
+
+async function _runWithFallbackCircle(payload, originalModelId) {
+  // Determine entry point: if current model is in the circle, start at its successor;
+  // otherwise start at the first circle member (GLM 5V Turbo).
+  const circleIdx = _FALLBACK_CIRCLE.indexOf(originalModelId);
+  const startIdx  = circleIdx >= 0 ? (circleIdx + 1) % _FALLBACK_CIRCLE.length : 0;
+
+  const originalDef  = MODELS.find(m => m.id === originalModelId);
+  const originalName = originalDef ? originalDef.displayName : originalModelId;
+
+  let lastErr;
+  for (let i = 0; i < _FALLBACK_CIRCLE.length; i++) {
+    const candidateId = _FALLBACK_CIRCLE[(startIdx + i) % _FALLBACK_CIRCLE.length];
+    if (candidateId === originalModelId) continue; // never retry the failing model
+    const candidateDef = MODELS.find(m => m.id === candidateId);
+    if (!candidateDef) continue;
+
+    // Skip circle member if it has no keys configured (NO_KEY would immediately fail again)
+    const prov = candidateDef.apiProvider;
+    if (prov !== 'PUTER' && prov !== 'KILO' && prov !== 'OPENCODE') {
+      // PUTER/KILO/OPENCODE don't always require a user key (freedom keys etc.) — let them try.
+      // All other providers need at least one key.
+      const candidateKeys = _getKeysWithFallback(prov);
+      if (!candidateKeys.length) continue;
+    }
+
+    try {
+      await _dispatchToModel(candidateId, payload);
+      // Success — show toast and update the selected model persistently.
+      const msg = originalName + ' produced errors and the model was changed to \'' + candidateDef.displayName + '\'';
+      Bridge.showToast(msg, true);
+      selectModel(candidateId);
+      return;
+    } catch(fe) {
+      if (fe && fe.name === 'AbortError') throw fe; // user stopped — propagate immediately
+      lastErr = fe;
+    }
+  }
+
+  // All circle members failed — show toast without model name, surface original error.
+  Bridge.showToast(originalName + ' produced errors', false);
+  throw lastErr || new Error(originalName + ' produced errors and all fallback models also failed.');
+}
+
+/* Public entry point so native WebViewBridge code can trigger the circle:
+   Android.evaluateJavascript("window.triggerFallbackCircle('" + modelId + "')") */
+window.triggerFallbackCircle = function(modelId) {
+  if (!window.__lastPayload) { Bridge.showToast('No pending request to retry', false); return; }
+  _runWithFallbackCircle(window.__lastPayload, modelId || currentModelId)
+    .catch(e => {
+      if (e && e.name !== 'AbortError') Bridge.onCustomModelError(e.message || String(e));
+    });
+};
+
 window.onCustomModelRequest = async function(payloadJsonString) {
   _stopExecution = false;  // reset stop flag so new requests always run
   let payload;
@@ -2373,6 +2477,9 @@ window.onCustomModelRequest = async function(payloadJsonString) {
 
   const provider = payload.apiProvider || 'PUTER';
 
+  // Keep a reference so window.triggerFallbackCircle() can replay it.
+  window.__lastPayload = payload;
+
   try {
     if (provider === 'GOOGLE') {
       await _callGemini(payload);
@@ -2394,9 +2501,19 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     }
   } catch(e) {
     if (e && e.name === 'AbortError') {
-      // handled inside each caller
+      // handled inside each caller — user tapped Stop, nothing to do here
     } else {
-      Bridge.onCustomModelError(e && e.message ? e.message : String(e));
+      // Any non-abort error triggers the fallback circle.
+      // The circle toasts the user, switches the model on success, or surfaces
+      // the original error (via onCustomModelError below) if all members fail.
+      try {
+        await _runWithFallbackCircle(payload, payload.modelId || currentModelId);
+        // Fallback succeeded — generationRunning was reset inside the successful _call*.
+        return;
+      } catch(fe) {
+        if (fe && fe.name === 'AbortError') return;
+        Bridge.onCustomModelError(fe && fe.message ? fe.message : String(fe));
+      }
       // Without this, the Stop button stays shown forever after an API error,
       // since no further SCREENSHOT/COMPLETED command will arrive to flip the
       // UI back to the Task input. Mirrors the "no recognized command" reset
@@ -2578,8 +2695,7 @@ function _separateInlineThinking(content) {
 async function _callGemini(payload) {
   const keys = _getKeysWithFallback('GOOGLE');
   if (!keys.length) {
-    Bridge.onCustomModelError('No Google API key configured. Please add one in the menu.');
-    return;
+    throw new Error('NO_KEY:No Google API key configured. Please add one in the menu.');
   }
   let keyIdx = Bridge.getCurrentKeyIndex('GOOGLE') || 0;
   let apiKey = keys[keyIdx] || keys[0];
@@ -2742,8 +2858,7 @@ async function _callGemini(payload) {
 async function _callPuter(payload) {
   const keys = _getKeysWithFallback('PUTER');
   if (!keys.length) {
-    Bridge.onCustomModelError('No Puter auth token configured. Please add one in the menu.');
-    return;
+    throw new Error('NO_KEY:No Puter auth token configured. Please add one in the menu.');
   }
   let keyIdx = Bridge.getCurrentKeyIndex('PUTER') || 0;
   let apiKey = keys[keyIdx] || keys[0];
@@ -3384,8 +3499,7 @@ async function _callCerebras(payload) {
 async function _callGroq(payload) {
   const keys = _getKeysWithFallback('GROQ');
   if (!keys.length) {
-    Bridge.onCustomModelError('No Groq API key configured. Please add one in the menu.');
-    return;
+    throw new Error('NO_KEY:No Groq API key configured. Please add one in the menu.');
   }
   let keyIdx = Bridge.getCurrentKeyIndex('GROQ') || 0;
   let apiKey = keys[keyIdx] || keys[0];
@@ -3546,8 +3660,7 @@ async function _diagnoseVercelFetchFailure() {
 async function _callVercel(payload) {
   const keys = _getKeysWithFallback('VERCEL');
   if (!keys.length) {
-    Bridge.onCustomModelError('No Vercel API key configured. Please add one in the menu.');
-    return;
+    throw new Error('NO_KEY:No Vercel API key configured. Please add one in the menu.');
   }
   let keyIdx = Bridge.getCurrentKeyIndex('VERCEL') || 0;
   let apiKey = keys[keyIdx] || keys[0];
@@ -3739,8 +3852,7 @@ async function _callOpenAiCompat(payload, provider, _emptyRetryCount) {
     keyPrefix = provDef.keyPrefix || '';
     keys = _getKeysWithFallback(provider);
     if (!keys.length && !provDef.keyOptional) {
-      Bridge.onCustomModelError('No API key for ' + provider + '. Please add one in the menu.');
-      return;
+      throw new Error('NO_KEY:No API key for ' + provider + '. Please add one in the menu.');
     }
     keyIdx = Bridge.getCurrentKeyIndex(provider) || 0;
     apiKey = keys.length ? (keys[keyIdx] || keys[0]) : undefined;
