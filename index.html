@@ -1407,6 +1407,12 @@ window.onAiMessage = function(text, isPending) {
       const icon = last.querySelector('.model-icon');
       if (icon) { icon.classList.remove('loading'); }
     }
+  } else if (!isPending && text && text.startsWith('[Error]')) {
+    // Error messages: show as a distinct error bubble (red background) so they
+    // are clearly visible in the chat for debugging, but they are deliberately
+    // NOT stored in _jsChatHistory (see the hook below) so they are never sent
+    // to the AI as assistant context in subsequent requests.
+    addErrorBubble(text);
   } else {
     addModelBubble(text, isPending);
   }
