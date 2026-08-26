@@ -392,6 +392,17 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .key-label{flex:1;font-size:13px;color:var(--text-primary);word-break:break-all}
 .key-del{background:none;border:none;cursor:pointer;color:var(--error);font-size:15px;flex-shrink:0;padding:2px 6px}
 
+/* ── Model-select (error fallback) popup ────────────────── */
+#model-select-overlay{z-index:1200;align-items:center;justify-content:center;overflow:hidden}
+#model-select-overlay.visible{display:flex}
+.model-select-popup{width:100%;max-width:480px;margin:0;display:flex;flex-direction:column;overflow:hidden}
+#model-select-error-title{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px;padding-right:38px;flex-shrink:0;font-size:13px;color:var(--error);font-weight:500}
+#model-select-question{margin:0 0 14px;flex-shrink:0;font-size:16px;font-weight:600;color:var(--text-primary)}
+#model-select-options{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.model-select-option{display:block;width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1.5px solid var(--outline-variant);background:var(--bg-surface-variant);color:var(--text-primary);font-size:15px;cursor:pointer;transition:background .15s}
+.model-select-option:active{background:var(--bg-primary-container)}
+.model-select-option.retry-option{border-color:var(--primary);background:var(--bg-primary-container);font-weight:600}
+
 /* ── Overlays / Popups ───────────────────────────────────── */
 .overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;overflow-y:auto;padding:24px 14px}
 .overlay.open{display:flex;align-items:center;justify-content:center}
@@ -713,6 +724,16 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <button type="button" class="popup-close" aria-label="Close" onclick="_dismissAiQuestion()">✕</button>
     <div class="popup-title" id="ai-question-text"></div>
     <div id="ai-answer-options"></div>
+  </div>
+</div>
+
+<!-- Model-select popup (shown when a model errors, lets user pick the next model) -->
+<div id="model-select-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="model-select-question">
+  <div class="popup model-select-popup" onclick="event.stopPropagation()">
+    <button type="button" class="popup-close" aria-label="Close" onclick="_dismissModelSelectPopup()">✕</button>
+    <div id="model-select-error-title"></div>
+    <div id="model-select-question">Which model should be used now?</div>
+    <div id="model-select-options"></div>
   </div>
 </div>
 
@@ -2343,54 +2364,119 @@ async function _dispatchToModel(modelId, payload) {
   return _callOpenAiCompat(p, prov);
 }
 
-async function _runWithFallbackCircle(payload, originalModelId) {
-  // Determine entry point: if current model is in the circle, start at its successor;
-  // otherwise start at the first circle member (GLM 5V Turbo).
-  const circleIdx = _FALLBACK_CIRCLE.indexOf(originalModelId);
-  const startIdx  = circleIdx >= 0 ? (circleIdx + 1) % _FALLBACK_CIRCLE.length : 0;
+/* ── Model-select popup (replaces automatic fallback circle) ──────────────────
+   When a model errors the user is shown a popup listing all available models.
+   The failed model appears first (to retry), followed by the circle members,
+   then all other non-offline models. No free-text input is shown.
+   Resolves/rejects a Promise so the caller can await it.                      */
 
+let _modelSelectResolve = null;
+let _modelSelectReject  = null;
+
+function _showModelSelectPopup(errorMessage, failedModelId, payload) {
+  return new Promise((resolve, reject) => {
+    _modelSelectResolve = resolve;
+    _modelSelectReject  = reject;
+
+    const overlay  = document.getElementById('model-select-overlay');
+    const errTitle = document.getElementById('model-select-error-title');
+    const options  = document.getElementById('model-select-options');
+    if (!overlay || !errTitle || !options) { reject(new Error('Model select popup unavailable')); return; }
+
+    // Title = the error message
+    errTitle.textContent = errorMessage || '';
+
+    // Build ordered model list: failed model first, then circle members (excl. failed),
+    // then remaining non-offline models (excl. already listed).
+    const failedDef = MODELS.find(m => m.id === failedModelId);
+    const listed = new Set();
+
+    const orderedIds = [];
+    if (failedDef) { orderedIds.push(failedModelId); listed.add(failedModelId); }
+    for (const id of _FALLBACK_CIRCLE) {
+      if (!listed.has(id)) { orderedIds.push(id); listed.add(id); }
+    }
+    for (const m of MODELS) {
+      if (!listed.has(m.id) && !m.isOffline) { orderedIds.push(m.id); listed.add(m.id); }
+    }
+
+    options.replaceChildren();
+    for (const id of orderedIds) {
+      const def = MODELS.find(m => m.id === id);
+      if (!def) continue;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'model-select-option' + (id === failedModelId ? ' retry-option' : '');
+      btn.textContent = id === failedModelId
+        ? '↺ ' + def.displayName + ' (retry)'
+        : def.displayName;
+      btn.addEventListener('click', () => _resolveModelSelect(id, payload));
+      options.appendChild(btn);
+    }
+
+    // Size popup similar to ai-question popup
+    const available = Math.max(220, Math.floor(window.innerHeight - 48));
+    const popup = overlay.querySelector('.model-select-popup');
+    if (popup) popup.style.maxHeight = available + 'px';
+
+    overlay.classList.add('visible');
+  });
+}
+
+function _resolveModelSelect(chosenModelId, payload) {
+  document.getElementById('model-select-overlay')?.classList.remove('visible');
+  const resolve = _modelSelectResolve;
+  _modelSelectResolve = null;
+  _modelSelectReject  = null;
+  if (resolve) resolve({ chosenModelId, payload });
+}
+
+function _dismissModelSelectPopup() {
+  document.getElementById('model-select-overlay')?.classList.remove('visible');
+  const reject = _modelSelectReject;
+  _modelSelectResolve = null;
+  _modelSelectReject  = null;
+  if (reject) reject(new Error('Model selection cancelled by user'));
+}
+
+async function _runWithFallbackCircle(payload, originalModelId, errorMessage) {
   const originalDef  = MODELS.find(m => m.id === originalModelId);
   const originalName = originalDef ? originalDef.displayName : originalModelId;
+  const errMsg = errorMessage || originalName + ' produced an error';
 
-  let lastErr;
-  for (let i = 0; i < _FALLBACK_CIRCLE.length; i++) {
-    const candidateId = _FALLBACK_CIRCLE[(startIdx + i) % _FALLBACK_CIRCLE.length];
-    if (candidateId === originalModelId) continue; // never retry the failing model
-    const candidateDef = MODELS.find(m => m.id === candidateId);
-    if (!candidateDef) continue;
-
-    // Skip circle member if it has no keys configured (NO_KEY would immediately fail again)
-    const prov = candidateDef.apiProvider;
-    if (prov !== 'PUTER' && prov !== 'KILO' && prov !== 'OPENCODE') {
-      // PUTER/KILO/OPENCODE don't always require a user key (freedom keys etc.) — let them try.
-      // All other providers need at least one key.
-      const candidateKeys = _getKeysWithFallback(prov);
-      if (!candidateKeys.length) continue;
-    }
-
-    try {
-      await _dispatchToModel(candidateId, payload);
-      // Success — show toast and update the selected model persistently.
-      const msg = originalName + ' produced errors and the model was changed to \'' + candidateDef.displayName + '\'';
-      Bridge.showToast(msg, true);
-      selectModel(candidateId);
-      return;
-    } catch(fe) {
-      if (fe && fe.name === 'AbortError') throw fe; // user stopped — propagate immediately
-      lastErr = fe;
-    }
+  // Show the popup and wait for the user to pick a model (or dismiss).
+  let chosen;
+  try {
+    chosen = await _showModelSelectPopup(errMsg, originalModelId, payload);
+  } catch(dismissed) {
+    // User dismissed — surface as a generic error (no model was chosen).
+    throw new Error(errMsg);
   }
 
-  // All circle members failed — show toast without model name, surface original error.
-  Bridge.showToast(originalName + ' produced errors', false);
-  throw lastErr || new Error(originalName + ' produced errors and all fallback models also failed.');
+  const { chosenModelId } = chosen;
+  const chosenDef = MODELS.find(m => m.id === chosenModelId);
+
+  try {
+    await _dispatchToModel(chosenModelId, payload);
+    // Success — update selected model persistently.
+    if (chosenModelId !== originalModelId) {
+      const msg = 'Model changed to \'' + (chosenDef ? chosenDef.displayName : chosenModelId) + '\'';
+      Bridge.showToast(msg, true);
+      selectModel(chosenModelId);
+    }
+  } catch(fe) {
+    if (fe && fe.name === 'AbortError') throw fe;
+    // The chosen model also failed — show the popup again with the new error.
+    const newErr = (fe && fe.message) ? fe.message : String(fe);
+    await _runWithFallbackCircle(payload, chosenModelId, newErr);
+  }
 }
 
 /* Public entry point so native WebViewBridge code can trigger the circle:
    Android.evaluateJavascript("window.triggerFallbackCircle('" + modelId + "')") */
 window.triggerFallbackCircle = function(modelId) {
   if (!window.__lastPayload) { Bridge.showToast('No pending request to retry', false); return; }
-  _runWithFallbackCircle(window.__lastPayload, modelId || currentModelId)
+  _runWithFallbackCircle(window.__lastPayload, modelId || currentModelId, null)
     .catch(e => {
       if (e && e.name !== 'AbortError') Bridge.onCustomModelError(e.message || String(e));
     });
@@ -2510,12 +2596,12 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     if (e && e.name === 'AbortError') {
       // handled inside each caller — user tapped Stop, nothing to do here
     } else {
-      // Any non-abort error triggers the fallback circle.
-      // The circle toasts the user, switches the model on success, or surfaces
-      // the original error (via onCustomModelError below) if all members fail.
+      // Any non-abort error shows the model-select popup so the user can pick
+      // the next model to try. Surfaces the original error if the user dismisses.
+      const _errMsg = e && e.message ? e.message : String(e);
       try {
-        await _runWithFallbackCircle(payload, payload.modelId || currentModelId);
-        // Fallback succeeded — generationRunning was reset inside the successful _call*.
+        await _runWithFallbackCircle(payload, payload.modelId || currentModelId, _errMsg);
+        // User picked a model and it succeeded — generationRunning was reset inside _call*.
         return;
       } catch(fe) {
         if (fe && fe.name === 'AbortError') return;
@@ -5908,6 +5994,10 @@ window.onBackPressed = function() {
     closeHumanExpertPopup();
     return true;
   }
+  if (document.getElementById('model-select-overlay')?.classList.contains('visible')) {
+    _dismissModelSelectPopup();
+    return true;
+  }
   if (document.getElementById('ai-question-overlay').classList.contains('visible')) {
     _dismissAiQuestion();
     return true;
@@ -7379,7 +7469,7 @@ function _collapseOldScreenElementBubbles() {
   // document.write() den kompletten alten DOM (inkl. aller offenen
   // Dialoge/Menüs) verwirft und die neue HTML immer im "Grundzustand" startet.
   var _PRESERVED_OVERLAY_IDS = [
-    'ai-question-overlay', 'popup-apikey', 'popup-db', 'popup-edit-entry',
+    'model-select-overlay', 'ai-question-overlay', 'popup-apikey', 'popup-db', 'popup-edit-entry',
     'trial-expired-overlay', 'trial-info-overlay', 'human-expert-overlay',
     'payment-method-overlay', 'model-dropdown-menu'
   ];
