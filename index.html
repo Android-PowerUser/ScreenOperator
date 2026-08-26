@@ -2207,7 +2207,7 @@ const PROVIDER_API = {
     keyPrefix: 'Bearer ',
   },
   VERCEL: {
-    endpoint: () => 'https://sdk.vercel.ai/api/chat',
+    endpoint: () => 'https://screenoperator-vercel-proxy.android-poweruser.workers.dev/v1/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
@@ -3564,7 +3564,10 @@ async function _callVercel(payload) {
       : { effort: 'high' };
   }
 
-  const vercelChatEndpoint = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+  // Requests go through a Cloudflare Worker proxy that forwards to ai-gateway.vercel.sh
+  // and adds CORS headers, because Android WebViews send Origin: null which
+  // Vercel AI Gateway rejects, causing intermittent "Failed to fetch" errors.
+  const vercelChatEndpoint = 'https://screenoperator-vercel-proxy.android-poweruser.workers.dev/v1/chat/completions';
   const vercelHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
 
   window.__customModelAbortController = new AbortController();
