@@ -39,9 +39,9 @@ You can build the apk with Github actions: Stay in your fork, on your user accou
 
 <br/>
 
-### Share your database from Screen Operator
+### Share your Skill Set from Screen Operator
 
-[Here](https://github.com/Android-PowerUser/ScreenOperator/discussions/87) you can share your own database
+[Here](https://github.com/Android-PowerUser/ScreenOperator/discussions/87) you can share your own Skill Set
 
 <br/>
 #### • The first Android agent app in the world (since June/2025)
