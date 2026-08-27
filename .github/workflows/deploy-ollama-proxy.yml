@@ -11,7 +11,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -33,10 +33,13 @@ jobs:
           API="https://console.deno.com/api/v2"
 
           {
-            echo "=== deno --version ==="
+            echo "### deno --version"
+            echo '```'
             deno --version
+            echo '```'
 
-            echo "=== deno deploy create ==="
+            echo "### deno deploy create"
+            echo '```'
             deno deploy create \
               --org="$ORG" \
               --app="$APP" \
@@ -47,12 +50,16 @@ jobs:
               --entrypoint="$ENTRYPOINT" \
               --region=us 2>&1
             echo "create exit code: $?"
+            echo '```'
 
-            echo "=== GET app config ==="
+            echo "### GET app config"
+            echo '```'
             curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" "$API/apps/$APP" 2>&1
             echo
+            echo '```'
 
-            echo "=== deno deploy (from SRC_DIR) ==="
+            echo "### deno deploy (from SRC_DIR)"
+            echo '```'
             cd "$SRC_DIR"
             deno deploy \
               --org="$ORG" \
@@ -62,19 +69,8 @@ jobs:
               --prod \
               . 2>&1
             echo "deploy exit code: $?"
-          } > /tmp/deploy-debug.log 2>&1 || true
-
-          cat /tmp/deploy-debug.log
-
-      - name: Commit debug log
-        if: always()
-        run: |
-          cp /tmp/deploy-debug.log deploy-debug.log || echo "no log file" > deploy-debug.log
-          git config user.name "debug-bot"
-          git config user.email "debug-bot@users.noreply.github.com"
-          git add deploy-debug.log
-          git commit -m "debug: ollama deploy log [skip ci]" || echo "nothing to commit"
-          git push origin HEAD:main || echo "push failed"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify proxy is alive
         run: |
