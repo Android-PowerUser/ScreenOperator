@@ -1163,7 +1163,7 @@ let MODELS = [
   { id:'GROQ_GPT_OSS_120B',        displayName:'GPT-OSS 120B (Groq)',                     modelName:'openai/gpt-oss-120b',                      apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. 30 free requests per min – thinking enabled',   strike:false },
   { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GPT_OSS_120B',             displayName:'GPT-OSS 120B (Cerebras)',                  modelName:'gpt-oss-120b',                             apiProvider:'CEREBRAS',  supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Text-only model. Cerebras may restrict free access or change rate limits.', strike:false },
-  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3 Flash',                           modelName:'gemini-3-flash-preview',                   apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images. Google often rejects requests with a 503 "Model is exhausted" error.', strike:false },
+  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3.7 Flash',                         modelName:'gemini-3.7-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GEMINI_PRO',               displayName:'Gemini 2.5 Pro',                           modelName:'gemini-2.5-pro',                           apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GEMINI_FLASH_PREVIEW',     displayName:'Gemini 2.5 Flash',                         modelName:'gemini-2.5-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GEMINI_FLASH',             displayName:'Gemini 2.0 Flash',                         modelName:'gemini-2.0-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Supports images.',                              strike:false },
@@ -2326,7 +2326,7 @@ window.debugKiloProxy = async function() {
    when all API keys for a provider are exhausted, the request is automatically
    retried on the next model in this fixed circle:
 
-     GLM 5V Turbo (Vercel) → Qwen3.7 Plus (Puter) → Gemini 3 Flash → Mistral Medium 3.5
+     GLM 5V Turbo (Vercel) → Qwen3.7 Plus (Puter) → Gemini 3.7 Flash → Mistral Medium 3.5
 
    Models outside the circle fall in at GLM 5V Turbo (the first circle member).
    A model already IN the circle falls in at its own successor.
@@ -2346,7 +2346,7 @@ window.debugKiloProxy = async function() {
 const _FALLBACK_CIRCLE = [
   'GLM_5V_TURBO_VERCEL',   // GLM 5V Turbo (Vercel)
   'PUTER_QWEN3_7_PLUS',    // Qwen3.7 Plus (Puter)
-  'GEMINI_3_FLASH',        // Gemini 3 Flash
+  'GEMINI_3_FLASH',        // Gemini 3.7 Flash
   'MISTRAL_MEDIUM_3_5',    // Mistral Medium 3.5
 ];
 
