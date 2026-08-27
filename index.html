@@ -2265,6 +2265,12 @@ const PROVIDER_API = {
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
+  OLLAMA: {
+    // Direct API-key access uses the OpenAI-compatible endpoint (/api/chat returns 405)
+    endpoint: () => 'https://ollama.com/v1/chat/completions',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
 };
 
 /* ── KILO PROXY DEBUG: call window.debugKiloProxy() from console or Bridge ── */
@@ -2366,7 +2372,7 @@ async function _dispatchToModel(modelId, payload) {
   if (prov === 'GROQ')       return _callGroq(p);
   if (prov === 'VERCEL')     return _callVercel(p);
   if (prov === 'CLOUDFLARE') return _callCloudflareUnsupported(p);
-  if (prov === 'OLLAMA')     return _callOllama(p);
+
   return _callOpenAiCompat(p, prov);
 }
 
@@ -3793,12 +3799,10 @@ async function _callGroq(payload) {
   }
 }
 
-/* ── OLLAMA CLOUD API (native NDJSON streaming, /api/chat) ──────────────────
-   Uses Ollama's native chat format (not OpenAI-compat) because the cloud API
-   at https://ollama.com uses /api/chat with NDJSON streaming (one JSON object
-   per line), not SSE data: lines. Images are passed as base64 strings in the
-   'images' array field of the user message.                                   */
-async function _callOllama(payload) {
+/* ── OLLAMA CLOUD API — routed via _callOpenAiCompat (PROVIDER_API entry above)
+   Endpoint: https://ollama.com/v1/chat/completions (OpenAI-compat, SSE streaming)
+   The /api/chat path returns 405 for direct API-key access; /v1/ is correct.  */
+async function _callOllama_unused(payload) {
   const keys = _getKeysWithFallback('OLLAMA');
   if (!keys.length) {
     throw new Error('NO_KEY:No Ollama API key configured. Please add one in the menu.');
