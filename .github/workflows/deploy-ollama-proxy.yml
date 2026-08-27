@@ -21,10 +21,44 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Write gist upload helper
+        run: |
+          cat > /tmp/upload_gist.py << 'PYEOF'
+          import json, urllib.request, os
+
+          with open("/tmp/deploy-debug.log") as f:
+              log_content = f.read()
+
+          token = os.environ["GH_TOKEN"]
+          payload = json.dumps({
+              "description": "ollama deploy debug log",
+              "public": False,
+              "files": {"deploy-debug.log": {"content": log_content or "(empty log)"}}
+          }).encode()
+
+          req = urllib.request.Request(
+              "https://api.github.com/gists",
+              data=payload,
+              method="POST",
+              headers={
+                  "Authorization": "token " + token,
+                  "Content-Type": "application/json",
+                  "Accept": "application/vnd.github+json",
+              },
+          )
+          try:
+              resp = urllib.request.urlopen(req)
+              result = json.load(resp)
+              print("Gist created:", result["id"], result["html_url"])
+          except Exception as e:
+              print("Gist creation failed:", e)
+          PYEOF
+
       - name: Deploy to Deno Deploy
         id: deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ORG="android-poweruser"
           APP="screenoperator-ollama-proxy"
@@ -33,13 +67,10 @@ jobs:
           API="https://console.deno.com/api/v2"
 
           {
-            echo "### deno --version"
-            echo '```'
+            echo "=== deno --version ==="
             deno --version
-            echo '```'
 
-            echo "### deno deploy create"
-            echo '```'
+            echo "=== deno deploy create ==="
             deno deploy create \
               --org="$ORG" \
               --app="$APP" \
@@ -50,16 +81,12 @@ jobs:
               --entrypoint="$ENTRYPOINT" \
               --region=us 2>&1
             echo "create exit code: $?"
-            echo '```'
 
-            echo "### GET app config"
-            echo '```'
+            echo "=== GET app config ==="
             curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" "$API/apps/$APP" 2>&1
             echo
-            echo '```'
 
-            echo "### deno deploy (from SRC_DIR)"
-            echo '```'
+            echo "=== deno deploy (from SRC_DIR) ==="
             cd "$SRC_DIR"
             deno deploy \
               --org="$ORG" \
@@ -69,8 +96,11 @@ jobs:
               --prod \
               . 2>&1
             echo "deploy exit code: $?"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > /tmp/deploy-debug.log 2>&1 || true
+
+          cat /tmp/deploy-debug.log
+
+          python3 /tmp/upload_gist.py
 
       - name: Verify proxy is alive
         run: |
