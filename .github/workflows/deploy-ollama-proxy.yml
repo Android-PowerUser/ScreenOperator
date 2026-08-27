@@ -11,7 +11,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -22,55 +22,59 @@ jobs:
           deno-version: v2.x
 
       - name: Deploy to Deno Deploy
+        id: deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          set -euo pipefail
-
           ORG="android-poweruser"
           APP="screenoperator-ollama-proxy"
           SRC_DIR="cloudflare-worker/ollama-proxy"
           ENTRYPOINT="ollama_proxy.ts"
           API="https://console.deno.com/api/v2"
 
-          # 1) Create the app if it does not exist yet.
-          deno deploy create \
-            --org="$ORG" \
-            --app="$APP" \
-            --token="$DENO_DEPLOY_TOKEN" \
-            --json --non-interactive \
-            --source=local \
-            --runtime-mode=dynamic \
-            --entrypoint="$ENTRYPOINT" \
-            --region=us 2>&1 || echo "create skipped (app probably already exists)"
+          {
+            echo "=== deno --version ==="
+            deno --version
 
-          # 2) Enforce dynamic runtime mode.
-          echo "Current app config:"
-          curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-            "$API/apps/$APP" | tee current-config.json
-          echo
+            echo "=== deno deploy create ==="
+            deno deploy create \
+              --org="$ORG" \
+              --app="$APP" \
+              --token="$DENO_DEPLOY_TOKEN" \
+              --json --non-interactive \
+              --source=local \
+              --runtime-mode=dynamic \
+              --entrypoint="$ENTRYPOINT" \
+              --region=us 2>&1
+            echo "create exit code: $?"
 
-          echo "Forcing runtime mode: dynamic (entrypoint: $ENTRYPOINT)"
-          HTTP_CODE=$(curl -sS -o patched-config.json -w '%{http_code}' \
-            -X PATCH \
-            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"config\":{\"runtime\":{\"type\":\"dynamic\",\"entrypoint\":\"$ENTRYPOINT\"}}}" \
-            "$API/apps/$APP")
-          cat patched-config.json; echo
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::warning::Could not set runtime mode via API (HTTP $HTTP_CODE) - continuing anyway"
-          fi
+            echo "=== GET app config ==="
+            curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" "$API/apps/$APP" 2>&1
+            echo
 
-          # 3) Deploy to production.
-          cd "$SRC_DIR"
-          deno deploy \
-            --org="$ORG" \
-            --app="$APP" \
-            --token="$DENO_DEPLOY_TOKEN" \
-            --json --non-interactive \
-            --prod \
-            .
+            echo "=== deno deploy (from SRC_DIR) ==="
+            cd "$SRC_DIR"
+            deno deploy \
+              --org="$ORG" \
+              --app="$APP" \
+              --token="$DENO_DEPLOY_TOKEN" \
+              --json --non-interactive \
+              --prod \
+              . 2>&1
+            echo "deploy exit code: $?"
+          } > /tmp/deploy-debug.log 2>&1 || true
+
+          cat /tmp/deploy-debug.log
+
+      - name: Commit debug log
+        if: always()
+        run: |
+          cp /tmp/deploy-debug.log deploy-debug.log || echo "no log file" > deploy-debug.log
+          git config user.name "debug-bot"
+          git config user.email "debug-bot@users.noreply.github.com"
+          git add deploy-debug.log
+          git commit -m "debug: ollama deploy log [skip ci]" || echo "nothing to commit"
+          git push || echo "push failed"
 
       - name: Verify proxy is alive
         run: |
