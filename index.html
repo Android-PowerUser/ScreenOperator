@@ -2263,7 +2263,7 @@ const PROVIDER_API = {
     keyPrefix: 'Bearer ',
   },
   NVIDIA: {
-    endpoint: () => 'https://screenoperator-nvidia-proxy.android-poweruser.deno.net/v1/chat/completions',
+    endpoint: () => 'https://integrate.api.nvidia.com/v1/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
@@ -4202,7 +4202,7 @@ async function _callOpenAiCompat(payload, provider, _emptyRetryCount) {
           // specifically at api.kilo.ai being unreachable, DNS-failing, or
           // blocking the request (e.g. via CORS), not at the device network.
           diagnosis = 'Device is online, but the request to ' + (endpoint || 'the API') + ' failed before any response was received ' +
-                      '(no HTTP status code at all). This points to the proxy (screenoperator-kilo-proxy.android-poweruser.deno.net → api.kilo.ai) being down/unreachable ' +
+                      '(no HTTP status code at all). This points to the endpoint being down/unreachable ' +
                       'right now, or it rejected the cross-origin request from this app (CORS). It is not a problem with the ' +
                       'device\'s internet connection.';
         }
