@@ -1141,7 +1141,6 @@ const PROVIDER_ORDER = ['VERCEL','CEREBRAS','GOOGLE','MISTRAL','GROQ','CLOUDFLAR
 ════════════════════════════════════════════════════════ */
 const CUSTOM_PROVIDERS = [
   // Add new custom-provider model definitions here.
-  { id:'NVIDIA_KIMI_K3', displayName:'Kimi K3 (NVIDIA NIM)', endpoint:'https://integrate.api.nvidia.com/v1/chat/completions', modelName:'moonshotai/kimi-k3', apiKeyHeader:'Authorization', apiKeyPrefix:'Bearer ', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, stream:true, hint:'Supports images. 40 requests per minute - free' },
 ];
 
 // Built-in model list — matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
@@ -1159,6 +1158,7 @@ let MODELS = [
   { id:'KILO_NEMOTRON_3_ULTRA_550B',    displayName:'Nemotron 3 Ultra 550B A55B (Kilo)',    modelName:'nvidia/nemotron-3-ultra-550b-a55b:free',           apiProvider:'KILO',      supportsScreenshot:false, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Text-only model. 200 requests/hour shared across all Screen Operator users (rate limit is per proxy IP)',             strike:false },
   { id:'OPENCODE_BIG_PICKLE',           displayName:'Claude Haiku 5 Preview / Big Pickle (OpenCode)', modelName:'big-pickle',                                apiProvider:'OPENCODE',  supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images. free',                          strike:false },
   { id:'OPENCODE_MUSE_SPARK_1_2',       displayName:'Muse Spark 1.2 Contributor Free (OpenCode)',    modelName:'muse-spark-1.2-contributor-free',           apiProvider:'OPENCODE',  supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Supports images. Free - Can watch videos - Free models may stop working at any time – thinking enabled', strike:false },
+  { id:'NVIDIA_KIMI_K3',                displayName:'Kimi K3 (NVIDIA NIM)',                          modelName:'moonshotai/kimi-k3',                        apiProvider:'NVIDIA',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images. 40 requests per minute - free', strike:false },
   { id:'GROQ_QWEN3_6_27B',         displayName:'Qwen3.6 27B (Groq)',                      modelName:'qwen/qwen3.6-27b',                         apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. 30 free requests per min – thinking enabled',   strike:false },
   { id:'GROQ_GPT_OSS_120B',        displayName:'GPT-OSS 120B (Groq)',                     modelName:'openai/gpt-oss-120b',                      apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. 30 free requests per min – thinking enabled',   strike:false },
   { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images.',                              strike:false },
@@ -2259,6 +2259,11 @@ const PROVIDER_API = {
     // Requests go through a Deno Deploy proxy that forwards to opencode.ai/zen
     // and adds CORS headers, because opencode.ai blocks OPTIONS preflight from WebViews.
     endpoint: () => 'https://screenoperator-opencode-proxy.android-poweruser.deno.net/zen/v1/chat/completions',
+    keyHeader: 'Authorization',
+    keyPrefix: 'Bearer ',
+  },
+  NVIDIA: {
+    endpoint: () => 'https://integrate.api.nvidia.com/v1/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
