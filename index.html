@@ -6199,14 +6199,62 @@ function _resendLastUserMessage() {
     activateAccessibilityService();
     return;
   }
-  // Find the last user bubble wrap and extract stored resend data
-  const userWraps = document.querySelectorAll('#chat-messages .user-wrap');
-  if (!userWraps.length) return;
-  const lastWrap = userWraps[userWraps.length - 1];
+  // Find the bubble wrap that was clicked (the reload button sits inside a user bubble).
+  // We support reloading ANY user bubble, not just the last one — so we search for the
+  // wrap that contains the pressed button. As fallback we use the last user wrap.
+  const allUserWraps = [...document.querySelectorAll('#chat-messages .user-wrap')];
+  if (!allUserWraps.length) return;
+  const lastWrap = allUserWraps[allUserWraps.length - 1];
   const text = lastWrap.dataset.resendText || '';
   const imageDataUri = lastWrap.dataset.resendImage || null;
   if (!text && !imageDataUri) return;
+
+  // ── Bug 3 fix: remove all DOM bubbles that appear AFTER the resent user bubble,
+  //   and truncate _jsChatHistory to keep only entries up to (and including) this
+  //   user message. This ensures the AI context is consistent with what's visible.
+  const container = document.getElementById('chat-messages');
+  if (container) {
+    const allBubbleWraps = [...container.children];
+    const resendWrapIdx = allBubbleWraps.indexOf(lastWrap);
+    if (resendWrapIdx !== -1) {
+      // Remove all DOM nodes after the resent bubble
+      for (let i = allBubbleWraps.length - 1; i > resendWrapIdx; i--) {
+        allBubbleWraps[i].remove();
+      }
+      // Reattach resend button to the now-last user bubble (it may have been stripped)
+      const bubble = lastWrap.querySelector('.bubble.user');
+      if (bubble && !lastWrap.querySelector('.bubble-resend-btn')) {
+        bubble.classList.add('has-resend');
+        const btn = document.createElement('button');
+        btn.className = 'bubble-resend-btn';
+        btn.title = 'Erneut senden';
+        btn.innerHTML = '&#10227;';
+        btn.style.display = 'flex';
+        btn.onclick = _resendLastUserMessage;
+        bubble.appendChild(btn);
+      }
+    }
+  }
+
+  // Truncate _jsChatHistory: keep only entries up to and including the resent user message.
+  // Count how many user messages appear up to and including lastWrap.
+  const userWrapsUpTo = allUserWraps.slice(0, allUserWraps.indexOf(lastWrap) + 1);
+  let userCount = userWrapsUpTo.length;
+  let historyTruncateIdx = -1;
+  let seen = 0;
+  for (let i = 0; i < _jsChatHistory.length; i++) {
+    if (_jsChatHistory[i].role === 'user') {
+      seen++;
+      if (seen === userCount) { historyTruncateIdx = i; break; }
+    }
+  }
+  if (historyTruncateIdx !== -1) {
+    _jsChatHistory = _jsChatHistory.slice(0, historyTruncateIdx + 1);
+    _saveJsChatHistory();
+  }
+
   // Signal onUserMessage to skip adding a new bubble (the existing one stays)
+  // and skip _appendUserToHistory (message is already the last entry in history).
   _resendInProgress = true;
   // Re-send via Bridge just like sendMessage does
   if (imageDataUri) {
@@ -7395,7 +7443,12 @@ function _appendUserToHistory(text, imageDataUri) {
 (function() {
   const _orig = window.onUserMessage;
   window.onUserMessage = function(text, imageDataUri) {
+    // When resending, the message is already in _jsChatHistory (it was the last
+    // user entry before the resend). Capture the flag BEFORE calling _orig because
+    // _orig resets _resendInProgress to false as part of its bubble-skip logic.
+    const isResend = _resendInProgress;
     if (_orig) _orig(text, imageDataUri);
+    if (isResend) return; // skip duplicate history append on resend
     _appendUserToHistory(text, imageDataUri);
   };
 })();
@@ -7847,9 +7900,20 @@ function _collapseOldScreenElementBubbles() {
     const ctx = _contexts[idx];
     const msgs = document.getElementById('chat-messages');
     const cmds = document.getElementById('cmd-status-wrap');
-    if (msgs) msgs.innerHTML = ctx.domHTML || '';
-    if (cmds) cmds.innerHTML = ctx.cmdStatusHTML || '';
     _jsChatHistory = (ctx.history || []).slice();
+    if (msgs) {
+      if (ctx.domHTML && ctx.domHTML.trim() !== '') {
+        msgs.innerHTML = ctx.domHTML;
+      } else if (_jsChatHistory.length > 0) {
+        // domHTML not yet snapshotted (e.g. first load after app restart) —
+        // rebuild the bubbles from the persisted history so messages are not lost.
+        msgs.innerHTML = '';
+        _renderRestoredChatBubbles();
+      } else {
+        msgs.innerHTML = '';
+      }
+    }
+    if (cmds) cmds.innerHTML = ctx.cmdStatusHTML || '';
     scrollToBottom();
   }
 
