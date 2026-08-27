@@ -2403,6 +2403,9 @@ function _getModelSelectOrder(failedModelId) {
 }
 
 function _showModelSelectPopup(errorMessage, failedModelId, payload) {
+  // Hide the status-light overlay immediately — the popup is about to be shown
+  // and "Waiting for AI" must not remain visible behind it.
+  if (window.__statusLight) window.__statusLight.off();
   return new Promise((resolve, reject) => {
     _modelSelectResolve = resolve;
     _modelSelectReject  = reject;
