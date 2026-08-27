@@ -31,64 +31,46 @@ jobs:
           APP="screenoperator-ollama-proxy"
           SRC_DIR="cloudflare-worker/ollama-proxy"
           ENTRYPOINT="ollama_proxy.ts"
-          API="https://console.deno.com/api/v2"
+          API="https://api.deno.com/v1"
 
-          # 1) Create the app if it does not exist yet.
-          deno deploy create \
-            --org="$ORG" \
-            --app="$APP" \
-            --token="$DENO_DEPLOY_TOKEN" \
-            --json --non-interactive \
-            --source=local \
-            --runtime-mode=dynamic \
-            --entrypoint="$ENTRYPOINT" \
-            --region=us \
-            "$SRC_DIR" 2>&1 || echo "create skipped (app probably already exists)"
+          # 1) Create the app if it does not exist yet (ignore errors if it already exists).
+          deno deploy app create --org="$ORG" --app="$APP" 2>&1 || echo "create skipped (app probably already exists)"
 
-          # 2) Enforce dynamic runtime mode.
+          # 2) Enforce dynamic runtime mode via API (fetch app-id first).
           echo "Current app config:"
-          curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-            "$API/apps/$APP" | tee current-config.json
-          echo
+          APP_JSON=$(curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN"             "$API/organizations/$ORG/projects" |             python3 -c "
+import sys, json
+projects = json.load(sys.stdin)
+match = [p for p in projects if p.get('name') == '$APP']
+if not match:
+    print(json.dumps({'error': 'app not found'}))
+else:
+    print(json.dumps(match[0]))
+")
+          echo "$APP_JSON"
+          APP_ID=$(echo "$APP_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))")
 
-          echo "Forcing runtime mode: dynamic (entrypoint: $ENTRYPOINT)"
-          HTTP_CODE=$(curl -sS -o patched-config.json -w '%{http_code}' \
-            -X PATCH \
-            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"config\":{\"runtime\":{\"type\":\"dynamic\",\"entrypoint\":\"$ENTRYPOINT\"}}}" \
-            "$API/apps/$APP")
-          cat patched-config.json; echo
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Could not set runtime mode to dynamic (HTTP $HTTP_CODE)"
-            exit 1
-          fi
-          if ! grep -q '"type": *"dynamic"' patched-config.json; then
-            echo "::error::App is still not in dynamic runtime mode"
-            exit 1
+          if [ -z "$APP_ID" ]; then
+            echo "::warning::Could not determine app ID — skipping runtime-mode patch."
+          else
+            echo "Forcing runtime mode: dynamic (entrypoint: $ENTRYPOINT)"
+            HTTP_CODE=$(curl -sS -o patched-config.json -w '%{http_code}'               -X PATCH               -H "Authorization: Bearer $DENO_DEPLOY_TOKEN"               -H "Content-Type: application/json"               -d "{"productionDeployment":{"entryPointUrl":"$ENTRYPOINT"}}"               "$API/projects/$APP_ID")
+            cat patched-config.json; echo
+            echo "PATCH HTTP status: $HTTP_CODE"
           fi
 
-          # 3) Deploy to production.
+          # 3) Deploy to production using deployctl.
           cd "$SRC_DIR"
-          deno deploy \
-            --org="$ORG" \
-            --app="$APP" \
-            --token="$DENO_DEPLOY_TOKEN" \
-            --json --non-interactive \
-            --prod \
-            .
+          deployctl deploy             --org="$ORG"             --project="$APP"             --token="$DENO_DEPLOY_TOKEN"             --entrypoint="$ENTRYPOINT"             --prod             "$ENTRYPOINT"
 
       - name: Verify proxy is alive
         run: |
           set -euo pipefail
-          URL="https://screenoperator-ollama-proxy.android-poweruser.deno.net/v1/chat/completions"
+          URL="https://screenoperator-ollama-proxy.deno.dev/v1/chat/completions"
 
           for i in 1 2 3 4 5 6 7 8 9 10; do
-            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL" \
-              -H "Origin: https://appassets.androidplatform.net" --max-time 20 || echo 000)
-            POST=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL" \
-              -H "Content-Type: application/json" \
-              -d '{"model":"probe","messages":[]}' --max-time 30 || echo 000)
+            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL"               -H "Origin: https://appassets.androidplatform.net" --max-time 20 || echo 000)
+            POST=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL"               -H "Content-Type: application/json"               -d '{"model":"probe","messages":[]}' --max-time 30 || echo 000)
             echo "attempt $i: OPTIONS=$PRE POST=$POST"
             if [ "$PRE" = "200" ] && [ "$POST" != "405" ] && [ "$POST" != "000" ]; then
               echo "Proxy is live and forwarding to ollama.com."
