@@ -2266,8 +2266,9 @@ const PROVIDER_API = {
     keyPrefix: 'Bearer ',
   },
   OLLAMA: {
-    // Direct API-key access uses the OpenAI-compatible endpoint (/api/chat returns 405)
-    endpoint: () => 'https://ollama.com/v1/chat/completions',
+    // Requests go through a Deno Deploy proxy that adds CORS headers,
+    // because ollama.com blocks cross-origin requests from Android WebViews.
+    endpoint: () => 'https://screenoperator-ollama-proxy.android-poweruser.deno.net/v1/chat/completions',
     keyHeader: 'Authorization',
     keyPrefix: 'Bearer ',
   },
