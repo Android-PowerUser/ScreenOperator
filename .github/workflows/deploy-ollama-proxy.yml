@@ -11,57 +11,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Deploy to Deno Deploy
-        env:
-          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          ORG="android-poweruser"
-          APP="screenoperator-ollama-proxy"
-          SRC_DIR="cloudflare-worker/ollama-proxy"
-          ENTRYPOINT="ollama_proxy.ts"
-          API="https://api.deno.com/v1"
-
-          # 1) Create the app if it does not exist yet (ignore errors if it already exists).
-          deno deploy app create --org="$ORG" --app="$APP" 2>&1 || echo "create skipped (app probably already exists)"
-
-          # 2) Enforce dynamic runtime mode via API (fetch app-id first).
-          echo "Current app config:"
-          APP_JSON=$(curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN"             "$API/organizations/$ORG/projects" |             python3 -c "
-import sys, json
-projects = json.load(sys.stdin)
-match = [p for p in projects if p.get('name') == '$APP']
-if not match:
-    print(json.dumps({'error': 'app not found'}))
-else:
-    print(json.dumps(match[0]))
-")
-          echo "$APP_JSON"
-          APP_ID=$(echo "$APP_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))")
-
-          if [ -z "$APP_ID" ]; then
-            echo "::warning::Could not determine app ID — skipping runtime-mode patch."
-          else
-            echo "Forcing runtime mode: dynamic (entrypoint: $ENTRYPOINT)"
-            HTTP_CODE=$(curl -sS -o patched-config.json -w '%{http_code}'               -X PATCH               -H "Authorization: Bearer $DENO_DEPLOY_TOKEN"               -H "Content-Type: application/json"               -d "{"productionDeployment":{"entryPointUrl":"$ENTRYPOINT"}}"               "$API/projects/$APP_ID")
-            cat patched-config.json; echo
-            echo "PATCH HTTP status: $HTTP_CODE"
-          fi
-
-          # 3) Deploy to production using deployctl.
-          cd "$SRC_DIR"
-          deployctl deploy             --org="$ORG"             --project="$APP"             --token="$DENO_DEPLOY_TOKEN"             --entrypoint="$ENTRYPOINT"             --prod             "$ENTRYPOINT"
+        uses: denoland/deployctl@v1
+        with:
+          project: screenoperator-ollama-proxy
+          entrypoint: ollama_proxy.ts
+          root: cloudflare-worker/ollama-proxy
 
       - name: Verify proxy is alive
         run: |
@@ -69,8 +30,11 @@ else:
           URL="https://screenoperator-ollama-proxy.deno.dev/v1/chat/completions"
 
           for i in 1 2 3 4 5 6 7 8 9 10; do
-            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL"               -H "Origin: https://appassets.androidplatform.net" --max-time 20 || echo 000)
-            POST=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL"               -H "Content-Type: application/json"               -d '{"model":"probe","messages":[]}' --max-time 30 || echo 000)
+            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL" \
+              -H "Origin: https://appassets.androidplatform.net" --max-time 20 || echo 000)
+            POST=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL" \
+              -H "Content-Type: application/json" \
+              -d '{"model":"probe","messages":[]}' --max-time 30 || echo 000)
             echo "attempt $i: OPTIONS=$PRE POST=$POST"
             if [ "$PRE" = "200" ] && [ "$POST" != "405" ] && [ "$POST" != "000" ]; then
               echo "Proxy is live and forwarding to ollama.com."
