@@ -1327,6 +1327,7 @@ let editingEntryOriginalTitle = null;
 let termuxBackground = false;
 let generationRunning = false;
 let _resendInProgress = false;
+let _historyTruncatedForResend = false; // set when resend trims _jsChatHistory; forces JS history to win in onCustomModelRequest
 let _humanExpertConnected = false;
 
 /* ════════════════════════════════════════════════════════
@@ -2618,7 +2619,13 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   // by the onUserMessage hook), so exclude the last entry if it matches the
   // current payload.userText to avoid duplicating it (each _call* function
   // appends payload.userText itself as the current user turn).
-  if (_jsChatHistory.length > (payload.history || []).length) {
+  //
+  // _historyTruncatedForResend is set when the user presses the in-bubble reload
+  // button: _jsChatHistory was deliberately shortened, but native payload.history
+  // still contains all old messages. In that case ALWAYS prefer _jsChatHistory,
+  // even if it is shorter than payload.history.
+  if (_historyTruncatedForResend || _jsChatHistory.length > (payload.history || []).length) {
+    _historyTruncatedForResend = false; // consume the flag
     let jsHistory = _jsChatHistory.slice(); // shallow copy
     // Drop the trailing user entry that matches the current turn to avoid duplication.
     if (jsHistory.length > 0) {
@@ -6252,6 +6259,9 @@ function _resendLastUserMessage() {
     _jsChatHistory = _jsChatHistory.slice(0, historyTruncateIdx + 1);
     _saveJsChatHistory();
   }
+  // Force onCustomModelRequest to use _jsChatHistory (which is now truncated) over
+  // the native payload.history (which still contains all old messages).
+  _historyTruncatedForResend = true;
 
   // Signal onUserMessage to skip adding a new bubble (the existing one stays)
   // and skip _appendUserToHistory (message is already the last entry in history).
