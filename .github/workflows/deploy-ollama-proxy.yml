@@ -33,44 +33,51 @@ jobs:
 
           ORG="android-poweruser"
           APP="screenoperator-ollama-proxy"
-          ENTRYPOINT="cloudflare-worker/ollama-proxy/ollama_proxy.ts"
-          API="https://api.deno.com/v2"
+          SRC_DIR="cloudflare-worker/ollama-proxy"
+          ENTRYPOINT="ollama_proxy.ts"
+          API="https://console.deno.com/api/v2"
           AUTH="Authorization: Bearer $DENO_DEPLOY_TOKEN"
 
-          # If the app already exists but is in the wrong (static) runtime mode,
-          # a plain redeploy keeps serving static files (POST/OPTIONS -> 405).
-          # Inspect the current runtime; delete and recreate it when it isn't a
-          # dynamic worker. A missing app reports a non-200 GET, which is fine.
+          # Both create and deploy run from inside the proxy directory with the
+          # worker filename as the (positional) entrypoint. That makes the CLI
+          # upload exactly that directory and register `ollama_proxy.ts` as the
+          # dynamic entrypoint. Running from the repo root instead uploads the
+          # whole repo (its index.html makes the detector pick static mode) and
+          # stores a mismatched entrypoint path, so the revision fails.
+          cd "$SRC_DIR"
+
+          # If the app exists but is static or points at the wrong entrypoint
+          # (a broken half-configured app occupies the plan slot), delete it so
+          # it can be recreated cleanly. Missing app -> non-200 GET (ignored).
           APP_JSON=$(curl -sS -H "$AUTH" "$API/apps/$APP" || echo "")
-          RUNTIME_TYPE=$(echo "$APP_JSON" | python3 -c "
+          RT=$(echo "$APP_JSON" | python3 -c "
           import json,sys
           try:
               a=json.load(sys.stdin)
-              print((a.get('config') or {}).get('runtime',{}).get('type',''))
+              rt=(a.get('config') or {}).get('runtime',{})
+              print(rt.get('type','') + '|' + str(rt.get('entrypoint','')))
           except Exception:
-              print('')
-          " 2>/dev/null || echo "")
-          echo "Existing app runtime type: '${RUNTIME_TYPE:-none}'"
-
-          if [ "$RUNTIME_TYPE" = "static" ]; then
-            echo "App is static (wrong). Deleting so it can be recreated as a dynamic worker."
-            DEL_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$AUTH" "$API/apps/$APP")
+              print('|')
+          " 2>/dev/null || echo "|")
+          RT_TYPE="${RT%%|*}"; RT_ENTRY="${RT#*|}"
+          echo "Existing app: runtime='${RT_TYPE}' entrypoint='${RT_ENTRY}'"
+          if [ "$RT_TYPE" = "static" ] || { [ -n "$RT_TYPE" ] && [ "$RT_ENTRY" != "$ENTRYPOINT" ]; }; then
+            echo "App config is wrong. Deleting it so it gets recreated as a dynamic worker."
+            DEL_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$AUTH" "$API/apps/$APP" || echo 000)
             echo "DELETE -> $DEL_CODE"
+            sleep 5
           fi
 
-          # Create the app (idempotent). Passing the worker .ts as a *positional*
-          # argument makes the CLI set the deploy root to the file's own
-          # directory, so it selects the dynamic runtime and treats the .ts as
-          # the server entrypoint (running from the repo root would make the
-          # framework detector mistake the bundled index.html for a static site).
+          # Create app if it doesn't exist yet (idempotent)
           deno deploy create \
             --org="$ORG" \
             --app="$APP" \
             --token="$DENO_DEPLOY_TOKEN" \
             --source=local \
             --runtime-mode=dynamic \
+            --entrypoint="$ENTRYPOINT" \
             --region=us \
-            "$ENTRYPOINT" 2>&1 || echo "create skipped (app probably already exists)"
+            . 2>&1 || echo "create skipped (app probably already exists)"
 
           # Deploy to production
           deno deploy \
