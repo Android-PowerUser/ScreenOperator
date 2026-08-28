@@ -1,0 +1,10 @@
+{
+  "deploy": {
+    "org": "android-poweruser",
+    "app": "screenoperator-ollama-proxy",
+    "entrypoint": "ollama_proxy.ts"
+  }
+}
+
+
+

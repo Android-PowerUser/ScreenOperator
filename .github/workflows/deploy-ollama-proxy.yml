@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'cloudflare-worker/ollama-proxy/ollama_proxy.ts'
+      - 'cloudflare-worker/ollama-proxy/deno.json'
       - '.github/workflows/deploy-ollama-proxy.yml'
 
 jobs:
@@ -38,17 +39,17 @@ jobs:
           API="https://console.deno.com/api/v2"
           AUTH="Authorization: Bearer $DENO_DEPLOY_TOKEN"
 
-          # Both create and deploy run from inside the proxy directory with the
-          # worker filename as the (positional) entrypoint. That makes the CLI
-          # upload exactly that directory and register `ollama_proxy.ts` as the
-          # dynamic entrypoint. Running from the repo root instead uploads the
-          # whole repo (its index.html makes the detector pick static mode) and
-          # stores a mismatched entrypoint path, so the revision fails.
+          # Everything runs from inside the proxy directory. The only files the
+          # dynamic worker needs are here (worker + deno.json). Running from the
+          # repo root would make the CLI detect the bundled index.html and pick
+          # the static runtime, which serves files and answers POST/OPTIONS with
+          # 405 instead of executing the worker.
           cd "$SRC_DIR"
 
-          # If the app exists but is static or points at the wrong entrypoint
-          # (a broken half-configured app occupies the plan slot), delete it so
-          # it can be recreated cleanly. Missing app -> non-200 GET (ignored).
+          # If a previous run left behind an app in the wrong state (static
+          # runtime, or a mismatched entrypoint) it occupies the plan slot and a
+          # plain `create` is skipped, so delete it first. A missing app returns
+          # a non-200 GET which is ignored.
           APP_JSON=$(curl -sS -H "$AUTH" "$API/apps/$APP" || echo "")
           RT=$(echo "$APP_JSON" | python3 -c "
           import json,sys
@@ -63,29 +64,32 @@ jobs:
           echo "Existing app: runtime='${RT_TYPE}' entrypoint='${RT_ENTRY}'"
           if [ "$RT_TYPE" = "static" ] || { [ -n "$RT_TYPE" ] && [ "$RT_ENTRY" != "$ENTRYPOINT" ]; }; then
             echo "App config is wrong. Deleting it so it gets recreated as a dynamic worker."
-            DEL_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$AUTH" "$API/apps/$APP" || echo 000)
-            echo "DELETE -> $DEL_CODE"
+            curl -sS -o /dev/null -X DELETE -H "$AUTH" "$API/apps/$APP" || true
             sleep 5
           fi
 
-          # Create app if it doesn't exist yet (idempotent)
+          # Create the app (idempotent). --do-not-use-detected-build-config makes
+          # the CLI take the explicit build flags instead of auto-detection
+          # (which finds no framework here and would drop the runtime/entrypoint,
+          # causing the revision to fail).
           deno deploy create \
             --org="$ORG" \
             --app="$APP" \
             --token="$DENO_DEPLOY_TOKEN" \
             --source=local \
+            --do-not-use-detected-build-config \
             --runtime-mode=dynamic \
             --entrypoint="$ENTRYPOINT" \
             --region=us \
-            . 2>&1 || echo "create skipped (app probably already exists)"
+            . 2>&1 || echo "create skipped (app already exists)"
 
-          # Deploy to production
+          # Deploy to production. `deno deploy` takes no positional argument: it
+          # uploads the current directory and uses the deno.json deploy config.
           deno deploy \
             --org="$ORG" \
             --app="$APP" \
             --token="$DENO_DEPLOY_TOKEN" \
-            --prod \
-            "$ENTRYPOINT"
+            --prod
 
       - name: Verify proxy is alive
         run: |
