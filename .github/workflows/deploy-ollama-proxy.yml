@@ -19,107 +19,34 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
-
-      - name: Write gist upload helper
-        run: |
-          cat > /tmp/upload_gist.py << 'PYEOF'
-          import json, urllib.request, os
-
-          with open("/tmp/deploy-debug.log") as f:
-              log_content = f.read()
-
-          token = os.environ["GH_TOKEN"]
-          payload = json.dumps({
-              "description": "ollama deploy debug log",
-              "public": False,
-              "files": {"deploy-debug.log": {"content": log_content or "(empty log)"}}
-          }).encode()
-
-          req = urllib.request.Request(
-              "https://api.github.com/gists",
-              data=payload,
-              method="POST",
-              headers={
-                  "Authorization": "token " + token,
-                  "Content-Type": "application/json",
-                  "Accept": "application/vnd.github+json",
-              },
-          )
-          try:
-              resp = urllib.request.urlopen(req)
-              result = json.load(resp)
-              print("Gist created:", result["id"], result["html_url"])
-          except Exception as e:
-              print("Gist creation failed:", e)
-          PYEOF
+          # Pinned: Deno 2.9.x ships a broken built-in `deno deploy` CLI
+          # (JSR @deno/deploy@0.0.9904) that fails every flag with
+          # 'Option "--org" can only occur once, but was found several times'.
+          # 2.4.5 is the latest release whose deploy CLI parses flags correctly.
+          deno-version: 2.4.5
 
       - name: Deploy to Deno Deploy
-        id: deploy
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ORG="android-poweruser"
           APP="screenoperator-ollama-proxy"
-          SRC_DIR="cloudflare-worker/ollama-proxy"
-          ENTRYPOINT="ollama_proxy.ts"
-          API="https://console.deno.com/api/v2"
+          ENTRYPOINT="cloudflare-worker/ollama-proxy/ollama_proxy.ts"
 
-          {
-            echo "=== deno --version ==="
-            deno --version
+          # Create app if it doesn't exist yet (idempotent)
+          deno deploy create \
+            --org="$ORG" \
+            --app="$APP" \
+            --token="$DENO_DEPLOY_TOKEN" \
+            --source=local \
+            --runtime-mode=dynamic \
+            --entrypoint="$ENTRYPOINT" \
+            --region=us 2>&1 || true
 
-            echo "=== deno deploy create ==="
-            deno deploy create \
-              --org="$ORG" \
-              --app="$APP" \
-              --token="$DENO_DEPLOY_TOKEN" \
-              --json --non-interactive \
-              --source=local \
-              --runtime-mode=dynamic \
-              --entrypoint="$ENTRYPOINT" \
-              --region=us 2>&1
-            echo "create exit code: $?"
-
-            echo "=== GET app config ==="
-            curl -sS -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" "$API/apps/$APP" 2>&1
-            echo
-
-            echo "=== deno deploy (from SRC_DIR) ==="
-            cd "$SRC_DIR"
-            deno deploy \
-              --org="$ORG" \
-              --app="$APP" \
-              --token="$DENO_DEPLOY_TOKEN" \
-              --json --non-interactive \
-              --prod \
-              . 2>&1
-            echo "deploy exit code: $?"
-          } > /tmp/deploy-debug.log 2>&1 || true
-
-          cat /tmp/deploy-debug.log
-
-          python3 /tmp/upload_gist.py
-
-      - name: Verify proxy is alive
-        run: |
-          set -euo pipefail
-          URL="https://screenoperator-ollama-proxy.android-poweruser.deno.net/v1/chat/completions"
-
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL" \
-              -H "Origin: https://appassets.androidplatform.net" --max-time 20 || echo 000)
-            POST=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL" \
-              -H "Content-Type: application/json" \
-              -d '{"model":"probe","messages":[]}' --max-time 30 || echo 000)
-            echo "attempt $i: OPTIONS=$PRE POST=$POST"
-            if [ "$PRE" = "200" ] && [ "$POST" != "405" ] && [ "$POST" != "000" ]; then
-              echo "Proxy is live and forwarding to ollama.com."
-              exit 0
-            fi
-            sleep 10
-          done
-
-          echo "::error::Proxy did not answer correctly (still static / unreachable)."
-          exit 1
+          # Deploy to production
+          deno deploy \
+            --org="$ORG" \
+            --app="$APP" \
+            --token="$DENO_DEPLOY_TOKEN" \
+            --prod \
+            "$ENTRYPOINT"

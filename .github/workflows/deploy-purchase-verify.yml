@@ -19,7 +19,11 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          # Pinned: Deno 2.9.x ships a broken built-in `deno deploy` CLI
+          # (JSR @deno/deploy@0.0.9904) that fails every flag with
+          # 'Option "--org" can only occur once, but was found several times'.
+          # 2.4.5 is the latest release whose deploy CLI parses flags correctly.
+          deno-version: 2.4.5
 
       - name: Write service account file
         env:
