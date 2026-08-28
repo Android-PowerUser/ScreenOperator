@@ -50,22 +50,36 @@ jobs:
           # runtime, or a mismatched entrypoint) it occupies the plan slot and a
           # plain `create` is skipped, so delete it first. A missing app returns
           # a non-200 GET which is ignored.
-          APP_JSON=$(curl -sS -H "$AUTH" "$API/apps/$APP" || echo "")
-          RT=$(echo "$APP_JSON" | python3 -c "
+          echo "=== Current apps in org (diagnostic) ==="
+          curl -sS -H "$AUTH" "$API/apps" | head -c 1500; echo
+          echo "=== GET app $APP ==="
+          GET_CODE=$(curl -sS -o /tmp/app.json -w '%{http_code}' -H "$AUTH" "$API/apps/$APP" || echo 000)
+          echo "GET -> $GET_CODE"
+          echo "--- app body ---"; head -c 1500 /tmp/app.json 2>/dev/null; echo
+          RT=$(cat /tmp/app.json 2>/dev/null | python3 -c "
           import json,sys
           try:
               a=json.load(sys.stdin)
-              rt=(a.get('config') or {}).get('runtime',{})
+              # app may be wrapped or flat; search for runtime config
+              cfg=a.get('config') or a.get('app',{}).get('config') or {}
+              rt=cfg.get('runtime',{}) if isinstance(cfg,dict) else {}
               print(rt.get('type','') + '|' + str(rt.get('entrypoint','')))
           except Exception:
               print('|')
           " 2>/dev/null || echo "|")
           RT_TYPE="${RT%%|*}"; RT_ENTRY="${RT#*|}"
-          echo "Existing app: runtime='${RT_TYPE}' entrypoint='${RT_ENTRY}'"
-          if [ "$RT_TYPE" = "static" ] || { [ -n "$RT_TYPE" ] && [ "$RT_ENTRY" != "$ENTRYPOINT" ]; }; then
-            echo "App config is wrong. Deleting it so it gets recreated as a dynamic worker."
-            curl -sS -o /dev/null -X DELETE -H "$AUTH" "$API/apps/$APP" || true
-            sleep 5
+          echo "Parsed: runtime='${RT_TYPE}' entrypoint='${RT_ENTRY}'"
+          if [ "$GET_CODE" = "200" ] && { [ "$RT_TYPE" = "static" ] || [ "$RT_TYPE" != "dynamic" ] || [ "$RT_ENTRY" != "$ENTRYPOINT" ]; }; then
+            echo "App exists but is not a healthy dynamic worker with entrypoint $ENTRYPOINT. Deleting it."
+            DEL_CODE=$(curl -sS -o /tmp/del.out -w '%{http_code}' -X DELETE -H "$AUTH" "$API/apps/$APP" || echo 000)
+            echo "DELETE -> $DEL_CODE"; head -c 400 /tmp/del.out 2>/dev/null; echo
+            # Wait for the deletion to take effect
+            for w in 1 2 3 4 5 6; do
+              sleep 5
+              G2=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$API/apps/$APP" || echo 000)
+              echo "post-delete GET attempt $w: $G2"
+              [ "$G2" = "404" ] && break
+            done
           fi
 
           # Create the app (idempotent). --do-not-use-detected-build-config makes
