@@ -29,19 +29,41 @@ jobs:
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
+          set -euo pipefail
+
           ORG="android-poweruser"
           APP="screenoperator-ollama-proxy"
           ENTRYPOINT="cloudflare-worker/ollama-proxy/ollama_proxy.ts"
+          API="https://console.deno.com/api/v2"
 
-          # Create app if it doesn't exist yet (idempotent)
+          # Passing the worker .ts as a *positional* argument (not via
+          # --entrypoint relative to the repo root) makes the CLI set the deploy
+          # root to the file's own directory, so it selects the dynamic runtime
+          # and treats the .ts as the server entrypoint. Running from the repo
+          # root otherwise makes the framework detector mistake the bundled
+          # index.html for a static site (the worker then answers POST/OPTIONS
+          # with 405 instead of executing).
           deno deploy create \
             --org="$ORG" \
             --app="$APP" \
             --token="$DENO_DEPLOY_TOKEN" \
             --source=local \
             --runtime-mode=dynamic \
-            --entrypoint="$ENTRYPOINT" \
-            --region=us 2>&1 || true
+            --region=us \
+            "$ENTRYPOINT" 2>&1 || echo "create skipped (app probably already exists)"
+
+          # Force the dynamic runtime + entrypoint via the API. This also
+          # repairs an app that was previously created in static mode.
+          HTTP_CODE=$(curl -sS -o /tmp/patch.out -w '%{http_code}' \
+            -X PATCH \
+            -H "Authorization: Bearer $DENO_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"config\":{\"runtime\":{\"type\":\"dynamic\",\"entrypoint\":\"$ENTRYPOINT\"}}}" \
+            "$API/apps/$APP")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Could not set runtime mode (HTTP $HTTP_CODE): $(cat /tmp/patch.out)"
+            exit 1
+          fi
 
           # Deploy to production
           deno deploy \
@@ -50,3 +72,29 @@ jobs:
             --token="$DENO_DEPLOY_TOKEN" \
             --prod \
             "$ENTRYPOINT"
+
+      - name: Verify proxy is alive
+        run: |
+          set -euo pipefail
+          URL="https://screenoperator-ollama-proxy.android-poweruser.deno.net/v1/chat/completions"
+
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL" \
+              -H "Origin: https://appassets.androidplatform.net" \
+              -H "Access-Control-Request-Method: POST" --max-time 20 || echo 000)
+            POST=$(curl -s -w '\n%{http_code}' -X POST "$URL" \
+              -H "Content-Type: application/json" \
+              -H "Origin: https://appassets.androidplatform.net" \
+              -d '{"model":"probe","messages":[],"stream":false}' --max-time 30 | tail -n1)
+            echo "attempt $i: OPTIONS=$PRE POST=$POST"
+            # Dynamic worker: OPTIONS preflight returns 200 with CORS headers;
+            # POST is forwarded to ollama.com (auth/probe error => NOT 405/404).
+            if [ "$PRE" = "200" ] && [ "$POST" != "405" ] && [ "$POST" != "404" ] && [ "$POST" != "000" ]; then
+              echo "Proxy is live and forwarding to ollama.com."
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "::error::Proxy did not answer correctly (still static / unreachable)."
+          exit 1
