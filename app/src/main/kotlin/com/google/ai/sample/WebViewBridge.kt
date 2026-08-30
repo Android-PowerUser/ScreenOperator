@@ -288,6 +288,29 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+    // ── Database Import / Export ──────────────────────────────────────────────
+
+    @JavascriptInterface
+    fun exportDatabaseEntries(fileName: String) {
+        val entries = SystemMessageEntryPreferences.loadEntries(context)
+        if (entries.isEmpty()) {
+            mainActivity.runOnUiThread {
+                android.widget.Toast.makeText(context, "No entries to export.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        val arr = org.json.JSONArray()
+        entries.forEach { arr.put(org.json.JSONObject().put("title", it.title).put("guide", it.guide)) }
+        mainActivity.shareJsonFile(fileName, arr.toString(2))
+    }
+
+    @JavascriptInterface
+    fun importDatabaseEntries() {
+        mainActivity.runOnUiThread {
+            mainActivity.openImportFilePicker()
+        }
+    }
+
     // ── Generation Settings ───────────────────────────────────────────────────
 
     @JavascriptInterface
@@ -1238,6 +1261,8 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "addDatabaseEntry"              -> { addDatabaseEntry(a.getString("title"), a.getString("guide")); "" }
                 "updateDatabaseEntry"           -> { updateDatabaseEntry(a.getString("oldTitle"), a.getString("newTitle"), a.getString("guide")); "" }
                 "deleteDatabaseEntry"           -> { deleteDatabaseEntry(a.getString("title")); "" }
+                "exportDatabaseEntries"         -> { exportDatabaseEntries(a.optString("fileName", "ScreenOperatorSkillSet.json")); "" }
+                "importDatabaseEntries"         -> { importDatabaseEntries(); "" }
                 // ── Generation Settings ───────────────────────────────────────
                 "getGenerationSettings"         -> getGenerationSettings(a.getString("modelId"))
                 "saveGenerationSettings"        -> {
