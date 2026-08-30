@@ -2500,6 +2500,10 @@ function _installModelSelectNativeHandler(orderedModels, payload) {
 
 function _resolveModelSelect(chosenModelId, payload) {
   document.getElementById('model-select-overlay')?.classList.remove('visible');
+  // Restore the status-light overlay immediately after the popup is dismissed
+  // so the user sees the overlay again right away (instead of only after the
+  // next screenshot or AI response arrives, which can take several seconds).
+  if (window.__statusLight) window.__statusLight.set('waiting');
   const resolve = _modelSelectResolve;
   _modelSelectResolve = null;
   _modelSelectReject  = null;
