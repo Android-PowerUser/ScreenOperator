@@ -767,8 +767,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div id="db-list" style="overflow-y:auto;margin-bottom:8px"></div>
     <div class="row" style="justify-content:space-between;gap:8px;align-items:center">
       <div class="row" style="gap:8px">
-        <button class="btn btn-solid" onclick="document.getElementById('import-file').click()">Import</button>
-        <input type="file" id="import-file" accept=".json,.txt" style="display:none" onchange="importDatabase(event)">
+        <button class="btn btn-solid" onclick="openImportPopup()">Import</button>
         <button class="btn btn-solid" onclick="exportDatabase()">Export</button>
       </div>
       <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
@@ -793,6 +792,21 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     </div>
   </div>
 </div>
+<!-- Import JSON Popup -->
+<div id="popup-import-json" class="overlay" onclick="overlayClose(event,'popup-import-json')">
+  <div class="popup db-edit-popup" onclick="event.stopPropagation()" style="max-width:480px">
+    <button class="popup-close" onclick="closePopup('popup-import-json')">✕</button>
+    <div class="popup-title">Import Skill Set</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Paste the JSON content below, or tap "Paste from Clipboard" to fill automatically.</div>
+    <textarea id="import-json-textarea" class="text-input db-edit-input" style="resize:none;min-height:160px;overflow:auto;font-size:12px;font-family:monospace" placeholder='[{"title":"...","guide":"..."}]'></textarea>
+    <div class="popup-actions" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-text" onclick="closePopup('popup-import-json')">Cancel</button>
+      <button class="btn btn-solid" onclick="pasteFromClipboardToImport()">Paste from Clipboard</button>
+      <button class="btn btn-solid" onclick="importDatabaseFromText()">Import</button>
+    </div>
+  </div>
+</div>
+
 <!-- Key View Popup -->
 <div id="popup-keyview" class="overlay" onclick="overlayClose(event,'popup-keyview')">
   <div class="popup" onclick="event.stopPropagation()" style="max-width:420px">
@@ -7051,13 +7065,96 @@ function saveEntry() {
 }
 function exportDatabase() {
   const entries = Bridge.getDatabaseEntries();
+  if (!entries || entries.length === 0) {
+    alert('No entries to export.');
+    return;
+  }
   const json = JSON.stringify(entries, null, 2);
-  const blob = new Blob([json], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
-  URL.revokeObjectURL(url);
+  // Android WebView: URL.createObjectURL is not supported.
+  // Strategy 1: copy JSON to clipboard so the user can paste it anywhere.
+  // Strategy 2: share via native Android share sheet (ACTION_SEND).
+  try {
+    if (getInAndroid()) {
+      // Copy to clipboard via bridge
+      Android.copyToClipboard(json);
+      // Also trigger native share intent so the user can save/send the file
+      try {
+        Android.launchIntent(
+          'android.intent.action.SEND',
+          JSON.stringify({
+            'android.intent.extra.TEXT': json,
+            'android.intent.extra.SUBJECT': 'ScreenOperatorSkillSet.json'
+          }),
+          ''
+        );
+      } catch(shareErr) {
+        // Share failed – clipboard copy is still done, inform the user
+        alert('Exported ' + entries.length + ' entries.\nJSON copied to clipboard (share dialog unavailable).');
+      }
+    } else {
+      // Browser fallback: use legacy Blob download
+      const blob = new Blob([json], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'ScreenOperatorSkillSet.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch(err) {
+    alert('Export failed: ' + err.message);
+  }
 }
+
+function openImportPopup() {
+  const ta = document.getElementById('import-json-textarea');
+  if (ta) ta.value = '';
+  openPopup('popup-import-json');
+}
+
+function pasteFromClipboardToImport() {
+  try {
+    if (getInAndroid()) {
+      const text = Android.getClipboardText();
+      const ta = document.getElementById('import-json-textarea');
+      if (ta) ta.value = text || '';
+      if (!text) alert('Clipboard is empty.');
+    } else {
+      navigator.clipboard.readText().then(text => {
+        const ta = document.getElementById('import-json-textarea');
+        if (ta) ta.value = text || '';
+      }).catch(() => alert('Could not read clipboard.'));
+    }
+  } catch(err) {
+    alert('Clipboard read failed: ' + err.message);
+  }
+}
+
+function importDatabaseFromText() {
+  const ta = document.getElementById('import-json-textarea');
+  const text = ta ? ta.value.trim() : '';
+  if (!text) { alert('Please paste JSON content first.'); return; }
+  try {
+    const imported = JSON.parse(text);
+    if (!Array.isArray(imported)) throw new Error('Invalid format: expected a JSON array.');
+    const current = Bridge.getDatabaseEntries();
+    let added = 0, skipped = 0;
+    imported.forEach(entry => {
+      if (!entry.title || !entry.guide) return;
+      const exists = current.some(c => c.title.toLowerCase() === entry.title.toLowerCase());
+      if (exists) { skipped++; return; }
+      Bridge.addDatabaseEntry(entry.title, entry.guide);
+      added++;
+    });
+    closePopup('popup-import-json');
+    alert('Import complete: ' + added + ' added, ' + skipped + ' skipped.');
+    renderDbList();
+  } catch(err) {
+    alert('Import failed: ' + err.message);
+  }
+}
+
+// Legacy file-input handler kept for compatibility (no-op in Android WebView)
 function importDatabase(event) {
+  if (!event || !event.target || !event.target.files) return;
   const file = event.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
@@ -7073,7 +7170,7 @@ function importDatabase(event) {
         Bridge.addDatabaseEntry(entry.title, entry.guide);
         added++;
       });
-      alert(`Import complete: ${added} added, ${skipped} skipped.`);
+      alert('Import complete: '+added+' added, '+skipped+' skipped.');
       renderDbList();
     } catch(err) { alert('Import failed: '+err.message); }
   };
