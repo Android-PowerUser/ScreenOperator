@@ -7049,14 +7049,23 @@ function saveEntry() {
   renderDbList();
 }
 function exportDatabase() {
+  const manualEntries = Bridge.getDatabaseEntries() || [];
+  const aiEntries = (_getAiSkills() || []).map(e => ({ ...e, _ai: true }));
+  const allEntries = [...manualEntries, ...aiEntries];
   if (getInAndroid()) {
-    // Native path: FileProvider + ACTION_SEND share sheet (same as old Kotlin UI)
+    // Native path: native only exports manual entries via Bridge;
+    // export full combined JSON (manual + AI) via browser blob download
     Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
+    if (aiEntries.length > 0) {
+      const blob = new Blob([JSON.stringify(allEntries, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
   } else {
     // Browser fallback
-    const entries = Bridge.getDatabaseEntries();
-    if (!entries || entries.length === 0) { alert('No entries to export.'); return; }
-    const blob = new Blob([JSON.stringify(entries, null, 2)], {type:'application/json'});
+    if (allEntries.length === 0) { alert('No entries to export.'); return; }
+    const blob = new Blob([JSON.stringify(allEntries, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
     URL.revokeObjectURL(url);
@@ -7081,16 +7090,28 @@ window.onImportFileContent = function(jsonText) {
   try {
     const imported = JSON.parse(jsonText);
     if (!Array.isArray(imported)) throw new Error('Invalid format: expected a JSON array.');
-    const current = Bridge.getDatabaseEntries();
-    let added = 0, skipped = 0;
+    const currentManual = Bridge.getDatabaseEntries();
+    const currentAi = _getAiSkills();
+    let addedManual = 0, addedAi = 0, skipped = 0;
     imported.forEach(entry => {
       if (!entry.title || !entry.guide) return;
-      const exists = current.some(c => c.title.toLowerCase() === entry.title.toLowerCase());
-      if (exists) { skipped++; return; }
-      Bridge.addDatabaseEntry(entry.title, entry.guide);
-      added++;
+      if (entry._ai) {
+        // AI-generated skill
+        const exists = currentAi.some(c => c.title.toLowerCase() === entry.title.toLowerCase());
+        if (exists) { skipped++; return; }
+        const { _ai, ...clean } = entry;
+        currentAi.push(clean);
+        addedAi++;
+      } else {
+        // Manual skill
+        const exists = currentManual.some(c => c.title.toLowerCase() === entry.title.toLowerCase());
+        if (exists) { skipped++; return; }
+        Bridge.addDatabaseEntry(entry.title, entry.guide);
+        addedManual++;
+      }
     });
-    alert('Import complete: ' + added + ' added, ' + skipped + ' skipped.');
+    if (addedAi > 0) _saveAiSkills(currentAi);
+    alert('Import complete: ' + (addedManual + addedAi) + ' added (' + addedManual + ' manual, ' + addedAi + ' AI), ' + skipped + ' skipped.');
     renderDbList();
   } catch(err) {
     alert('Import failed: ' + err.message);
