@@ -1170,7 +1170,7 @@ let MODELS = [
   { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'Text-only model. 3.40 GB download required.',    strike:false },
   { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
   { id:'GLM_5V_TURBO_VERCEL',       displayName:'GLM 5V Turbo (Vercel)',                    modelName:'zai/glm-5v-turbo',                         apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Supports images. Credit or debit card required - $1.20/M input | $0.24/M cache read | $4/M output - caching and thinking enabled', strike:false },
-  { id:'MUSE_SPARK_1_2_VERCEL',      displayName:'Muse Spark 1.2 Contributor (Vercel)',      modelName:'muse-spark-1.2-contributor',               apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images. $0.3/M input | $0.002/M read cache | $1.2/M output', strike:false },
+  { id:'MUSE_SPARK_1_2_VERCEL',      displayName:'Muse Spark 1.2 Contributor (Vercel)',      modelName:'muse-spark-1.2-contributor',               apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Supports images. $0.3/M input | $0.002/M read cache | $1.2/M output – thinking enabled', strike:false },
   { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. Vercel requires a credit card.',strike:false },
   { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. Vercel requires a credit card.',strike:false },
   { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Text-only model. Vercel requires a credit card.',strike:false },
@@ -3866,7 +3866,7 @@ async function _callVercel(payload) {
   // level, so deliberately send only `enabled` for it. The gateway translates this
   // to Z.AI's native thinking setting without sending an unsupported level.
   if (payload.supportsThinking) {
-    requestBody.reasoning = payload.modelName === 'zai/glm-5v-turbo'
+    requestBody.reasoning = (payload.modelName === 'zai/glm-5v-turbo' || payload.modelName === 'muse-spark-1.2-contributor')
       ? { enabled: true }
       : { effort: 'high' };
   }
