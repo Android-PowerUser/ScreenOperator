@@ -2587,14 +2587,15 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       ...dbEntries,
       ...aiSkillEntries
     ];
-    const allTitles = allEntries.map(e => e.title);
     const enabledEntries = allEntries.filter(e => _isSkillSendEnabled(e.title));
-    let skillBlock = allTitles.length
-      ? 'Skill set: ' + allTitles.join(',\n') + ','
+    const enabledTitles = new Set(enabledEntries.map(e => e.title));
+    const listTitles = allEntries.map(e => e.title).filter(t => !enabledTitles.has(t));
+    let skillBlock = listTitles.length
+      ? 'Skill set: ' + listTitles.join(',\n') + ','
       : '';
     if (enabledEntries.length) {
-      skillBlock += '\n\n' +
-        enabledEntries.map(e => e.title + '\n' + e.guide).join('\n\n');
+      if (skillBlock) skillBlock += '\n\n';
+      skillBlock += enabledEntries.map(e => e.title + '\n' + e.guide).join('\n\n');
     }
     payload.databaseEntries = skillBlock;
   } catch (e) {
