@@ -1173,7 +1173,7 @@ let MODELS = [
   { id:'MUSE_SPARK_1_2_VERCEL',      displayName:'Muse Spark 1.2 Contributor (Vercel)',      modelName:'muse-spark-1.2-contributor',               apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Supports images. $0.3/M input | $0.002/M read cache | $1.2/M output – thinking enabled', strike:false },
   { id:'GPT_5_1_CODEX_MAX',        displayName:'GPT-5.1 Codex Max (Vercel)',               modelName:'openai/gpt-5.1-codex-max',                 apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. Vercel requires a credit card.',strike:false },
   { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. Vercel requires a credit card.',strike:false },
-  { id:'GPT_5_NANO',               displayName:'GPT-5 Nano (Vercel)',                       modelName:'openai/gpt-5-nano',                        apiProvider:'VERCEL',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Text-only model. Vercel requires a credit card.',strike:false },
+  { id:'GPT_5_NANO',               displayName:'GPT-5.4 Nano (Vercel)',                     modelName:'openai/gpt-5.4-nano',                      apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Supports images. $0.2/M input | $0.02/M read cache | $1.25/M output – thinking enabled', strike:false },
   { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
   { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 2.5 Flash Live Preview',            modelName:'gemini-live-2.5-flash-native-audio',       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Supports images.',                              strike:true },
   { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'6.3 GB download required.',     strike:true },
@@ -3866,7 +3866,7 @@ async function _callVercel(payload) {
   // level, so deliberately send only `enabled` for it. The gateway translates this
   // to Z.AI's native thinking setting without sending an unsupported level.
   if (payload.supportsThinking) {
-    requestBody.reasoning = (payload.modelName === 'zai/glm-5v-turbo' || payload.modelName === 'muse-spark-1.2-contributor')
+    requestBody.reasoning = (payload.modelName === 'zai/glm-5v-turbo' || payload.modelName === 'muse-spark-1.2-contributor' || payload.modelName === 'openai/gpt-5.4-nano')
       ? { enabled: true }
       : { effort: 'high' };
   }
