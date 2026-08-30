@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
     private lateinit var webRtcMediaProjectionLauncher: ActivityResultLauncher<Intent>
     private lateinit var pickMediaLauncher: ActivityResultLauncher<PickVisualMediaRequest>
+    private lateinit var importFileLauncher: ActivityResultLauncher<String>
 
     private var currentScreenInfoForScreenshot: String? = null
 
@@ -252,6 +253,28 @@ class MainActivity : ComponentActivity() {
                 val isVideo = contentResolver.getType(it)?.startsWith("video/") == true
                 webViewInstance?.post { 
                     webViewInstance?.evaluateJavascript("window.onImagePicked('$it', $isVideo)", null)
+                }
+            }
+        }
+
+        importFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let {
+                try {
+                    val jsonString = contentResolver.openInputStream(it)?.bufferedReader()?.readText() ?: return@let
+                    val escaped = jsonString
+                        .replace("\\", "\\\\")
+                        .replace("'", "\\'")
+                        .replace("\n", "\\n")
+                        .replace("\r", "")
+                    webViewInstance?.post {
+                        webViewInstance?.evaluateJavascript("window.onImportFileContent('$escaped')", null)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "importFileLauncher: error reading file", e)
+                    val msg = e.message?.replace("'", "\\'") ?: "unknown"
+                    webViewInstance?.post {
+                        webViewInstance?.evaluateJavascript("window.onImportFileError('$msg')", null)
+                    }
                 }
             }
         }
@@ -1606,6 +1629,16 @@ class MainActivity : ComponentActivity() {
     fun openImagePicker() {
         Log.d(TAG, "openImagePicker called via Bridge.")
         pickMediaLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+    }
+
+    fun openImportFilePicker() {
+        Log.d(TAG, "openImportFilePicker called via Bridge.")
+        importFileLauncher.launch("*/*")
+    }
+
+    fun shareJsonFile(fileName: String, jsonContent: String) {
+        Log.d(TAG, "shareJsonFile called via Bridge: $fileName")
+        com.google.ai.sample.util.shareTextFile(this, fileName, jsonContent)
     }
 
     override fun onBackPressed() {
