@@ -4927,6 +4927,9 @@ function closeModelDropdown() {
   document.getElementById('model-dropdown-menu').classList.remove('open');
 }
 document.addEventListener('click', e => {
+  if (!e.target.closest('.db-entry-menu') && !e.target.closest('.db-entry-menu-btn')) {
+    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
+  }
   const menu = document.getElementById('model-dropdown-menu');
   if (menu.classList.contains('open') && !e.target.closest('#model-dropdown-menu') && !e.target.closest('#model-dropdown')) closeModelDropdown();
 });
@@ -6907,9 +6910,6 @@ function renderDbList() {
     list.appendChild(filler);
   }
 
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
-  }, { once: true });
 }
 
 function _aiSkillsEnabled() {
