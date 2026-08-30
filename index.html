@@ -2588,14 +2588,13 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       ...aiSkillEntries
     ];
     const allTitles = allEntries.map(e => e.title);
-    // Titles of skills with the send-toggle enabled
     const enabledEntries = allEntries.filter(e => _isSkillSendEnabled(e.title));
     let skillBlock = allTitles.length
       ? 'Skill set: ' + allTitles.join(',\n') + ','
       : '';
     if (enabledEntries.length) {
-      skillBlock += '\n\nActive skills (title + guide):\n' +
-        enabledEntries.map(e => '## ' + e.title + '\n' + e.guide).join('\n\n');
+      skillBlock += '\n\n' +
+        enabledEntries.map(e => e.title + '\n' + e.guide).join('\n\n');
     }
     payload.databaseEntries = skillBlock;
   } catch (e) {
