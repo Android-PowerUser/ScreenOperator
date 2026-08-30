@@ -756,7 +756,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 <!-- Skill Set Popup -->
 <div id="popup-db" class="overlay" onclick="overlayClose(event,'popup-db')">
-  <div class="popup db-popup" onclick="event.stopPropagation()">
+  <div class="popup db-popup" onclick="event.stopPropagation(); if(!event.target.closest('.db-entry-menu') && !event.target.closest('.db-entry-menu-btn')) document.querySelectorAll('.db-entry-menu.open').forEach(m=>m.classList.remove('open'))">
     <div id="db-list" style="overflow-y:auto;margin-bottom:8px"></div>
     <div class="row" style="justify-content:space-between;gap:8px;align-items:center">
       <div class="row" style="gap:8px">
@@ -4927,9 +4927,6 @@ function closeModelDropdown() {
   document.getElementById('model-dropdown-menu').classList.remove('open');
 }
 document.addEventListener('click', e => {
-  if (!e.target.closest('.db-entry-menu') && !e.target.closest('.db-entry-menu-btn')) {
-    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
-  }
   const menu = document.getElementById('model-dropdown-menu');
   if (menu.classList.contains('open') && !e.target.closest('#model-dropdown-menu') && !e.target.closest('#model-dropdown')) closeModelDropdown();
 });
@@ -6910,6 +6907,9 @@ function renderDbList() {
     list.appendChild(filler);
   }
 
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
+  }, { once: true });
 }
 
 function _aiSkillsEnabled() {
