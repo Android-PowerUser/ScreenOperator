@@ -1446,7 +1446,10 @@ window.onAiMessage = function(text, isPending) {
   scrollToBottom();
 };
 
-function openHumanExpertPopup() {
+let _humanExpertPopupOnClose = null;
+
+function openHumanExpertPopup(onClose) {
+  _humanExpertPopupOnClose = onClose || null;
   const el = document.getElementById('human-expert-overlay');
   if (el) el.classList.add('open');
   applyModelSelection(currentModelId);
@@ -1456,6 +1459,9 @@ function closeHumanExpertPopup() {
   const el = document.getElementById('human-expert-overlay');
   if (el) el.classList.remove('open');
   applyModelSelection(currentModelId);
+  const cb = _humanExpertPopupOnClose;
+  _humanExpertPopupOnClose = null;
+  if (cb) cb();
 }
 
 function _updateHumanExpertInputArea() {
@@ -2585,8 +2591,10 @@ async function _runWithFallbackCircle(payload, originalModelId, errorMessage) {
   // ── HUMAN_EXPERT special handling ──────────────────────────────────────────
   if (chosenModelId === 'HUMAN_EXPERT') {
     if (!Bridge.isPurchased()) {
-      // Not purchased → show paywall, do not dispatch anything
-      openHumanExpertPopup();
+      // Not purchased → show paywall; when dismissed, reopen the model-select popup
+      openHumanExpertPopup(() => {
+        _showModelSelectWebPopup(errMsg, originalModelId, _getModelSelectOrder(originalModelId), payload);
+      });
       return; // resolve silently — no further error shown
     }
     // Purchased → switch model and send only the first user message
