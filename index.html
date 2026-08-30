@@ -450,6 +450,13 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .db-ai-toggle input:checked+.db-ai-toggle-slider{background:#4caf50}
 .db-ai-toggle-slider::after{content:'';position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .db-ai-toggle input:checked+.db-ai-toggle-slider::after{left:19px}
+/* per-entry send toggle – reuses db-ai-toggle geometry, smaller */
+.db-entry-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0;margin:0 4px}
+.db-entry-toggle input{opacity:0;width:0;height:0;position:absolute}
+.db-entry-toggle-slider{display:inline-block;width:34px;height:20px;background:#bbb;border-radius:10px;position:relative;transition:background .2s}
+.db-entry-toggle input:checked+.db-entry-toggle-slider{background:#4caf50}
+.db-entry-toggle-slider::after{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.db-entry-toggle input:checked+.db-entry-toggle-slider::after{left:17px}
 .db-edit-popup{background:var(--db-yellow-1);width:90%;max-width:520px;display:flex;flex-direction:column;margin:auto}
 .db-edit-input{background:#fff;color:#000;border:1px solid #000;font-size:17px}
 .db-edit-input::placeholder{color:#888}
@@ -2576,13 +2583,21 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   try {
     const dbEntries = Bridge.getDatabaseEntries() || [];
     const aiSkillEntries = _getAiSkills() || [];
-    const allTitles = [
-      ...dbEntries.map(e => e.title),
-      ...aiSkillEntries.map(e => e.title)
+    const allEntries = [
+      ...dbEntries,
+      ...aiSkillEntries
     ];
-    payload.databaseEntries = allTitles.length
+    const allTitles = allEntries.map(e => e.title);
+    // Titles of skills with the send-toggle enabled
+    const enabledEntries = allEntries.filter(e => _isSkillSendEnabled(e.title));
+    let skillBlock = allTitles.length
       ? 'Skill set: ' + allTitles.join(',\n') + ','
       : '';
+    if (enabledEntries.length) {
+      skillBlock += '\n\nActive skills (title + guide):\n' +
+        enabledEntries.map(e => '## ' + e.title + '\n' + e.guide).join('\n\n');
+    }
+    payload.databaseEntries = skillBlock;
   } catch (e) {
     payload.databaseEntries = '';
   }
@@ -6833,13 +6848,24 @@ function openDatabasePopup() {
   openPopup('popup-db');
   fitDbPopup(document.querySelector('#popup-db .db-popup'));
 }
+function _skillSendKey(title) {
+  return 'skillSend:' + title;
+}
+function _isSkillSendEnabled(title) {
+  return localStorage.getItem(_skillSendKey(title)) === '1';
+}
 function _makeEntryRow(e, isAi) {
   const row = document.createElement('div');
   row.className = 'db-entry';
+  const sendEnabled = _isSkillSendEnabled(e.title);
   row.innerHTML = `
     <div class="db-entry-pill" style="cursor:pointer">
       <div class="db-entry-title">${escHtml(e.title)}</div>
     </div>
+    <label class="db-entry-toggle" title="Send title &amp; guide with next message">
+      <input type="checkbox" ${sendEnabled ? 'checked' : ''}>
+      <span class="db-entry-toggle-slider"></span>
+    </label>
     <div style="position:relative;flex-shrink:0">
       <button class="db-entry-menu-btn" title="More options">&#8942;</button>
       <div class="db-entry-menu">
@@ -6847,6 +6873,11 @@ function _makeEntryRow(e, isAi) {
       </div>
     </div>`;
   row.querySelector('.db-entry-pill').onclick = () => openEditEntry(e);
+  const toggle = row.querySelector('.db-entry-toggle input');
+  toggle.onchange = (ev) => {
+    ev.stopPropagation();
+    localStorage.setItem(_skillSendKey(e.title), ev.target.checked ? '1' : '0');
+  };
   const menuBtn = row.querySelector('.db-entry-menu-btn');
   const menu = row.querySelector('.db-entry-menu');
   menuBtn.onclick = (ev) => {
@@ -6875,7 +6906,7 @@ function renderDbList() {
 
   const hintRow = document.createElement('div');
   hintRow.className = 'db-entry';
-  hintRow.innerHTML = `<div class="db-hint" style="flex:1;padding:6px 8px">The headings are sent to the AI and the content is included on request</div>`;
+  hintRow.innerHTML = `<div class="db-hint" style="flex:1;padding:6px 8px">Toggle on to send a skill's title &amp; guide with every message. All headings are available on request.</div>`;
   list.appendChild(hintRow);
 
   // ── AI-generated skills section header ──
