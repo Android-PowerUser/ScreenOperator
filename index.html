@@ -6861,16 +6861,16 @@ function _makeEntryRow(e, isAi) {
     <div class="db-entry-pill" style="cursor:pointer">
       <div class="db-entry-title">${escHtml(e.title)}</div>
     </div>
-    <label class="db-entry-toggle" title="Send title &amp; guide with next message">
-      <input type="checkbox" ${sendEnabled ? 'checked' : ''}>
-      <span class="db-entry-toggle-slider"></span>
-    </label>
     <div style="position:relative;flex-shrink:0">
       <button class="db-entry-menu-btn" title="More options">&#8942;</button>
       <div class="db-entry-menu">
         <button type="button" data-action="delete">Delete</button>
       </div>
-    </div>`;
+    </div>
+    <label class="db-entry-toggle" title="Send title &amp; guide with next message">
+      <input type="checkbox" ${sendEnabled ? 'checked' : ''}>
+      <span class="db-entry-toggle-slider"></span>
+    </label>`;
   row.querySelector('.db-entry-pill').onclick = () => openEditEntry(e);
   const toggle = row.querySelector('.db-entry-toggle input');
   toggle.onchange = (ev) => {
