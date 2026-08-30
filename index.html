@@ -2582,6 +2582,26 @@ async function _runWithFallbackCircle(payload, originalModelId, errorMessage) {
   const { chosenModelId } = chosen;
   const chosenDef = MODELS.find(m => m.id === chosenModelId);
 
+  // ── HUMAN_EXPERT special handling ──────────────────────────────────────────
+  if (chosenModelId === 'HUMAN_EXPERT') {
+    if (!Bridge.isPurchased()) {
+      // Not purchased → show paywall, do not dispatch anything
+      openHumanExpertPopup();
+      return; // resolve silently — no further error shown
+    }
+    // Purchased → switch model and send only the first user message
+    selectModel('HUMAN_EXPERT');
+    // Find the first user message: prefer the earliest history entry, else payload.userText
+    const firstMsg = (() => {
+      const hist = payload.history || [];
+      const firstUser = hist.find(e => e.role === 'user');
+      return (firstUser && (firstUser.text || firstUser.content)) || payload.userText || '';
+    })();
+    if (firstMsg) Bridge.sendMessage(firstMsg);
+    return; // native side takes over from here
+  }
+  // ───────────────────────────────────────────────────────────────────────────
+
   try {
     await _dispatchToModel(chosenModelId, payload);
     // Success — update selected model persistently.
