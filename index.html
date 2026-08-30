@@ -4511,7 +4511,7 @@ function parseCommandsFromText(rawText) {
       build: (m) => ({ type: 'RETRIEVE', title: m[1] }) },
 
     // AI adds a new skill to the skill set
-    { re: /\bnewSkill\(["']([^"']+)["']\s*,\s*["']([^"']+)["']\)/gi, type: 'NEW_SKILL', single: false,
+    { re: /\bnewSkill\(["']([\s\S]*?)["']\s*,\s*["']([\s\S]*?)["']\)/gi, type: 'NEW_SKILL', single: false,
       build: (m) => ({ type: 'NEW_SKILL', title: m[1], guide: m[2] }) },
 
     // Copy to clipboard
