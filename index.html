@@ -1741,40 +1741,34 @@ function buildModelDropdown() {
     menu.appendChild(h);
   };
 
-  // Sort a group by supportsScreenshot desc (screenshot models first), preserving relative order
-  const sortGroup = (arr) => [
-    ...arr.filter(m => m.supportsScreenshot),
-    ...arr.filter(m => !m.supportsScreenshot),
-  ];
-
   // Group: same order as native MenuScreen.kt
   const vercelIds = new Set(['GPT_5_1_CODEX_MAX','GPT_5_1_CODEX_MINI','GPT_5_NANO','GLM_5V_TURBO_VERCEL','MUSE_SPARK_1_2_VERCEL']);
   const strikeIds = new Set(MODELS.filter(m=>m.strike).map(m=>m.id));
   const firstIds  = new Set(['PUTER_GPT_5_4_NANO','MISTRAL_MEDIUM_3_1','MISTRAL_MEDIUM_3_5']);
 
-  // Build the non-struck groups, each sorted by screenshot support
-  const groups = [
-    sortGroup(MODELS.filter(m=>firstIds.has(m.id))),
-    sortGroup(MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'&&m.apiProvider!=='CUSTOM')),
-    sortGroup(MODELS.filter(m=>m.apiProvider==='HUMAN_EXPERT'&&!strikeIds.has(m.id))),
-    sortGroup(MODELS.filter(m=>vercelIds.has(m.id)&&!strikeIds.has(m.id))),
-    sortGroup(MODELS.filter(m=>m.apiProvider==='CUSTOM'&&!strikeIds.has(m.id))),
+  // Collect all non-struck models in original group order
+  const nonStruck = [
+    ...MODELS.filter(m=>firstIds.has(m.id)),
+    ...MODELS.filter(m=>!firstIds.has(m.id)&&!vercelIds.has(m.id)&&!strikeIds.has(m.id)&&m.apiProvider!=='HUMAN_EXPERT'&&m.apiProvider!=='CUSTOM'),
+    ...MODELS.filter(m=>m.apiProvider==='HUMAN_EXPERT'&&!strikeIds.has(m.id)),
+    ...MODELS.filter(m=>vercelIds.has(m.id)&&!strikeIds.has(m.id)),
+    ...MODELS.filter(m=>m.apiProvider==='CUSTOM'&&!strikeIds.has(m.id)),
   ];
 
-  // Render non-struck groups with a divider before the first text-only model
-  let headerShown = false;
-  for (const group of groups) {
-    for (const m of group) {
-      if (!m.supportsScreenshot && !headerShown) {
-        addSectionHeader('Text-only Models:');
-        headerShown = true;
-      }
-      addItem(m);
-    }
+  // Sort: screenshot models first, text-only second — stable (preserves group order within each half)
+  const withScreenshot = nonStruck.filter(m => m.supportsScreenshot);
+  const textOnly       = nonStruck.filter(m => !m.supportsScreenshot);
+
+  withScreenshot.forEach(m => addItem(m));
+  if (textOnly.length > 0) {
+    addSectionHeader('Text-only Models:');
+    textOnly.forEach(m => addItem(m));
   }
 
-  // Struck models always at the bottom (also sorted by screenshot desc)
-  sortGroup(MODELS.filter(m=>strikeIds.has(m.id))).forEach(m => addItem(m));
+  // Struck models always at the bottom (screenshot first within struck)
+  const struck = MODELS.filter(m=>strikeIds.has(m.id));
+  [...struck.filter(m=>m.supportsScreenshot), ...struck.filter(m=>!m.supportsScreenshot)]
+    .forEach(m => addItem(m));
 }
 
 /* ════════════════════════════════════════════════════════
@@ -2428,33 +2422,28 @@ function _getModelSelectOrder(failedModelId) {
   const strikeIds  = new Set(MODELS.filter(m => m.strike).map(m => m.id));
   const firstIds   = new Set(['PUTER_GPT_5_4_NANO','MISTRAL_MEDIUM_3_1','MISTRAL_MEDIUM_3_5']);
 
-  const sortGroup = (arr) => [
-    ...arr.filter(m => m.supportsScreenshot),
-    ...arr.filter(m => !m.supportsScreenshot),
+  // Collect all non-struck models in original group order
+  const nonStruck = [
+    ...MODELS.filter(m => firstIds.has(m.id)),
+    ...MODELS.filter(m => !firstIds.has(m.id) && !vercelIds.has(m.id) && !strikeIds.has(m.id) && m.apiProvider !== 'HUMAN_EXPERT' && m.apiProvider !== 'CUSTOM'),
+    ...MODELS.filter(m => m.apiProvider === 'HUMAN_EXPERT' && !strikeIds.has(m.id)),
+    ...MODELS.filter(m => vercelIds.has(m.id) && !strikeIds.has(m.id)),
+    ...MODELS.filter(m => m.apiProvider === 'CUSTOM' && !strikeIds.has(m.id)),
   ];
 
-  const groups = [
-    sortGroup(MODELS.filter(m => firstIds.has(m.id))),
-    sortGroup(MODELS.filter(m => !firstIds.has(m.id) && !vercelIds.has(m.id) && !strikeIds.has(m.id) && m.apiProvider !== 'HUMAN_EXPERT' && m.apiProvider !== 'CUSTOM')),
-    sortGroup(MODELS.filter(m => m.apiProvider === 'HUMAN_EXPERT' && !strikeIds.has(m.id))),
-    sortGroup(MODELS.filter(m => vercelIds.has(m.id) && !strikeIds.has(m.id))),
-    sortGroup(MODELS.filter(m => m.apiProvider === 'CUSTOM' && !strikeIds.has(m.id))),
-  ];
-
+  const withScreenshot = nonStruck.filter(m => m.supportsScreenshot);
+  const textOnly       = nonStruck.filter(m => !m.supportsScreenshot);
   const HEADER_SENTINEL = { _isSectionHeader: true, displayName: 'Text-only Models:' };
-  const ordered = [];
-  let headerInserted = false;
-  for (const group of groups) {
-    for (const m of group) {
-      if (!m.supportsScreenshot && !headerInserted) {
-        ordered.push(HEADER_SENTINEL);
-        headerInserted = true;
-      }
-      ordered.push(m);
-    }
-  }
-  // Struck models at the bottom
-  sortGroup(MODELS.filter(m => strikeIds.has(m.id))).forEach(m => ordered.push(m));
+
+  const struck = MODELS.filter(m => strikeIds.has(m.id));
+  const struckSorted = [...struck.filter(m => m.supportsScreenshot), ...struck.filter(m => !m.supportsScreenshot)];
+
+  const ordered = [
+    ...withScreenshot,
+    ...(textOnly.length > 0 ? [HEADER_SENTINEL] : []),
+    ...textOnly,
+    ...struckSorted,
+  ];
 
   // Move the failed model to the front (without duplication), skip sentinels
   const withoutFailed = ordered.filter(m => m._isSectionHeader || m.id !== failedModelId);
