@@ -1688,6 +1688,9 @@ function hasRequiredApiKeyForCurrentModel() {
     const keys = _getCustomModelApiKeys(m.id);
     return keys.length > 0;
   }
+  // For Puter: Freedom subscribers never need to add their own key (Firebase provides keys),
+  // so skip the key check when Freedom is active — even if Firebase keys haven't loaded yet.
+  if (m.apiProvider === 'PUTER' && _isFreedomEntitled()) return true;
   const keys = _getKeysWithFallback(m.apiProvider);
   return !!(keys && keys.length);
 }
