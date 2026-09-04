@@ -12,6 +12,8 @@ It can now execute commands directly in Termux via API. After each update, click
 
 ## Download and install
 
+#### The app cannot be found temporarily in Google Play due to Google's long review waiting times
+
 Due to a GitHub restriction, you must be logged in to view the nightly download links:
 </br>
 
