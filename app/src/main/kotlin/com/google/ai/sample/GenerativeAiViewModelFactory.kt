@@ -135,9 +135,11 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
             mainActivity?.getCurrentApiKey(currentModel.apiProvider) ?: ""
         }
 
-        if (apiKey.isEmpty()) {
-            throw IllegalStateException("API key for ${currentModel.apiProvider} is not available. Please set an API key.")
-        }
+        // If no API key is set yet (e.g. on first launch), use a placeholder.
+        // All online API calls are handled by WebView JavaScript, so the native
+        // GenerativeModel only needs a non-empty string to satisfy the SDK constructor.
+        // The user will set the real key via the WebView settings UI.
+        val resolvedApiKey = if (apiKey.isEmpty()) "no-key-set-webview-handles-calls" else apiKey
 
         val createdViewModel = with(modelClass) {
             when {
@@ -147,7 +149,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     // ViewModel infrastructure. The actual API calls go through JS.
                     val generativeModel = GenerativeModel(
                         modelName = currentModel.modelName,
-                        apiKey = apiKey,
+                        apiKey = resolvedApiKey,
                         generationConfig = config
                     )
                     PhotoReasoningViewModel(
@@ -242,4 +244,5 @@ object GenerativeAiViewModelFactory {
         }
     }
 }
+
 
