@@ -1336,7 +1336,7 @@ let _humanExpertConnected = false;
    INIT
 ════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  currentModelId = Bridge.getSelectedModelId();
+  currentModelId = _resolveValidModelId(Bridge.getSelectedModelId());
   if (currentModelId === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
     currentModelId = 'PUTER_QWEN3_7_PLUS';
     Bridge.setSelectedModel(currentModelId);
@@ -1675,6 +1675,19 @@ window.onAccessibilityStateChanged = function(isEnabled) {
 /* ════════════════════════════════════════════════════════
    NAVIGATION
 ════════════════════════════════════════════════════════ */
+// The native bridge's getSelectedModelId() can return an id that has no entry
+// in the WebView's MODELS list — notably 'ONLINE_MODEL', the native enum's
+// default value on a fresh install before any WebView-only model was ever
+// persisted. If that id were used as-is, MODELS.find() would fail to find it
+// and hasRequiredApiKeyForCurrentModel() would then wrongly report "no key
+// needed" (treating the unknown model like HUMAN_EXPERT/offline), letting
+// Try it skip straight to chat even though no Puter key is configured.
+// Fall back to the default Puter model whenever the id is unknown here.
+function _resolveValidModelId(id) {
+  if (id === 'HUMAN_EXPERT') return id; // handled separately by callers
+  if (MODELS.some(x => x.id === id)) return id;
+  return 'PUTER_QWEN3_7_PLUS';
+}
 // Returns true if the currently selected model can be used right away
 // (no API key required, or a key is already stored for it/its provider).
 function hasRequiredApiKeyForCurrentModel() {
@@ -6007,7 +6020,7 @@ window.onCustomAction = window.onCustomAction || function(id, groups, batchSize)
 };
 
 window.onAndroidReady = function() {
-  currentModelId = Bridge.getSelectedModelId();
+  currentModelId = _resolveValidModelId(Bridge.getSelectedModelId());
   if (currentModelId === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
     currentModelId = 'PUTER_QWEN3_7_PLUS';
     Bridge.setSelectedModel(currentModelId);
