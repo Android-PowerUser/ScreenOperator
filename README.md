@@ -47,15 +47,6 @@ You can build the apk with Github actions: Stay in your fork, on your user accou
 #### • The first Android agent app in the world (since June/2025)
 
 
-### needed updates
-
-Some models no longer work because Google is changing the interfaces (API). You can usually find the current API names at [aistudio.google.com](https://aistudio.google.com), but you might not find them all there.
-
-In some Android versions, the app exhibits surprising errors. If you find one, please fix it.
-
-Free models accessible via an API can be found [here](https://github.com/cheahjs/free-llm-api-resources)
-
-
 
 
 ### Video
@@ -68,5 +59,3 @@ Free models accessible via an API can be found [here](https://github.com/cheahjs
 
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
-
-Preview models will eventually be removed by Google and unfortunately won't be redirected to finished equivalents. If this happens, please change the API in the code.
