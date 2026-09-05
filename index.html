@@ -2372,35 +2372,7 @@ window.debugKiloProxy = async function() {
 };
 
 /* ── MAIN ENTRY POINT: called by Android for every AI turn ───── */
-/* ── PROVIDER FALLBACK CIRCLE ─────────────────────────────────────────────────
-   When any provider fails with a non-key error (network, 5xx, service down) OR
-   when all API keys for a provider are exhausted, the request is automatically
-   retried on the next model in this fixed circle:
 
-     GLM 5V Turbo (Vercel) → Qwen3.7 Plus (Puter) → Gemini 3.7 Flash → Mistral Medium 3.5
-
-   Models outside the circle fall in at GLM 5V Turbo (the first circle member).
-   A model already IN the circle falls in at its own successor.
-   If every circle member also fails, the original error is surfaced.
-
-   Key errors (401/402/403/429/quota) within a provider trigger key rotation
-   inside the individual _call* function; only when all keys of that provider
-   are exhausted does the error propagate here and trigger the circle.
-
-   A native Toast announces the switch: "Vercel produced errors and the model
-   was changed to '<displayName>'" — or just "Vercel produced errors" if the
-   whole circle failed.
-
-   The circle can also be triggered from JS by calling
-   window.triggerFallbackCircle(modelId) — useful for WebViewBridge callers. */
-
-const _FALLBACK_CIRCLE = [
-  'GLM_5V_TURBO_VERCEL',   // GLM 5V Turbo (Vercel)
-  'MUSE_SPARK_1_2_VERCEL', // Muse Spark 1.2 Contributor (Vercel)
-  'PUTER_QWEN3_7_PLUS',    // Qwen3.7 Plus (Puter)
-  'GEMINI_3_FLASH',        // Gemini 3.7 Flash
-  'MISTRAL_MEDIUM_3_5',    // Mistral Medium 3.5
-];
 
 async function _dispatchToModel(modelId, payload) {
   const modelDef = MODELS.find(m => m.id === modelId);
@@ -2587,69 +2559,16 @@ function _dismissModelSelectPopup() {
   if (reject) reject(new Error('Model selection cancelled by user'));
 }
 
-async function _runWithFallbackCircle(payload, originalModelId, errorMessage) {
-  const originalDef  = MODELS.find(m => m.id === originalModelId);
-  const originalName = originalDef ? originalDef.displayName : originalModelId;
-  const errMsg = errorMessage || originalName + ' produced an error';
-
-  // Show the popup and wait for the user to pick a model (or dismiss).
-  let chosen;
-  try {
-    chosen = await _showModelSelectPopup(errMsg, originalModelId, payload);
-  } catch(dismissed) {
-    // User dismissed — surface as a generic error (no model was chosen).
-    throw new Error(errMsg);
-  }
-
-  const { chosenModelId } = chosen;
-  const chosenDef = MODELS.find(m => m.id === chosenModelId);
-
-  // ── HUMAN_EXPERT special handling ──────────────────────────────────────────
-  if (chosenModelId === 'HUMAN_EXPERT') {
-    if (!Bridge.isPurchased()) {
-      // Not purchased → show paywall; when dismissed, reopen the model-select popup
-      openHumanExpertPopup(() => {
-        _showModelSelectWebPopup(errMsg, originalModelId, _getModelSelectOrder(originalModelId), payload);
-      });
-      return; // resolve silently — no further error shown
-    }
-    // Purchased → switch model and send only the first user message
-    selectModel('HUMAN_EXPERT');
-    // Find the first user message: prefer the earliest history entry, else payload.userText
-    const firstMsg = (() => {
-      const hist = payload.history || [];
-      const firstUser = hist.find(e => e.role === 'user');
-      return (firstUser && (firstUser.text || firstUser.content)) || payload.userText || '';
-    })();
-    if (firstMsg) Bridge.sendMessage(firstMsg);
-    return; // native side takes over from here
-  }
-  // ───────────────────────────────────────────────────────────────────────────
-
-  try {
-    await _dispatchToModel(chosenModelId, payload);
-    // Success — update selected model persistently.
-    if (chosenModelId !== originalModelId) {
-      const msg = 'Model changed to \'' + (chosenDef ? chosenDef.displayName : chosenModelId) + '\'';
-      Bridge.showToast(msg, true);
-      selectModel(chosenModelId);
-    }
-  } catch(fe) {
-    if (fe && fe.name === 'AbortError') throw fe;
-    // The chosen model also failed — show the popup again with the new error.
-    const newErr = (fe && fe.message) ? fe.message : String(fe);
-    await _runWithFallbackCircle(payload, chosenModelId, newErr);
-  }
-}
-
-/* Public entry point so native WebViewBridge code can trigger the circle:
+/* Public entry point so native WebViewBridge code can show the model-select popup:
    Android.evaluateJavascript("window.triggerFallbackCircle('" + modelId + "')") */
 window.triggerFallbackCircle = function(modelId) {
   if (!window.__lastPayload) { Bridge.showToast('No pending request to retry', false); return; }
-  _runWithFallbackCircle(window.__lastPayload, modelId || currentModelId, null)
-    .catch(e => {
-      if (e && e.name !== 'AbortError') Bridge.onCustomModelError(e.message || String(e));
-    });
+  const id = modelId || currentModelId;
+  const def = MODELS.find(m => m.id === id);
+  const errMsg = (def ? def.displayName : id) + ' produced an error';
+  _showModelSelectPopup(errMsg, id, window.__lastPayload).catch(e => {
+    if (e && e.name !== 'AbortError') Bridge.onCustomModelError(e.message || String(e));
+  });
 };
 
 window.onCustomModelRequest = async function(payloadJsonString) {
@@ -2783,9 +2702,44 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       // Any non-abort error shows the model-select popup so the user can pick
       // the next model to try. Surfaces the original error if the user dismisses.
       const _errMsg = e && e.message ? e.message : String(e);
+      const _failedModelId = payload.modelId || currentModelId;
+      let _chosen;
       try {
-        await _runWithFallbackCircle(payload, payload.modelId || currentModelId, _errMsg);
-        // User picked a model and it succeeded — generationRunning was reset inside _call*.
+        _chosen = await _showModelSelectPopup(_errMsg, _failedModelId, payload);
+      } catch(dismissed) {
+        // User dismissed the popup — surface the original error.
+        Bridge.onCustomModelError(_errMsg);
+        generationRunning = false;
+        if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
+        return;
+      }
+      const { chosenModelId: _chosenId } = _chosen;
+      const _chosenDef = MODELS.find(m => m.id === _chosenId);
+
+      // ── HUMAN_EXPERT special handling ──────────────────────────────────────
+      if (_chosenId === 'HUMAN_EXPERT') {
+        if (!Bridge.isPurchased()) {
+          openHumanExpertPopup(() => {
+            _showModelSelectWebPopup(_errMsg, _failedModelId, _getModelSelectOrder(_failedModelId), payload);
+          });
+          return;
+        }
+        selectModel('HUMAN_EXPERT');
+        const _hist = payload.history || [];
+        const _firstUser = _hist.find(e => e.role === 'user');
+        const _firstMsg = (_firstUser && (_firstUser.text || _firstUser.content)) || payload.userText || '';
+        if (_firstMsg) Bridge.sendMessage(_firstMsg);
+        return;
+      }
+      // ───────────────────────────────────────────────────────────────────────
+
+      try {
+        await _dispatchToModel(_chosenId, payload);
+        // Success — update selected model persistently.
+        if (_chosenId !== _failedModelId) {
+          Bridge.showToast('Model changed to '' + (_chosenDef ? _chosenDef.displayName : _chosenId) + ''', true);
+          selectModel(_chosenId);
+        }
         return;
       } catch(fe) {
         if (fe && fe.name === 'AbortError') return;
