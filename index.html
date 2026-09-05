@@ -1169,7 +1169,7 @@ let MODELS = [
   { id:'GROQ_GPT_OSS_120B',        displayName:'GPT-OSS 120B (Groq)',                     modelName:'openai/gpt-oss-120b',                      apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. 30 free requests per min – thinking enabled',   strike:false },
   { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GPT_OSS_120B',             displayName:'GPT-OSS 120B (Cerebras)',                  modelName:'gpt-oss-120b',                             apiProvider:'CEREBRAS',  supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Text-only model. Cerebras may restrict free access or change rate limits.', strike:false },
-  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3.6 Flash',                         modelName:'gemini-3.6-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
+  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3.7 Flash',                         modelName:'gemini-3.7-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'Supports images. 4.92 GB download required.',    strike:false },
   { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'Text-only model. 3.40 GB download required.',    strike:false },
   { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
@@ -2398,7 +2398,7 @@ const _FALLBACK_CIRCLE = [
   'GLM_5V_TURBO_VERCEL',   // GLM 5V Turbo (Vercel)
   'MUSE_SPARK_1_2_VERCEL', // Muse Spark 1.2 Contributor (Vercel)
   'PUTER_QWEN3_7_PLUS',    // Qwen3.7 Plus (Puter)
-  'GEMINI_3_FLASH',        // Gemini 3.6 Flash
+  'GEMINI_3_FLASH',        // Gemini 3.7 Flash
   'MISTRAL_MEDIUM_3_5',    // Mistral Medium 3.5
 ];
 
