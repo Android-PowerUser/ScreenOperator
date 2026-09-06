@@ -46,13 +46,12 @@ You can build the apk with Github actions: Stay in your fork, on your user accou
 [Here](https://github.com/Android-PowerUser/ScreenOperator/discussions/87) you can share your own Skill Set
 
 <br/>
-#### • The first Android agent app in the world (since June/2025)
 
+### • The first Android agent app in the world (since June/2025)
 
+#### Video:
 
-
-### Video
-[First attempt ever is recorded](https://m.youtube.com/watch?v=o095RSFXJuc)
+[First attempt ever is recorded (YouTube)](https://m.youtube.com/watch?v=o095RSFXJuc)
 
 <br/> 
 
