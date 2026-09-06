@@ -4865,47 +4865,45 @@ async function _executeCommandsFromResponse(text) {
 }
 
 /* ── Termux permission guard ─────────────────────────────────────────────────
-   Checks com.termux.permission.RUN_COMMAND before every Termux dispatch.
-   If missing, asks Android for it (which shows the system permission dialog).
-   Resolves true if granted (or already granted), false if denied.
+   Waits until com.termux.permission.RUN_COMMAND is granted, re-prompting on
+   every denial. Execution resumes automatically once the user taps "Allow".
    Falls back to true (skip check) on older builds without the bridge methods. */
-function _ensureTermuxPermission() {
+function _requestTermuxPermissionOnce() {
   return new Promise((resolve) => {
-    if (!getInAndroid()) { resolve(false); return; }
-    try {
-      // Backward-compat: older native builds don't expose these methods
-      if (typeof Android.isTermuxPermissionGranted !== 'function' ||
-          typeof Android.requestTermuxPermission !== 'function') {
-        resolve(true); // old build – skip check, native side handles errors as before
-        return;
-      }
-      if (Bridge.isTermuxPermissionGranted()) { resolve(true); return; }
-      // Permission missing → request it; Android calls back into this JS function
-      const cbName = '_termuxPermissionCallback_' + Date.now();
-      window[cbName] = function(granted) {
-        delete window[cbName];
-        resolve(granted === true || granted === 'true');
-      };
-      Bridge.requestTermuxPermission(cbName);
-    } catch(e) {
-      console.error('_ensureTermuxPermission error', e);
-      resolve(true); // on unexpected error: let native side handle it
-    }
+    const cbName = '_termuxPermissionCallback_' + Date.now();
+    window[cbName] = function(granted) {
+      delete window[cbName];
+      resolve(granted === true || granted === 'true');
+    };
+    Bridge.requestTermuxPermission(cbName);
   });
 }
 
-async function _executeTermuxWithPermissionCheck(command) {
-  const granted = await _ensureTermuxPermission();
-  if (!granted) {
-    // Stop the entire execution loop so no auto-screenshot / Screen Elements
-    // response is triggered after the denial.
-    _stopExecution = true;
-    generationRunning = false;
-    if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
-    removeTermuxWaitingBubble();
-    addErrorBubble('⚠️ Termux permission "Run commands in Termux environment" was not granted. Execution halted. Please allow the permission in Settings → Apps → Screen Operator → Permissions and retry.');
-    return;
+async function _waitForTermuxPermission() {
+  if (!getInAndroid()) return false;
+  try {
+    // Backward-compat: older native builds don't expose these methods
+    if (typeof Android.isTermuxPermissionGranted !== 'function' ||
+        typeof Android.requestTermuxPermission !== 'function') {
+      return true; // old build – skip check, native side handles errors as before
+    }
+    // Loop until granted — re-shows the system dialog on each denial
+    while (!Bridge.isTermuxPermissionGranted()) {
+      const granted = await _requestTermuxPermissionOnce();
+      if (granted) break;
+      // User denied — wait a short moment before re-prompting so Android
+      // doesn't immediately dismiss the dialog again
+      await new Promise(r => setTimeout(r, 800));
+    }
+    return true;
+  } catch(e) {
+    console.error('_waitForTermuxPermission error', e);
+    return true; // on unexpected error: let native side handle it
   }
+}
+
+async function _executeTermuxWithPermissionCheck(command) {
+  await _waitForTermuxPermission();
   showTermuxWaitingBubble();
   _armTermuxTimeout(command);
   Bridge.runTermuxCommand(_buildTermuxSessionCommand(command));
