@@ -2641,13 +2641,26 @@ function _onApiKeyPopupClosed() {
   if (!_pendingModelSelectAfterApiKey) return;
   const pending = _pendingModelSelectAfterApiKey;
   _pendingModelSelectAfterApiKey = null;
-  // Restore promise callbacks so the model-select popup can still resolve/reject.
+  // Restore promise callbacks so the model-select flow can still resolve/reject.
   _modelSelectResolve = pending.resolve;
   _modelSelectReject  = pending.reject;
-  // Re-show the model-select popup so the user can pick again (or confirm the
-  // same model now that a key has been added).
-  const orderedModels = _getModelSelectOrder(pending.chosenModelId);
-  _showModelSelectWebPopup(pending.errorMessage, pending.chosenModelId, orderedModels, pending.payload);
+
+  const chosenModel = MODELS.find(m => m.id === pending.chosenModelId);
+  if (_modelNeedsApiKey(chosenModel)) {
+    // Still no key for this model — re-show the model-select popup so the
+    // user can pick again (or retry the same model if they added a key
+    // for a different provider by mistake).
+    const orderedModels = _getModelSelectOrder(pending.chosenModelId);
+    _showModelSelectWebPopup(pending.errorMessage, pending.chosenModelId, orderedModels, pending.payload);
+    return;
+  }
+  // A key was added — proceed with the originally chosen model.
+  document.getElementById('model-select-overlay')?.classList.remove('visible');
+  if (window.__statusLight) window.__statusLight.set('waiting');
+  const resolve = _modelSelectResolve;
+  _modelSelectResolve = null;
+  _modelSelectReject  = null;
+  if (resolve) resolve({ chosenModelId: pending.chosenModelId, payload: pending.payload });
 }
 
 function _dismissModelSelectPopup() {
