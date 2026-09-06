@@ -2737,7 +2737,7 @@ window.onCustomModelRequest = async function(payloadJsonString) {
         await _dispatchToModel(_chosenId, payload);
         // Success — update selected model persistently.
         if (_chosenId !== _failedModelId) {
-          Bridge.showToast('Model changed to '' + (_chosenDef ? _chosenDef.displayName : _chosenId) + ''', true);
+          Bridge.showToast('Model changed to \'' + (_chosenDef ? _chosenDef.displayName : _chosenId) + '\'', true);
           selectModel(_chosenId);
         }
         return;
