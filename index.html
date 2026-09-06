@@ -8996,24 +8996,28 @@ function _collapseOldScreenElementBubbles() {
 })();
 
 /* ── Auto-accept MediaProjection / screen-share dialog ──────────────────────
-   Triggered whenever Bridge.requestScreenshot() is called. The Android system
-   shows a 3-step dialog to grant screen-capture (MediaProjection) permission.
+   Triggered whenever Bridge.requestScreenshot() is called, but ONLY does anything
+   when Android.isScreenCaptureActive() reports false — i.e. only when the native
+   side is actually about to show the screen-share permission dialog (first
+   screenshot of the session, or after the permission was revoked). On every
+   other screenshot (the common case) this hook is a no-op, so it never
+   interferes with retrieve() or any other command that ends in an
+   auto-appended SCREENSHOT.
 
-   KEY INSIGHT: When the dialog appears, the WebView goes to the background and
-   JS setTimeout() freezes. The fix: queue all taps into the AccessibilityService
-   command queue BEFORE calling Android.requestScreenshot(). The queue runs in
-   the AccessibilityService (a separate Android service), independent of the
-   WebView thread, so it keeps executing even while the dialog is shown.
-
-   The taps use waitSeconds between them (via Android.waitSeconds) so the queue
-   itself handles the timing — no JS timers needed after the dialog opens.
+   ORDER MATTERS: the taps are queued via Android.tapByText() AFTER calling
+   Android.requestScreenshot(), not before — queuing them first would search
+   for dialog buttons that don't exist yet, since the dialog is only created
+   by the native requestScreenshot() call. The taps queue into the
+   AccessibilityService's command queue, which runs independently of the
+   WebView thread (with its own ~500ms delay between commands), so it keeps
+   working even while the WebView is paused in the background by the dialog.
 
    Flow:
-     [tap "Eine App teilen"] → [wait 2s] → [tap "Gesamten Bildschirm teilen"]
-     → [wait 2s] → [tap "Bildschirm teilen"] → then requestScreenshot()
+     requestScreenshot() → [tap "Eine App teilen"] → [tap "Gesamten Bildschirm
+     teilen"] → [tap "Bildschirm teilen"]
 ─────────────────────────────────────────────────────────────────────────────── */
 (function() {
-  var _mpAcceptPending = false;
+  var _mpAcceptInFlight = false;
 
   /* Map language prefix → [step1_dropdown, step2_fullscreen, step3_confirm] */
   var LANG_MAP = {
@@ -9052,35 +9056,48 @@ function _collapseOldScreenElementBubbles() {
     return LANG_MAP[lang] || LANG_MAP['en'];
   }
 
-  /* Hook Bridge.requestScreenshot — queue the 3 taps into the AccessibilityService
-     command queue BEFORE launching the dialog. The queue runs independently of the
-     WebView thread, so it keeps working while the app is in the background. */
+  /* Queue the 3 taps AFTER the dialog has been requested. No JS delay needed
+     between them: the AccessibilityService command queue already serialises
+     execution with its own ~500ms gap between commands, and that queue keeps
+     running even while the WebView is backgrounded by the system dialog. */
+  function _queueMediaProjectionTaps() {
+    var texts = getTexts();
+    try {
+      Android.tapByText(texts[0]); // open dropdown: "Eine App teilen"
+      Android.tapByText(texts[1]); // select: "Gesamten Bildschirm teilen"
+      Android.tapByText(texts[2]); // confirm: "Bildschirm teilen"
+    } catch(e) {}
+    // Small safety margin in case the dialog takes a moment to actually open
+    // before the queue reaches the first tap; the queue itself will simply
+    // retry-search when it processes each command a few hundred ms apart.
+    setTimeout(function() { _mpAcceptInFlight = false; }, 6000);
+  }
+
+  /* Hook Bridge.requestScreenshot: call the real screenshot request first (this
+     is what makes Android show the dialog when permission is missing), then —
+     only if the permission was indeed missing — queue the auto-accept taps. */
   var _origRequestScreenshot = Bridge.requestScreenshot;
   Bridge.requestScreenshot = function() {
-    if (getInAndroid() && !_mpAcceptPending) {
-      _mpAcceptPending = true;
-      var texts = getTexts();
-      try {
-        // Step 1: tap the dropdown ("Eine App teilen")
-        // waitSeconds(2) gives the dialog time to appear before step 2
-        Android.tapByText(texts[0]);
-        Android.waitSeconds(2);
-        // Step 2: select "Gesamten Bildschirm teilen" from the opened dropdown
-        Android.tapByText(texts[1]);
-        Android.waitSeconds(2);
-        // Step 3: confirm with "Bildschirm teilen"
-        Android.tapByText(texts[2]);
-      } catch(e) {}
-      // Reset flag after the last queued command has had time to run (~6 s total)
-      setTimeout(function() { _mpAcceptPending = false; }, 8000);
+    var result = _origRequestScreenshot.apply(this, arguments);
+
+    if (getInAndroid() && !_mpAcceptInFlight) {
+      var alreadyActive = true;
+      try { alreadyActive = Android.isScreenCaptureActive(); } catch(e) { alreadyActive = true; }
+
+      if (!alreadyActive) {
+        _mpAcceptInFlight = true;
+        _queueMediaProjectionTaps();
+      }
     }
-    return _origRequestScreenshot.apply(this, arguments);
+
+    return result;
   };
 })();
 
 </script>
 </body>
 </html>
+
 
 
 
