@@ -4867,11 +4867,18 @@ async function _executeCommandsFromResponse(text) {
 /* ── Termux permission guard ─────────────────────────────────────────────────
    Checks com.termux.permission.RUN_COMMAND before every Termux dispatch.
    If missing, asks Android for it (which shows the system permission dialog).
-   Resolves true if granted (or already granted), false if denied.            */
+   Resolves true if granted (or already granted), false if denied.
+   Falls back to true (skip check) on older builds without the bridge methods. */
 function _ensureTermuxPermission() {
   return new Promise((resolve) => {
     if (!getInAndroid()) { resolve(false); return; }
     try {
+      // Backward-compat: older native builds don't expose these methods
+      if (typeof Android.isTermuxPermissionGranted !== 'function' ||
+          typeof Android.requestTermuxPermission !== 'function') {
+        resolve(true); // old build – skip check, native side handles errors as before
+        return;
+      }
       if (Bridge.isTermuxPermissionGranted()) { resolve(true); return; }
       // Permission missing → request it; Android calls back into this JS function
       const cbName = '_termuxPermissionCallback_' + Date.now();
@@ -4882,7 +4889,7 @@ function _ensureTermuxPermission() {
       Bridge.requestTermuxPermission(cbName);
     } catch(e) {
       console.error('_ensureTermuxPermission error', e);
-      resolve(false);
+      resolve(true); // on unexpected error: let native side handle it
     }
   });
 }
@@ -4890,8 +4897,13 @@ function _ensureTermuxPermission() {
 async function _executeTermuxWithPermissionCheck(command) {
   const granted = await _ensureTermuxPermission();
   if (!granted) {
+    // Stop the entire execution loop so no auto-screenshot / Screen Elements
+    // response is triggered after the denial.
+    _stopExecution = true;
+    generationRunning = false;
+    if (window.onGenerationStateChanged) window.onGenerationStateChanged(false, false);
     removeTermuxWaitingBubble();
-    addErrorBubble('⚠️ Termux permission "Run commands in Termux environment" not granted. Please allow it in Settings → Apps → Screen Operator → Permissions.');
+    addErrorBubble('⚠️ Termux permission "Run commands in Termux environment" was not granted. Execution halted. Please allow the permission in Settings → Apps → Screen Operator → Permissions and retry.');
     return;
   }
   showTermuxWaitingBubble();
