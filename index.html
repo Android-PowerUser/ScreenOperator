@@ -1082,6 +1082,8 @@ const Bridge = {
   scrollLeftFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollLeftFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
   scrollRightFromCoordinates:(x,y,distance,durationMs)=>{ if(getInAndroid()) Android.scrollRightFromCoordinates(String(x), String(y), String(distance), Number(durationMs)||0); },
   openAppByNameOrPackage:(appNameOrPackage)=>{ if(getInAndroid()) Android.openAppByNameOrPackage(String(appNameOrPackage)); },
+  isTermuxPermissionGranted:()=>{ return getInAndroid() ? Android.isTermuxPermissionGranted() : false; },
+  requestTermuxPermission:(cb)=>{ if(getInAndroid()) Android.requestTermuxPermission(cb); },
   runTermuxCommand:(command)=>{ if(getInAndroid()) Android.runTermuxCommand(String(command)); },
   waitSeconds:(seconds)=>{ if(getInAndroid()) Android.waitSeconds(Number(seconds)||0); },
   requestScreenshot:()=>{ if(getInAndroid()) Android.requestScreenshot(); },
@@ -4862,11 +4864,46 @@ async function _executeCommandsFromResponse(text) {
   }
 }
 
+/* ── Termux permission guard ─────────────────────────────────────────────────
+   Checks com.termux.permission.RUN_COMMAND before every Termux dispatch.
+   If missing, asks Android for it (which shows the system permission dialog).
+   Resolves true if granted (or already granted), false if denied.            */
+function _ensureTermuxPermission() {
+  return new Promise((resolve) => {
+    if (!getInAndroid()) { resolve(false); return; }
+    try {
+      if (Bridge.isTermuxPermissionGranted()) { resolve(true); return; }
+      // Permission missing → request it; Android calls back into this JS function
+      const cbName = '_termuxPermissionCallback_' + Date.now();
+      window[cbName] = function(granted) {
+        delete window[cbName];
+        resolve(granted === true || granted === 'true');
+      };
+      Bridge.requestTermuxPermission(cbName);
+    } catch(e) {
+      console.error('_ensureTermuxPermission error', e);
+      resolve(false);
+    }
+  });
+}
+
+async function _executeTermuxWithPermissionCheck(command) {
+  const granted = await _ensureTermuxPermission();
+  if (!granted) {
+    removeTermuxWaitingBubble();
+    addErrorBubble('⚠️ Termux permission "Run commands in Termux environment" not granted. Please allow it in Settings → Apps → Screen Operator → Permissions.');
+    return;
+  }
+  showTermuxWaitingBubble();
+  _armTermuxTimeout(command);
+  Bridge.runTermuxCommand(_buildTermuxSessionCommand(command));
+}
+
 async function _executeSingleCommand(cmd) {
   switch (cmd.type) {
     case 'ENTER':        Bridge.pressEnterKey(); break;
     case 'WRITE_TEXT':   Bridge.writeText(cmd.text); break;
-    case 'TERMUX':       showTermuxWaitingBubble(); _armTermuxTimeout(cmd.command); Bridge.runTermuxCommand(_buildTermuxSessionCommand(cmd.command)); break;
+    case 'TERMUX':       await _executeTermuxWithPermissionCheck(cmd.command); break;
     case 'CLICK':        Bridge.tapByText(cmd.text); break;
     case 'LONG_CLICK':   Bridge.longTapByText(cmd.text); break;
     case 'TAP':          Bridge.tapAtCoordinates(cmd.x, cmd.y); break;

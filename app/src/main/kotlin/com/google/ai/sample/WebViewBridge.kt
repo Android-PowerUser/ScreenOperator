@@ -2,11 +2,13 @@ package com.google.ai.sample
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import androidx.core.content.ContextCompat
 import com.google.ai.sample.feature.multimodal.PhotoReasoningUiState
 import com.google.ai.sample.util.GenerationSettingsPreferences
 import com.google.ai.sample.util.SystemMessageEntry
@@ -1099,6 +1101,24 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         ScreenOperatorAccessibilityService.executeCommand(
             com.google.ai.sample.util.Command.OpenApp(appNameOrPackage)
         )
+    }
+
+    @JavascriptInterface
+    fun isTermuxPermissionGranted(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            "com.termux.permission.RUN_COMMAND"
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    @JavascriptInterface
+    fun requestTermuxPermission(jsCallbackName: String) {
+        mainActivity.requestTermuxRunCommandPermission { granted ->
+            val script = "${jsCallbackName}(${granted})"
+            mainActivity.runOnUiThread {
+                mainActivity.getWebView()?.evaluateJavascript(script, null)
+            }
+        }
     }
 
     @JavascriptInterface

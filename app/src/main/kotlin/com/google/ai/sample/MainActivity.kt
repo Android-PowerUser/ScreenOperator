@@ -171,6 +171,8 @@ class MainActivity : ComponentActivity() {
     private val foregroundMediaProjectionPermission = android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
 
 
+    fun getWebView(): android.webkit.WebView? = webViewInstance
+
     fun requestTermuxRunCommandPermission(onResult: (Boolean) -> Unit) {
         Log.d(TAG, "Requesting Termux RUN_COMMAND permission without pre-check")
         onTermuxRunCommandPermissionResult = onResult
