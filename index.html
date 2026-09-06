@@ -8700,231 +8700,80 @@ function _collapseOldScreenElementBubbles() {
 
 /* ── Auto-accept MediaProjection / screen-share dialog ──────────────────────
    Triggered whenever Bridge.requestScreenshot() is called. The Android system
-   shows a multi-step dialog to grant screen-capture (MediaProjection) permission.
-   The Accessibility Service is used to tap the required buttons in sequence,
-   supporting all locales Android ships with.
+   shows a 3-step dialog to grant screen-capture (MediaProjection) permission.
+
+   The Accessibility Service's tapByText goes through a serial command queue,
+   so we must send exactly ONE tap per step — chosen by the device's UI language
+   (navigator.language). Only fallback to English if the language is unknown.
 
    Flow (matches screenshots):
-     1. Dialog appears: dropdown shows "Eine App teilen" / "Share an app" → click it
-     2. Select "Gesamten Bildschirm teilen" / "Share entire screen" from the dropdown
-     3. Click the confirm button "Bildschirm teilen" / "Share screen" / "Start now"
-
-   Delays are conservative to accommodate slow devices. The guard flag prevents
-   double-triggering when the status-light hook also wraps requestScreenshot.
+     1. (1.5 s wait) Tap the dropdown item "Eine App teilen" / "Share an app"
+     2. (1.5 s wait) Tap "Gesamten Bildschirm teilen" / "Share entire screen"
+     3. (1.5 s wait) Tap the confirm button "Bildschirm teilen" / "Share screen"
 ─────────────────────────────────────────────────────────────────────────────── */
 (function() {
   var _mpAcceptPending = false;
 
-  /* All known button/option texts for each step, across every Android locale.
-     Extend this list if new languages appear in the wild. */
-  var STEP1_TEXTS = [
-    // German
-    'Eine App teilen',
-    // English
-    'Share an app', 'An app',
-    // French
-    'Partager une application', 'Une application',
-    // Spanish
-    'Compartir una aplicación', 'Una aplicación',
-    // Italian
-    'Condividi un\'app', 'Un\'app',
-    // Portuguese
-    'Compartilhar um app', 'Um app',
-    // Dutch
-    'Een app delen', 'Een app',
-    // Polish
-    'Udostępnij aplikację', 'Aplikację',
-    // Russian
-    'Поделиться приложением', 'Приложение',
-    // Turkish
-    'Uygulama paylaş', 'Uygulama',
-    // Chinese (Simplified)
-    '共享应用', '分享应用',
-    // Chinese (Traditional)
-    '共用應用程式', '分享應用程式',
-    // Japanese
-    'アプリを共有', 'アプリ',
-    // Korean
-    '앱 공유', '앱',
-    // Arabic
-    'مشاركة تطبيق',
-    // Hindi
-    'ऐप साझा करें',
-    // Indonesian
-    'Bagikan aplikasi',
-    // Swedish
-    'Dela en app',
-    // Norwegian
-    'Del en app',
-    // Danish
-    'Del en app',
-    // Finnish
-    'Jaa sovellus',
-    // Czech
-    'Sdílet aplikaci',
-    // Slovak
-    'Zdieľať aplikáciu',
-    // Hungarian
-    'Alkalmazás megosztása',
-    // Romanian
-    'Partajați o aplicație',
-    // Greek
-    'Κοινή χρήση εφαρμογής',
-    // Ukrainian
-    'Поділитися програмою',
-    // Thai
-    'แชร์แอป',
-    // Vietnamese
-    'Chia sẻ ứng dụng',
-  ];
+  /* Map language tag prefix → [step1, step2, step3] */
+  var LANG_MAP = {
+    'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen'],
+    'en': ['Share an app',                 'Share entire screen',                  'Share screen'],
+    'fr': ['Partager une application',     'Partager tout l\'écran',              'Partager l\'écran'],
+    'es': ['Compartir una aplicación',     'Compartir toda la pantalla',           'Compartir pantalla'],
+    'it': ['Condividi un\'app',           'Condividi l\'intero schermo',         'Condividi schermo'],
+    'pt': ['Compartilhar um app',          'Compartilhar tela inteira',            'Compartilhar tela'],
+    'nl': ['Een app delen',                'Volledig scherm delen',                'Scherm delen'],
+    'pl': ['Udostępnij aplikację',         'Udostępnij cały ekran',               'Udostępnij ekran'],
+    'ru': ['Поделиться приложением',       'Поделиться всем экраном',             'Поделиться экраном'],
+    'tr': ['Uygulama paylaş',              'Tüm ekranı paylaş',                   'Ekranı paylaş'],
+    'zh': ['共享应用',                      '共享整个屏幕',                         '共享屏幕'],
+    'ja': ['アプリを共有',                  '画面全体を共有',                       '画面を共有'],
+    'ko': ['앱 공유',                       '전체 화면 공유',                       '화면 공유'],
+    'ar': ['مشاركة تطبيق',                'مشاركة الشاشة بأكملها',              'مشاركة الشاشة'],
+    'hi': ['ऐप साझा करें',               'पूरी स्क्रीन साझा करें',             'स्क्रीन साझा करें'],
+    'id': ['Bagikan aplikasi',             'Bagikan seluruh layar',                'Bagikan layar'],
+    'sv': ['Dela en app',                  'Dela hela skärmen',                    'Dela skärmen'],
+    'nb': ['Del en app',                   'Del hele skjermen',                    'Del skjermen'],
+    'da': ['Del en app',                   'Del hele skærmen',                     'Del skærmen'],
+    'fi': ['Jaa sovellus',                 'Jaa koko näyttö',                      'Jaa näyttö'],
+    'cs': ['Sdílet aplikaci',              'Sdílet celou obrazovku',               'Sdílet obrazovku'],
+    'sk': ['Zdieľať aplikáciu',            'Zdieľať celú obrazovku',               'Zdieľať obrazovku'],
+    'hu': ['Alkalmazás megosztása',        'A teljes képernyő megosztása',         'Képernyő megosztása'],
+    'ro': ['Partajați o aplicație',        'Partajați tot ecranul',                'Partajați ecranul'],
+    'el': ['Κοινή χρήση εφαρμογής',       'Κοινή χρήση ολόκληρης της οθόνης',   'Κοινή χρήση οθόνης'],
+    'uk': ['Поділитися програмою',         'Поділитися всім екраном',             'Поділитися екраном'],
+    'th': ['แชร์แอป',                      'แชร์ทั้งหน้าจอ',                      'แชร์หน้าจอ'],
+    'vi': ['Chia sẻ ứng dụng',            'Chia sẻ toàn bộ màn hình',            'Chia sẻ màn hình'],
+  };
 
-  var STEP2_TEXTS = [
-    // German
-    'Gesamten Bildschirm teilen',
-    // English
-    'Share entire screen', 'Entire screen',
-    // French
-    'Partager tout l\'écran', 'Tout l\'écran',
-    // Spanish
-    'Compartir toda la pantalla', 'Toda la pantalla',
-    // Italian
-    'Condividi l\'intero schermo', 'Schermo intero',
-    // Portuguese
-    'Compartilhar tela inteira', 'Tela inteira',
-    // Dutch
-    'Volledig scherm delen', 'Volledig scherm',
-    // Polish
-    'Udostępnij cały ekran', 'Cały ekran',
-    // Russian
-    'Поделиться всем экраном', 'Весь экран',
-    // Turkish
-    'Tüm ekranı paylaş', 'Tüm ekran',
-    // Chinese (Simplified)
-    '共享整个屏幕', '整个屏幕',
-    // Chinese (Traditional)
-    '共用整個畫面', '整個畫面',
-    // Japanese
-    '画面全体を共有', '画面全体',
-    // Korean
-    '전체 화면 공유', '전체 화면',
-    // Arabic
-    'مشاركة الشاشة بأكملها',
-    // Hindi
-    'पूरी स्क्रीन साझा करें',
-    // Indonesian
-    'Bagikan seluruh layar', 'Seluruh layar',
-    // Swedish
-    'Dela hela skärmen', 'Hela skärmen',
-    // Norwegian
-    'Del hele skjermen', 'Hele skjermen',
-    // Danish
-    'Del hele skærmen', 'Hele skærmen',
-    // Finnish
-    'Jaa koko näyttö', 'Koko näyttö',
-    // Czech
-    'Sdílet celou obrazovku', 'Celá obrazovka',
-    // Slovak
-    'Zdieľať celú obrazovku', 'Celá obrazovka',
-    // Hungarian
-    'A teljes képernyő megosztása', 'Teljes képernyő',
-    // Romanian
-    'Partajați tot ecranul', 'Tot ecranul',
-    // Greek
-    'Κοινή χρήση ολόκληρης της οθόνης', 'Ολόκληρη η οθόνη',
-    // Ukrainian
-    'Поділитися всім екраном', 'Весь екран',
-    // Thai
-    'แชร์ทั้งหน้าจอ', 'ทั้งหน้าจอ',
-    // Vietnamese
-    'Chia sẻ toàn bộ màn hình', 'Toàn bộ màn hình',
-  ];
-
-  var STEP3_TEXTS = [
-    // German
-    'Bildschirm teilen',
-    // English
-    'Share screen', 'Start now', 'Start sharing',
-    // French
-    'Partager l\'écran', 'Commencer',
-    // Spanish
-    'Compartir pantalla', 'Empezar ahora',
-    // Italian
-    'Condividi schermo', 'Inizia ora',
-    // Portuguese
-    'Compartilhar tela', 'Começar agora',
-    // Dutch
-    'Scherm delen', 'Nu beginnen',
-    // Polish
-    'Udostępnij ekran', 'Zacznij teraz',
-    // Russian
-    'Поделиться экраном', 'Начать',
-    // Turkish
-    'Ekranı paylaş', 'Şimdi başla',
-    // Chinese (Simplified)
-    '共享屏幕', '立即开始',
-    // Chinese (Traditional)
-    '共用畫面', '立即開始',
-    // Japanese
-    '画面を共有', '今すぐ開始',
-    // Korean
-    '화면 공유', '지금 시작',
-    // Arabic
-    'مشاركة الشاشة', 'ابدأ الآن',
-    // Hindi
-    'स्क्रीन साझा करें', 'अभी शुरू करें',
-    // Indonesian
-    'Bagikan layar', 'Mulai sekarang',
-    // Swedish
-    'Dela skärmen', 'Starta nu',
-    // Norwegian
-    'Del skjermen', 'Start nå',
-    // Danish
-    'Del skærmen', 'Start nu',
-    // Finnish
-    'Jaa näyttö', 'Aloita nyt',
-    // Czech
-    'Sdílet obrazovku', 'Spustit',
-    // Slovak
-    'Zdieľať obrazovku', 'Spustiť',
-    // Hungarian
-    'Képernyő megosztása', 'Kezdés',
-    // Romanian
-    'Partajați ecranul', 'Porniți acum',
-    // Greek
-    'Κοινή χρήση οθόνης', 'Εκκίνηση',
-    // Ukrainian
-    'Поділитися екраном', 'Почати',
-    // Thai
-    'แชร์หน้าจอ', 'เริ่มเลย',
-    // Vietnamese
-    'Chia sẻ màn hình', 'Bắt đầu ngay',
-  ];
-
-  /* Tap the first matching text from a list, then call next() after delayMs */
-  function tapFirstMatch(textList, delayMs, next) {
-    if (!getInAndroid()) { if (next) setTimeout(next, 0); return; }
-    for (var i = 0; i < textList.length; i++) {
-      try { Android.tapByText(String(textList[i])); } catch(e) {}
-    }
-    if (next) setTimeout(next, delayMs);
+  function getTexts() {
+    var lang = (navigator.language || 'en').toLowerCase().slice(0, 2);
+    return LANG_MAP[lang] || LANG_MAP['en'];
   }
 
   function _autoAcceptMediaProjection() {
     if (_mpAcceptPending) return;
+    if (!getInAndroid()) return;
     _mpAcceptPending = true;
 
-    // Step 1: Wait for dialog, then click the dropdown to open "Share an app" option
+    var texts = getTexts();
+    var DELAY = 1800; // ms between steps — conservative for slow devices
+
+    // Step 1: wait for dialog to appear, then tap the dropdown
     setTimeout(function() {
-      tapFirstMatch(STEP1_TEXTS, 1200, function() {
-        // Step 2: Select "Share entire screen" from the dropdown
-        tapFirstMatch(STEP2_TEXTS, 1200, function() {
-          // Step 3: Click the confirm / "Share screen" button
-          tapFirstMatch(STEP3_TEXTS, 500, function() {
-            _mpAcceptPending = false;
-          });
-        });
-      });
-    }, 1500); // initial wait for the system dialog to appear
+      try { Android.tapByText(texts[0]); } catch(e) {}
+
+      // Step 2: wait for dropdown to open, then select "entire screen"
+      setTimeout(function() {
+        try { Android.tapByText(texts[1]); } catch(e) {}
+
+        // Step 3: wait for dialog to update, then tap confirm button
+        setTimeout(function() {
+          try { Android.tapByText(texts[2]); } catch(e) {}
+          _mpAcceptPending = false;
+        }, DELAY);
+      }, DELAY);
+    }, 1800); // initial wait for system dialog to appear
   }
 
   /* Hook Bridge.requestScreenshot so that every call also triggers auto-accept */
