@@ -1414,6 +1414,11 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "getMacros"                     -> getMacros()
                 "setExtensionHandlers"          -> setExtensionHandlers(a.getString("json")).toString()
                 "getExtensionHandlers"          -> getExtensionHandlers()
+                // ── Offline Model Download ────────────────────────────────────
+                "startModelDownload"            -> { startModelDownload(a.getString("modelId")); "" }
+                "cancelModelDownload"           -> { cancelModelDownload(a.getString("modelId")); "" }
+                "isModelDownloaded"             -> isModelDownloadedForJs(a.getString("modelId"))
+                "getDownloadedModels"           -> getDownloadedModelsJson()
                 // ── Unknown: fall through to macro registry ───────────────────
                 else                            -> runMacro(method, a)
             }
@@ -1655,6 +1660,155 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+
+    // ── Offline Model Download (WebView-driven) ───────────────────────────────
+    // The WebView owns all download UI and state. These handlers provide the
+    // native file-system access and system DownloadManager integration that
+    // JS cannot do on its own. Progress is pushed back into the WebView via
+    // evaluateJavascript so that window.onModelDownloadProgress / Complete /
+    // Cancelled can update the popup without any polling.
+
+    /** Active Android DownloadManager download IDs keyed by modelId. */
+    private val activeDownloadIds = mutableMapOf<String, Long>()
+
+    private fun offlineModelDir(): java.io.File? = mainActivity.getExternalFilesDir(null)
+
+    private fun offlineModelFile(modelId: String): java.io.File? {
+        val dir = offlineModelDir() ?: return null
+        val model = ModelOption.entries.find { it.name == modelId } ?: return null
+        val candidates = listOfNotNull(model.offlineModelFilename) + model.offlineAlternateModelFilenames
+        return candidates.map { java.io.File(dir, it) }.firstOrNull { it.exists() && it.length() > 0L }
+    }
+
+    private fun isOfflineModelReady(modelId: String): Boolean {
+        val dir = offlineModelDir() ?: return false
+        val model = ModelOption.entries.find { it.name == modelId } ?: return false
+        val required = if (model.offlineRequiredFilenames.isNotEmpty())
+            model.offlineRequiredFilenames else listOfNotNull(model.offlineModelFilename)
+        if (required.isEmpty()) return false
+        return required.all { name -> java.io.File(dir, name).let { it.exists() && it.length() > 0L } } &&
+               offlineModelFile(modelId) != null
+    }
+
+    fun isModelDownloadedForJs(modelId: String): String = isOfflineModelReady(modelId).toString()
+
+    fun getDownloadedModelsJson(): String {
+        val arr = JSONArray()
+        ModelOption.entries
+            .filter { it.isOfflineModel && isOfflineModelReady(it.name) }
+            .forEach { arr.put(it.name) }
+        return arr.toString()
+    }
+
+    fun startModelDownload(modelId: String) {
+        val model = ModelOption.entries.find { it.name == modelId } ?: run {
+            notifyWebViewDownloadCancelled(modelId)
+            return
+        }
+        val url = com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model)
+            ?: model.downloadUrl ?: run {
+                notifyWebViewDownloadCancelled(modelId)
+                return
+            }
+        val dir = offlineModelDir() ?: run {
+            notifyWebViewDownloadCancelled(modelId)
+            return
+        }
+        val filename = model.offlineModelFilename ?: url.substringAfterLast('/').takeIf { it.isNotBlank() } ?: "model_$modelId"
+        val destFile = java.io.File(dir, filename)
+
+        // If already complete, notify immediately
+        if (isOfflineModelReady(modelId)) {
+            notifyWebViewDownloadComplete(modelId)
+            return
+        }
+
+        // Cancel any existing download for this model
+        cancelModelDownload(modelId)
+
+        val dm = mainActivity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val request = android.app.DownloadManager.Request(Uri.parse(url)).apply {
+            setTitle("Downloading ${model.displayName}")
+            setDescription("ScreenOperator offline model")
+            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE)
+            setDestinationUri(Uri.fromFile(destFile))
+            setAllowedOverMetered(true)
+            setAllowedOverRoaming(false)
+        }
+        val downloadId = dm.enqueue(request)
+        activeDownloadIds[modelId] = downloadId
+
+        // Poll progress on a background coroutine and push updates to WebView
+        CoroutineScope(Dispatchers.IO).launch {
+            while (activeDownloadIds[modelId] == downloadId) {
+                val q = android.app.DownloadManager.Query().setFilterById(downloadId)
+                val cursor = dm.query(q)
+                if (cursor != null && cursor.moveToFirst()) {
+                    val status = cursor.getInt(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
+                    val dlBytes = cursor.getLong(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                    val totalBytes = cursor.getLong(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    val percent = if (totalBytes > 0) dlBytes * 100.0 / totalBytes else 0.0
+                    cursor.close()
+                    when (status) {
+                        android.app.DownloadManager.STATUS_RUNNING,
+                        android.app.DownloadManager.STATUS_PAUSED -> {
+                            mainActivity.runOnUiThread {
+                                mainActivity.getWebView()?.evaluateJavascript(
+                                    "window.onModelDownloadProgress && window.onModelDownloadProgress('${jsEscape(modelId)}',$percent,$dlBytes,$totalBytes)",
+                                    null
+                                )
+                            }
+                        }
+                        android.app.DownloadManager.STATUS_SUCCESSFUL -> {
+                            activeDownloadIds.remove(modelId)
+                            notifyWebViewDownloadComplete(modelId)
+                            break
+                        }
+                        android.app.DownloadManager.STATUS_FAILED -> {
+                            activeDownloadIds.remove(modelId)
+                            notifyWebViewDownloadCancelled(modelId)
+                            break
+                        }
+                        else -> { /* PENDING — keep waiting */ }
+                    }
+                } else {
+                    cursor?.close()
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
+    fun cancelModelDownload(modelId: String) {
+        val downloadId = activeDownloadIds.remove(modelId) ?: return
+        try {
+            val dm = mainActivity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            dm.remove(downloadId)
+        } catch (e: Exception) {
+            Log.w(TAG, "cancelModelDownload: ${e.message}")
+        }
+        notifyWebViewDownloadCancelled(modelId)
+    }
+
+    private fun notifyWebViewDownloadComplete(modelId: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getWebView()?.evaluateJavascript(
+                "window.onModelDownloadComplete && window.onModelDownloadComplete('${jsEscape(modelId)}')",
+                null
+            )
+        }
+    }
+
+    private fun notifyWebViewDownloadCancelled(modelId: String) {
+        mainActivity.runOnUiThread {
+            mainActivity.getWebView()?.evaluateJavascript(
+                "window.onModelDownloadCancelled && window.onModelDownloadCancelled('${jsEscape(modelId)}')",
+                null
+            )
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     companion object {
         fun jsEscape(s: String): String =

@@ -34,7 +34,6 @@ import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.TermuxFeedbackPreferences
 import com.google.ai.sample.util.TermuxOutputPreferences
 import com.google.ai.sample.util.UserInputPreferences
-import com.google.ai.sample.feature.multimodal.ModelDownloadManager
 import com.google.ai.sample.ModelOption
 import com.google.ai.sample.GenerativeAiViewModelFactory
 import com.google.ai.sample.InferenceBackend
@@ -285,7 +284,7 @@ class PhotoReasoningViewModel(
         val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
         val context = appContext
         if (currentModel.isOfflineModel) {
-            if (ModelDownloadManager.isModelDownloaded(context, currentModel)) {
+            if (isOfflineModelDownloaded(context, currentModel)) {
                 // Point 7 & 16: Initialize model asynchronously to not block UI
                 viewModelScope.launch(Dispatchers.IO) {
                     withContext(Dispatchers.Main) {
@@ -316,17 +315,44 @@ class PhotoReasoningViewModel(
         Log.d(TAG, "AIResultStreamReceiver registered with LocalBroadcastManager.")
     }
 
+    // ── Offline model file helpers (previously in ModelDownloadManager) ──────────
+
+    private fun getOfflineModelFile(context: Context, model: ModelOption): File? {
+        val dir = context.getExternalFilesDir(null) ?: return null
+        val candidates = listOfNotNull(model.offlineModelFilename) + model.offlineAlternateModelFilenames
+        return candidates.map { File(dir, it) }.firstOrNull { it.exists() && it.length() > 0L }
+    }
+
+    private fun getRequiredOfflineFiles(context: Context, model: ModelOption): List<File> {
+        val dir = context.getExternalFilesDir(null) ?: return emptyList()
+        val names = if (model.offlineRequiredFilenames.isNotEmpty())
+            model.offlineRequiredFilenames
+        else
+            listOfNotNull(model.offlineModelFilename)
+        return names.map { File(dir, it) }
+    }
+
+    private fun getMissingOfflineModelFiles(context: Context, model: ModelOption): List<String> =
+        getRequiredOfflineFiles(context, model)
+            .filter { !it.exists() || it.length() == 0L }
+            .map { it.name }
+
+    fun isOfflineModelDownloaded(context: Context, model: ModelOption): Boolean =
+        getMissingOfflineModelFiles(context, model).isEmpty() && getOfflineModelFile(context, model) != null
+
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /**
      * Initialize the offline model. Returns null on success, or an error message on failure.
      */
     private fun initializeOfflineModel(context: Context): String? {
         try {
             val currentModel = com.google.ai.sample.GenerativeAiViewModelFactory.getCurrentModel()
-            val missingFiles = ModelDownloadManager.getMissingRequiredFiles(context, currentModel)
+            val missingFiles = getMissingOfflineModelFiles(context, currentModel)
             if (missingFiles.isNotEmpty()) {
                 return "Offline model files missing: ${missingFiles.joinToString(", ")}. Please redownload the model package."
             }
-            val selectedModelFile = ModelDownloadManager.getModelFile(context, currentModel)
+            val selectedModelFile = getOfflineModelFile(context, currentModel)
             if (selectedModelFile != null && selectedModelFile.exists()) {
                 // Load backend preference
                 GenerativeAiViewModelFactory.loadBackendPreference(context)
@@ -838,7 +864,7 @@ class PhotoReasoningViewModel(
         if (currentModel.isOfflineModel) {
             val context = appContext
 
-            if (!ModelDownloadManager.isModelDownloaded(context, currentModel)) {
+            if (!isOfflineModelDownloaded(context, currentModel)) {
                 _uiState.value = PhotoReasoningUiState.Error("Model not downloaded.")
                 return
             }
