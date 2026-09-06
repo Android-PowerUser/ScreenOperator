@@ -1140,6 +1140,18 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.TakeScreenshot)
     }
 
+    /**
+     * Tells the WebView whether ScreenCaptureService is already running, i.e. whether
+     * the MediaProjection permission has already been granted for this session. When
+     * false, the next requestScreenshot() call will make Android show the screen-share
+     * permission dialog. The WebView uses this to decide whether to auto-click through
+     * that dialog, so it never fires on ordinary screenshots where no dialog appears.
+     */
+    @JavascriptInterface
+    fun isScreenCaptureActive(): Boolean {
+        return ScreenCaptureService.isRunning()
+    }
+
     @JavascriptInterface
     fun markCompleted() {
         ScreenOperatorAccessibilityService.executeCommand(com.google.ai.sample.util.Command.Completed)
@@ -1819,6 +1831,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
              .replace("<", "\\u003C")
     }
 }
+
 
 
 
