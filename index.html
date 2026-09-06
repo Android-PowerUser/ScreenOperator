@@ -8702,19 +8702,23 @@ function _collapseOldScreenElementBubbles() {
    Triggered whenever Bridge.requestScreenshot() is called. The Android system
    shows a 3-step dialog to grant screen-capture (MediaProjection) permission.
 
-   The Accessibility Service's tapByText goes through a serial command queue,
-   so we must send exactly ONE tap per step — chosen by the device's UI language
-   (navigator.language). Only fallback to English if the language is unknown.
+   KEY INSIGHT: When the dialog appears, the WebView goes to the background and
+   JS setTimeout() freezes. The fix: queue all taps into the AccessibilityService
+   command queue BEFORE calling Android.requestScreenshot(). The queue runs in
+   the AccessibilityService (a separate Android service), independent of the
+   WebView thread, so it keeps executing even while the dialog is shown.
 
-   Flow (matches screenshots):
-     1. (1.5 s wait) Tap the dropdown item "Eine App teilen" / "Share an app"
-     2. (1.5 s wait) Tap "Gesamten Bildschirm teilen" / "Share entire screen"
-     3. (1.5 s wait) Tap the confirm button "Bildschirm teilen" / "Share screen"
+   The taps use waitSeconds between them (via Android.waitSeconds) so the queue
+   itself handles the timing — no JS timers needed after the dialog opens.
+
+   Flow:
+     [tap "Eine App teilen"] → [wait 2s] → [tap "Gesamten Bildschirm teilen"]
+     → [wait 2s] → [tap "Bildschirm teilen"] → then requestScreenshot()
 ─────────────────────────────────────────────────────────────────────────────── */
 (function() {
   var _mpAcceptPending = false;
 
-  /* Map language tag prefix → [step1, step2, step3] */
+  /* Map language prefix → [step1_dropdown, step2_fullscreen, step3_confirm] */
   var LANG_MAP = {
     'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen'],
     'en': ['Share an app',                 'Share entire screen',                  'Share screen'],
@@ -8751,35 +8755,28 @@ function _collapseOldScreenElementBubbles() {
     return LANG_MAP[lang] || LANG_MAP['en'];
   }
 
-  function _autoAcceptMediaProjection() {
-    if (_mpAcceptPending) return;
-    if (!getInAndroid()) return;
-    _mpAcceptPending = true;
-
-    var texts = getTexts();
-    var DELAY = 1800; // ms between steps — conservative for slow devices
-
-    // Step 1: wait for dialog to appear, then tap the dropdown
-    setTimeout(function() {
-      try { Android.tapByText(texts[0]); } catch(e) {}
-
-      // Step 2: wait for dropdown to open, then select "entire screen"
-      setTimeout(function() {
-        try { Android.tapByText(texts[1]); } catch(e) {}
-
-        // Step 3: wait for dialog to update, then tap confirm button
-        setTimeout(function() {
-          try { Android.tapByText(texts[2]); } catch(e) {}
-          _mpAcceptPending = false;
-        }, DELAY);
-      }, DELAY);
-    }, 1800); // initial wait for system dialog to appear
-  }
-
-  /* Hook Bridge.requestScreenshot so that every call also triggers auto-accept */
+  /* Hook Bridge.requestScreenshot — queue the 3 taps into the AccessibilityService
+     command queue BEFORE launching the dialog. The queue runs independently of the
+     WebView thread, so it keeps working while the app is in the background. */
   var _origRequestScreenshot = Bridge.requestScreenshot;
   Bridge.requestScreenshot = function() {
-    _autoAcceptMediaProjection();
+    if (getInAndroid() && !_mpAcceptPending) {
+      _mpAcceptPending = true;
+      var texts = getTexts();
+      try {
+        // Step 1: tap the dropdown ("Eine App teilen")
+        // waitSeconds(2) gives the dialog time to appear before step 2
+        Android.tapByText(texts[0]);
+        Android.waitSeconds(2);
+        // Step 2: select "Gesamten Bildschirm teilen" from the opened dropdown
+        Android.tapByText(texts[1]);
+        Android.waitSeconds(2);
+        // Step 3: confirm with "Bildschirm teilen"
+        Android.tapByText(texts[2]);
+      } catch(e) {}
+      // Reset flag after the last queued command has had time to run (~6 s total)
+      setTimeout(function() { _mpAcceptPending = false; }, 8000);
+    }
     return _origRequestScreenshot.apply(this, arguments);
   };
 })();
