@@ -2593,7 +2593,39 @@ function _installModelSelectNativeHandler(orderedModels, payload) {
   };
 }
 
+// When the user picks a model that has no API key yet, we store the pending
+// selection here, open the API-key popup, and re-show the model-list on close.
+let _pendingModelSelectAfterApiKey = null;
+
+function _modelNeedsApiKey(model) {
+  if (!model || model.isOffline || model.id === 'HUMAN_EXPERT') return false;
+  if (model.apiProvider === 'KILO') return false;
+  if (model.apiProvider === 'PUTER' && _isFreedomEntitled()) return false;
+  if (model.apiProvider === 'CUSTOM') return _getCustomModelApiKeys(model.id).length === 0;
+  const k = _getKeysWithFallback(model.apiProvider);
+  return !(k && k.length);
+}
+
 function _resolveModelSelect(chosenModelId, payload) {
+  const chosenModel = MODELS.find(m => m.id === chosenModelId);
+  if (_modelNeedsApiKey(chosenModel)) {
+    // Save pending context so we can re-show model list after key popup closes.
+    _pendingModelSelectAfterApiKey = {
+      chosenModelId,
+      payload,
+      resolve: _modelSelectResolve,
+      reject:  _modelSelectReject,
+      errorMessage:  document.getElementById('model-select-error-title')?.textContent || '',
+    };
+    // Hide the model list while the key popup is open.
+    document.getElementById('model-select-overlay')?.classList.remove('visible');
+    // Open API-key popup pre-selected on the missing provider.
+    const pid = chosenModel.apiProvider === 'CUSTOM'
+      ? ('CUSTOM:' + chosenModel.id)
+      : chosenModel.apiProvider;
+    openApiKeyPopup(pid);
+    return;
+  }
   document.getElementById('model-select-overlay')?.classList.remove('visible');
   // Restore the status-light overlay immediately after the popup is dismissed
   // so the user sees the overlay again right away (instead of only after the
@@ -2603,6 +2635,19 @@ function _resolveModelSelect(chosenModelId, payload) {
   _modelSelectResolve = null;
   _modelSelectReject  = null;
   if (resolve) resolve({ chosenModelId, payload });
+}
+
+function _onApiKeyPopupClosed() {
+  if (!_pendingModelSelectAfterApiKey) return;
+  const pending = _pendingModelSelectAfterApiKey;
+  _pendingModelSelectAfterApiKey = null;
+  // Restore promise callbacks so the model-select popup can still resolve/reject.
+  _modelSelectResolve = pending.resolve;
+  _modelSelectReject  = pending.reject;
+  // Re-show the model-select popup so the user can pick again (or confirm the
+  // same model now that a key has been added).
+  const orderedModels = _getModelSelectOrder(pending.chosenModelId);
+  _showModelSelectWebPopup(pending.errorMessage, pending.chosenModelId, orderedModels, pending.payload);
 }
 
 function _dismissModelSelectPopup() {
@@ -7692,7 +7737,10 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
    POPUP HELPERS
 ════════════════════════════════════════════════════════ */
 function openPopup(id) { document.getElementById(id).classList.add('open'); }
-function closePopup(id) { document.getElementById(id).classList.remove('open'); }
+function closePopup(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'popup-apikey') _onApiKeyPopupClosed();
+}
 
 // vh/dvh have been found unreliable inside this app's WebView (they resolve
 // to a height larger than window.innerHeight, see commit 597b75e for the
@@ -9020,6 +9068,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
