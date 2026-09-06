@@ -797,18 +797,10 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <!-- Key View Popup -->
 <div id="popup-keyview" class="overlay" onclick="overlayClose(event,'popup-keyview')">
   <div class="popup" onclick="event.stopPropagation()" style="max-width:420px">
-    <button class="popup-close" onclick="closePopup('popup-keyview')">✕</button>
+    <button class="popup-close" onclick="cancelEditKey()">✕</button>
     <div class="popup-title">API Key</div>
-    <!-- View mode -->
-    <div id="keyview-text" style="font-size:13px;word-break:break-all;background:var(--surface);border-radius:10px;padding:12px 14px;color:var(--text-primary);margin-bottom:14px;user-select:all"></div>
-    <!-- Edit mode (hidden by default) -->
-    <textarea id="keyview-edit-input" class="text-input" style="display:none;width:100%;box-sizing:border-box;font-size:13px;word-break:break-all;min-height:80px;resize:vertical;margin-bottom:14px" placeholder="Enter API Key"></textarea>
-    <div class="popup-actions" id="keyview-actions-view">
-      <button class="btn btn-text" onclick="closePopup('popup-keyview')">Close</button>
-      <button class="btn btn-text" onclick="startEditKey()">Edit</button>
-      <button class="btn btn-solid" id="keyview-copy-btn" onclick="copyKeyFromPopup()">Copy</button>
-    </div>
-    <div class="popup-actions" id="keyview-actions-edit" style="display:none">
+    <textarea id="keyview-edit-input" class="text-input" style="width:100%;box-sizing:border-box;font-size:13px;word-break:break-all;min-height:80px;resize:vertical;margin-bottom:14px" placeholder="Enter API Key"></textarea>
+    <div class="popup-actions">
       <button class="btn btn-text" onclick="cancelEditKey()">Cancel</button>
       <button class="btn btn-solid" onclick="saveEditKey()">Save</button>
     </div>
@@ -6723,47 +6715,28 @@ function deleteApiKey(key) {
 }
 
 function showKeyPopup(key) {
-  document.getElementById('keyview-text').textContent = key;
-  document.getElementById('keyview-text').style.display = '';
-  document.getElementById('keyview-edit-input').style.display = 'none';
-  document.getElementById('keyview-actions-view').style.display = '';
-  document.getElementById('keyview-actions-edit').style.display = 'none';
-  const btn = document.getElementById('keyview-copy-btn');
-  btn.textContent = 'Copy';
-  btn.disabled = false;
-  openPopup('popup-keyview');
-}
-function startEditKey() {
-  const currentKey = document.getElementById('keyview-text').textContent;
   const input = document.getElementById('keyview-edit-input');
-  input.value = currentKey;
-  document.getElementById('keyview-text').style.display = 'none';
-  input.style.display = '';
-  document.getElementById('keyview-actions-view').style.display = 'none';
-  document.getElementById('keyview-actions-edit').style.display = '';
-  input.focus();
-  input.select();
+  input.value = key;
+  input._originalKey = key;
+  openPopup('popup-keyview');
+  setTimeout(() => { input.focus(); input.select(); }, 100);
 }
 function cancelEditKey() {
-  document.getElementById('keyview-text').style.display = '';
-  document.getElementById('keyview-edit-input').style.display = 'none';
-  document.getElementById('keyview-actions-view').style.display = '';
-  document.getElementById('keyview-actions-edit').style.display = 'none';
+  closePopup('popup-keyview');
 }
 function saveEditKey() {
-  const oldKey = document.getElementById('keyview-text').textContent;
-  const newKey = document.getElementById('keyview-edit-input').value.trim();
+  const input = document.getElementById('keyview-edit-input');
+  const oldKey = input._originalKey || '';
+  const newKey = input.value.trim();
   if (!newKey) return;
   if (newKey !== oldKey) {
-    // Remove old key and add new one for current provider
     if (typeof Bridge !== 'undefined') {
       Bridge.removeApiKey(oldKey, currentProviderId);
       Bridge.saveApiKey(newKey, currentProviderId);
     }
-    document.getElementById('keyview-text').textContent = newKey;
     renderKeyList();
   }
-  cancelEditKey();
+  closePopup('popup-keyview');
 }
 function copyKeyFromPopup() {
   const key = document.getElementById('keyview-text').textContent;
