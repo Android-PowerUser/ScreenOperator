@@ -393,6 +393,17 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .key-label{flex:1;font-size:13px;color:var(--text-primary);word-break:break-all}
 .key-del{background:none;border:none;cursor:pointer;color:var(--error);font-size:15px;flex-shrink:0;padding:2px 6px}
 
+/* ── Offline model download popup ───────────────────────── */
+#model-download-overlay{z-index:1300;align-items:center;justify-content:center}
+#model-download-overlay.open{display:flex}
+.model-download-popup{width:100%;max-width:420px;margin:auto}
+#mdl-model-name{font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:4px}
+#mdl-model-size{font-size:13px;color:var(--text-secondary);margin-bottom:16px}
+.mdl-progress-track{height:6px;border-radius:3px;background:var(--outline-variant);overflow:hidden;margin-bottom:8px}
+.mdl-progress-fill{height:100%;border-radius:3px;background:var(--primary);width:0%;transition:width .3s linear}
+#mdl-progress-label{font-size:12px;color:var(--text-secondary);margin-bottom:16px;text-align:right}
+#mdl-status{font-size:13px;color:var(--text-secondary);margin-bottom:4px;min-height:18px}
+
 /* ── Model-select (error fallback) popup ────────────────── */
 #model-select-overlay{z-index:1200;align-items:center;justify-content:center;overflow:hidden}
 #model-select-overlay.visible{display:flex}
@@ -739,6 +750,22 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div id="model-select-error-title"></div>
     <div id="model-select-question">Which model should be used now?</div>
     <div id="model-select-options"></div>
+  </div>
+</div>
+
+<!-- Offline Model Download Popup -->
+<div id="model-download-overlay" class="overlay" onclick="event.stopPropagation()">
+  <div class="popup model-download-popup" onclick="event.stopPropagation()">
+    <div class="popup-title">Download Offline Model</div>
+    <div id="mdl-model-name"></div>
+    <div id="mdl-model-size"></div>
+    <div id="mdl-status">Starting download…</div>
+    <div class="mdl-progress-track"><div class="mdl-progress-fill" id="mdl-progress-fill"></div></div>
+    <div id="mdl-progress-label">0%</div>
+    <div class="popup-actions">
+      <button class="btn btn-text" id="mdl-cancel-btn" onclick="_cancelModelDownload()">Cancel</button>
+      <button class="btn btn-solid" id="mdl-background-btn" onclick="_backgroundModelDownload()">Background</button>
+    </div>
   </div>
 </div>
 
@@ -1341,6 +1368,16 @@ document.addEventListener('DOMContentLoaded', () => {
     currentModelId = 'PUTER_QWEN3_7_PLUS';
     Bridge.setSelectedModel(currentModelId);
   }
+  // Query Android for which offline models are already downloaded
+  if (getInAndroid()) {
+    try {
+      const dlJson = Android.dispatch('getDownloadedModels', '{}');
+      if (dlJson) {
+        const dlList = JSON.parse(dlJson);
+        (Array.isArray(dlList) ? dlList : []).forEach(id => { _downloadedModels[id] = true; });
+      }
+    } catch(e) { /* older native builds without this dispatch — silently ignore */ }
+  }
   buildModelDropdown();
   applyModelSelection(currentModelId);
   loadGenerationSettings();
@@ -1708,6 +1745,21 @@ function hasRequiredApiKeyForCurrentModel() {
   return !!(keys && keys.length);
 }
 function navigateToChat() {
+  // Block Try it while an offline model is still downloading
+  const curM = MODELS.find(x => x.id === currentModelId);
+  if (curM && curM.isOffline && getInAndroid()) {
+    if (_downloadingModelId === currentModelId) {
+      // Re-open the download popup so user can see progress or background it
+      _openDownloadPopup(currentModelId);
+      return;
+    }
+    if (!_isModelDownloaded(currentModelId)) {
+      // Not yet downloaded at all — trigger download
+      _prevModelId = null;
+      _startModelDownload(currentModelId);
+      return;
+    }
+  }
   if (!hasRequiredApiKeyForCurrentModel()) {
     const m = MODELS.find(x => x.id === currentModelId);
     // Preselect the popup on the provider that's missing a key, then bail
@@ -4994,6 +5046,120 @@ document.addEventListener('click', e => {
   if (menu.classList.contains('open') && !e.target.closest('#model-dropdown-menu') && !e.target.closest('#model-dropdown')) closeModelDropdown();
 });
 
+/* ════════════════════════════════════════════════════════
+   OFFLINE MODEL DOWNLOAD MANAGER
+════════════════════════════════════════════════════════ */
+let _downloadingModelId = null;   // model id currently being downloaded
+let _downloadedModels   = {};     // { modelId: true } — fully downloaded
+let _prevModelId        = null;   // model id before user selected offline model
+
+/** Called by Android when download progress updates (0–100). */
+window.onModelDownloadProgress = function(modelId, percent, bytesDownloaded, totalBytes) {
+  if (modelId !== _downloadingModelId) return;
+  const fill  = document.getElementById('mdl-progress-fill');
+  const label = document.getElementById('mdl-progress-label');
+  const status = document.getElementById('mdl-status');
+  if (fill)   fill.style.width = Math.min(100, percent) + '%';
+  if (label)  label.textContent = Math.min(100, Math.round(percent)) + '%';
+  if (status) {
+    if (totalBytes > 0) {
+      const dlMB    = (bytesDownloaded / 1048576).toFixed(0);
+      const totalMB = (totalBytes      / 1048576).toFixed(0);
+      status.textContent = dlMB + ' MB / ' + totalMB + ' MB';
+    } else {
+      status.textContent = 'Downloading…';
+    }
+  }
+};
+
+/** Called by Android when download completes. */
+window.onModelDownloadComplete = function(modelId) {
+  _downloadedModels[modelId] = true;
+  if (modelId === _downloadingModelId) {
+    _downloadingModelId = null;
+    _closeDownloadPopup();
+    if (getInAndroid()) Bridge.showToast(UI_STRINGS.toast_model_download_complete);
+    // If the completed model is still selected, re-apply so Try it works
+    if (currentModelId === modelId) applyModelSelection(modelId);
+  }
+};
+
+/** Called by Android when download is cancelled externally. */
+window.onModelDownloadCancelled = function(modelId) {
+  if (modelId === _downloadingModelId) {
+    _downloadingModelId = null;
+    _closeDownloadPopup();
+    // Revert model selection to previous
+    if (_prevModelId && _prevModelId !== modelId) {
+      selectModel(_prevModelId);
+    }
+  }
+};
+
+/** Called by Android when the download notification is tapped — re-show popup. */
+window.onDownloadNotificationTapped = function(modelId) {
+  if (modelId === _downloadingModelId) {
+    _openDownloadPopup(modelId);
+  }
+};
+
+function _isModelDownloaded(modelId) {
+  return !!_downloadedModels[modelId];
+}
+
+function _openDownloadPopup(modelId) {
+  const overlay = document.getElementById('model-download-overlay');
+  const m = MODELS.find(x => x.id === modelId);
+  if (!overlay || !m) return;
+  document.getElementById('mdl-model-name').textContent = m.displayName;
+  // Extract size from hint, e.g. "4.92 GB download required."
+  const sizeMatch = (m.hint || '').match(/[\d.]+\s*GB/i);
+  document.getElementById('mdl-model-size').textContent = sizeMatch
+    ? 'Download size: ' + sizeMatch[0]
+    : (m.hint || '');
+  // Reset progress bar if starting fresh
+  if (modelId !== _downloadingModelId) {
+    document.getElementById('mdl-progress-fill').style.width = '0%';
+    document.getElementById('mdl-progress-label').textContent = '0%';
+    document.getElementById('mdl-status').textContent = 'Starting download…';
+  }
+  overlay.classList.add('open');
+}
+
+function _closeDownloadPopup() {
+  const overlay = document.getElementById('model-download-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function _cancelModelDownload() {
+  const modelId = _downloadingModelId;
+  _downloadingModelId = null;
+  _closeDownloadPopup();
+  if (getInAndroid() && modelId) {
+    Android.dispatch('cancelModelDownload', JSON.stringify({ modelId }));
+  }
+  // Revert to previous model
+  if (_prevModelId && _prevModelId !== modelId) {
+    selectModel(_prevModelId);
+  } else if (!_prevModelId) {
+    // No previous — just re-apply current (which stays as is)
+    applyModelSelection(currentModelId);
+  }
+}
+
+function _backgroundModelDownload() {
+  _closeDownloadPopup();
+  // Download continues in background; model stays selected as "pending"
+}
+
+function _startModelDownload(modelId) {
+  _downloadingModelId = modelId;
+  _openDownloadPopup(modelId);
+  if (getInAndroid()) {
+    Android.dispatch('startModelDownload', JSON.stringify({ modelId }));
+  }
+}
+
 function selectModel(id) {
   if (id === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
     openHumanExpertPopup();
@@ -5004,12 +5170,35 @@ function selectModel(id) {
     _updateHumanExpertInputArea();
     if (getInAndroid()) Bridge.stopGeneration();
   }
+
+  // ── Offline model: check download state ────────────────────
+  const m = MODELS.find(x => x.id === id);
+  if (m && m.isOffline && getInAndroid()) {
+    if (_downloadingModelId === id) {
+      // Already downloading — just re-show popup, do NOT change selection
+      _openDownloadPopup(id);
+      return;
+    }
+    if (!_isModelDownloaded(id)) {
+      // Need to start a download; remember where we came from
+      _prevModelId = currentModelId !== id ? currentModelId : _prevModelId;
+      // Update currentModelId so the UI shows the selected model
+      currentModelId = id;
+      Bridge.setSelectedModel(id);
+      applyModelSelection(id);
+      loadGenerationSettings();
+      _startModelDownload(id);
+      return;
+    }
+    // Already downloaded — fall through to normal selection
+  }
+  // ───────────────────────────────────────────────────────────
+
   currentModelId = id;
   Bridge.setSelectedModel(id);
   // Persist supportsScreenshot for JS-only models so the native side can read it
   // when building the image payload (ONLINE_MODEL.supportsScreenshot is always true).
   if (getInAndroid()) {
-    const m = MODELS.find(x => x.id === id);
     if (m) {
       Android.dispatch('setJsOnlyModelSupportsScreenshot', JSON.stringify({ value: !!m.supportsScreenshot }));
     }
