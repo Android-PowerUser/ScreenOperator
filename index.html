@@ -818,6 +818,17 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   </div>
 </div>
 
+<!-- Import Share Popup -->
+<div id="popup-import-share" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-import-share')closePopup('popup-import-share')">
+  <div class="popup" style="width:90%;max-width:420px;padding:20px" onclick="event.stopPropagation()">
+    <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">Do you want to import your Skill Set from the Screen Operator community or from local?</div>
+    <div class="row" style="justify-content:space-between;gap:8px">
+      <button class="btn btn-solid" onclick="_importShareLocal()">Local</button>
+      <button class="btn btn-solid" onclick="_importShareCommunity()">Community</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Entry Popup -->
 <div id="popup-edit-entry" class="overlay" style="align-items:center;z-index:60" onclick="if(event.target.id==='popup-edit-entry')closeEditEntry()">
   <div class="popup db-edit-popup" onclick="event.stopPropagation()">
@@ -7518,6 +7529,22 @@ function _exportShareCommunity() {
 }
 
 function openImportPopup() {
+  openPopup('popup-import-share');
+}
+
+function _importShareLocal() {
+  closePopup('popup-import-share');
+  _performImportLocal();
+}
+
+function _importShareCommunity() {
+  closePopup('popup-import-share');
+  window.open('https://github.com/Android-PowerUser/ScreenOperator/discussions/87', '_blank');
+}
+
+// Local import: same file-picker flow the Import button used before the
+// Community/Local choice was added.
+function _performImportLocal() {
   if (getInAndroid()) {
     // Native path: system file picker, result comes back via window.onImportFileContent
     Android.importDatabaseEntries();
