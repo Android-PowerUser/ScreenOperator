@@ -9152,10 +9152,10 @@ function _collapseOldScreenElementBubbles() {
     if (isActive()) { console.log('[MP] already active, abort'); resetFlight(); return; }
     var texts = getTexts();
     var enTexts = LANG_MAP['en'];
-    console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' texts=' + JSON.stringify(texts));
+    var isNew = hasNewBridge();
+    console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' isNew=' + isNew + ' texts=' + JSON.stringify(texts));
 
-    // Phase 1: dropdown – exactly ONE tap, user lang first, EN fallback only if different and after short delay
-    // Do NOT tap generic – prevents "Bildschirm teilen" matching "Gesamten Bildschirm teilen" via contains()
+    // Phase 1: dropdown – user lang + EN fallback (needed for Android 14+ 3-step dialog)
     safeTap(texts[0]);
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
@@ -9165,7 +9165,7 @@ function _collapseOldScreenElementBubbles() {
       }
     }, 500);
 
-    // Phase 2: fullscreen – exactly ONE tap per timeout, no generics
+    // Phase 2: fullscreen
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
       console.log('[MP] phase2 fullscreen user lang');
@@ -9180,69 +9180,71 @@ function _collapseOldScreenElementBubbles() {
       }
     }, 1700);
 
-    // Phase 3: confirm – user lang
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] phase3 confirm user lang');
-      safeTap(texts[2]);
-    }, 2400);
-
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      if (texts[2] !== enTexts[2]) {
-        console.log('[MP] phase3 confirm EN fallback');
-        safeTap(enTexts[2]);
-      }
-    }, 2900);
-
-    // Phase 4: generic full phrases only – one at a time, not all at once
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] phase4 generic Start now');
-      safeTap(GENERIC_CONFIRMS[2]); // Start now
-    }, 3400);
-
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] phase4 generic Jetzt starten');
-      safeTap(GENERIC_CONFIRMS[3]); // Jetzt starten
-    }, 3800);
-
-    // Phase 5: coordinate fallbacks – bottom only, never center, one per timeout
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] coord 50/88');
-      safeTapCoord('50%', '88%');
-    }, 4200);
-
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] coord 80/90');
-      safeTapCoord('80%', '90%');
-    }, 4600);
-
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] coord 50/92');
-      safeTapCoord('50%', '92%');
-    }, 5000);
-
-    // Final confirm retry only – no dropdown/fullscreen re-tap, only confirm
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
-        _mpAttemptsConfirm++;
-        console.log('[MP] confirm retry #' + _mpAttemptsConfirm);
+    if (isNew) {
+      // NEW APKs: exact-match fix prevents "Bildschirm teilen" matching "Gesamten Bildschirm teilen"
+      // So 3rd click is safe
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] phase3 confirm user lang (new APK)');
         safeTap(texts[2]);
-        setTimeout(function() {
-          if (isActive()) { resetFlight(); return; }
-          safeTapCoord('50%', '88%');
+      }, 2400);
+
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        if (texts[2] !== enTexts[2]) {
+          console.log('[MP] phase3 confirm EN fallback (new APK)');
+          safeTap(enTexts[2]);
+        }
+      }, 2900);
+
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] phase4 generic Start now (new APK)');
+        safeTap(GENERIC_CONFIRMS[2]); // Start now
+      }, 3400);
+
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] phase4 generic Jetzt starten (new APK)');
+        safeTap(GENERIC_CONFIRMS[3]); // Jetzt starten
+      }, 3800);
+
+      // Final confirm retry only for new APKs
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+          _mpAttemptsConfirm++;
+          console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' (new APK)');
+          safeTap(texts[2]);
           setTimeout(function() { resetFlight(); }, 1200);
-        }, 600);
-      } else {
-        resetFlight();
-      }
-    }, 5600);
+        } else {
+          resetFlight();
+        }
+      }, 4600);
+    } else {
+      // OLD APKs: contains() bug -> "Bildschirm teilen" would match "Gesamten Bildschirm teilen" and toggle back
+      // User requested: no coordinates, leave 3rd simply away
+      // For old Android single-step dialog, only generic confirms are needed (Start now / Jetzt starten)
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] old APK – generic Start now only (no Bildschirm teilen, no coords)');
+        safeTap(GENERIC_CONFIRMS[2]); // Start now
+      }, 2400);
+
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] old APK – generic Jetzt starten only');
+        safeTap(GENERIC_CONFIRMS[3]); // Jetzt starten
+      }, 2900);
+
+      setTimeout(function() {
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] old APK – generic Zulassen/Allow');
+        safeTap(GENERIC_CONFIRMS[6]); // Zulassen
+        safeTap(GENERIC_CONFIRMS[7]); // Allow
+        setTimeout(function() { resetFlight(); }, 800);
+      }, 3400);
+    }
   }
 
   function triggerAutoAccept(force) {
