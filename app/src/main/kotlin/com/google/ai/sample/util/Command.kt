@@ -3,13 +3,13 @@ package com.google.ai.sample.util
 /**
  * Sealed class representing different types of commands.
  *
- * Commands are now fully JSON-configurable via command-builtins.json.
- * The CommandParser loads its patterns from JSON, not from hardcoded Kotlin.
+ * Built-in native command types remain sealed for the AccessibilityService.
+ * Live command parsing for current WebView flows is handled in index.html.
  *
  * The only commands that remain as sealed subtypes are those that the native
  * AccessibilityService needs to handle with platform-specific code.
  * WebView-only actions (Retrieve, model switching, popUp) are now handled
- * exclusively through Command.WebViewCustomAction via custom-action-types.json.
+ * through Command.WebViewCustomAction, configured inline by the WebView.
  */
 sealed class Command {
     data class ClickButton(val buttonText: String) : Command()
@@ -48,7 +48,7 @@ sealed class Command {
     // ── REMOVED: UseHighReasoningModel, UseLowReasoningModel (redundant – JS uses setSelectedModel)
     // ── REMOVED: Retrieve (now handled via WebViewCustomAction in JS)
     /**
-     * A custom action defined in the remote WebView bundle (custom-action-types.json or command-builtins.json).
+     * A custom action defined by the WebView bundle and forwarded through native fallback parsing.
      * When executed, the native accessibility service calls window.onCustomAction(id, groups[]) in JS.
      */
     data class WebViewCustomAction(val id: String, val groups: List<String>) : Command()

@@ -68,36 +68,17 @@ internal object AppMappings {
     )
 
     val appNameVariations: Map<String, List<String>>
-        get() {
-            val builtIn = appDefinitions
-                .filter { it.variations.isNotEmpty() }
-                .associate { it.canonicalName to it.variations }
-            val overrides = AppMappingOverridesConfig.current().apps
-                .filter { it.variations.isNotEmpty() }
-                .associate { it.canonicalName to it.variations }
-            // Overrides win on a canonicalName clash, but otherwise both sets are merged.
-            return builtIn + overrides
-        }
+        get() = appDefinitions
+            .filter { it.variations.isNotEmpty() }
+            .associate { it.canonicalName to it.variations }
 
     val manualMappings: Map<String, String>
-        get() {
-            val builtIn = buildMap {
-                appDefinitions.forEach { definition ->
-                    put(definition.canonicalName, definition.packageName)
-                    definition.aliasesForPackageLookup.forEach { alias ->
-                        put(alias, definition.packageName)
-                    }
+        get() = buildMap {
+            appDefinitions.forEach { definition ->
+                put(definition.canonicalName, definition.packageName)
+                definition.aliasesForPackageLookup.forEach { alias ->
+                    put(alias, definition.packageName)
                 }
             }
-            val overrides = buildMap {
-                AppMappingOverridesConfig.current().apps.forEach { definition ->
-                    put(definition.canonicalName, definition.packageName)
-                    definition.aliasesForPackageLookup.forEach { alias ->
-                        put(alias, definition.packageName)
-                    }
-                }
-            }
-            // Overrides win on a name clash (e.g. re-pointing "whatsapp" at a fork's package).
-            return builtIn + overrides
         }
 }

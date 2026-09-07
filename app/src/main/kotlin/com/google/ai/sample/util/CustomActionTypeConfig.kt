@@ -4,16 +4,15 @@ import android.util.Log
 import org.json.JSONArray
 
 /**
- * Allows entirely new action types to be defined at runtime from a remotely fetched JSON
- * config (e.g. shipped alongside the WebView's index.html), without requiring a new app
- * release.
+ * Parses inline WebView custom-action definitions pushed through WebViewBridge.
+ * This keeps native fallback parsing compatible with actions whose behavior lives in JS.
  *
  * When the native command parser matches one of these entries it emits a
  * [Command.WebViewCustomAction] and the accessibility service calls back into JavaScript
  * via `window.onCustomAction(id, groups[])`. The JS handler can then invoke any existing
  * `Android.*` bridge method to carry out the actual work.
  *
- * Example payload (`custom-action-types.json` next to index.html):
+ * Example payload pushed from index.html:
  * ```json
  * [
  *   {
@@ -37,8 +36,8 @@ internal object CustomActionTypeConfig {
 
     /**
      * Parses a JSON array of custom action type definitions. Malformed entries are skipped
-     * (and logged) rather than throwing, so a bad remote config degrades gracefully to "no
-     * extra action types" rather than breaking the app or the built-in command set.
+     * (and logged) rather than throwing, so a bad WebView config degrades gracefully to "no
+     * custom action types" rather than breaking the app or the built-in command set.
      */
     fun parse(json: String): List<ParsedEntry> {
         val result = mutableListOf<ParsedEntry>()

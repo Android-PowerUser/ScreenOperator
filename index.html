@@ -1281,15 +1281,9 @@ const DEFAULT_SYSTEM_MSG = `You are on the app Screen Operator on a Smartphone. 
 /* ════════════════════════════════════════════════════════
    NATIVE (Compose-screen) UI STRINGS
    ────────────────────────────────────────────────────────
-   These are the *documentation copy* of every native UI string ID Android's
-   UiStringsConfig.get(id, default) recognizes. The actual built-in default
-   text lives at each Kotlin call site (so the app works identically even if
-   this file/the override mechanism is never touched) - this object exists so
-   the full list, with its real current default value, lives in one place a
-   non-Android-developer can read and edit, exactly like DEFAULT_SYSTEM_MSG
-   above. Edit a value here, it gets POSTed to the app via
-   setUiStringsOverrides() on next launch and overrides that one native
-   string. See docs/ui-strings-overrides.md.
+   Documentation copy of native fallback UI string IDs and their current
+   defaults. Native override plumbing was removed; active WebView UI text
+   should be edited directly in this file.
 ════════════════════════════════════════════════════════ */
 const DEFAULT_UI_STRINGS = {
   // MainActivity.kt - permission/billing toasts
@@ -4630,38 +4624,6 @@ function _normalizeCommandText(text) {
   return parts.join('').trim();
 }
 
-/* ── CommandPatternConfig (remote regex overrides for EXISTING command types) ── */
-// Maps a CommandType name to a builder function for built-in WebView parsing
-// compatible with the JS command shape used by _executeSingleCommand/_cmdToString.
-const _COMMAND_TYPE_BUILDERS = {
-  CLICK_BUTTON:                   (m) => ({ type: 'CLICK', text: m[1] }),
-  LONG_CLICK_BUTTON:              (m) => ({ type: 'LONG_CLICK', text: m[1] }),
-  TAP_COORDINATES:                (m) => ({ type: 'TAP', x: m[1], y: m[2] }),
-  TAKE_SCREENSHOT:                () => ({ type: 'SCREENSHOT' }),
-  COMPLETED:                      () => ({ type: 'COMPLETED' }),
-  WAIT:                           (m) => ({ type: 'WAIT', seconds: parseInt(m[1], 10) }),
-  PRESS_HOME:                     () => ({ type: 'HOME' }),
-  PRESS_BACK:                     () => ({ type: 'BACK' }),
-  SHOW_RECENT_APPS:               () => ({ type: 'RECENT_APPS' }),
-  SCROLL_DOWN:                    () => ({ type: 'SCROLL_DOWN' }),
-  SCROLL_UP:                      () => ({ type: 'SCROLL_UP' }),
-  SCROLL_LEFT:                    () => ({ type: 'SCROLL_LEFT' }),
-  SCROLL_RIGHT:                   () => ({ type: 'SCROLL_RIGHT' }),
-  SCROLL_DOWN_FROM_COORDINATES:   (m) => ({ type: 'SCROLL_DOWN_C',  x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
-  SCROLL_UP_FROM_COORDINATES:     (m) => ({ type: 'SCROLL_UP_C',    x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
-  SCROLL_LEFT_FROM_COORDINATES:   (m) => ({ type: 'SCROLL_LEFT_C',  x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
-  SCROLL_RIGHT_FROM_COORDINATES:  (m) => ({ type: 'SCROLL_RIGHT_C', x: m[1], y: m[2], dist: m[3], dur: parseInt(m[4], 10) }),
-  OPEN_APP:                       (m) => ({ type: 'OPEN_APP', app: m[1] }),
-  WRITE_TEXT:                     (m) => ({ type: 'WRITE_TEXT', text: m[1] }),
-  USE_HIGH_REASONING_MODEL:       () => null,  // model switching ignored in JS, same as built-in patterns
-  USE_LOW_REASONING_MODEL:        () => null,
-  PRESS_ENTER_KEY:                () => ({ type: 'ENTER' }),
-  RETRIEVE:                       (m) => ({ type: 'RETRIEVE', title: m[1] }),
-  TERMUX_COMMAND:                 (m) => ({ type: 'TERMUX', command: m[2] ? m[2].replace(/\\(['"])/g, '$1') : m[1] }),
-  PINCH_GESTURE:                  (m) => ({ type: 'PINCH', cx: m[1], cy: m[2], sd: m[3], ed: m[4], dur: parseInt(m[5], 10) }),
-  COPY_TO_CLIPBOARD:              (m) => ({ type: 'COPY_CLIP', text: m[1] }),
-};
-
 function parseCommandsFromText(rawText) {
   const text = _normalizeCommandText(rawText);
   const commands = [];
@@ -5090,7 +5052,7 @@ async function _executeSingleCommand(cmd) {
 }
 
 /**
- * Checks raw AI response text against remotely configured custom action types
+ * Checks raw AI response text against inline WebView custom action types
  * (CustomActionTypeConfig) and dispatches to window.onCustomAction(id, groups[])
  * for any handler wired up by the user's own JS. Called alongside the built-in
  * command parser so new action types work without an app update.

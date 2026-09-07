@@ -4,7 +4,7 @@ import com.google.ai.sample.util.Command
 
 /**
  * Caps how many commands from a single parsed AI response are allowed to execute, per the
- * remotely configurable [com.google.ai.sample.util.ExecutionPolicyConfig.Policy].
+ * built-in native fallback [com.google.ai.sample.util.ExecutionPolicyConfig.Policy].
  *
  * Kept as a small, pure unit with no Android/ViewModel dependencies (mirrors the existing
  * [PhotoReasoningCommandExecutionGuard] pattern) so the truncation boundary itself can be unit

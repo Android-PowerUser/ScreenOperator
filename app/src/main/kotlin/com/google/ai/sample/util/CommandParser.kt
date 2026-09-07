@@ -3,11 +3,11 @@ package com.google.ai.sample.util
 import android.util.Log
 
 /**
- * Fully JSON-driven command parser.
+ * Native fallback command parser.
  *
- * All command patterns are loaded from JSON (command-builtins.json for built-in commands,
- * command-patterns.json for overrides, custom-action-types.json for JS-handled actions).
- * No command regexes are hardcoded in Kotlin.
+ * Built-in command patterns are compiled into the app. The WebView owns live command parsing
+ * for current online flows; native keeps this parser for offline/legacy fallback paths and
+ * receives only inline WebView custom actions via setCustomActionTypes().
  *
  * Each CommandType has a factory function that builds the corresponding Command from
  * MatchResult capture groups. This is the ONLY place where Command subclasses are
@@ -31,7 +31,7 @@ object CommandParser {
         COPY_TO_CLIPBOARD, LAUNCH_INTENT,
         // JS-handled: Retrieve, PopUp, model switching
         SHOW_POPUP,
-        /** Container type for all action types defined remotely via custom-action-types.json. */
+        /** Container type for inline WebView custom action definitions. */
         WEBVIEW_CUSTOM_ACTION;
 
         companion object {
@@ -89,7 +89,7 @@ object CommandParser {
             Command.WebViewCustomAction("SHOW_POPUP", listOf(m.groupValues[g[0] + 1]) + answers)
         },
         CommandType.WEBVIEW_CUSTOM_ACTION to { _, _ ->
-            error("WEBVIEW_CUSTOM_ACTION should not be built by the factory — it's built inline for custom-action-types.json entries")
+            error("WEBVIEW_CUSTOM_ACTION should not be built by the factory — it's pushed from inline WebView custom-action definitions")
         }
     )
 
@@ -152,48 +152,10 @@ object CommandParser {
 
     // ── Runtime state ───────────────────────────────────────────────────────────
 
-    /** All active patterns: builtins + remote overrides */
-    @Volatile private var activePatterns: List<PatternInfo> = emptyList()
-
-    /** Custom action types from custom-action-types.json */
+    /** Inline WebView custom action types pushed through WebViewBridge.setCustomActionTypes(). */
     @Volatile private var customActionPatterns: List<CustomActionTypeConfig.ParsedEntry> = emptyList()
 
-    /** Ensure builtins are loaded before first use */
-    private fun ensureBuiltinsLoaded() {
-        if (activePatterns.isEmpty()) {
-            activePatterns = builtinPatterns
-        }
-    }
-
     // ── Public API ──────────────────────────────────────────────────────────────
-
-    /** Installs additional command-recognition patterns from remote JSON. */
-    @Synchronized
-    fun setRemotePatternOverrides(json: String): Int {
-        ensureBuiltinsLoaded()
-        val parsed = CommandPatternConfig.parse(json)
-        val overrides = parsed.mapNotNull { override ->
-            val type = CommandType.safeValueOf(override.commandType.name) ?: return@mapNotNull null
-            val factory = COMMAND_FACTORY[type] ?: return@mapNotNull null
-            try {
-                val regex = try { Regex(override.regex.pattern) } catch (_: Exception) { null } ?: return@mapNotNull null
-                PatternInfo(override.id, regex, type, emptyList()) { match ->
-                    factory(match, (0 until match.groupValues.size - 1).toList())
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Skipping remote pattern '${override.id}': ${e.message}")
-                null
-            }
-        }
-        activePatterns = builtinPatterns + overrides
-        Log.d(TAG, "Installed ${overrides.size} remote pattern override(s), total=${activePatterns.size}")
-        return overrides.size
-    }
-
-    @Synchronized
-    fun clearRemotePatternOverrides() {
-        activePatterns = builtinPatterns
-    }
 
     @Synchronized
     fun setCustomActionTypes(json: String): Int {
@@ -214,7 +176,6 @@ object CommandParser {
 
     @Synchronized
     fun parseCommands(text: String, clearBuffer: Boolean = false): List<Command> {
-        ensureBuiltinsLoaded()
         var commands: List<Command> = emptyList()
         try {
             resetBufferIfNeeded(clearBuffer)
@@ -299,7 +260,7 @@ object CommandParser {
 
     private fun collectRawMatches(text: String): MutableList<ProcessedMatch> {
         val foundRawMatches = mutableListOf<ProcessedMatch>()
-        for (patternInfo in activePatterns) {
+        for (patternInfo in builtinPatterns) {
             try {
                 patternInfo.regex.findAll(text).forEach { matchResult ->
                     try {
@@ -316,7 +277,7 @@ object CommandParser {
                 Log.e(TAG, "Error matching pattern ${patternInfo.id}: ${e.message}", e)
             }
         }
-        // Custom action types (from custom-action-types.json)
+        // Custom action types (pushed by the inline WebView config)
         for (entry in customActionPatterns) {
             try {
                 entry.regex.findAll(text).forEach { matchResult ->

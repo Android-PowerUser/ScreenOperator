@@ -5,10 +5,9 @@ import android.util.Log
 import androidx.core.content.edit
 
 /**
- * Persists the most recently received custom action type JSON (see [CustomActionTypeConfig] /
- * [CommandParser.setCustomActionTypes]) so that remotely defined action types keep working
- * across app restarts — including before the WebView bundle has re-fetched and re-applied
- * its config for the current session.
+ * Persists the most recently received inline WebView custom-action JSON
+ * (see [CustomActionTypeConfig] / [CommandParser.setCustomActionTypes]) so fallback
+ * native parsing has the same action definitions after app restarts.
  */
 object CustomActionTypePreferences {
     private const val TAG = "CustomActionTypePrefs"
@@ -18,7 +17,7 @@ object CustomActionTypePreferences {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** Saves the raw JSON as last received from the WebView/remote bundle. */
+    /** Saves the raw JSON as last received from the WebView bundle. */
     fun save(context: Context, json: String) {
         try {
             prefs(context).edit { putString(KEY_JSON, json) }

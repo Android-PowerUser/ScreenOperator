@@ -23,13 +23,9 @@ class AppNamePackageMapper(private val context: Context) {
     // Cache for package name to app name mappings
     private val packageToAppNameCache = ConcurrentHashMap<String, String>()
 
-    // Intentionally read live (not stored as constructor-time vals): AppMappings.* and
-    // AppMappingOverridesConfig.current() can change at runtime when the WebView bundle pushes
-    // new app-mapping overrides, and getPackageName() should see those on the very next call
-    // without needing the cache to be rebuilt.
     private val appNameVariations get() = AppMappings.appNameVariations
     private val manualMappings get() = AppMappings.manualMappings
-    private val matchThreshold get() = AppMappingOverridesConfig.current().matchThreshold
+    private val matchThreshold get() = 70
     
     /**
      * Initialize the cache with installed apps

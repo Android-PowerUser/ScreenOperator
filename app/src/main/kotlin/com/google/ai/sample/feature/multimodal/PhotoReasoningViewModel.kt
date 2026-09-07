@@ -693,7 +693,7 @@ class PhotoReasoningViewModel(
         val currentKey = apiKeyManager.getCurrentApiKey(currentModel.apiProvider)
         if (currentKey != null) {
             generativeModel = GenerativeModel(
-                modelName = com.google.ai.sample.util.ModelIdentifierOverrides.resolve(currentModel),
+                modelName = currentModel.modelName,
                 apiKey = currentKey
             )
             // Recreate chat with new model
@@ -1349,7 +1349,7 @@ class PhotoReasoningViewModel(
                     // the WebView resolves them from its MODELS list using modelId.
                     // For native built-in models (offline, GEMINI_*) we keep them as hints.
                     if (jsOnlyModelId == null) {
-                        put("modelName", com.google.ai.sample.util.ModelIdentifierOverrides.resolve(model))
+                        put("modelName", model.modelName)
                         put("apiProvider", model.apiProvider.name)
                     }
                     put("supportsScreenshot", effectiveSupportsScreenshot)
@@ -2045,7 +2045,7 @@ class PhotoReasoningViewModel(
                 val newCommands = allCommands.subList(incrementalCommandCount, allCommands.size)
                 Log.d(TAG, "Incremental: Found ${newCommands.size} new commands (total: ${allCommands.size}, already executed: $incrementalCommandCount)")
 
-                // Remote-updatable cap (see ExecutionPolicyConfig / execution-policy-overrides.json)
+                // Native fallback command cap
                 // on how many commands from this single message may run in total. Enforced here
                 // too (not just in the final processCommands() pass below) since most commands are
                 // normally already executed incrementally as they stream in.

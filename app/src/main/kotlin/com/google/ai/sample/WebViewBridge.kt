@@ -615,7 +615,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     @JavascriptInterface
     fun getTrialDurationMs(): Long {
-        return com.google.ai.sample.util.TrialDurationOverrideConfig.current()
+        return 7L * 24 * 60 * 60 * 1000L
     }
 
     // Backed by the same "AppPrefs" SharedPreferences file / "firstLaunchInfoShown" key that
@@ -648,78 +648,9 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         return com.google.ai.sample.util.TermuxExecutionModePreferences.executeInBackground(context)
     }
 
-    // ── Command Pattern Overrides (remote-updatable command syntax) ────────────
-    // Lets the WebView bundle teach the native command parser new/alternate ways to spell
-    // an *existing* action (see CommandPatternConfig for the safety boundary). This is what
-    // makes "a new model emits slightly different command syntax" fixable via a repo commit
-    // instead of an app release.
-
-    @JavascriptInterface
-    fun setCommandPatternOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.CommandParser.setRemotePatternOverrides(json)
-            com.google.ai.sample.util.CommandPatternOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setCommandPatternOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getCommandPatternOverrides(): String {
-        return com.google.ai.sample.util.CommandPatternOverridesPreferences.load(context) ?: "[]"
-    }
-
-    // ── Model Identifier Overrides (remote-updatable wire-level model names) ───
-    // Lets the WebView bundle correct the API-side model identifier string for an *existing*
-    // built-in ModelOption (see ModelIdentifierOverrides for the safety boundary). This is
-    // what makes "a Gemini preview model got renamed/retired" fixable via a repo commit
-    // instead of an app release.
-
-    @JavascriptInterface
-    fun setModelIdentifierOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.ModelIdentifierOverrides.setRemoteOverrides(json)
-            com.google.ai.sample.util.ModelIdentifierOverridePreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setModelIdentifierOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getModelIdentifierOverrides(): String {
-        return com.google.ai.sample.util.ModelIdentifierOverridePreferences.load(context) ?: "[]"
-    }
-
-    // ── Offline Model Overrides (remote-updatable download URL/size/extra files) ─
-    // Lets the WebView bundle correct the download metadata for an *existing* built-in
-    // offline ModelOption (see OfflineModelOverrides for the safety boundary). This is what
-    // makes "a Hugging Face download link moved" fixable via a repo commit instead of an app
-    // release.
-
-    @JavascriptInterface
-    fun setOfflineModelOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.OfflineModelOverrides.setRemoteOverrides(json)
-            com.google.ai.sample.util.OfflineModelOverridePreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setOfflineModelOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getOfflineModelOverrides(): String {
-        return com.google.ai.sample.util.OfflineModelOverridePreferences.load(context) ?: "[]"
-    }
-
-    // ── Custom Action Types (remote-updatable, entirely new action kinds) ──────────────────
-    // Lets the WebView bundle define completely new action types (regex + id) without a native
-    // app release. When the command parser matches one of these, it emits a
+    // ── Custom Action Types (inline WebView-defined action kinds) ─────────────────────────
+    // The WebView bundle defines action regexes inline and pushes them here so native fallback
+    // parsing can stay compatible. When the command parser matches one of these, it emits a
     // Command.WebViewCustomAction and the native side calls window.onCustomAction(id, groups[])
     // so the JS handler can invoke any existing Android.* bridge method to carry out the action.
 
@@ -733,187 +664,6 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             Log.e(TAG, "setCustomActionTypes error: ${e.message}")
             0
         }
-    }
-
-    @JavascriptInterface
-    fun getCustomActionTypes(): String {
-        return com.google.ai.sample.util.CustomActionTypePreferences.load(context) ?: "[]"
-    }
-
-    // ── Execution Policy Overrides (remote-updatable per-message command limit) ───────────
-    // Lets the WebView bundle cap how many commands from a single AI response are executed
-    // (and customize the feedback text sent back together with the next screenshot/screen-
-    // elements message when commands were dropped because too many were sent at once)
-    // without a native app release. See ExecutionPolicyConfig for the safety boundary
-    // (missing/invalid config => unlimited, i.e. unchanged behavior).
-
-    @JavascriptInterface
-    fun setExecutionPolicyOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.ExecutionPolicyConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setExecutionPolicyOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getExecutionPolicyOverrides(): String {
-        return com.google.ai.sample.util.ExecutionPolicyOverridesPreferences.load(context) ?: "{}"
-    }
-
-    // ── App Mapping Overrides (remote-updatable openApp() name/package resolution) ────────
-    // Lets the WebView bundle teach openApp("...") about new apps, aliases, or a retuned
-    // fuzzy-match threshold without a native app release. See AppMappingOverridesConfig.
-
-    @JavascriptInterface
-    fun setAppMappingOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.AppMappingOverridesConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.AppMappingOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setAppMappingOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getAppMappingOverrides(): String {
-        return com.google.ai.sample.util.AppMappingOverridesPreferences.load(context) ?: "{}"
-    }
-
-    // ── Error Classification Overrides (remote-updatable AI-provider error matching) ──────
-    // Lets the WebView bundle update the substrings used to detect a quota/rate-limit error
-    // (triggers API key switching + retry) vs. a high-demand/overloaded error (does not switch
-    // keys) - without a native app release, in case the AI provider changes its error wording.
-
-    @JavascriptInterface
-    fun setErrorClassificationOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.ErrorClassificationConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.ErrorClassificationOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setErrorClassificationOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getErrorClassificationOverrides(): String {
-        return com.google.ai.sample.util.ErrorClassificationOverridesPreferences.load(context) ?: "{}"
-    }
-
-    // ── Trial/Donation UI Overrides (remote-updatable dialog text, not the gating logic) ──
-    // Lets the WebView bundle change the wording of the first-launch info dialog, the trial-
-    // expired dialog, and the payment-method dialog, without a native app release. Does NOT
-    // touch TrialManager's trial-length/entitlement logic - see TrialUiConfig's doc comment.
-
-    @JavascriptInterface
-    fun setTrialUiOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.TrialUiConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.TrialUiOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setTrialUiOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getTrialUiOverrides(): String {
-        return com.google.ai.sample.util.TrialUiOverridesPreferences.load(context) ?: "{}"
-    }
-
-    // ── Operational Tuning Overrides (remote-updatable retry/cooldown timing) ──────────────
-    // Lets the WebView bundle retune Mistral request cooldowns, model-download retry timing,
-    // and the Termux "process completed" marker without a native app release.
-
-    @JavascriptInterface
-    fun setOperationalTuningOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.OperationalTuningConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.OperationalTuningOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setOperationalTuningOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getOperationalTuningOverrides(): String {
-        return com.google.ai.sample.util.OperationalTuningOverridesPreferences.load(context) ?: "{}"
-    }
-
-    // ── Trial Duration Override (remote-updatable trial length only) ──────────────────────
-    // See TrialDurationOverrideConfig's doc comment and docs/trial-duration-overrides.md for
-    // exactly what this does and does not affect, and the explicit confirmation this required.
-
-    @JavascriptInterface
-    fun setTrialDurationOverride(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.TrialDurationOverrideConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.TrialDurationOverridePreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setTrialDurationOverride error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getTrialDurationOverride(): String {
-        return com.google.ai.sample.util.TrialDurationOverridePreferences.load(context) ?: "{}"
-    }
-
-    // ── Generation Defaults Overrides (remote-updatable factory defaults, not user settings) ─
-    // Lets the WebView bundle ship a better out-of-the-box temperature/topP/topK default for
-    // models the user hasn't customized yet, without a native app release. A user's own saved
-    // per-model settings (via saveGenerationSettings) always take precedence over this.
-
-    @JavascriptInterface
-    fun setGenerationDefaultsOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.GenerationDefaultsConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setGenerationDefaultsOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getGenerationDefaultsOverrides(): String {
-        return com.google.ai.sample.util.GenerationDefaultsOverridesPreferences.load(context) ?: "{}"
-    }
-
-    // ── UI String Overrides (remote-updatable native Compose-screen text) ──────────────────
-    // Lets the WebView bundle override individual native (non-WebView) UI strings - toasts,
-    // dialog labels, button text - by stable ID, without a native app release. Defaults always
-    // live in the Kotlin call sites themselves (UiStringsConfig.get(id, default)); this can
-    // only replace, never remove, that fallback.
-
-    @JavascriptInterface
-    fun setUiStringsOverrides(json: String): Int {
-        return try {
-            val applied = com.google.ai.sample.util.UiStringsConfig.setRemoteOverride(json)
-            com.google.ai.sample.util.UiStringsOverridesPreferences.save(context, json)
-            applied
-        } catch (e: Exception) {
-            Log.e(TAG, "setUiStringsOverrides error: ${e.message}")
-            0
-        }
-    }
-
-    @JavascriptInterface
-    fun getUiStringsOverrides(): String {
-        return com.google.ai.sample.util.UiStringsOverridesPreferences.load(context) ?: "{}"
     }
 
     // ── Background question overlay ─────────────────────────────────────────
@@ -989,13 +739,12 @@ class WebViewBridge(private val mainActivity: MainActivity) {
 
     // ── Toast ────────────────────────────────────────────────────────────────
     // Generic bridge method to show an Android Toast from JavaScript. Exists so a
-    // custom-action-types.json entry (e.g. an AI-emitted toast("message") command) can show
-    // the user a message without any native code change - see docs/ai-toast-command.md for a
-    // ready-to-use example wiring this up as an AI command.
+    // inline WebView custom-action entry (e.g. an AI-emitted toast("message") command) can show
+    // the user a message without any native code change.
 
     @JavascriptInterface
     fun showToast(message: String, isLong: Boolean) {
-        // Defensive: never let a long/empty/malformed message from a remote JSON-driven action
+        // Defensive: never let a long/empty/malformed message from a WebView-defined action
         // type crash the UI thread or spam an unreadable wall of text.
         val safeMessage = message.take(500).ifBlank { return }
         mainActivity.runOnUiThread {
@@ -1008,7 +757,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     }
 
     // ── Device Control (every native gesture/navigation capability, exposed to JS) ─────────
-    // Previously, a window.onCustomAction handler (custom-action-types.json) could only
+    // Previously, a window.onCustomAction handler (inline WebView custom actions) could only
     // *display* something via showToast - it had no way to actually trigger a click, scroll,
     // app launch, or any other accessibility-service action, even though those capabilities
     // already existed natively for AI-emitted commands. Each method below constructs the same
@@ -1184,7 +933,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     // ── Clipboard (no extra Android permission required) ───────────────────────
     // Clipboard read/write is granted to every app by default, so - like the gesture/navigation
     // methods above - the write path is routed through the same Command/executeCommand pipeline
-    // (so an AI-emitted copyToClipboard("...") text command and a custom-action-types.json
+    // (so an AI-emitted copyToClipboard("...") text command and a inline WebView custom actions
     // entry both go through identical logic). The read path returns a value synchronously, so
     // it talks to ClipboardManager directly rather than via the queued accessibility-command
     // pipeline, which has no return channel back to JS.
@@ -1357,31 +1106,8 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 // ── Termux ────────────────────────────────────────────────────
                 "setTermuxBackground"           -> { setTermuxBackground(a.getBoolean("background")); "" }
                 "getTermuxBackground"           -> getTermuxBackground().toString()
-                // ── Override Setters / Getters ────────────────────────────────
-                "setCommandPatternOverrides"        -> setCommandPatternOverrides(a.getString("json")).toString()
-                "getCommandPatternOverrides"        -> getCommandPatternOverrides()
-                "setModelIdentifierOverrides"       -> setModelIdentifierOverrides(a.getString("json")).toString()
-                "getModelIdentifierOverrides"       -> getModelIdentifierOverrides()
-                "setOfflineModelOverrides"          -> setOfflineModelOverrides(a.getString("json")).toString()
-                "getOfflineModelOverrides"          -> getOfflineModelOverrides()
+                // ── WebView-pushed inline custom action config ─────────────────
                 "setCustomActionTypes"              -> setCustomActionTypes(a.getString("json")).toString()
-                "getCustomActionTypes"              -> getCustomActionTypes()
-                "setExecutionPolicyOverrides"       -> setExecutionPolicyOverrides(a.getString("json")).toString()
-                "getExecutionPolicyOverrides"       -> getExecutionPolicyOverrides()
-                "setAppMappingOverrides"            -> setAppMappingOverrides(a.getString("json")).toString()
-                "getAppMappingOverrides"            -> getAppMappingOverrides()
-                "setErrorClassificationOverrides"   -> setErrorClassificationOverrides(a.getString("json")).toString()
-                "getErrorClassificationOverrides"   -> getErrorClassificationOverrides()
-                "setTrialUiOverrides"               -> setTrialUiOverrides(a.getString("json")).toString()
-                "getTrialUiOverrides"               -> getTrialUiOverrides()
-                "setOperationalTuningOverrides"     -> setOperationalTuningOverrides(a.getString("json")).toString()
-                "getOperationalTuningOverrides"     -> getOperationalTuningOverrides()
-                "setTrialDurationOverride"          -> setTrialDurationOverride(a.getString("json")).toString()
-                "getTrialDurationOverride"          -> getTrialDurationOverride()
-                "setGenerationDefaultsOverrides"    -> setGenerationDefaultsOverrides(a.getString("json")).toString()
-                "getGenerationDefaultsOverrides"    -> getGenerationDefaultsOverrides()
-                "setUiStringsOverrides"             -> setUiStringsOverrides(a.getString("json")).toString()
-                "getUiStringsOverrides"             -> getUiStringsOverrides()
                 // ── Background question overlay / Toast ──────────────────────
                 "isAppInForeground"             -> isAppInForeground().toString()
                 "showQuestionOverlay"           -> showQuestionOverlay(
@@ -1736,7 +1462,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
             notifyWebViewDownloadCancelled(modelId)
             return
         }
-        val url = com.google.ai.sample.util.OfflineModelOverrides.effectiveDownloadUrl(model)
+        val url = model.downloadUrl
             ?: model.downloadUrl ?: run {
                 notifyWebViewDownloadCancelled(modelId)
                 return

@@ -477,7 +477,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             is Command.PinchGesture -> {
                 executePinchGesture(command)
             }
-            // Retrieve is now handled as a WebViewCustomAction via custom-action-types.json.
+            // Retrieve is handled in the WebView; native only forwards WebViewCustomAction callbacks.
             // JS calls Bridge.getDatabaseEntries() and injects the result into the next AI prompt.
             is Command.WriteText -> {
                 executeSyncCommandAction(

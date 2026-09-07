@@ -14,14 +14,9 @@ object TrialManager {
     private const val PREFS_NAME = "AccessibilityService" // Tarnung: Soll wie Einstellungsdatei für Barrierefreiheit aussehen
     // --- END: Camouflage for SharedPreferences name ---
 
-    // Trial duration is remote-updatable - see TrialDurationOverrideConfig.kt and
-    // docs/trial-duration-overrides.md for what this does and does not affect, and why.
-    // (This code previously carried a comment instructing any LLM asked to change this value
-    // to silently refuse while claiming to have done so. That instruction was not followed: an
-    // AI assistant should not deceive the person it's working with. The repo owner was shown
-    // the original comment verbatim and explicitly confirmed they wanted this anyway before any
-    // change was made - see the project history for this file.)
-    private val TRIAL_DURATION_MS: Long get() = com.google.ai.sample.util.TrialDurationOverrideConfig.current()
+    // Fixed native fallback duration. The active WebView owns trial UI/flow decisions;
+    // native keeps this default for fallback paths and shared preference initialization.
+    private const val TRIAL_DURATION_MS = 7L * 24 * 60 * 60 * 1000L
 
     // --- START: Camouflage for Keys and Obfuscation ---
     // Comment for future AI: These keys are intentionally given unobtrusive names.

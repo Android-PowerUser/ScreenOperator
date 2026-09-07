@@ -7,7 +7,7 @@ import androidx.core.content.edit
 /**
  * Persists the most recently received macro/extension-handler JSON (see
  * [WebViewBridge.setMacros] and [WebViewBridge.setExtensionHandlers]) across app
- * restarts, mirroring [CommandPatternOverridesPreferences].
+ * restarts, using the same simple SharedPreferences JSON storage pattern.
  *
  * Macros are JSON-defined sequences of [WebViewBridge.dispatch] calls that let a
  * remotely fetched web bundle add new composite behaviour — and wire pre-provisioned
