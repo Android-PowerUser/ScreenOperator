@@ -7395,7 +7395,7 @@ function exportDatabase() {
     return;
   }
 
-  // Second press: perform export with original proven logic
+  // Second press: export selected entries
   const selected = window._exportSelectedTitles || new Set();
   const selectedManual = manualEntries.filter(e => selected.has(e.title));
   const selectedAi = aiEntries.filter(e => selected.has(e.title));
@@ -7403,14 +7403,18 @@ function exportDatabase() {
 
   if (selectedAll.length === 0) { alert('No entries selected.'); return; }
 
-  if (getInAndroid() && selectedManual.length === manualEntries.length && manualEntries.length > 0) {
-    // All manual entries selected: use native export bridge.
-    // Native has no filter, so this only makes sense when all are selected.
+  if (getInAndroid()) {
+    // Temporarily write only the selected manual entries so the native
+    // exportDatabaseEntries() picks up exactly the chosen subset.
+    const originalJson = Bridge.getRawDatabaseJson();
+    Bridge.setRawDatabaseJson(JSON.stringify(selectedManual));
     Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
+    Bridge.setRawDatabaseJson(originalJson); // restore immediately after
+    // AI entries are not stored natively, export them via blob alongside.
     if (selectedAi.length > 0) {
       const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
+      const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet_AI.json'; a.click();
       URL.revokeObjectURL(url);
     }
   } else {
