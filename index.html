@@ -6651,13 +6651,19 @@ function sendMessage() {
     addUserBubble(text || "(attached images)", firstThumb ? firstThumb.objectUrl : null);
   }
 
-  // For screenshot-supporting models, request MediaProjection permission first
-  // and delay the actual message send until it is granted.
-  const needsPermission = getInAndroid() && Bridge.currentModelSupportsScreenshot() && !Bridge.isScreenCaptureActive();
+  // Rückwärtskompatibel: Nur verzögern, wenn alle neuen Native-Brücken existieren.
+  // Alte APKs haben currentModelSupportsScreenshot / requestScreenCapturePermission nicht.
+  const newBridgeAvailable = getInAndroid()
+    && typeof Android.currentModelSupportsScreenshot === 'function'
+    && typeof Android.requestScreenCapturePermission === 'function'
+    && typeof Android.isScreenCaptureActive === 'function';
+  const needsPermission = newBridgeAvailable
+    && Android.currentModelSupportsScreenshot()
+    && !Android.isScreenCaptureActive();
   if (needsPermission) {
     const imagesCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
     const hasImages = selectedImages.length > 0;
-    Bridge.requestScreenCapturePermission();
+    Android.requestScreenCapturePermission();
     _pendingSend = { text, hasImages, imagesCsv };
     input.value = '';
     input.style.height = '';
