@@ -809,8 +809,8 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 <!-- Export Share Popup -->
 <div id="popup-export-share" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-export-share')closePopup('popup-export-share')">
-  <div class="popup" style="width:90%;max-width:420px;padding:20px" onclick="event.stopPropagation()">
-    <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">Do you want to share your Skill Set with the Screen Operator community or save it locally?</div>
+  <div class="popup" style="width:90%;max-width:420px;padding:20px;background:var(--db-yellow-1)" onclick="event.stopPropagation()">
+    <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">After saving you can upload it to the community.</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn btn-solid" style="width:100%" onclick="_exportShareLocal()">Save</button>
       <button class="btn btn-solid" style="width:100%" onclick="_exportShareCommunity()">Upload to community</button>
@@ -820,7 +820,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 <!-- Import Share Popup -->
 <div id="popup-import-share" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-import-share')closePopup('popup-import-share')">
-  <div class="popup" style="width:90%;max-width:420px;padding:20px" onclick="event.stopPropagation()">
+  <div class="popup" style="width:90%;max-width:420px;padding:20px;background:var(--db-yellow-1)" onclick="event.stopPropagation()">
     <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">Do you want to import your Skill Set from the Screen Operator community or from local?</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn btn-solid" style="width:100%" onclick="_importShareLocal()">Local</button>
