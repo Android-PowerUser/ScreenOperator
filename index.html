@@ -5153,26 +5153,25 @@ async function _executeSingleCommand(cmd) {
       await new Promise(r => setTimeout(r, (cmd.seconds || 1) * 1000));
       break;
     case 'RETRIEVE': {
-      // FIX: retrieve now behaves like any other command (click, scroll, etc.):
-      // - fetch with existing JS logic (Bridge.getDatabaseEntries)
-      // - store in _pendingScreenInfo to be prepended at beginning of next message
-      // - do NOT call requestScreenshot() here. The generic auto-appended SCREENSHOT
-      //   (see _executeCommandsFromResponse) will request exactly one screenshot,
-      //   just like for all other commands. Previously two screenshots were triggered
-      //   (one here + one auto-appended), which split the flow: AI got the info but
-      //   chat showed something else, and Stop lost its AbortController.
-      const marker = `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]`.toLowerCase();
-      const alreadyRetrieved = _jsChatHistory.some(m => (m.text || '').toLowerCase().includes(marker));
-
-      if (!alreadyRetrieved) {
-        const entries = Bridge.getDatabaseEntries();
-        const titleLc = (cmd.title || '').toLowerCase();
-        const entry = entries.find(e => e.title.toLowerCase() === titleLc)
-                   || _getAiSkills().find(e => e.title.toLowerCase() === titleLc);
-        const body = entry ? entry.guide : 'The information is not available';
-        _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
-          + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
-      }
+      // retrieve() behaves like any other command (click, scroll, etc.):
+      // - fetch the DB / AI-skill entry here in JS
+      // - store it in _pendingScreenInfo so it is prepended at the very top of
+      //   the next user message (chat bubble AND AI payload)
+      // - do NOT call requestScreenshot() here; the generic auto-appended SCREENSHOT
+      //   (see _executeCommandsFromResponse) requests exactly one screenshot,
+      //   just like every other non-Termux command.
+      // NOTE: the previous "alreadyRetrieved" guard that skipped the injection when
+      // the same marker was found in _jsChatHistory has been removed. That guard
+      // caused retrieve() to silently do nothing (no _pendingScreenInfo set, so the
+      // auto-appended SCREENSHOT fired but the AI received no retrieved content),
+      // breaking the command whenever the same skill had already appeared in history.
+      const entries = Bridge.getDatabaseEntries();
+      const titleLc = (cmd.title || '').toLowerCase();
+      const entry = entries.find(e => e.title.toLowerCase() === titleLc)
+                 || _getAiSkills().find(e => e.title.toLowerCase() === titleLc);
+      const body = entry ? entry.guide : 'The information is not available';
+      _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
+        + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
       // No screenshot here – handled by auto-appended SCREENSHOT.
       break;
     }
@@ -9339,6 +9338,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
