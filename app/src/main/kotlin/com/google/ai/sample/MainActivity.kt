@@ -495,39 +495,6 @@ class MainActivity : ComponentActivity() {
     val isMediaProjectionPermissionGrantedFlow: StateFlow<Boolean> = _isMediaProjectionPermissionGranted.asStateFlow()
 
 
-    private val trialStatusReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            Log.i(TAG, "trialStatusReceiver: Received broadcast: ${intent?.action}")
-            when (intent?.action) {
-                TrialTimerService.ACTION_TRIAL_EXPIRED -> {
-                    Log.i(TAG, "trialStatusReceiver: ACTION_TRIAL_EXPIRED received. Updating trial state.")
-                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
-                }
-                TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE -> {
-                    Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_UNAVAILABLE received. Current state: $currentTrialState")
-                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
-                }
-                TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE -> {
-                    val internetTime = intent.getLongExtra(TrialTimerService.EXTRA_CURRENT_UTC_TIME_MS, 0L)
-                    Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received. InternetTime: $internetTime")
-                    if (internetTime > 0) {
-                        Log.d(TAG, "trialStatusReceiver: Valid internet time received. Calling TrialManager.startTrialIfNecessaryWithInternetTime.")
-                        TrialManager.startTrialIfNecessaryWithInternetTime(this@MainActivity, internetTime)
-                        Log.d(TAG, "trialStatusReceiver: Calling TrialManager.getTrialState with received internet time.")
-                        val newState = TrialManager.getTrialState(this@MainActivity, internetTime)
-                        Log.i(TAG, "trialStatusReceiver: State from TrialManager after internet time: $newState. Updating local state.")
-                        updateTrialState(newState)
-                    } else {
-                        Log.w(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received, but internetTime is 0 or less. Checking state with null time.")
-                        updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
-                    }
-                }
-                else -> {
-                     Log.w(TAG, "trialStatusReceiver: Received unknown action: ${intent?.action}")
-                }
-            }
-        }
-    }
 
     private fun updateTrialState(newState: TrialManager.TrialState) {
         Log.d(TAG, "updateTrialState called with newState: $newState. Current local state: $currentTrialState")
@@ -780,23 +747,10 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onCreate: Calling TrialManager.initializeTrialStateFlagsIfNecessary.")
         TrialManager.initializeTrialStateFlagsIfNecessary(this)
 
-        Log.d(TAG, "onCreate: Setting up IntentFilter for trialStatusReceiver.")
-        val intentFilter = IntentFilter().apply {
-            addAction(TrialTimerService.ACTION_TRIAL_EXPIRED)
-            addAction(TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE)
-            addAction(TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE)
-        }
-        Log.d(TAG, "onCreate: Registering trialStatusReceiver.")
-        BroadcastReceiverCompat.register(this, trialStatusReceiver, intentFilter)
-        Log.d(TAG, "onCreate: trialStatusReceiver registered.")
-
         Log.d(TAG, "onCreate: Performing initial trial state check. Calling TrialManager.getTrialState with null time (will use local time).")
         val initialTrialState = TrialManager.getTrialState(this, null)
         Log.i(TAG, "onCreate: Initial trial state from TrialManager: $initialTrialState. Updating local state.")
         updateTrialState(initialTrialState) // This sets currentTrialState
-
-        Log.d(TAG, "onCreate: Calling startTrialServiceIfNeeded based on current state: $currentTrialState")
-        startTrialServiceIfNeeded()
 
         // Initial check for accessibility service status
         refreshAccessibilityServiceStatus()
@@ -1068,23 +1022,6 @@ class MainActivity : ComponentActivity() {
         NotificationPermissionPreferences.setNotificationRationaleShown(this, shown)
     }
 
-    private fun startTrialServiceIfNeeded() {
-        Log.d(TAG, "startTrialServiceIfNeeded called. Current state: $currentTrialState")
-        if (MainActivityBillingStateEvaluator.shouldStartTrialService(currentTrialState)) {
-            Log.i(TAG, "Starting TrialTimerService because current state is: $currentTrialState")
-            val serviceIntent = Intent(this, TrialTimerService::class.java)
-            serviceIntent.action = TrialTimerService.ACTION_START_TIMER
-            try {
-                startService(serviceIntent)
-                Log.d(TAG, "startTrialServiceIfNeeded: startService call succeeded.")
-            } catch (e: Exception) {
-                Log.e(TAG, "startTrialServiceIfNeeded: Failed to start TrialTimerService", e)
-            }
-        } else {
-            Log.i(TAG, "TrialTimerService not started. State: $currentTrialState (Purchased or Expired)")
-        }
-    }
-
     private fun setupBillingClient() {
         Log.d(TAG, "setupBillingClient called.")
         if (MainActivityBillingClientState.isInitializedAndReady(::billingClient.isInitialized, if (::billingClient.isInitialized) billingClient.isReady else false)) {
@@ -1347,9 +1284,7 @@ class MainActivity : ComponentActivity() {
         billingClient.acknowledgePurchase(params) { result ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 Log.i(TAG, "Purchase acknowledged successfully via WebView flow.")
-                val stopIntent = Intent(this, TrialTimerService::class.java)
-                stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                startService(stopIntent)
+                Log.d(TAG, "Purchase acknowledged; trial managed by WebView.")
             } else {
                 Log.e(TAG, "Failed to acknowledge purchase: ${result.debugMessage}")
             }
@@ -1364,13 +1299,7 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "updateTrialStateFromWebView called")
         val newState = TrialManager.getTrialState(this, null)
         updateTrialState(newState)
-        if (newState == TrialManager.TrialState.PURCHASED) {
-            val stopIntent = Intent(this, TrialTimerService::class.java)
-            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-            startService(stopIntent)
-        } else {
-            startTrialServiceIfNeeded()
-        }
+        // Trial timer is managed entirely by the WebView.
     }
 
     private fun queryActiveSubscriptions() {
@@ -1422,7 +1351,6 @@ class MainActivity : ComponentActivity() {
                         TrialManager.clearPurchaseMark(this@MainActivity)
                     }
                     updateTrialState(TrialManager.getTrialState(this, null))
-                    startTrialServiceIfNeeded()
                 }
             } else {
                 Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
@@ -1472,7 +1400,6 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "onResume: Billing client initializing or in an intermediate state (State: ${billingClient.connectionState}). Default trial logic will apply for now. QueryActiveSubs will be called by setup if it succeeds.")
             Log.d(TAG, "onResume: Updating trial state and starting service if needed (pending billing client). Current state: $currentTrialState")
             updateTrialState(TrialManager.getTrialState(this, null))
-            startTrialServiceIfNeeded()
         }
         Log.d(TAG, "onResume: Finished.")
     }
@@ -1485,7 +1412,6 @@ class MainActivity : ComponentActivity() {
 
         BroadcastReceiverCompat.unregister(this, screenshotRequestHandler, "screenshotRequestHandler", TAG)
         BroadcastReceiverCompat.unregister(this, screenshotResultHandler, "screenshotResultHandler", TAG)
-        BroadcastReceiverCompat.unregister(this, trialStatusReceiver, "trialStatusReceiver", TAG)
 
         if (::billingClient.isInitialized && billingClient.isReady) {
             Log.d(TAG, "onDestroy: BillingClient is initialized and ready. Ending connection.")
