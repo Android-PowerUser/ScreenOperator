@@ -9055,6 +9055,7 @@ function _collapseOldScreenElementBubbles() {
   var _mpAttemptsConfirm = 0;
   var MAX_CONFIRM_RETRIES = 2;
   var COOLDOWN_MS = 10000;
+  var _mpOldApkDone = false; // old APKs without isScreenCaptureActive: only auto-accept once per session to avoid spamming after permission granted
 
   var LANG_MAP = {
     'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen'],
@@ -9104,10 +9105,10 @@ function _collapseOldScreenElementBubbles() {
 
   function isActive() {
     try {
-      if (!getInAndroid()) return true;
-      if (typeof Android.isScreenCaptureActive !== 'function') return true;
+      if (!getInAndroid()) return true; // browser = never trigger
+      if (typeof Android.isScreenCaptureActive !== 'function') return false; // old APK = treat as not active so force-trigger can run
       return !!Android.isScreenCaptureActive();
-    } catch(e) { return true; }
+    } catch(e) { return false; }
   }
 
   function hasNewBridge() {
@@ -9280,8 +9281,15 @@ function _collapseOldScreenElementBubbles() {
       var res = _origSendMsg.apply(this, arguments);
       try {
         if (!hasNewBridge()) {
-          console.log('[MP] hook Bridge.sendMessage old APK');
-          triggerAutoAccept(true);
+          var now = Date.now();
+          // Allow first time, or retry within 20s if previous failed, but not after 60s (permission likely granted)
+          if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
+            console.log('[MP] hook Bridge.sendMessage old APK done=' + _mpOldApkDone);
+            triggerAutoAccept(true);
+            _mpOldApkDone = true;
+          } else {
+            console.log('[MP] hook Bridge.sendMessage old APK skipped – already done');
+          }
         }
       } catch(e) {}
       return res;
@@ -9293,8 +9301,14 @@ function _collapseOldScreenElementBubbles() {
       var res = _origSendMsgImg.apply(this, arguments);
       try {
         if (!hasNewBridge()) {
-          console.log('[MP] hook Bridge.sendMessageWithImages old APK');
-          triggerAutoAccept(true);
+          var now = Date.now();
+          if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
+            console.log('[MP] hook Bridge.sendMessageWithImages old APK done=' + _mpOldApkDone);
+            triggerAutoAccept(true);
+            _mpOldApkDone = true;
+          } else {
+            console.log('[MP] hook Bridge.sendMessageWithImages old APK skipped – already done');
+          }
         }
       } catch(e) {}
       return res;
@@ -9307,8 +9321,12 @@ function _collapseOldScreenElementBubbles() {
       var res = _origReqScreenshot.apply(this, arguments);
       try {
         if (getInAndroid() && !hasNewBridge()) {
-          console.log('[MP] hook Bridge.requestScreenshot old APK');
-          triggerAutoAccept(true);
+          var now = Date.now();
+          if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
+            console.log('[MP] hook Bridge.requestScreenshot old APK done=' + _mpOldApkDone);
+            triggerAutoAccept(true);
+            _mpOldApkDone = true;
+          }
         } else if (getInAndroid() && !_mpInFlight) {
           // New APK: only if not active and cooldown passed (avoid flooding during normal operation)
           var now = Date.now();
@@ -9363,10 +9381,14 @@ function _collapseOldScreenElementBubbles() {
       try {
         if (!running) {
           resetFlight();
-        } else if (!hasNewBridge() && !isActive()) {
-          // Old APK only: generation started but capture not active → dialog likely
-          console.log('[MP] onGenerationStateChanged old APK');
-          triggerAutoAccept(true);
+          // For old APKs, keep _mpOldApkDone true after first successful run, but don't reset it on stop
+        } else if (!hasNewBridge()) {
+          var now = Date.now();
+          if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
+            console.log('[MP] onGenerationStateChanged old APK done=' + _mpOldApkDone);
+            triggerAutoAccept(true);
+            _mpOldApkDone = true;
+          }
         }
       } catch(e) {}
       return res;
