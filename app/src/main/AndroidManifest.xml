@@ -67,8 +67,6 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Added TrialTimerService declaration -->
-        <service android:name=".TrialTimerService" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
