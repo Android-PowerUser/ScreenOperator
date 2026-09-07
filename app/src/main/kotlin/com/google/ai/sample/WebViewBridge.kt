@@ -290,6 +290,23 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         }
     }
 
+
+    // ── Raw Database JSON (used by WebView default-entry logic) ───────────────
+    // Exposes the raw JSON string directly so the WebView can read, transform,
+    // and write back the full entry list without going through the typed
+    // addDatabaseEntry / updateDatabaseEntry / deleteDatabaseEntry round-trips.
+    // This is the preferred path for the JS _ensureDefaultDbEntries() bootstrap.
+
+    @JavascriptInterface
+    fun getRawDatabaseJson(): String {
+        return SystemMessageEntryPreferences.loadRawJson(context)
+    }
+
+    @JavascriptInterface
+    fun setRawDatabaseJson(json: String) {
+        SystemMessageEntryPreferences.saveRawJson(context, json)
+    }
+
     // ── Database Import / Export ──────────────────────────────────────────────
 
     @JavascriptInterface
@@ -1293,6 +1310,8 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "addDatabaseEntry"              -> { addDatabaseEntry(a.getString("title"), a.getString("guide")); "" }
                 "updateDatabaseEntry"           -> { updateDatabaseEntry(a.getString("oldTitle"), a.getString("newTitle"), a.getString("guide")); "" }
                 "deleteDatabaseEntry"           -> { deleteDatabaseEntry(a.getString("title")); "" }
+                "getRawDatabaseJson"            -> getRawDatabaseJson()
+                "setRawDatabaseJson"            -> { setRawDatabaseJson(a.getString("json")); "" }
                 "exportDatabaseEntries"         -> { exportDatabaseEntries(a.optString("fileName", "ScreenOperatorSkillSet.json")); "" }
                 "importDatabaseEntries"         -> { importDatabaseEntries(); "" }
                 // ── Generation Settings ───────────────────────────────────────
