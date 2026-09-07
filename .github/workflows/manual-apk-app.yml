@@ -1,8 +1,9 @@
-name: Android Build AAB
+name: Android Build APK (app)
 
+# Bewusst OHNE push-Trigger und OHNE Change-Detection:
+# Sobald dieser Workflow läuft, wird :app immer gebaut.
+# Auslösen über Actions -> "Android Build APK (app)" -> "Run workflow".
 on:
-  push:
-    branches: [ human-operator ]
   workflow_dispatch:
 
 jobs:
@@ -57,9 +58,9 @@ jobs:
       run: chmod +x gradlew
 
     - name: Compile Kotlin (app)
-      run: ./gradlew :app:compileReleaseKotlin
+      run: ./gradlew :app:compileDebugKotlin
 
-  build-aab:
+  build-apk:
     needs: [compile-check, compile-check-config]
     if: always() && !cancelled() && (needs.compile-check.result == 'success' || needs.compile-check.result == 'skipped')
     runs-on: ubuntu-latest
@@ -73,15 +74,6 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
-
-    - name: Cache Gradle build cache
-      uses: actions/cache@v4
-      with:
-        path: ~/.gradle/build-cache
-        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**') }}
-        restore-keys: |
-          gradle-build-cache-${{ runner.os }}-
 
     - name: Decode google-services.json (app)
       env:
@@ -109,19 +101,19 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build app release AAB (unsigned)
-      run: ./gradlew :app:bundleRelease
+    - name: Build app module (debug)
+      run: ./gradlew :app:assembleDebug
 
-    - name: Upload app release AAB (unsigned)
+    - name: Upload app APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-aab-unsigned
-        path: app/build/outputs/bundle/release/app-release.aab
+        name: app-debug
+        path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Build summary
       run: |
-        echo "### AAB Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "### APK Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Module | Gebaut | Artefakt |" >> $GITHUB_STEP_SUMMARY
         echo "|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| app | ja | \`app-release.aab\` (unsigned) |" >> $GITHUB_STEP_SUMMARY
+        echo "| app | ja | \`app-debug.apk\` |" >> $GITHUB_STEP_SUMMARY

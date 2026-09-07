@@ -1,8 +1,9 @@
-name: Android Build AAB
+name: Android Build APK (humanoperator)
 
+# Bewusst OHNE push-Trigger und OHNE Change-Detection:
+# Sobald dieser Workflow läuft, wird :humanoperator immer gebaut.
+# Auslösen über Actions -> "Android Build APK (humanoperator)" -> "Run workflow".
 on:
-  push:
-    branches: [ human-operator ]
   workflow_dispatch:
 
 jobs:
@@ -30,17 +31,17 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Decode google-services.json (app)
+    - name: Decode google-services.json (humanoperator)
       env:
-        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_HUMANOPERATOR }}
       run: |
         if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-          echo "app/google-services.json aus Secret geschrieben"
-        elif [ -s app/google-services.json ]; then
-          echo "Secret GOOGLE_SERVICES_JSON_APP ist leer - verwende die eingecheckte app/google-services.json"
+          printf '%s' "$GOOGLE_SERVICES_JSON" > humanoperator/google-services.json
+          echo "humanoperator/google-services.json aus Secret geschrieben"
+        elif [ -s humanoperator/google-services.json ]; then
+          echo "Secret GOOGLE_SERVICES_JSON_HUMANOPERATOR ist leer - verwende die vorhandene humanoperator/google-services.json"
         else
-          echo "::error::Secret GOOGLE_SERVICES_JSON_APP ist leer und app/google-services.json fehlt."
+          echo "::error::Secret GOOGLE_SERVICES_JSON_HUMANOPERATOR ist leer und humanoperator/google-services.json fehlt."
           exit 1
         fi
 
@@ -56,10 +57,10 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Compile Kotlin (app)
-      run: ./gradlew :app:compileReleaseKotlin
+    - name: Compile Kotlin (humanoperator)
+      run: ./gradlew :humanoperator:compileDebugKotlin
 
-  build-aab:
+  build-apk:
     needs: [compile-check, compile-check-config]
     if: always() && !cancelled() && (needs.compile-check.result == 'success' || needs.compile-check.result == 'skipped')
     runs-on: ubuntu-latest
@@ -73,27 +74,18 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Cache Gradle build cache
-      uses: actions/cache@v4
-      with:
-        path: ~/.gradle/build-cache
-        key: gradle-build-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'app/src/**') }}
-        restore-keys: |
-          gradle-build-cache-${{ runner.os }}-
-
-    - name: Decode google-services.json (app)
+    - name: Decode google-services.json (humanoperator)
       env:
-        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_APP }}
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_HUMANOPERATOR }}
       run: |
         if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-          echo "app/google-services.json aus Secret geschrieben"
-        elif [ -s app/google-services.json ]; then
-          echo "Secret GOOGLE_SERVICES_JSON_APP ist leer - verwende die eingecheckte app/google-services.json"
+          printf '%s' "$GOOGLE_SERVICES_JSON" > humanoperator/google-services.json
+          echo "humanoperator/google-services.json aus Secret geschrieben"
+        elif [ -s humanoperator/google-services.json ]; then
+          echo "Secret GOOGLE_SERVICES_JSON_HUMANOPERATOR ist leer - verwende die vorhandene humanoperator/google-services.json"
         else
-          echo "::error::Secret GOOGLE_SERVICES_JSON_APP ist leer und app/google-services.json fehlt."
+          echo "::error::Secret GOOGLE_SERVICES_JSON_HUMANOPERATOR ist leer und humanoperator/google-services.json fehlt."
           exit 1
         fi
 
@@ -109,19 +101,19 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build app release AAB (unsigned)
-      run: ./gradlew :app:bundleRelease
+    - name: Build humanoperator module (debug)
+      run: ./gradlew :humanoperator:assembleDebug
 
-    - name: Upload app release AAB (unsigned)
+    - name: Upload humanoperator APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-aab-unsigned
-        path: app/build/outputs/bundle/release/app-release.aab
+        name: humanoperator-debug
+        path: humanoperator/build/outputs/apk/debug/humanoperator-debug.apk
 
     - name: Build summary
       run: |
-        echo "### AAB Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "### APK Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Module | Gebaut | Artefakt |" >> $GITHUB_STEP_SUMMARY
         echo "|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| app | ja | \`app-release.aab\` (unsigned) |" >> $GITHUB_STEP_SUMMARY
+        echo "| humanoperator | ja | \`humanoperator-debug.apk\` |" >> $GITHUB_STEP_SUMMARY
