@@ -9202,9 +9202,9 @@ function _collapseOldScreenElementBubbles() {
     }, 3600);
   }
 
-  function triggerAutoAccept() {
+  function triggerAutoAccept(force) {
     if (_mpInFlight) return;
-    if (isActive()) return;
+    if (!force && isActive()) return;
     _mpInFlight = true;
     _mpAttempts = 0;
     // Small delay to let system dialog inflate
@@ -9213,6 +9213,7 @@ function _collapseOldScreenElementBubbles() {
 
   // Expose globally so sendMessage() can trigger it even if direct Android method not hookable
   window._triggerMediaProjectionAutoAccept = triggerAutoAccept;
+  window._triggerMediaProjectionAutoAcceptForce = function() { triggerAutoAccept(true); };
 
   /* Hook Bridge.requestScreenshot – permission may be needed when TakeScreenshot command
      detects service not running and MainActivity requests MediaProjection */
@@ -9241,6 +9242,40 @@ function _collapseOldScreenElementBubbles() {
     Bridge.requestScreenCapturePermission = function() {
       var res = _origReqPerm.apply(this, arguments);
       triggerAutoAccept();
+      return res;
+    };
+  } catch(e) {}
+
+  /* Hook Bridge.sendMessage / sendMessageWithImages – old APK path where
+     MainActivity requests MediaProjection natively. For old builds without
+     isScreenCaptureActive, force-trigger once per send. */
+  try {
+    var _origSendMsg = Bridge.sendMessage;
+    Bridge.sendMessage = function() {
+      var res = _origSendMsg.apply(this, arguments);
+      try {
+        // If new bridge available, isActive() will guard; if old build (no isScreenCaptureActive),
+        // force trigger because permission dialog may be about to appear natively.
+        if (!getInAndroid() || typeof Android.isScreenCaptureActive !== 'function') {
+          triggerAutoAccept(true);
+        } else if (!isActive()) {
+          triggerAutoAccept();
+        }
+      } catch(e) {}
+      return res;
+    };
+  } catch(e) {}
+  try {
+    var _origSendMsgImg = Bridge.sendMessageWithImages;
+    Bridge.sendMessageWithImages = function() {
+      var res = _origSendMsgImg.apply(this, arguments);
+      try {
+        if (!getInAndroid() || typeof Android.isScreenCaptureActive !== 'function') {
+          triggerAutoAccept(true);
+        } else if (!isActive()) {
+          triggerAutoAccept();
+        }
+      } catch(e) {}
       return res;
     };
   } catch(e) {}
