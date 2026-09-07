@@ -1,7 +1,11 @@
 [
   {
     "id": "RETRIEVE",
-    "regex": "(?i)\\bretrieve\\([\"']([^\"']+)[\"']\\)"
+    "regex": "(?i)\\bretrieve\\(\\s*\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"\\s*\\)"
+  },
+  {
+    "id": "RETRIEVE",
+    "regex": "(?i)\\bretrieve\\(\\s*'((?:\\\\.|[^'\\\\])*)'\\s*\\)"
   },
   {
     "id": "POPUP_QUESTION",

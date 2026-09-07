@@ -923,6 +923,12 @@ function _parseBridgeJsonArray(json, fallback) {
   }
 }
 
+function _unescapeQuotedCommandText(text) {
+  return String(text || '').replace(/\\([\\"'nrtbf])/g, function(_, ch) {
+    return ({ n:'\n', r:'\r', t:'\t', b:'\b', f:'\f' })[ch] || ch;
+  });
+}
+
 function _syncDatabaseEntriesViaTypedBridge(json) {
   // Backward compatibility for installed APKs that do not yet expose the raw
   // getRawDatabaseJson/setRawDatabaseJson bridge methods. Reconcile the target
@@ -4921,9 +4927,11 @@ function parseCommandsFromText(rawText) {
       type: 'PINCH', single: false,
       build: (m) => ({ type: 'PINCH', cx: m[1], cy: m[2], sd: m[3], ed: m[4], dur: parseInt(m[5], 10) }) },
 
-    // Retrieve skill set entry
-    { re: /\bretrieve\(["']([^"']+)["']\)/gi, type: 'RETRIEVE', single: false,
-      build: (m) => ({ type: 'RETRIEVE', title: m[1] }) },
+    // Retrieve skill set entry. Quote-aware so titles such as
+    // retrieve("If Termux commands doesn't work") parse correctly; supports
+    // escaped quotes/backslashes inside the quoted title as well.
+    { re: /\bretrieve\(\s*(["'])((?:\\[\s\S]|(?!\1)[\s\S])*?)\1\s*\)/gi, type: 'RETRIEVE', single: false,
+      build: (m) => ({ type: 'RETRIEVE', title: _unescapeQuotedCommandText(m[2]) }) },
 
     // AI adds a new skill to the skill set
     { re: /\bnewSkill\(["']([\s\S]*?)["']\s*,\s*["']([\s\S]*?)["']\)/gi, type: 'NEW_SKILL', single: false,
@@ -5306,6 +5314,11 @@ function _dispatchCustomActions(text) {
   }
 
   for (const def of _customActionTypes) {
+    // retrieve() is already a first-class WebView command in parseCommandsFromText().
+    // If we also dispatch the custom-action-types entry here, the same response queues
+    // the retrieved block twice in the next user message. Keep the custom-action entry
+    // installed for native/older paths, but do not double-handle it in the WebView parser.
+    if (def.id === 'RETRIEVE') continue;
     def.regex.lastIndex = 0;
     let m;
     while ((m = def.regex.exec(text)) !== null) {
@@ -6480,7 +6493,8 @@ window.onCustomAction = window.onCustomAction || function(id, groups, batchSize)
     // already queued/auto-appended screenshot. Queue the same pending info here;
     // do not request a screenshot in this handler, otherwise native paths that
     // already appended one would send two follow-up turns.
-    _appendRetrievedInfoForTitle((groups || [])[0] || '');
+    const title = (groups || []).find(g => String(g || '').trim()) || '';
+    _appendRetrievedInfoForTitle(_unescapeQuotedCommandText(title));
     return;
   }
   if (id === 'TOAST') {
