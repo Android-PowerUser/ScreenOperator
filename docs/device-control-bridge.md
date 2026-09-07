@@ -5,7 +5,7 @@
 Every accessibility-service capability the app has (tap, scroll, navigate, open an app, type
 text, run a Termux command, ...) already existed natively, but only as something the AI's own
 command text could trigger via `CommandParser` → `Command.*` → `ScreenOperatorAccessibilityService
-.executeSingleCommand()`. None of it was reachable from JavaScript - a `custom-action-types.json`
+.executeSingleCommand()`. None of it was reachable from JavaScript - a `the inline WebView custom-action config`
 handler could define a brand-new AI-facing command, but had no `Android.*` bridge method to
 actually *do* anything with it beyond `showToast` (display only). The example in
 `docs/custom-action-types.md` even referenced `Android.tapAtCoordinates(...)` as if it already
@@ -60,7 +60,7 @@ like `"50%"`) - they're passed straight through to the same geometry resolver.
 `copyToClipboard(text)` is the first of a broader category worth calling out explicitly:
 capabilities that need **no additional Android permission** (clipboard access is granted to
 every app by default, unlike e.g. contacts or location). These are good candidates to keep
-adding here and to `custom-action-types.json`-driven AI commands, since they carry none of the
+adding here and to `the inline WebView custom-action config`-driven AI commands, since they carry none of the
 runtime-permission-prompt friction other device features do.
 
 - `Bridge.copyToClipboard(text)` / AI command `copyToClipboard("text")` writes `text` to the
@@ -94,7 +94,7 @@ synchronously to JS is read directly in `WebViewBridge.kt`, same as `copyToClipb
 ## Example: a custom "double tap" action type
 
 ```json
-// custom-action-types.json
+// DEFAULT_CUSTOM_ACTION_TYPES in index.html
 [
   { "id": "DOUBLE_TAP", "regex": "(?i)\\bdoubleTap\\(\\s*([\\d.%]+)\\s*,\\s*([\\d.%]+)\\s*\\)" }
 ]
