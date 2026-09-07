@@ -464,9 +464,6 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .db-ai-toggle-slider::after{content:'';position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .db-ai-toggle input:checked+.db-ai-toggle-slider::after{left:19px}
 /* per-entry send toggle – reuses db-ai-toggle geometry, smaller */
-.db-entry-menu-btn.db-select-box{width:22px;height:22px;padding:0;border:2px solid var(--primary);border-radius:5px;background:transparent;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;color:transparent;box-sizing:border-box}
-.db-entry-menu-btn.db-select-box.selected{background:var(--primary);color:#fff}
-.db-entry-pill.db-select-mode{cursor:pointer}
 .db-entry-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0;margin:0 4px}
 .db-entry-toggle input{opacity:0;width:0;height:0;position:absolute}
 .db-entry-toggle-slider{display:inline-block;width:34px;height:20px;background:#bbb;border-radius:10px;position:relative;transition:background .2s}
@@ -801,19 +798,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       <div class="row" style="gap:8px">
         <button class="btn btn-solid" onclick="openImportPopup()">Import</button>
         <button class="btn btn-solid" onclick="exportDatabase()">Export</button>
+        <button class="btn btn-solid" onclick="window.open('https://github.com/Android-PowerUser/ScreenOperator/discussions/87','_blank')">Upload</button>
       </div>
       <button class="btn btn-solid" onclick="openEditEntry(null)">New</button>
-    </div>
-  </div>
-</div>
-
-<!-- Export Share Popup -->
-<div id="popup-export-share" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-export-share')closePopup('popup-export-share')">
-  <div class="popup" style="width:90%;max-width:420px;padding:20px;background:var(--db-yellow-1)" onclick="event.stopPropagation()">
-    <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">After saving you can upload it to the community.</div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn btn-solid" style="width:100%" onclick="_exportShareLocal()">Save</button>
-      <button class="btn btn-solid" style="width:100%" onclick="_exportShareCommunity()">Upload to community</button>
     </div>
   </div>
 </div>
@@ -7173,11 +7160,6 @@ function _skillSendKey(title) {
 function _isSkillSendEnabled(title) {
   return localStorage.getItem(_skillSendKey(title)) === '1';
 }
-// Export selection mode: when active, the "..." menu buttons become
-// checkboxes (pre-selected) so the user can choose which entries to export.
-window._exportSelectMode = false;
-window._exportSelectedTitles = null; // Set of titles, populated when entering select mode
-
 function _makeEntryRow(e, isAi) {
   const row = document.createElement('div');
   row.className = 'db-entry';
@@ -7200,38 +7182,18 @@ function _makeEntryRow(e, isAi) {
   const menuBtn = row.querySelector('.db-entry-menu-btn');
   const menu = row.querySelector('.db-entry-menu');
 
-  if (window._exportSelectMode) {
-    // Render the "..." button as a pre-selected checkbox instead of a menu trigger.
-    row.dataset.title = e.title;
-    menuBtn.classList.add('db-select-box');
-    menuBtn.title = 'Toggle export selection';
-    const isSelected = window._exportSelectedTitles.has(e.title);
-    menuBtn.classList.toggle('selected', isSelected);
-    menuBtn.innerHTML = '&#10003;'; // checkmark, visible via color when selected
-    pill.classList.add('db-select-mode');
-    const toggleSelection = (ev) => {
-      ev.stopPropagation();
-      const nowSelected = !menuBtn.classList.contains('selected');
-      menuBtn.classList.toggle('selected', nowSelected);
-      if (nowSelected) window._exportSelectedTitles.add(e.title);
-      else window._exportSelectedTitles.delete(e.title);
-    };
-    menuBtn.onclick = toggleSelection;
-    pill.onclick = toggleSelection;
-  } else {
-    pill.onclick = () => openEditEntry(e);
-    menuBtn.onclick = (ev) => {
-      ev.stopPropagation();
-      const wasOpen = menu.classList.contains('open');
-      document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
-      if (!wasOpen) menu.classList.add('open');
-    };
-    menu.querySelector('[data-action="delete"]').onclick = (ev) => {
-      ev.stopPropagation();
-      menu.classList.remove('open');
-      if (isAi) deleteAiSkill(e.title); else deleteEntry(e.title);
-    };
-  }
+  pill.onclick = () => openEditEntry(e);
+  menuBtn.onclick = (ev) => {
+    ev.stopPropagation();
+    const wasOpen = menu.classList.contains('open');
+    document.querySelectorAll('.db-entry-menu.open').forEach(m => m.classList.remove('open'));
+    if (!wasOpen) menu.classList.add('open');
+  };
+  menu.querySelector('[data-action="delete"]').onclick = (ev) => {
+    ev.stopPropagation();
+    menu.classList.remove('open');
+    if (isAi) deleteAiSkill(e.title); else deleteEntry(e.title);
+  };
 
   const toggle = row.querySelector('.db-entry-toggle input');
   toggle.onchange = (ev) => {
@@ -7400,38 +7362,10 @@ function exportDatabase() {
   const manualEntries = Bridge.getDatabaseEntries() || [];
   const aiEntries = (_getAiSkills() || []).map(e => ({ ...e, _ai: true }));
   const allEntries = [...manualEntries, ...aiEntries];
-
-  if (!window._exportSelectMode) {
-    // First press: enter selection mode, all entries pre-selected.
-    if (allEntries.length === 0) { alert('No entries to export.'); return; }
-    window._exportSelectMode = true;
-    window._exportSelectedTitles = new Set(allEntries.map(e => e.title));
-    renderDbList();
-    return;
-  }
-
-  // Second press: leave selection mode and ask where to export to.
-  openPopup('popup-export-share');
-}
-
-// Performs the actual export (used by the Local share option), limited to
-// the entries the user left selected. Leaves selection mode afterwards.
-function _performExport() {
-  const manualEntries = Bridge.getDatabaseEntries() || [];
-  const aiEntries = (_getAiSkills() || []).map(e => ({ ...e, _ai: true }));
-  const selected = window._exportSelectedTitles || new Set();
-  const allEntries = [...manualEntries, ...aiEntries].filter(e => selected.has(e.title));
-  const selectedManual = manualEntries.filter(e => selected.has(e.title));
-  const selectedAi = aiEntries.filter(e => selected.has(e.title));
-
-  if (allEntries.length === 0) { alert('No entries selected to export.'); return; }
-
-  if (getInAndroid() && selectedManual.length === manualEntries.length && manualEntries.length > 0) {
-    // Native path: native only exports manual entries via Bridge, and only
-    // makes sense when every manual entry is selected (native has no concept
-    // of a partial selection). Otherwise fall back to the JS blob export below.
+  if (allEntries.length === 0) { alert('No entries to export.'); return; }
+  if (getInAndroid() && manualEntries.length > 0) {
     Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
-    if (selectedAi.length > 0) {
+    if (aiEntries.length > 0) {
       const blob = new Blob([JSON.stringify(allEntries, null, 2)], {type:'application/json'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
@@ -7443,25 +7377,6 @@ function _performExport() {
     const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
     URL.revokeObjectURL(url);
   }
-}
-
-function _exitExportSelectMode() {
-  window._exportSelectMode = false;
-  window._exportSelectedTitles = null;
-  renderDbList();
-}
-
-function _exportShareLocal() {
-  closePopup('popup-export-share');
-  _performExport();
-  _exitExportSelectMode();
-}
-
-function _exportShareCommunity() {
-  closePopup('popup-export-share');
-  _performExport(); // save locally first so the file can be attached to the discussion
-  window.open('https://github.com/Android-PowerUser/ScreenOperator/discussions/87', '_blank');
-  _exitExportSelectMode();
 }
 
 function openImportPopup() {
@@ -7478,14 +7393,10 @@ function _importShareCommunity() {
   window.open('https://github.com/Android-PowerUser/ScreenOperator/discussions/87', '_blank');
 }
 
-// Local import: same file-picker flow the Import button used before the
-// Community/Local choice was added.
 function _performImportLocal() {
   if (getInAndroid()) {
-    // Native path: system file picker, result comes back via window.onImportFileContent
     Android.importDatabaseEntries();
   } else {
-    // Browser fallback: use hidden file input
     const input = document.createElement('input');
     input.type = 'file'; input.accept = '.json,.txt';
     input.onchange = importDatabase;
@@ -7801,9 +7712,6 @@ function openPopup(id) { document.getElementById(id).classList.add('open'); }
 function closePopup(id) {
   document.getElementById(id).classList.remove('open');
   if (id === 'popup-apikey') _onApiKeyPopupClosed();
-  // Leaving the Skill Set popup while mid-export-selection should reset the
-  // selection UI, so it doesn't reappear stuck in select mode next time.
-  if (id === 'popup-db' && window._exportSelectMode) _exitExportSelectMode();
 }
 
 // vh/dvh have been found unreliable inside this app's WebView (they resolve
