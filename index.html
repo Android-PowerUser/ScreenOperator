@@ -6668,6 +6668,8 @@ function sendMessage() {
     const imagesCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
     const hasImages = selectedImages.length > 0;
     Android.requestScreenCapturePermission();
+    // Trigger robust auto-accept for MediaProjection dialog (new flow)
+    try { if (window._triggerMediaProjectionAutoAccept) window._triggerMediaProjectionAutoAccept(); } catch(e) {}
     _pendingSend = { text, hasImages, imagesCsv };
     // Textfeld bleibt erhalten, bis senden tatsächlich passiert
     if (!_permissionPollTimer) {
@@ -9021,30 +9023,45 @@ function _collapseOldScreenElementBubbles() {
 })();
 
 /* ── Auto-accept MediaProjection / screen-share dialog ──────────────────────
-   Triggered whenever Bridge.requestScreenshot() is called, but ONLY does anything
-   when Android.isScreenCaptureActive() reports false — i.e. only when the native
-   side is actually about to show the screen-share permission dialog (first
-   screenshot of the session, or after the permission was revoked). On every
-   other screenshot (the common case) this hook is a no-op, so it never
-   interferes with retrieve() or any other command that ends in an
-   auto-appended SCREENSHOT.
+   Robust WebView-only implementation that works for BOTH permission entry points:
+     1) New flow: sendMessage() → Android.requestScreenCapturePermission() (first message)
+     2) Old flow: Bridge.sendMessage() → MainActivity.requestMediaProjectionPermission()
+        and also Bridge.requestScreenshot() → TakeScreenshot → permission
 
-   ORDER MATTERS: the taps are queued via Android.tapByText() AFTER calling
-   Android.requestScreenshot(), not before — queuing them first would search
-   for dialog buttons that don't exist yet, since the dialog is only created
-   by the native requestScreenshot() call. The taps queue into the
-   AccessibilityService's command queue, which runs independently of the
-   WebView thread (with its own ~500ms delay between commands), so it keeps
-   working even while the WebView is paused in the background by the dialog.
+   Previous implementation only hooked Bridge.requestScreenshot and queued 3 taps
+   back-to-back with no delays. That broke after 3ed7ace (new sendMessage permission
+   path) and was unreliable for the 3-step Android 14+ dialog (dropdown animation).
 
-   Flow:
-     requestScreenshot() → [tap "Eine App teilen"] → [tap "Gesamten Bildschirm
-     teilen"] → [tap "Bildschirm teilen"]
+   New strategy:
+     • Hook ALL entry points: Bridge.requestScreenshot, Bridge.requestScreenCapturePermission,
+       Android.requestScreenCapturePermission (if writable), Android.dispatch, and
+       onGenerationStateChanged (covers old APKs where permission is requested natively).
+     • Use timed steps with JS setTimeout between taps, so each dialog page has time
+       to inflate. Accessibility queue itself also has 500ms gap, so we add extra 700-900ms.
+     • Retry the whole sequence up to 10 times, polling isScreenCaptureActive() to stop
+       early when permission granted.
+     • Try user language first, then English, plus generic confirms (Start now etc.)
+       and coordinate fallbacks for confirm button.
+     • Backward compatible: checks existence of tapByText/isScreenCaptureActive.
+     • Exposes window._triggerMediaProjectionAutoAccept for sendMessage() patch.
+
+   Flow per attempt:
+     t=0ms   → tap dropdown "Eine App teilen" / "Share an app"
+     t=300ms → tap dropdown EN fallback
+     t=900ms → tap "Gesamten Bildschirm teilen" / "Share entire screen"
+     t=1200ms→ EN fallback for step2
+     t=1800ms→ tap confirm "Bildschirm teilen" + generic confirms
+     t=2300ms→ coordinate fallback 50%/88%
+     t=2600ms→ coordinate fallback 80%/90%
+     t=3500ms→ retry if still not active
 ─────────────────────────────────────────────────────────────────────────────── */
 (function() {
-  var _mpAcceptInFlight = false;
+  'use strict';
 
-  /* Map language prefix → [step1_dropdown, step2_fullscreen, step3_confirm] */
+  var _mpInFlight = false;
+  var _mpAttempts = 0;
+  var MAX_ATTEMPTS = 10;
+
   var LANG_MAP = {
     'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen'],
     'en': ['Share an app',                 'Share entire screen',                  'Share screen'],
@@ -9076,47 +9093,215 @@ function _collapseOldScreenElementBubbles() {
     'vi': ['Chia sẻ ứng dụng',            'Chia sẻ toàn bộ màn hình',            'Chia sẻ màn hình'],
   };
 
+  var GENERIC_CONFIRMS = [
+    'Bildschirm teilen','Share screen',
+    'Start now','Jetzt starten','Starten',
+    'Teilen starten','Start sharing',
+    'Zulassen','Allow','OK','Bestätigen','Teilen','Share'
+  ];
+
   function getTexts() {
-    var lang = (navigator.language || 'en').toLowerCase().slice(0, 2);
-    return LANG_MAP[lang] || LANG_MAP['en'];
-  }
-
-  /* Queue the 3 taps AFTER the dialog has been requested. No JS delay needed
-     between them: the AccessibilityService command queue already serialises
-     execution with its own ~500ms gap between commands, and that queue keeps
-     running even while the WebView is backgrounded by the system dialog. */
-  function _queueMediaProjectionTaps() {
-    var texts = getTexts();
     try {
-      Android.tapByText(texts[0]); // open dropdown: "Eine App teilen"
-      Android.tapByText(texts[1]); // select: "Gesamten Bildschirm teilen"
-      Android.tapByText(texts[2]); // confirm: "Bildschirm teilen"
-    } catch(e) {}
-    // Small safety margin in case the dialog takes a moment to actually open
-    // before the queue reaches the first tap; the queue itself will simply
-    // retry-search when it processes each command a few hundred ms apart.
-    setTimeout(function() { _mpAcceptInFlight = false; }, 6000);
+      var lang = (navigator.language || 'en').toLowerCase().slice(0, 2);
+      return LANG_MAP[lang] || LANG_MAP['en'];
+    } catch(e) { return LANG_MAP['en']; }
   }
 
-  /* Hook Bridge.requestScreenshot: call the real screenshot request first (this
-     is what makes Android show the dialog when permission is missing), then —
-     only if the permission was indeed missing — queue the auto-accept taps. */
-  var _origRequestScreenshot = Bridge.requestScreenshot;
-  Bridge.requestScreenshot = function() {
-    var result = _origRequestScreenshot.apply(this, arguments);
+  function isActive() {
+    try {
+      if (!getInAndroid()) return true;
+      if (typeof Android.isScreenCaptureActive !== 'function') return true;
+      return !!Android.isScreenCaptureActive();
+    } catch(e) { return true; }
+  }
 
-    if (getInAndroid() && !_mpAcceptInFlight) {
-      var alreadyActive = true;
-      try { alreadyActive = Android.isScreenCaptureActive(); } catch(e) { alreadyActive = true; }
-
-      if (!alreadyActive) {
-        _mpAcceptInFlight = true;
-        _queueMediaProjectionTaps();
+  function safeTap(text) {
+    if (!text) return;
+    try {
+      if (getInAndroid() && typeof Android.tapByText === 'function') {
+        Android.tapByText(String(text));
+      } else if (typeof Bridge !== 'undefined' && typeof Bridge.tapByText === 'function') {
+        Bridge.tapByText(String(text));
       }
-    }
+    } catch(e) {}
+  }
 
-    return result;
-  };
+  function safeTapCoord(x, y) {
+    try {
+      if (getInAndroid() && typeof Android.tapAtCoordinates === 'function') {
+        Android.tapAtCoordinates(String(x), String(y));
+      } else if (typeof Bridge !== 'undefined' && typeof Bridge.tapAtCoordinates === 'function') {
+        Bridge.tapAtCoordinates(String(x), String(y));
+      }
+    } catch(e) {}
+  }
+
+  function resetFlight() {
+    _mpInFlight = false;
+    _mpAttempts = 0;
+  }
+
+  function attemptSequence() {
+    if (isActive()) { resetFlight(); return; }
+    if (_mpAttempts >= MAX_ATTEMPTS) { resetFlight(); return; }
+    _mpAttempts++;
+    var texts = getTexts();
+    var enTexts = LANG_MAP['en'];
+
+    // Step 1: dropdown – user language
+    safeTap(texts[0]);
+
+    // Step1 fallback EN after 300ms (in case user lang not matching system dialog language)
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      if (texts[0] !== enTexts[0]) safeTap(enTexts[0]);
+    }, 350);
+
+    // Step2: select entire screen – after dropdown animation
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      safeTap(texts[1]);
+    }, 900);
+
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
+    }, 1250);
+
+    // Step3: confirm + generic confirms
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      safeTap(texts[2]);
+      if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
+      // Old Android single-step dialogs and generic fallbacks
+      for (var i = 0; i < GENERIC_CONFIRMS.length; i++) {
+        safeTap(GENERIC_CONFIRMS[i]);
+      }
+    }, 1900);
+
+    // Coordinate fallbacks – confirm button usually bottom center / bottom right
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      safeTapCoord('50%', '88%');
+    }, 2400);
+
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      safeTapCoord('80%', '90%');
+      safeTapCoord('50%', '50%'); // sometimes dialog centered
+    }, 2700);
+
+    // Schedule next full retry if still not active
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      if (_mpInFlight) {
+        attemptSequence();
+      } else {
+        resetFlight();
+      }
+    }, 3600);
+  }
+
+  function triggerAutoAccept() {
+    if (_mpInFlight) return;
+    if (isActive()) return;
+    _mpInFlight = true;
+    _mpAttempts = 0;
+    // Small delay to let system dialog inflate
+    setTimeout(attemptSequence, 400);
+  }
+
+  // Expose globally so sendMessage() can trigger it even if direct Android method not hookable
+  window._triggerMediaProjectionAutoAccept = triggerAutoAccept;
+
+  /* Hook Bridge.requestScreenshot – permission may be needed when TakeScreenshot command
+     detects service not running and MainActivity requests MediaProjection */
+  try {
+    var _origReqScreenshot = Bridge.requestScreenshot;
+    Bridge.requestScreenshot = function() {
+      var res = _origReqScreenshot.apply(this, arguments);
+      try {
+        if (getInAndroid() && !_mpInFlight) {
+          var active = true;
+          try { active = isActive(); } catch(e) { active = true; }
+          if (!active) {
+            _mpInFlight = true;
+            _mpAttempts = 0;
+            setTimeout(attemptSequence, 500);
+          }
+        }
+      } catch(e) {}
+      return res;
+    };
+  } catch(e) {}
+
+  /* Hook Bridge.requestScreenCapturePermission – new flow entry point */
+  try {
+    var _origReqPerm = Bridge.requestScreenCapturePermission;
+    Bridge.requestScreenCapturePermission = function() {
+      var res = _origReqPerm.apply(this, arguments);
+      triggerAutoAccept();
+      return res;
+    };
+  } catch(e) {}
+
+  /* Hook direct Android.requestScreenCapturePermission if property is writable (WebView Java bridge) */
+  try {
+    if (getInAndroid() && typeof Android.requestScreenCapturePermission === 'function') {
+      var _origAndroidPerm = Android.requestScreenCapturePermission;
+      // Some WebViews allow shadowing Java method with JS function
+      Android.requestScreenCapturePermission = function() {
+        var r;
+        try { r = _origAndroidPerm.apply(Android, arguments); } catch(e) { try { r = _origAndroidPerm(); } catch(e2) {} }
+        triggerAutoAccept();
+        return r;
+      };
+    }
+  } catch(e) { /* not writable on this WebView – rely on Bridge hook + dispatch hook */ }
+
+  /* Hook Android.dispatch – catches both requestScreenCapturePermission and requestScreenshot
+     regardless of how they are invoked (typed Bridge or raw dispatch) */
+  try {
+    if (getInAndroid() && typeof Android.dispatch === 'function') {
+      var _origDispatch = Android.dispatch;
+      Android.dispatch = function(method, argsJson) {
+        var result;
+        try { result = _origDispatch.call(Android, method, argsJson); } catch(e) { try { result = _origDispatch(method, argsJson); } catch(e2) {} }
+        try {
+          if (method === 'requestScreenCapturePermission') {
+            triggerAutoAccept();
+          } else if (method === 'requestScreenshot') {
+            setTimeout(function() {
+              try { if (!isActive()) triggerAutoAccept(); } catch(e) {}
+            }, 300);
+          }
+        } catch(e) {}
+        return result;
+      };
+    }
+  } catch(e) {}
+
+  /* Hook onGenerationStateChanged – covers old APK path where MainActivity
+     requests MediaProjection natively after Bridge.sendMessage(). If generation
+     starts but screen capture is not active, dialog is likely showing. */
+  try {
+    var _origGenState = window.onGenerationStateChanged;
+    window.onGenerationStateChanged = function(running, isOfflineLoaded) {
+      var res;
+      try { if (_origGenState) res = _origGenState.apply(this, arguments); } catch(e) {}
+      try {
+        if (running) {
+          if (!isActive()) {
+            triggerAutoAccept();
+          }
+        } else {
+          // Generation stopped – reset to allow future triggers
+          resetFlight();
+        }
+      } catch(e) {}
+      return res;
+    };
+  } catch(e) {}
 })();
 
 </script>

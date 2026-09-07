@@ -1198,7 +1198,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Find and click a button with the specified text
+     * Find and click a button with the specified text – now searches across ALL windows
+     * to reliably find MediaProjection dropdown items that may be in popup windows.
      */
     fun findAndClickButtonByText(buttonText: String) {
         Log.d(TAG, "Finding and clicking button with text: $buttonText")
@@ -1207,12 +1208,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Refresh the root node
         refreshRootNode()
         
-        // Try to find the node with the specified text
-        val currentRootNode = currentRootNodeOrHandleMissing("find button", scheduleNext = true) ?: return
-        val node = findNodeByText(currentRootNode, buttonText)
+        // Try to find the node across all windows (not just active)
+        var node = findNodeByTextAcrossWindows(buttonText)
+        if (node == null) {
+            // Fallback to old path for logging consistency
+            val currentRootNode = rootNode
+            if (currentRootNode != null) {
+                node = findNodeByText(currentRootNode, buttonText)
+            }
+        }
         
         if (node != null) {
-            Log.d(TAG, "Found node with text: $buttonText")
+            Log.d(TAG, "Found node with text: $buttonText (across windows)")
             showToast("Button found: \"$buttonText\"", false)
             
             // Add a small delay before clicking
@@ -1263,15 +1270,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Find and long click a button with the specified text
+     * Find and long click a button with the specified text – searches all windows
      */
     fun findAndLongClickButtonByText(buttonText: String) {
         Log.d(TAG, "Finding and long clicking button with text: $buttonText")
         showToast("Searching for button to long click with text: \"$buttonText\"", false)
 
         refreshRootNode()
-        val currentRootNode = currentRootNodeOrHandleMissing("find button", scheduleNext = true) ?: return
-        val node = findNodeByText(currentRootNode, buttonText)
+        var node = findNodeByTextAcrossWindows(buttonText)
+        if (node == null) {
+            val currentRootNode = rootNode
+            if (currentRootNode != null) node = findNodeByText(currentRootNode, buttonText)
+        }
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
             showToast("Button found: \"$buttonText\"", false)
@@ -1295,14 +1305,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Find and long click a button by content description
+     * Find and long click a button by content description – searches all windows
      */
     private fun findAndLongClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and long clicking button with content description: $description")
         showToast("Searching for button to long click with description: \"$description\"", false)
 
-        val currentRootNode = currentRootNodeOrHandleMissing("find button by content description", scheduleNext = true) ?: return
-        val node = findNodeByContentDescription(currentRootNode, description)
+        var node = findNodeByContentDescriptionAcrossWindows(description)
+        if (node == null) {
+            val currentRootNode = rootNode
+            if (currentRootNode != null) node = findNodeByContentDescription(currentRootNode, description)
+        }
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
             showToast("Button found with description: \"$description\"", false)
@@ -1326,14 +1339,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Find and long click a button by ID
+     * Find and long click a button by ID – searches all windows
      */
     private fun findAndLongClickButtonById(id: String) {
         Log.d(TAG, "Finding and long clicking button with ID: $id")
         showToast("Searching for button to long click with ID: \"$id\"", false)
 
-        val currentRootNode = currentRootNodeOrHandleMissing("find button by ID", scheduleNext = true) ?: return
-        val node = findNodeById(currentRootNode, id)
+        var node = findNodeByIdAcrossWindows(id)
+        if (node == null) {
+            val currentRootNode = rootNode
+            if (currentRootNode != null) node = findNodeById(currentRootNode, id)
+        }
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
@@ -1358,18 +1374,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Find and click a button by content description
+     * Find and click a button by content description – searches all windows
      */
     private fun findAndClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and clicking button with content description: $description")
         showToast("Searching for button with description: \"$description\"", false)
         
-        // Try to find the node with the specified content description
-        val currentRootNode = currentRootNodeOrHandleMissing("find button by content description", scheduleNext = true) ?: return
-        val node = findNodeByContentDescription(currentRootNode, description)
+        // Search across all windows
+        var node = findNodeByContentDescriptionAcrossWindows(description)
+        if (node == null) {
+            val currentRootNode = rootNode
+            if (currentRootNode != null) node = findNodeByContentDescription(currentRootNode, description)
+        }
         
         if (node != null) {
-            Log.d(TAG, "Found node with content description: $description")
+            Log.d(TAG, "Found node with content description: $description (across windows)")
             showToast("Button found with description: \"$description\"", false)
             
             // Add a small delay before clicking
@@ -1400,15 +1419,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Find and click a button by ID
+     * Find and click a button by ID – searches all windows
      */
     private fun findAndClickButtonById(id: String) {
         Log.d(TAG, "Finding and clicking button with ID: $id")
         showToast("Searching for button with ID: \"$id\"", false)
         
-        // Try to find the node with the specified ID
-        val currentRootNode = currentRootNodeOrHandleMissing("find button by ID", scheduleNext = true) ?: return
-        val node = findNodeById(currentRootNode, id)
+        var node = findNodeByIdAcrossWindows(id)
+        if (node == null) {
+            val currentRootNode = rootNode
+            if (currentRootNode != null) node = findNodeById(currentRootNode, id)
+        }
         
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
@@ -1543,6 +1564,63 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.e(TAG, "Error getting node ID: ${e.message}")
             return ""
         }
+    }
+
+    /**
+     * Search for a node by text across ALL windows (not just active window).
+     * This is crucial for MediaProjection dialog where dropdown list may be in a popup window.
+     */
+    private fun findNodeByTextAcrossWindows(text: String): AccessibilityNodeInfo? {
+        try {
+            // First try active window root (fast path)
+            rootNode?.let {
+                findNodeByText(it, text)?.let { found -> return found }
+            }
+            // Then try all windows
+            for (win in windows) {
+                try {
+                    val winRoot = win.root ?: continue
+                    findNodeByText(winRoot, text)?.let { found -> return found }
+                } catch (e: Exception) { /* ignore per-window errors */ }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching all windows for text: $text", e)
+        }
+        return null
+    }
+
+    private fun findNodeByContentDescriptionAcrossWindows(desc: String): AccessibilityNodeInfo? {
+        try {
+            rootNode?.let {
+                findNodeByContentDescription(it, desc)?.let { found -> return found }
+            }
+            for (win in windows) {
+                try {
+                    val winRoot = win.root ?: continue
+                    findNodeByContentDescription(winRoot, desc)?.let { found -> return found }
+                } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching all windows for contentDescription: $desc", e)
+        }
+        return null
+    }
+
+    private fun findNodeByIdAcrossWindows(id: String): AccessibilityNodeInfo? {
+        try {
+            rootNode?.let {
+                findNodeById(it, id)?.let { found -> return found }
+            }
+            for (win in windows) {
+                try {
+                    val winRoot = win.root ?: continue
+                    findNodeById(winRoot, id)?.let { found -> return found }
+                } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching all windows for id: $id", e)
+        }
+        return null
     }
     
     /**
