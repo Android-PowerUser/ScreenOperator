@@ -5495,7 +5495,7 @@ window.onSystemMessageChanged = function(msg) {
 ════════════════════════════════════════════════════════ */
 const _trialUiDefaults = {
   firstLaunchDialogTitle: 'Trial Information',
-  firstLaunchDialogBody:  'You can try Screen Operator for 7 days before you have to subscribe to support the development of more features.',
+  firstLaunchDialogBody:  'You can try Screen Operator for 3 days before you have to subscribe to support the development of more features.',
   firstLaunchDialogButton: 'OK',
   trialExpiredDialogTitle: 'Trial period expired',
   trialExpiredDialogBody:  'Please support the development of the app so that you can continue using it \uD83C\uDF89',
@@ -5583,7 +5583,7 @@ function initiateGooglePlay() {
    Bridge.isPurchased() / Bridge.initiateDonation(). This engine only
    decides the free-trial window and reflects native purchase state.
 ════════════════════════════════════════════════════════ */
-const TRIAL_DEFAULT_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, matches DEFAULT_TRIAL_DURATION_MS
+const TRIAL_DEFAULT_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days, matches DEFAULT_TRIAL_DURATION_MS
 const TRIAL_TIME_API_URL = 'https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC';
 const TRIAL_CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes, matches CHECK_INTERVAL_MS
 const TRIAL_CONNECT_TIMEOUT_MS = 30000;
