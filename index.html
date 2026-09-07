@@ -909,6 +909,60 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 const LS = window.localStorage;
 const getInAndroid = () => typeof window.Android !== 'undefined';
 
+function _androidHas(methodName) {
+  return getInAndroid() && typeof Android[methodName] === 'function';
+}
+
+function _parseBridgeJsonArray(json, fallback) {
+  try {
+    const parsed = JSON.parse(json || '[]');
+    return Array.isArray(parsed) ? parsed : (fallback || []);
+  } catch (e) {
+    console.warn('[ScreenOperator] Could not parse bridge JSON array:', e);
+    return fallback || [];
+  }
+}
+
+function _syncDatabaseEntriesViaTypedBridge(json) {
+  // Backward compatibility for installed APKs that do not yet expose the raw
+  // getRawDatabaseJson/setRawDatabaseJson bridge methods. Reconcile the target
+  // list through the older typed add/update/delete methods so WebView-only
+  // skill-set migrations and retrieve() keep working without forcing an APK update.
+  if (!getInAndroid()) { LS.setItem('dbEntries', json); return; }
+  const target = _parseBridgeJsonArray(json, []);
+  const current = _parseBridgeJsonArray(Android.getDatabaseEntries ? Android.getDatabaseEntries() : '[]', []);
+  const usedCurrent = new Set();
+
+  for (const desired of target) {
+    if (!desired || typeof desired.title !== 'string') continue;
+    const title = desired.title;
+    const guide = typeof desired.guide === 'string' ? desired.guide : '';
+    let idx = current.findIndex((e, i) => !usedCurrent.has(i) && e && e.title === title);
+    if (idx === -1) idx = current.findIndex((e, i) => !usedCurrent.has(i) && e && String(e.title || '').toLowerCase() === title.toLowerCase());
+    if (idx === -1) {
+      Android.addDatabaseEntry && Android.addDatabaseEntry(title, guide);
+    } else {
+      usedCurrent.add(idx);
+      const existing = current[idx];
+      if (existing.title !== title || existing.guide !== guide) {
+        Android.updateDatabaseEntry && Android.updateDatabaseEntry(existing.title, title, guide);
+      }
+    }
+  }
+
+  // Delete only entries whose title no longer exists in the target list (e.g.
+  // legacy-title renames). The old typed bridge can delete only by title, not by
+  // stable id/index, so keeping same-title duplicates is safer than potentially
+  // deleting the freshly updated entry on APKs without raw JSON support.
+  const targetTitles = new Set(target.map(e => String((e && e.title) || '').toLowerCase()));
+  for (let i = current.length - 1; i >= 0; i--) {
+    const existing = current[i];
+    if (existing && !usedCurrent.has(i) && !targetTitles.has(String(existing.title || '').toLowerCase()) && Android.deleteDatabaseEntry) {
+      Android.deleteDatabaseEntry(existing.title);
+    }
+  }
+}
+
 const Bridge = {
   /* System message */
   getSystemMessage:()=> getInAndroid() ? (Android.getSystemMessage()||DEFAULT_SYSTEM_MSG) : (LS.getItem('sysMsg')||DEFAULT_SYSTEM_MSG),
@@ -938,9 +992,27 @@ const Bridge = {
   setCurrentKeyIndex:(idx,prov)=>{ getInAndroid() ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
 
   /* Database entries */
-  getRawDatabaseJson:()=>{ if(getInAndroid()) return Android.getRawDatabaseJson(); return LS.getItem('dbEntries')||'[]'; },
-  setRawDatabaseJson:(json)=>{ if(getInAndroid()) Android.setRawDatabaseJson(json); else LS.setItem('dbEntries',json); },
-  getDatabaseEntries:()=> JSON.parse(Bridge.getRawDatabaseJson()),
+  getRawDatabaseJson:()=>{
+    if (getInAndroid()) {
+      // New APKs expose raw JSON so the WebView can own skill-set migrations.
+      // Older installed APKs only expose getDatabaseEntries(); fall back to it
+      // instead of throwing a TypeError that breaks retrieve() before the
+      // auto-appended screenshot can continue the AI loop.
+      if (_androidHas('getRawDatabaseJson')) return Android.getRawDatabaseJson() || '[]';
+      if (_androidHas('getDatabaseEntries')) return Android.getDatabaseEntries() || '[]';
+      return '[]';
+    }
+    return LS.getItem('dbEntries')||'[]';
+  },
+  setRawDatabaseJson:(json)=>{
+    if (getInAndroid()) {
+      if (_androidHas('setRawDatabaseJson')) Android.setRawDatabaseJson(json);
+      else _syncDatabaseEntriesViaTypedBridge(json);
+    } else {
+      LS.setItem('dbEntries',json);
+    }
+  },
+  getDatabaseEntries:()=> _parseBridgeJsonArray(Bridge.getRawDatabaseJson(), []),
   addDatabaseEntry:(title,guide)=>{
     if(getInAndroid()){Android.addDatabaseEntry(title,guide);return;}
     const e=Bridge.getDatabaseEntries(); e.push({title,guide}); LS.setItem('dbEntries',JSON.stringify(e));
@@ -1708,6 +1780,22 @@ window.onChatCleared = function() {
  * The pending info is shown at the very beginning of the next user message (chat bubble
  * AND AI payload), then screen elements + screenshot follow as usual.
  */
+function _appendRetrievedInfoForTitle(title) {
+  const requestedTitle = String(title || '').trim();
+  if (!requestedTitle) return false;
+  let entries = [];
+  try { entries = Bridge.getDatabaseEntries() || []; }
+  catch (e) { console.warn('[ScreenOperator] retrieve(): could not read skill set:', e); }
+  const titleLc = requestedTitle.toLowerCase();
+  const entry = entries.find(e => e && String(e.title || '').trim().toLowerCase() === titleLc)
+             || _getAiSkills().find(e => e && String(e.title || '').trim().toLowerCase() === titleLc);
+  const body = entry ? (entry.guide || '') : 'The information is not available';
+  const displayTitle = entry && entry.title ? entry.title : requestedTitle;
+  _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
+    + `${_operationalTuning.retrievalHeaderPrefix}${displayTitle}]:\n${body}`;
+  return true;
+}
+
 function _applyPendingRetrievedInfo(text) {
   if (!_pendingScreenInfo) return text;
   return _pendingScreenInfo + (text ? '\n\n' + text : '');
@@ -5165,13 +5253,7 @@ async function _executeSingleCommand(cmd) {
       // caused retrieve() to silently do nothing (no _pendingScreenInfo set, so the
       // auto-appended SCREENSHOT fired but the AI received no retrieved content),
       // breaking the command whenever the same skill had already appeared in history.
-      const entries = Bridge.getDatabaseEntries();
-      const titleLc = (cmd.title || '').toLowerCase();
-      const entry = entries.find(e => e.title.toLowerCase() === titleLc)
-                 || _getAiSkills().find(e => e.title.toLowerCase() === titleLc);
-      const body = entry ? entry.guide : 'The information is not available';
-      _pendingScreenInfo = (_pendingScreenInfo ? _pendingScreenInfo + '\n\n' : '')
-        + `${_operationalTuning.retrievalHeaderPrefix}${cmd.title}]:\n${body}`;
+      _appendRetrievedInfoForTitle(cmd.title);
       // No screenshot here – handled by auto-appended SCREENSHOT.
       break;
     }
@@ -6392,6 +6474,15 @@ function _enqueueAiQuestionFromParts(question, answers, batchSize) {
 }
 
 window.onCustomAction = window.onCustomAction || function(id, groups, batchSize) {
+  if (id === 'RETRIEVE') {
+    // Backward/current native-parser compatibility: some APK paths execute
+    // retrieve("...") as a WebViewCustomAction and then continue with their
+    // already queued/auto-appended screenshot. Queue the same pending info here;
+    // do not request a screenshot in this handler, otherwise native paths that
+    // already appended one would send two follow-up turns.
+    _appendRetrievedInfoForTitle((groups || [])[0] || '');
+    return;
+  }
   if (id === 'TOAST') {
     // groups[0] = the message text captured from toast("...") / toast('...')
     Bridge.showToast(groups[0] || '', false);
