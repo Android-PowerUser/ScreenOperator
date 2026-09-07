@@ -9153,80 +9153,95 @@ function _collapseOldScreenElementBubbles() {
     var enTexts = LANG_MAP['en'];
     console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' texts=' + JSON.stringify(texts));
 
-    // Phase 1: dropdown – user lang + EN fallback (once only, never retried)
+    // Phase 1: dropdown – exactly ONE tap, user lang first, EN fallback only if different and after short delay
+    // Do NOT tap generic – prevents "Bildschirm teilen" matching "Gesamten Bildschirm teilen" via contains()
     safeTap(texts[0]);
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
-      if (texts[0] !== enTexts[0]) safeTap(enTexts[0]);
-    }, 400);
-
-    // Phase 2: fullscreen – after dropdown animation (once only)
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] phase2 fullscreen');
-      safeTap(texts[1]);
-    }, 1100);
-
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
-    }, 1500);
-
-    // Phase 3: confirm – this is the only phase that retries
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] phase3 confirm');
-      safeTap(texts[2]);
-      if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
-      for (var i = 0; i < GENERIC_CONFIRMS.length; i++) {
-        safeTap(GENERIC_CONFIRMS[i]);
+      if (texts[0] !== enTexts[0]) {
+        console.log('[MP] phase1 EN fallback');
+        safeTap(enTexts[0]);
       }
-    }, 2300);
+    }, 500);
 
-    // Coordinate fallbacks – bottom area only, never center (center would hit dropdown again)
+    // Phase 2: fullscreen – exactly ONE tap per timeout, no generics
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
-      console.log('[MP] coord fallback 50/88');
+      console.log('[MP] phase2 fullscreen user lang');
+      safeTap(texts[1]);
+    }, 1200);
+
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      if (texts[1] !== enTexts[1]) {
+        console.log('[MP] phase2 fullscreen EN fallback');
+        safeTap(enTexts[1]);
+      }
+    }, 1700);
+
+    // Phase 3: confirm – user lang
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      console.log('[MP] phase3 confirm user lang');
+      safeTap(texts[2]);
+    }, 2400);
+
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      if (texts[2] !== enTexts[2]) {
+        console.log('[MP] phase3 confirm EN fallback');
+        safeTap(enTexts[2]);
+      }
+    }, 2900);
+
+    // Phase 4: generic full phrases only – one at a time, not all at once
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      console.log('[MP] phase4 generic Start now');
+      safeTap(GENERIC_CONFIRMS[2]); // Start now
+    }, 3400);
+
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      console.log('[MP] phase4 generic Jetzt starten');
+      safeTap(GENERIC_CONFIRMS[3]); // Jetzt starten
+    }, 3800);
+
+    // Phase 5: coordinate fallbacks – bottom only, never center, one per timeout
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      console.log('[MP] coord 50/88');
       safeTapCoord('50%', '88%');
-    }, 2800);
+    }, 4200);
 
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
-      console.log('[MP] coord fallback 80/90 and 50/92');
+      console.log('[MP] coord 80/90');
       safeTapCoord('80%', '90%');
-      safeTapCoord('50%', '92%');
-      safeTapCoord('50%', '85%');
-    }, 3300);
+    }, 4600);
 
-    // Confirm-only retries (no dropdown/fullscreen)
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      console.log('[MP] coord 50/92');
+      safeTapCoord('50%', '92%');
+    }, 5000);
+
+    // Final confirm retry only – no dropdown/fullscreen re-tap, only confirm
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
       if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
         _mpAttemptsConfirm++;
         console.log('[MP] confirm retry #' + _mpAttemptsConfirm);
         safeTap(texts[2]);
-        if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
-        for (var i = 0; i < GENERIC_CONFIRMS.length; i++) {
-          safeTap(GENERIC_CONFIRMS[i]);
-        }
-        safeTapCoord('50%', '88%');
-        safeTapCoord('80%', '90%');
-        // schedule final reset
         setTimeout(function() {
           if (isActive()) { resetFlight(); return; }
-          if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
-            _mpAttemptsConfirm++;
-            console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' final');
-            safeTap(texts[2]);
-            safeTapCoord('50%', '88%');
-            safeTapCoord('80%', '90%');
-          }
-          setTimeout(function() { resetFlight(); }, 1500);
-        }, 2000);
+          safeTapCoord('50%', '88%');
+          setTimeout(function() { resetFlight(); }, 1200);
+        }, 600);
       } else {
         resetFlight();
       }
-    }, 4500);
+    }, 5600);
   }
 
   function triggerAutoAccept(force) {

@@ -1467,25 +1467,49 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
         try {
-            // Check if this node has the specified text
+            // First pass: exact match (case-insensitive, trimmed) – prevents "Bildschirm teilen" matching "Gesamten Bildschirm teilen"
+            findNodeByTextExact(node, text)?.let { return it }
+            // Second pass: contains fallback for partial matches (old behavior)
             if (!node.text.isNullOrEmpty() && node.text.toString().contains(text, ignoreCase = true)) {
                 return AccessibilityNodeInfo.obtain(node)
             }
-            
-            // Check children recursively
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
                 val result = findNodeByText(child, text)
                 child.recycle()
-                
-                if (result != null) {
-                    return result
-                }
+                if (result != null) return result
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error finding node by text: ${e.message}")
         }
-        
+        return null
+    }
+
+    private fun findNodeByTextExact(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+        try {
+            val target = text.trim()
+            if (!node.text.isNullOrEmpty()) {
+                val nodeText = node.text.toString().trim()
+                if (nodeText.equals(target, ignoreCase = true)) {
+                    return AccessibilityNodeInfo.obtain(node)
+                }
+            }
+            // Also check contentDescription as fallback for exact
+            if (!node.contentDescription.isNullOrEmpty()) {
+                val cd = node.contentDescription.toString().trim()
+                if (cd.equals(target, ignoreCase = true)) {
+                    return AccessibilityNodeInfo.obtain(node)
+                }
+            }
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findNodeByTextExact(child, text)
+                child.recycle()
+                if (result != null) return result
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding node by exact text: ${e.message}")
+        }
         return null
     }
     
@@ -1569,14 +1593,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     /**
      * Search for a node by text across ALL windows (not just active window).
      * This is crucial for MediaProjection dialog where dropdown list may be in a popup window.
+     * Tries exact match first to avoid "Bildschirm teilen" matching "Gesamten Bildschirm teilen".
      */
     private fun findNodeByTextAcrossWindows(text: String): AccessibilityNodeInfo? {
         try {
-            // First try active window root (fast path)
+            // First pass: exact match across all windows
+            rootNode?.let {
+                findNodeByTextExact(it, text)?.let { found -> return found }
+            }
+            for (win in windows) {
+                try {
+                    val winRoot = win.root ?: continue
+                    findNodeByTextExact(winRoot, text)?.let { found -> return found }
+                } catch (e: Exception) { /* ignore per-window errors */ }
+            }
+            // Second pass: contains fallback
             rootNode?.let {
                 findNodeByText(it, text)?.let { found -> return found }
             }
-            // Then try all windows
             for (win in windows) {
                 try {
                     val winRoot = win.root ?: continue
