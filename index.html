@@ -938,7 +938,9 @@ const Bridge = {
   setCurrentKeyIndex:(idx,prov)=>{ getInAndroid() ? Android.setCurrentKeyIndex(idx,prov) : LS.setItem('kIdx_'+prov,String(idx)); },
 
   /* Database entries */
-  getDatabaseEntries:()=> JSON.parse(getInAndroid() ? Android.getDatabaseEntries() : (LS.getItem('dbEntries')||'[]')),
+  getRawDatabaseJson:()=>{ if(getInAndroid()) return Android.getRawDatabaseJson(); return LS.getItem('dbEntries')||'[]'; },
+  setRawDatabaseJson:(json)=>{ if(getInAndroid()) Android.setRawDatabaseJson(json); else LS.setItem('dbEntries',json); },
+  getDatabaseEntries:()=> JSON.parse(Bridge.getRawDatabaseJson()),
   addDatabaseEntry:(title,guide)=>{
     if(getInAndroid()){Android.addDatabaseEntry(title,guide);return;}
     const e=Bridge.getDatabaseEntries(); e.push({title,guide}); LS.setItem('dbEntries',JSON.stringify(e));
@@ -1389,6 +1391,128 @@ let _humanExpertConnected = false;
 /* ════════════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════════════ */
+
+/* ════════════════════════════════════════════════════════
+   DEFAULT SKILL-SET ENTRIES
+   ────────────────────────────────────────────────────────
+   All business logic for default entries lives here in the
+   WebView. The native layer (SystemMessageEntryPreferences)
+   is a pure storage proxy that reads/writes raw JSON only.
+
+   Migration keys are persisted in localStorage so they
+   survive across sessions (no native SharedPreferences
+   needed for this metadata).
+════════════════════════════════════════════════════════ */
+const _DB_DEFAULT_ENTRIES = [
+  {
+    title: "If Termux commands doesn't work",
+    guide: "1. Open Termux; if that has no effect, it is not installed and you will need to download the GitHub version using a browser.\n\n2. Else go ~/.termux/termux.properties uncomment \nallow-external-apps = true in Termux\nConfirm Android Termux access permissions request.\n\n3. The \"Run commands in Termux environment\" permission must be approved in the Screen Operator app info in the Android settings. But this should be already turned on so try Termux(\"Your command\") again."
+  },
+  {
+    title: "Chromium-based Browser",
+    guide: "To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the 'minus' symbol (multiple times). It only works approximately in 10% increments. Press the button that many times in a message to zoom out until 50%. More isn't possible.\""
+  },
+  {
+    title: "If a field to click is not spelled out",
+    guide: "Some fields will not be spelled out, such as \"Nach Apps und Spielen su...\". In such a case, you must always enter the full version: clickOnButton(\"Nach Apps und Spielen suchen\")\""
+  },
+  {
+    title: "File operations",
+    guide: "As a VLM, Termux is the fastest way to perform file operations. If it's not installed, use existing file manager.\""
+  },
+  {
+    title: "Root availability",
+    guide: "Anyone with root access also has a root app like Magisk, KernelSU, or something similar. Try opening all these apps simultaneously. If then one is actually running, you'll see there whether root access is active."
+  },
+  {
+    title: "Set thumbnail for videos",
+    guide: "Set thumbnails won't work with WMV files.\nUse Termux and retrieve the manual for that and install FFMPEG there if it's not already present. Specify the video, image, and output paths. Use: -map 0 -map 1 -c copy -c:v:1 mjpeg -disposition:v:1 attached_pic \n\nAlternate way: Open FFMPEG App. (If it's not installed, download the app from GitHub, not the Play Store, because Google restrictions prevent FFMPEG from accessing most files.) \nClick 2 input files and the second one is for the picture. Write -map 0 -map 1 -c copy -c:v:1 mjpeg -disposition:v:1 attached_pic in the text field on the bottom"
+  },
+  {
+    title: "Codex",
+    guide: "Go to https://chatgpt.com/codex/cloud and log in if necessary. Select the repository, and the most up-to-date branch.\n\nFirst time with Codex: Yes\n\n\nIf \"Yes\": Write Codex a task and click submit. It will take 3 seconds to start. Find the task field and stop it. The environment for the repository is now created. Tap Menu (top left) and Environments, tap the relevant one, click Edit, and set the setup script to manual. In the new text field, enter the following, if you task is to develop an Android app:\n\n#!/bin/bash\n\n# Exit on any error\nset -e\n\n# 1. Set up the Android SDK directory\necho \"Setting up Android SDK directory...\"\n\nmkdir -p android_sdk\n\necho \"sdk.dir=android_sdk\" > local.properties\n\n# Add android_sdk to .gitignore if it's not already there\nif !  grep -q \"android_sdk/\" .gitignore;  then\n   echo \"android_sdk/\" >> .gitignore\n fi\n\n # 2. Download and unzip the Android SDK command-line tools\n echo \"Downloading and unzipping Android SDK...\"\n wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip\n unzip -q commandlinetools-linux-13114758_latest.zip -d android_sdk\n rm commandlinetools-linux-13114758_latest.zip\n\n #3. Restructure cmdline-tools for sdkmanager\n echo \"Restructuring cmdline-tools...\"\n mv android_sdk/cmdline-tools android_sdk/cmdline-tools-tmp\n mkdir -p android_sdk/cmdline-tools/latest\n mv android_sdk/cmdline-tools-tmp/* android_sdk/cmdline-tools/latest/\n rm -rf android_sdk/cmdline-tools-tmp\n\n #4. Install required SDK packages\n echo \"Installing SDK packages...\"\n yes |  android_sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true\n\nandroid_sdk/cmdline-tools/latest/bin/sdkmanager \\\n\n\"platforms;android-35\" \\\n\n\"build-tools;35.0.0\" \\\n\n\"platform-tools\" \n\nEnable internet access for agents and select \"All (unrestricted)\" for the domain allowlist and save. Go back (several times) to the Codex input field. \n\nThen Open your own app, tap on Database, Developing Android apps, set \"First time with Codex\" to \"No\" and press \"save\".\n\n\nIf \"No\": Write Codex the task and click submit. It will take 3 seconds to start. Find the new task field and click on it. You can click on protocol to see what's happening right now.\n\nUse the \"Wait(seconds)\" function to save tokens. After a longer period of time, the session or container must first be created. This takes approximately 120 seconds. The container is used across multiple tasks.\nIf the session is already created and Codex only asked questions, the response takes 40 seconds.\nThe task itself takes approximately 70 seconds and the build to test takes 135 seconds.\n\nProceed normally."
+  },
+  {
+    title: "Developing Android apps",
+    guide: "1. Only if it's an app from scratch create a Github repo with Termux if installed else with a browser and log in or sign up if necessary. Ask the user whether the repo should be public or private and the name of the app and the repo.\n\n\nthereafter:\nretrieve(\"Codex\")"
+  }
+];
+
+// Legacy titles migrated to current canonical titles
+const _DB_LEGACY_TITLE_MAP = {
+  "Termux": "If Termux commands doesn't work",
+  "If \"Termux(\"command\")\" doesn't work": "If Termux commands doesn't work",
+  "If a field is not spelled out": "If a field to click is not spelled out",
+  "Miscellaneous": "If a field to click is not spelled out"
+};
+
+// localStorage key tracking which migrations have already run
+const _DB_MIGRATION_KEY = 'dbMigrationsDone_v2';
+
+/**
+ * Ensures all default skill-set entries exist and are up-to-date.
+ * Called once at DOMContentLoaded; safe to call multiple times.
+ *
+ * Mirrors the logic that was in SystemMessageEntryPreferences.kt:
+ *  - rename legacy titles to canonical titles
+ *  - upsert each required entry (add if missing, update guide if present)
+ *  - de-duplicate entries with the same effective title
+ */
+function _ensureDefaultDbEntries() {
+  try {
+    let entries = Bridge.getDatabaseEntries();
+    let changed = false;
+
+    // Step 1: Apply legacy title renames (once per install)
+    const migrationsDone = LS.getItem(_DB_MIGRATION_KEY) === 'true';
+    if (!migrationsDone) {
+      entries.forEach(e => {
+        const mapped = _DB_LEGACY_TITLE_MAP[e.title];
+        if (mapped && e.title !== mapped) {
+          e.title = mapped;
+          changed = true;
+        }
+      });
+      LS.setItem(_DB_MIGRATION_KEY, 'true');
+    }
+
+    // Step 2: Upsert each default entry
+    _DB_DEFAULT_ENTRIES.forEach(required => {
+      const titleLc = required.title.toLowerCase();
+      const legacyTitles = Object.entries(_DB_LEGACY_TITLE_MAP)
+        .filter(([, v]) => v === required.title)
+        .map(([k]) => k.toLowerCase());
+      const allTitles = [titleLc, ...legacyTitles];
+
+      const matchingIndices = entries
+        .map((e, i) => allTitles.includes(e.title.toLowerCase()) ? i : -1)
+        .filter(i => i !== -1);
+
+      if (matchingIndices.length === 0) {
+        entries.push({ title: required.title, guide: required.guide });
+        changed = true;
+      } else {
+        const keepIdx = matchingIndices[0];
+        if (entries[keepIdx].title !== required.title || entries[keepIdx].guide !== required.guide) {
+          entries[keepIdx] = { title: required.title, guide: required.guide };
+          changed = true;
+        }
+        // Remove duplicates (keep first match only)
+        for (let i = matchingIndices.length - 1; i >= 1; i--) {
+          entries.splice(matchingIndices[i], 1);
+          changed = true;
+        }
+      }
+    });
+
+    if (changed) {
+      Bridge.setRawDatabaseJson(JSON.stringify(entries));
+    }
+  } catch (e) {
+    console.warn('_ensureDefaultDbEntries error:', e);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   currentModelId = _resolveValidModelId(Bridge.getSelectedModelId());
   if (currentModelId === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
@@ -1416,6 +1540,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // If Freedom is already purchased, load fallback keys from Firebase into memory
   if (_isFreedomEntitled()) fetchFreedomFirebaseKeys(true);
+
+  // Ensure default skill-set entries exist (logic migrated from native Kotlin)
+  _ensureDefaultDbEntries();
 
   // System message
   document.getElementById('sys-msg-textarea').value = Bridge.getSystemMessage();
