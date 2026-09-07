@@ -810,10 +810,10 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <!-- Export Share Popup -->
 <div id="popup-export-share" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-export-share')closePopup('popup-export-share')">
   <div class="popup" style="width:90%;max-width:420px;padding:20px" onclick="event.stopPropagation()">
-    <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">Do you want to share your Skill Set with the Screen Operator community or only local?</div>
-    <div class="row" style="justify-content:space-between;gap:8px">
-      <button class="btn btn-solid" onclick="_exportShareLocal()">Local</button>
-      <button class="btn btn-solid" onclick="_exportShareCommunity()">Community</button>
+    <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">Do you want to share your Skill Set with the Screen Operator community or save it locally?</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-solid" style="width:100%" onclick="_exportShareLocal()">Save</button>
+      <button class="btn btn-solid" style="width:100%" onclick="_exportShareCommunity()">Upload to community</button>
     </div>
   </div>
 </div>
@@ -822,9 +822,9 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <div id="popup-import-share" class="overlay" style="align-items:center" onclick="if(event.target.id==='popup-import-share')closePopup('popup-import-share')">
   <div class="popup" style="width:90%;max-width:420px;padding:20px" onclick="event.stopPropagation()">
     <div style="font-size:16px;margin-bottom:18px;color:var(--text-primary)">Do you want to import your Skill Set from the Screen Operator community or from local?</div>
-    <div class="row" style="justify-content:space-between;gap:8px">
-      <button class="btn btn-solid" onclick="_importShareLocal()">Local</button>
-      <button class="btn btn-solid" onclick="_importShareCommunity()">Community</button>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-solid" style="width:100%" onclick="_importShareLocal()">Local</button>
+      <button class="btn btn-solid" style="width:100%" onclick="_importShareCommunity()">Upload to community</button>
     </div>
   </div>
 </div>
@@ -7430,6 +7430,7 @@ function _exportShareLocal() {
 
 function _exportShareCommunity() {
   closePopup('popup-export-share');
+  _performExport(); // save locally first so the file can be attached to the discussion
   window.open('https://github.com/Android-PowerUser/ScreenOperator/discussions/87', '_blank');
   _exitExportSelectMode();
 }
