@@ -6622,6 +6622,10 @@ function _pollSendAfterPermission() {
       } else {
         Bridge.sendMessage(p.text);
       }
+      // Jetzt erst Textfeld leeren und Bilder aufräumen
+      const taskInput = document.getElementById('task-input');
+      if (taskInput) { taskInput.value = ''; taskInput.style.height = ''; }
+      if (typeof onTaskInput === 'function') onTaskInput();
       selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
       selectedImages = [];
       renderImagePreviews();
@@ -6665,9 +6669,7 @@ function sendMessage() {
     const hasImages = selectedImages.length > 0;
     Android.requestScreenCapturePermission();
     _pendingSend = { text, hasImages, imagesCsv };
-    input.value = '';
-    input.style.height = '';
-    onTaskInput();
+    // Textfeld bleibt erhalten, bis senden tatsächlich passiert
     if (!_permissionPollTimer) {
       _permissionPollTimer = setInterval(_pollSendAfterPermission, 300);
     }
