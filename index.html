@@ -7402,20 +7402,13 @@ function exportDatabase() {
   const selAll = [...selManual, ...selAi];
   if (selAll.length === 0) { alert('No entries selected.'); return; }
 
-  if (getInAndroid() && selManual.length === manualEntries.length && manualEntries.length > 0) {
-    Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
-    if (selAi.length > 0) {
-      const blob = new Blob([JSON.stringify(selAll, null, 2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
-      URL.revokeObjectURL(url);
-    }
-  } else {
-    const blob = new Blob([JSON.stringify(selAll, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
-    URL.revokeObjectURL(url);
-  }
+  // Always use the JS blob path so any subset of entries can be exported.
+  // Android.exportDatabaseEntries() exports ALL manual entries without a
+  // selection filter, so we skip it here for full control.
+  const blob = new Blob([JSON.stringify(selAll, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
+  URL.revokeObjectURL(url);
   window._exportSelectMode = false;
   window._exportSelectedTitles = null;
   renderDbList();
