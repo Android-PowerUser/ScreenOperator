@@ -9023,44 +9023,38 @@ function _collapseOldScreenElementBubbles() {
 })();
 
 /* ── Auto-accept MediaProjection / screen-share dialog ──────────────────────
-   Robust WebView-only implementation that works for BOTH permission entry points:
-     1) New flow: sendMessage() → Android.requestScreenCapturePermission() (first message)
-     2) Old flow: Bridge.sendMessage() → MainActivity.requestMediaProjectionPermission()
-        and also Bridge.requestScreenshot() → TakeScreenshot → permission
+   Fixed version 2026-09-07 – addresses loop bug reported by user:
+   - Up to 2nd click worked, 3rd never, and it kept toggling dropdown.
 
-   Previous implementation only hooked Bridge.requestScreenshot and queued 3 taps
-   back-to-back with no delays. That broke after 3ed7ace (new sendMessage permission
-   path) and was unreliable for the 3-step Android 14+ dialog (dropdown animation).
+   Root causes of previous version:
+   • MAX_ATTEMPTS=10 + full retry every 3.6s re-tapped dropdown → closed list again
+   • GENERIC_CONFIRMS contained "Teilen"/"Share" → contains() matched dropdown again
+   • Multiple hooks (sendMessage + requestPermission + dispatch) triggered parallel
+     sequences; _mpInFlight blocked immediate duplicate but after reset the next
+     hook retriggered, causing endless back-and-forth.
+   • 3rd click delay too short (900ms→1900ms) and coordinate 50%/50% could hit dropdown.
 
    New strategy:
-     • Hook ALL entry points: Bridge.requestScreenshot, Bridge.requestScreenCapturePermission,
-       Android.requestScreenCapturePermission (if writable), Android.dispatch, and
-       onGenerationStateChanged (covers old APKs where permission is requested natively).
-     • Use timed steps with JS setTimeout between taps, so each dialog page has time
-       to inflate. Accessibility queue itself also has 500ms gap, so we add extra 700-900ms.
-     • Retry the whole sequence up to 10 times, polling isScreenCaptureActive() to stop
-       early when permission granted.
-     • Try user language first, then English, plus generic confirms (Start now etc.)
-       and coordinate fallbacks for confirm button.
-     • Backward compatible: checks existence of tapByText/isScreenCaptureActive.
-     • Exposes window._triggerMediaProjectionAutoAccept for sendMessage() patch.
-
-   Flow per attempt:
-     t=0ms   → tap dropdown "Eine App teilen" / "Share an app"
-     t=300ms → tap dropdown EN fallback
-     t=900ms → tap "Gesamten Bildschirm teilen" / "Share entire screen"
-     t=1200ms→ EN fallback for step2
-     t=1800ms→ tap confirm "Bildschirm teilen" + generic confirms
-     t=2300ms→ coordinate fallback 50%/88%
-     t=2600ms→ coordinate fallback 80%/90%
-     t=3500ms→ retry if still not active
+   • Debounce: only one trigger per 10s (timestamp guard). _mpInFlight stays true
+     for entire single attempt, then 10s cooldown.
+   • Single linear attempt, NO full retry of steps 1/2. Only confirm step retries
+     up to 2 times.
+   • Remove substring generics ("Teilen","Share") – keep only full phrases.
+   • Hooks: primary is requestScreenCapturePermission. sendMessage hooks ONLY for
+     old APKs without isScreenCaptureActive (force). requestScreenshot hook kept
+     but only triggers if not active and cooldown passed.
+   • Explicit phases with logs, longer gaps (dropdown 0ms, fullscreen 1100ms,
+     confirm 2200ms) to let Android 14+ animation inflate.
+   • Coordinates only bottom area (88-92%) to avoid hitting dropdown again.
 ─────────────────────────────────────────────────────────────────────────────── */
 (function() {
   'use strict';
 
   var _mpInFlight = false;
-  var _mpAttempts = 0;
-  var MAX_ATTEMPTS = 10;
+  var _mpLastTrigger = 0;
+  var _mpAttemptsConfirm = 0;
+  var MAX_CONFIRM_RETRIES = 2;
+  var COOLDOWN_MS = 10000;
 
   var LANG_MAP = {
     'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen'],
@@ -9093,11 +9087,12 @@ function _collapseOldScreenElementBubbles() {
     'vi': ['Chia sẻ ứng dụng',            'Chia sẻ toàn bộ màn hình',            'Chia sẻ màn hình'],
   };
 
+  // Only full phrases – NO substrings like "Teilen"/"Share" which would match dropdown again via contains()
   var GENERIC_CONFIRMS = [
     'Bildschirm teilen','Share screen',
-    'Start now','Jetzt starten','Starten',
+    'Start now','Jetzt starten',
     'Teilen starten','Start sharing',
-    'Zulassen','Allow','OK','Bestätigen','Teilen','Share'
+    'Zulassen','Allow'
   ];
 
   function getTexts() {
@@ -9115,19 +9110,29 @@ function _collapseOldScreenElementBubbles() {
     } catch(e) { return true; }
   }
 
+  function hasNewBridge() {
+    try {
+      return getInAndroid()
+        && typeof Android.isScreenCaptureActive === 'function'
+        && typeof Android.requestScreenCapturePermission === 'function';
+    } catch(e) { return false; }
+  }
+
   function safeTap(text) {
     if (!text) return;
     try {
+      console.log('[MP] tapByText: ' + text);
       if (getInAndroid() && typeof Android.tapByText === 'function') {
         Android.tapByText(String(text));
       } else if (typeof Bridge !== 'undefined' && typeof Bridge.tapByText === 'function') {
         Bridge.tapByText(String(text));
       }
-    } catch(e) {}
+    } catch(e) { console.log('[MP] tap error: ' + e); }
   }
 
   function safeTapCoord(x, y) {
     try {
+      console.log('[MP] tapAtCoordinates: ' + x + ',' + y);
       if (getInAndroid() && typeof Android.tapAtCoordinates === 'function') {
         Android.tapAtCoordinates(String(x), String(y));
       } else if (typeof Bridge !== 'undefined' && typeof Bridge.tapAtCoordinates === 'function') {
@@ -9138,128 +9143,130 @@ function _collapseOldScreenElementBubbles() {
 
   function resetFlight() {
     _mpInFlight = false;
-    _mpAttempts = 0;
+    _mpAttemptsConfirm = 0;
+    console.log('[MP] resetFlight, lastTrigger=' + _mpLastTrigger);
   }
 
   function attemptSequence() {
-    if (isActive()) { resetFlight(); return; }
-    if (_mpAttempts >= MAX_ATTEMPTS) { resetFlight(); return; }
-    _mpAttempts++;
+    if (isActive()) { console.log('[MP] already active, abort'); resetFlight(); return; }
     var texts = getTexts();
     var enTexts = LANG_MAP['en'];
+    console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' texts=' + JSON.stringify(texts));
 
-    // Step 1: dropdown – user language
+    // Phase 1: dropdown – user lang + EN fallback (once only, never retried)
     safeTap(texts[0]);
-
-    // Step1 fallback EN after 300ms (in case user lang not matching system dialog language)
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
       if (texts[0] !== enTexts[0]) safeTap(enTexts[0]);
-    }, 350);
+    }, 400);
 
-    // Step2: select entire screen – after dropdown animation
+    // Phase 2: fullscreen – after dropdown animation (once only)
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
+      console.log('[MP] phase2 fullscreen');
       safeTap(texts[1]);
-    }, 900);
+    }, 1100);
 
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
       if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
-    }, 1250);
+    }, 1500);
 
-    // Step3: confirm + generic confirms
+    // Phase 3: confirm – this is the only phase that retries
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
+      console.log('[MP] phase3 confirm');
       safeTap(texts[2]);
       if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
-      // Old Android single-step dialogs and generic fallbacks
       for (var i = 0; i < GENERIC_CONFIRMS.length; i++) {
         safeTap(GENERIC_CONFIRMS[i]);
       }
-    }, 1900);
+    }, 2300);
 
-    // Coordinate fallbacks – confirm button usually bottom center / bottom right
+    // Coordinate fallbacks – bottom area only, never center (center would hit dropdown again)
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
+      console.log('[MP] coord fallback 50/88');
       safeTapCoord('50%', '88%');
-    }, 2400);
+    }, 2800);
 
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
+      console.log('[MP] coord fallback 80/90 and 50/92');
       safeTapCoord('80%', '90%');
-      safeTapCoord('50%', '50%'); // sometimes dialog centered
-    }, 2700);
+      safeTapCoord('50%', '92%');
+      safeTapCoord('50%', '85%');
+    }, 3300);
 
-    // Schedule next full retry if still not active
+    // Confirm-only retries (no dropdown/fullscreen)
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
-      if (_mpInFlight) {
-        attemptSequence();
+      if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+        _mpAttemptsConfirm++;
+        console.log('[MP] confirm retry #' + _mpAttemptsConfirm);
+        safeTap(texts[2]);
+        if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
+        for (var i = 0; i < GENERIC_CONFIRMS.length; i++) {
+          safeTap(GENERIC_CONFIRMS[i]);
+        }
+        safeTapCoord('50%', '88%');
+        safeTapCoord('80%', '90%');
+        // schedule final reset
+        setTimeout(function() {
+          if (isActive()) { resetFlight(); return; }
+          if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+            _mpAttemptsConfirm++;
+            console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' final');
+            safeTap(texts[2]);
+            safeTapCoord('50%', '88%');
+            safeTapCoord('80%', '90%');
+          }
+          setTimeout(function() { resetFlight(); }, 1500);
+        }, 2000);
       } else {
         resetFlight();
       }
-    }, 3600);
+    }, 4500);
   }
 
   function triggerAutoAccept(force) {
-    if (_mpInFlight) return;
-    if (!force && isActive()) return;
+    var now = Date.now();
+    if (_mpInFlight) { console.log('[MP] trigger ignored – inFlight'); return; }
+    if (!force && (now - _mpLastTrigger) < COOLDOWN_MS) {
+      console.log('[MP] trigger ignored – cooldown ' + (now - _mpLastTrigger) + 'ms');
+      return;
+    }
+    if (!force && isActive()) { console.log('[MP] trigger ignored – already active'); return; }
     _mpInFlight = true;
-    _mpAttempts = 0;
-    // Small delay to let system dialog inflate
-    setTimeout(attemptSequence, 400);
+    _mpLastTrigger = now;
+    _mpAttemptsConfirm = 0;
+    console.log('[MP] triggerAutoAccept force=' + !!force);
+    setTimeout(attemptSequence, 600);
   }
 
-  // Expose globally so sendMessage() can trigger it even if direct Android method not hookable
   window._triggerMediaProjectionAutoAccept = triggerAutoAccept;
   window._triggerMediaProjectionAutoAcceptForce = function() { triggerAutoAccept(true); };
 
-  /* Hook Bridge.requestScreenshot – permission may be needed when TakeScreenshot command
-     detects service not running and MainActivity requests MediaProjection */
-  try {
-    var _origReqScreenshot = Bridge.requestScreenshot;
-    Bridge.requestScreenshot = function() {
-      var res = _origReqScreenshot.apply(this, arguments);
-      try {
-        if (getInAndroid() && !_mpInFlight) {
-          var active = true;
-          try { active = isActive(); } catch(e) { active = true; }
-          if (!active) {
-            _mpInFlight = true;
-            _mpAttempts = 0;
-            setTimeout(attemptSequence, 500);
-          }
-        }
-      } catch(e) {}
-      return res;
-    };
-  } catch(e) {}
-
-  /* Hook Bridge.requestScreenCapturePermission – new flow entry point */
+  /* Primary hook: new flow */
   try {
     var _origReqPerm = Bridge.requestScreenCapturePermission;
     Bridge.requestScreenCapturePermission = function() {
       var res = _origReqPerm.apply(this, arguments);
+      console.log('[MP] hook Bridge.requestScreenCapturePermission');
       triggerAutoAccept();
       return res;
     };
   } catch(e) {}
 
-  /* Hook Bridge.sendMessage / sendMessageWithImages – old APK path where
-     MainActivity requests MediaProjection natively. For old builds without
-     isScreenCaptureActive, force-trigger once per send. */
+  /* Old APK hooks – ONLY when new bridge missing, to avoid duplicate triggers */
   try {
     var _origSendMsg = Bridge.sendMessage;
     Bridge.sendMessage = function() {
       var res = _origSendMsg.apply(this, arguments);
       try {
-        // If new bridge available, isActive() will guard; if old build (no isScreenCaptureActive),
-        // force trigger because permission dialog may be about to appear natively.
-        if (!getInAndroid() || typeof Android.isScreenCaptureActive !== 'function') {
+        if (!hasNewBridge()) {
+          console.log('[MP] hook Bridge.sendMessage old APK');
           triggerAutoAccept(true);
-        } else if (!isActive()) {
-          triggerAutoAccept();
         }
       } catch(e) {}
       return res;
@@ -9270,32 +9277,52 @@ function _collapseOldScreenElementBubbles() {
     Bridge.sendMessageWithImages = function() {
       var res = _origSendMsgImg.apply(this, arguments);
       try {
-        if (!getInAndroid() || typeof Android.isScreenCaptureActive !== 'function') {
+        if (!hasNewBridge()) {
+          console.log('[MP] hook Bridge.sendMessageWithImages old APK');
           triggerAutoAccept(true);
-        } else if (!isActive()) {
-          triggerAutoAccept();
         }
       } catch(e) {}
       return res;
     };
   } catch(e) {}
 
-  /* Hook direct Android.requestScreenCapturePermission if property is writable (WebView Java bridge) */
+  try {
+    var _origReqScreenshot = Bridge.requestScreenshot;
+    Bridge.requestScreenshot = function() {
+      var res = _origReqScreenshot.apply(this, arguments);
+      try {
+        if (getInAndroid() && !hasNewBridge()) {
+          console.log('[MP] hook Bridge.requestScreenshot old APK');
+          triggerAutoAccept(true);
+        } else if (getInAndroid() && !_mpInFlight) {
+          // New APK: only if not active and cooldown passed (avoid flooding during normal operation)
+          var now = Date.now();
+          if ((now - _mpLastTrigger) > COOLDOWN_MS && !isActive()) {
+            console.log('[MP] hook Bridge.requestScreenshot new APK – permission needed');
+            _mpInFlight = true;
+            _mpLastTrigger = now;
+            _mpAttemptsConfirm = 0;
+            setTimeout(attemptSequence, 600);
+          }
+        }
+      } catch(e) {}
+      return res;
+    };
+  } catch(e) {}
+
   try {
     if (getInAndroid() && typeof Android.requestScreenCapturePermission === 'function') {
       var _origAndroidPerm = Android.requestScreenCapturePermission;
-      // Some WebViews allow shadowing Java method with JS function
       Android.requestScreenCapturePermission = function() {
         var r;
         try { r = _origAndroidPerm.apply(Android, arguments); } catch(e) { try { r = _origAndroidPerm(); } catch(e2) {} }
+        console.log('[MP] hook Android.requestScreenCapturePermission');
         triggerAutoAccept();
         return r;
       };
     }
-  } catch(e) { /* not writable on this WebView – rely on Bridge hook + dispatch hook */ }
+  } catch(e) {}
 
-  /* Hook Android.dispatch – catches both requestScreenCapturePermission and requestScreenshot
-     regardless of how they are invoked (typed Bridge or raw dispatch) */
   try {
     if (getInAndroid() && typeof Android.dispatch === 'function') {
       var _origDispatch = Android.dispatch;
@@ -9304,11 +9331,8 @@ function _collapseOldScreenElementBubbles() {
         try { result = _origDispatch.call(Android, method, argsJson); } catch(e) { try { result = _origDispatch(method, argsJson); } catch(e2) {} }
         try {
           if (method === 'requestScreenCapturePermission') {
+            console.log('[MP] hook dispatch requestScreenCapturePermission');
             triggerAutoAccept();
-          } else if (method === 'requestScreenshot') {
-            setTimeout(function() {
-              try { if (!isActive()) triggerAutoAccept(); } catch(e) {}
-            }, 300);
           }
         } catch(e) {}
         return result;
@@ -9316,22 +9340,18 @@ function _collapseOldScreenElementBubbles() {
     }
   } catch(e) {}
 
-  /* Hook onGenerationStateChanged – covers old APK path where MainActivity
-     requests MediaProjection natively after Bridge.sendMessage(). If generation
-     starts but screen capture is not active, dialog is likely showing. */
   try {
     var _origGenState = window.onGenerationStateChanged;
     window.onGenerationStateChanged = function(running, isOfflineLoaded) {
       var res;
       try { if (_origGenState) res = _origGenState.apply(this, arguments); } catch(e) {}
       try {
-        if (running) {
-          if (!isActive()) {
-            triggerAutoAccept();
-          }
-        } else {
-          // Generation stopped – reset to allow future triggers
+        if (!running) {
           resetFlight();
+        } else if (!hasNewBridge() && !isActive()) {
+          // Old APK only: generation started but capture not active → dialog likely
+          console.log('[MP] onGenerationStateChanged old APK');
+          triggerAutoAccept(true);
         }
       } catch(e) {}
       return res;
