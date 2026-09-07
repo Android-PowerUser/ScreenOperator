@@ -9010,29 +9010,14 @@ function _collapseOldScreenElementBubbles() {
 })();
 
 /* ── Auto-accept MediaProjection / screen-share dialog ──────────────────────
-   Fixed version 2026-09-07 – addresses loop bug reported by user:
-   - Up to 2nd click worked, 3rd never, and it kept toggling dropdown.
-
-   Root causes of previous version:
-   • MAX_ATTEMPTS=10 + full retry every 3.6s re-tapped dropdown → closed list again
-   • GENERIC_CONFIRMS contained "Teilen"/"Share" → contains() matched dropdown again
-   • Multiple hooks (sendMessage + requestPermission + dispatch) triggered parallel
-     sequences; _mpInFlight blocked immediate duplicate but after reset the next
-     hook retriggered, causing endless back-and-forth.
-   • 3rd click delay too short (900ms→1900ms) and coordinate 50%/50% could hit dropdown.
-
-   New strategy:
-   • Debounce: only one trigger per 10s (timestamp guard). _mpInFlight stays true
-     for entire single attempt, then 10s cooldown.
-   • Single linear attempt, NO full retry of steps 1/2. Only confirm step retries
-     up to 2 times.
-   • Remove substring generics ("Teilen","Share") – keep only full phrases.
-   • Hooks: primary is requestScreenCapturePermission. sendMessage hooks ONLY for
-     old APKs without isScreenCaptureActive (force). requestScreenshot hook kept
-     but only triggers if not active and cooldown passed.
-   • Explicit phases with logs, longer gaps (dropdown 0ms, fullscreen 1100ms,
-     confirm 2200ms) to let Android 14+ animation inflate.
-   • Coordinates only bottom area (88-92%) to avoid hitting dropdown again.
+   Fixed version 2026-09-08 – final per user request:
+   - No waiting time between taps (native queue 500ms handles spacing)
+   - Correct AOSP translations from frameworks/base SystemUI values-*
+     en: Share one app (was Share an app – wrong), Share entire screen, Share screen, Start now
+     de: Eine App teilen, Gesamten Bildschirm teilen, Bildschirm teilen, Jetzt starten – already correct
+     fr: Partager une appli / Partager tout l'écran / Partager l'écran / Commencer etc.
+   - Old APKs: skip 3rd click (Bildschirm teilen) and no coordinates per user
+   - New APKs: 3 steps immediate + Start now fallback, one quick confirm retry 700ms
 ─────────────────────────────────────────────────────────────────────────────── */
 (function() {
   'use strict';
@@ -9042,45 +9027,45 @@ function _collapseOldScreenElementBubbles() {
   var _mpAttemptsConfirm = 0;
   var MAX_CONFIRM_RETRIES = 2;
   var COOLDOWN_MS = 10000;
-  var _mpOldApkDone = false; // old APKs without isScreenCaptureActive: only auto-accept once per session to avoid spamming after permission granted
+  var _mpOldApkDone = false;
 
+  // Correct AOSP translations from frameworks/base/packages/SystemUI/res/values-*/strings.xml
+  // Keys: screen_share_permission_dialog_option_single_app, option_entire_screen, continue_entire_screen, media_projection_action_text
   var LANG_MAP = {
-    'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen'],
-    'en': ['Share an app',                 'Share entire screen',                  'Share screen'],
-    'fr': ['Partager une application',     'Partager tout l\'écran',              'Partager l\'écran'],
-    'es': ['Compartir una aplicación',     'Compartir toda la pantalla',           'Compartir pantalla'],
-    'it': ['Condividi un\'app',           'Condividi l\'intero schermo',         'Condividi schermo'],
-    'pt': ['Compartilhar um app',          'Compartilhar tela inteira',            'Compartilhar tela'],
-    'nl': ['Een app delen',                'Volledig scherm delen',                'Scherm delen'],
-    'pl': ['Udostępnij aplikację',         'Udostępnij cały ekran',               'Udostępnij ekran'],
-    'ru': ['Поделиться приложением',       'Поделиться всем экраном',             'Поделиться экраном'],
-    'tr': ['Uygulama paylaş',              'Tüm ekranı paylaş',                   'Ekranı paylaş'],
-    'zh': ['共享应用',                      '共享整个屏幕',                         '共享屏幕'],
-    'ja': ['アプリを共有',                  '画面全体を共有',                       '画面を共有'],
-    'ko': ['앱 공유',                       '전체 화면 공유',                       '화면 공유'],
-    'ar': ['مشاركة تطبيق',                'مشاركة الشاشة بأكملها',              'مشاركة الشاشة'],
-    'hi': ['ऐप साझा करें',               'पूरी स्क्रीन साझा करें',             'स्क्रीन साझा करें'],
-    'id': ['Bagikan aplikasi',             'Bagikan seluruh layar',                'Bagikan layar'],
-    'sv': ['Dela en app',                  'Dela hela skärmen',                    'Dela skärmen'],
-    'nb': ['Del en app',                   'Del hele skjermen',                    'Del skjermen'],
-    'da': ['Del en app',                   'Del hele skærmen',                     'Del skærmen'],
-    'fi': ['Jaa sovellus',                 'Jaa koko näyttö',                      'Jaa näyttö'],
-    'cs': ['Sdílet aplikaci',              'Sdílet celou obrazovku',               'Sdílet obrazovku'],
-    'sk': ['Zdieľať aplikáciu',            'Zdieľať celú obrazovku',               'Zdieľať obrazovku'],
-    'hu': ['Alkalmazás megosztása',        'A teljes képernyő megosztása',         'Képernyő megosztása'],
-    'ro': ['Partajați o aplicație',        'Partajați tot ecranul',                'Partajați ecranul'],
-    'el': ['Κοινή χρήση εφαρμογής',       'Κοινή χρήση ολόκληρης της οθόνης',   'Κοινή χρήση οθόνης'],
-    'uk': ['Поділитися програмою',         'Поділитися всім екраном',             'Поділитися екраном'],
-    'th': ['แชร์แอป',                      'แชร์ทั้งหน้าจอ',                      'แชร์หน้าจอ'],
-    'vi': ['Chia sẻ ứng dụng',            'Chia sẻ toàn bộ màn hình',            'Chia sẻ màn hình'],
+    'de': ['Eine App teilen',              'Gesamten Bildschirm teilen',          'Bildschirm teilen',            'Jetzt starten'],
+    'en': ['Share one app',                'Share entire screen',                  'Share screen',                 'Start now'],
+    'fr': ['Partager une appli',           'Partager tout l\'écran',              'Partager l\'écran',             'Commencer'],
+    'es': ['Compartir una aplicación',     'Compartir toda la pantalla',           'Compartir pantalla',           'Empezar ahora'],
+    'it': ['Condividi un\'app',            'Condividi schermo intero',             'Condividi schermo',            'Avvia adesso'],
+    'pt': ['Compartilhar um app',          'Compartilhar a tela inteira',          'Compartilhar tela',            'Iniciar agora'],
+    'nl': ['Eén app delen',                'Hele scherm delen',                    'Scherm delen',                 'Nu starten'],
+    'pl': ['Udostępnij jedną aplikację',   'Udostępnij cały ekran',               'Udostępnij ekran',             'Rozpocznij teraz'],
+    'ru': ['Показать приложение',          'Показать весь экран',                  'Показать экран',               'Начать'],
+    'tr': ['Tek bir uygulamayı paylaş',    'Tüm ekranı paylaş',                    'Ekranı paylaş',                'Şimdi başlat'],
+    'zh': ['共享一个应用',                  '共享整个屏幕',                         '共享屏幕',                     '立即开始'],
+    'ja': ['1 個のアプリを共有',            '画面全体を共有',                       '画面を共有',                   '今すぐ開始'],
+    'ko': ['앱 하나 공유',                  '전체 화면 공유',                       '화면 공유',                    '시작하기'],
+    'ar': ['مشاركة تطبيق واحد',            'مشاركة الشاشة بأكملها',                'مشاركة الشاشة',                'البدء الآن'],
+    'hi': ['एक ऐप्लिकेशन शेयर करें',       'पूरी स्क्रीन शेयर करें',               'स्क्रीन शेयर करें',             'अभी शुरू करें'],
+    'id': ['Bagikan satu aplikasi',        'Bagikan seluruh layar',                'Bagikan layar',                'Mulai sekarang'],
+    'sv': ['Dela en app',                  'Dela hela skärmen',                    'Dela skärmen',                 'Starta nu'],
+    'nb': ['Del én app',                   'Del hele skjermen',                    'Del skjermen',                 'Start nå'],
+    'da': ['Del én app',                   'Del hele skærmen',                     'Del skærm',                    'Start nu'],
+    'fi': ['Jaa yksi sovellus',            'Jaa koko näyttö',                      'Jaa näyttö',                   'Aloita nyt'],
+    'cs': ['Sdílet jednu aplikaci',        'Sdílet celou obrazovku',               'Sdílet obrazovku',             'Spustit'],
+    'sk': ['Zdieľať jednu aplikáciu',      'Zdieľať celú obrazovku',               'Zdieľať obrazovku',            'Spustiť'],
+    'hu': ['Egyetlen alkalmazás megosztása','A teljes képernyő megosztása',       'Képernyő megosztása',          'Indítás most'],
+    'ro': ['Permite accesul la o aplicație','Permite accesul la tot ecranul',     'Permite accesul la ecran',     'Începe acum'],
+    'el': ['Κοινή χρήση μίας εφαρμογής',  'Κοινή χρήση ολόκληρης της οθόνης',   'Κοινή χρήση οθόνης',          'Έναρξη τώρα'],
+    'uk': ['Показати один додаток',        'Показати весь екран',                  'Показати екран',               'Почати зараз'],
+    'th': ['แชร์แอปเดียว',                 'แชร์ทั้งหน้าจอ',                      'แชร์หน้าจอ',                   'เริ่มเลย'],
+    'vi': ['Chia sẻ một ứng dụng',         'Chia sẻ toàn bộ màn hình',            'Chia sẻ màn hình',             'Bắt đầu ngay'],
   };
 
-  // Only full phrases – NO substrings like "Teilen"/"Share" which would match dropdown again via contains()
   var GENERIC_CONFIRMS = [
-    'Bildschirm teilen','Share screen',
     'Start now','Jetzt starten',
-    'Teilen starten','Start sharing',
-    'Zulassen','Allow'
+    'Commencer','Empezar ahora','Avvia adesso','Iniciar agora','Nu starten','Rozpocznij teraz',
+    'Начать','Şimdi başlat','立即开始','今すぐ開始','시작하기','البدء الآن','अभी शुरू करें','Starta nu','Start nå','Aloita nyt'
   ];
 
   function getTexts() {
@@ -9092,8 +9077,8 @@ function _collapseOldScreenElementBubbles() {
 
   function isActive() {
     try {
-      if (!getInAndroid()) return true; // browser = never trigger
-      if (typeof Android.isScreenCaptureActive !== 'function') return false; // old APK = treat as not active so force-trigger can run
+      if (!getInAndroid()) return true;
+      if (typeof Android.isScreenCaptureActive !== 'function') return false;
       return !!Android.isScreenCaptureActive();
     } catch(e) { return false; }
   }
@@ -9118,17 +9103,6 @@ function _collapseOldScreenElementBubbles() {
     } catch(e) { console.log('[MP] tap error: ' + e); }
   }
 
-  function safeTapCoord(x, y) {
-    try {
-      console.log('[MP] tapAtCoordinates: ' + x + ',' + y);
-      if (getInAndroid() && typeof Android.tapAtCoordinates === 'function') {
-        Android.tapAtCoordinates(String(x), String(y));
-      } else if (typeof Bridge !== 'undefined' && typeof Bridge.tapAtCoordinates === 'function') {
-        Bridge.tapAtCoordinates(String(x), String(y));
-      }
-    } catch(e) {}
-  }
-
   function resetFlight() {
     _mpInFlight = false;
     _mpAttemptsConfirm = 0;
@@ -9139,99 +9113,50 @@ function _collapseOldScreenElementBubbles() {
     if (isActive()) { console.log('[MP] already active, abort'); resetFlight(); return; }
     var texts = getTexts();
     var enTexts = LANG_MAP['en'];
-    var isNew = hasNewBridge();
-    console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' isNew=' + isNew + ' texts=' + JSON.stringify(texts));
+    var isOld = !hasNewBridge();
+    console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' isOld=' + isOld + ' texts=' + JSON.stringify(texts));
 
-    // Phase 1: dropdown – user lang + EN fallback (needed for Android 14+ 3-step dialog)
-    safeTap(texts[0]);
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      if (texts[0] !== enTexts[0]) {
-        console.log('[MP] phase1 EN fallback');
-        safeTap(enTexts[0]);
-      }
-    }, 500);
+    if (!isOld) {
+      // New Android 14+ 3-step dialog – NO DELAY between taps
+      safeTap(texts[0]);
+      if (texts[0] !== enTexts[0]) safeTap(enTexts[0]);
 
-    // Phase 2: fullscreen
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      console.log('[MP] phase2 fullscreen user lang');
       safeTap(texts[1]);
-    }, 1200);
+      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
 
+      safeTap(texts[2]);
+      if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
+
+      safeTap(texts[3]);
+      if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
+    } else {
+      // Old APKs: leave 3rd (Bildschirm teilen) away, no coordinates per user request
+      console.log('[MP] old APK – skip 3rd click, no coords');
+      safeTap(texts[1]);
+      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
+      safeTap(texts[3]);
+      if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
+      safeTap(GENERIC_CONFIRMS[0]);
+      safeTap(GENERIC_CONFIRMS[1]);
+    }
+
+    // One quick confirm-only retry after 700ms if still not active
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
-      if (texts[1] !== enTexts[1]) {
-        console.log('[MP] phase2 fullscreen EN fallback');
-        safeTap(enTexts[1]);
-      }
-    }, 1700);
-
-    if (isNew) {
-      // NEW APKs: exact-match fix prevents "Bildschirm teilen" matching "Gesamten Bildschirm teilen"
-      // So 3rd click is safe
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] phase3 confirm user lang (new APK)');
-        safeTap(texts[2]);
-      }, 2400);
-
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        if (texts[2] !== enTexts[2]) {
-          console.log('[MP] phase3 confirm EN fallback (new APK)');
-          safeTap(enTexts[2]);
-        }
-      }, 2900);
-
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] phase4 generic Start now (new APK)');
-        safeTap(GENERIC_CONFIRMS[2]); // Start now
-      }, 3400);
-
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] phase4 generic Jetzt starten (new APK)');
-        safeTap(GENERIC_CONFIRMS[3]); // Jetzt starten
-      }, 3800);
-
-      // Final confirm retry only for new APKs
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
-          _mpAttemptsConfirm++;
-          console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' (new APK)');
+      if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+        _mpAttemptsConfirm++;
+        console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' isOld=' + isOld);
+        if (!isOld) {
           safeTap(texts[2]);
-          setTimeout(function() { resetFlight(); }, 1200);
-        } else {
-          resetFlight();
+          if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
         }
-      }, 4600);
-    } else {
-      // OLD APKs: contains() bug -> "Bildschirm teilen" would match "Gesamten Bildschirm teilen" and toggle back
-      // User requested: no coordinates, leave 3rd simply away
-      // For old Android single-step dialog, only generic confirms are needed (Start now / Jetzt starten)
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] old APK – generic Start now only (no Bildschirm teilen, no coords)');
-        safeTap(GENERIC_CONFIRMS[2]); // Start now
-      }, 2400);
-
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] old APK – generic Jetzt starten only');
-        safeTap(GENERIC_CONFIRMS[3]); // Jetzt starten
-      }, 2900);
-
-      setTimeout(function() {
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] old APK – generic Zulassen/Allow');
-        safeTap(GENERIC_CONFIRMS[6]); // Zulassen
-        safeTap(GENERIC_CONFIRMS[7]); // Allow
-        setTimeout(function() { resetFlight(); }, 800);
-      }, 3400);
-    }
+        safeTap(texts[3]);
+        if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
+        setTimeout(function(){ resetFlight(); }, 600);
+      } else {
+        resetFlight();
+      }
+    }, 700);
   }
 
   function triggerAutoAccept(force) {
@@ -9246,13 +9171,12 @@ function _collapseOldScreenElementBubbles() {
     _mpLastTrigger = now;
     _mpAttemptsConfirm = 0;
     console.log('[MP] triggerAutoAccept force=' + !!force);
-    setTimeout(attemptSequence, 600);
+    setTimeout(attemptSequence, 200);
   }
 
   window._triggerMediaProjectionAutoAccept = triggerAutoAccept;
   window._triggerMediaProjectionAutoAcceptForce = function() { triggerAutoAccept(true); };
 
-  /* Primary hook: new flow */
   try {
     var _origReqPerm = Bridge.requestScreenCapturePermission;
     Bridge.requestScreenCapturePermission = function() {
@@ -9263,7 +9187,6 @@ function _collapseOldScreenElementBubbles() {
     };
   } catch(e) {}
 
-  /* Old APK hooks – ONLY when new bridge missing, to avoid duplicate triggers */
   try {
     var _origSendMsg = Bridge.sendMessage;
     Bridge.sendMessage = function() {
@@ -9271,13 +9194,10 @@ function _collapseOldScreenElementBubbles() {
       try {
         if (!hasNewBridge()) {
           var now = Date.now();
-          // Allow first time, or retry within 20s if previous failed, but not after 60s (permission likely granted)
           if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
             console.log('[MP] hook Bridge.sendMessage old APK done=' + _mpOldApkDone);
             triggerAutoAccept(true);
             _mpOldApkDone = true;
-          } else {
-            console.log('[MP] hook Bridge.sendMessage old APK skipped – already done');
           }
         }
       } catch(e) {}
@@ -9295,8 +9215,6 @@ function _collapseOldScreenElementBubbles() {
             console.log('[MP] hook Bridge.sendMessageWithImages old APK done=' + _mpOldApkDone);
             triggerAutoAccept(true);
             _mpOldApkDone = true;
-          } else {
-            console.log('[MP] hook Bridge.sendMessageWithImages old APK skipped – already done');
           }
         }
       } catch(e) {}
@@ -9317,14 +9235,13 @@ function _collapseOldScreenElementBubbles() {
             _mpOldApkDone = true;
           }
         } else if (getInAndroid() && !_mpInFlight) {
-          // New APK: only if not active and cooldown passed (avoid flooding during normal operation)
           var now = Date.now();
           if ((now - _mpLastTrigger) > COOLDOWN_MS && !isActive()) {
             console.log('[MP] hook Bridge.requestScreenshot new APK – permission needed');
             _mpInFlight = true;
             _mpLastTrigger = now;
             _mpAttemptsConfirm = 0;
-            setTimeout(attemptSequence, 600);
+            setTimeout(attemptSequence, 200);
           }
         }
       } catch(e) {}
@@ -9370,7 +9287,6 @@ function _collapseOldScreenElementBubbles() {
       try {
         if (!running) {
           resetFlight();
-          // For old APKs, keep _mpOldApkDone true after first successful run, but don't reset it on stop
         } else if (!hasNewBridge()) {
           var now = Date.now();
           if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
@@ -9388,41 +9304,3 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
