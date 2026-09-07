@@ -7395,20 +7395,31 @@ function exportDatabase() {
     return;
   }
 
-  // Second press: save selected entries directly
-  const selected = window._exportSelectedTitles;
-  const selManual = manualEntries.filter(e => selected.has(e.title));
-  const selAi = aiEntries.filter(e => selected.has(e.title));
-  const selAll = [...selManual, ...selAi];
-  if (selAll.length === 0) { alert('No entries selected.'); return; }
+  // Second press: perform export with original proven logic
+  const selected = window._exportSelectedTitles || new Set();
+  const selectedManual = manualEntries.filter(e => selected.has(e.title));
+  const selectedAi = aiEntries.filter(e => selected.has(e.title));
+  const selectedAll = [...selectedManual, ...selectedAi];
 
-  // Always use the JS blob path so any subset of entries can be exported.
-  // Android.exportDatabaseEntries() exports ALL manual entries without a
-  // selection filter, so we skip it here for full control.
-  const blob = new Blob([JSON.stringify(selAll, null, 2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
-  URL.revokeObjectURL(url);
+  if (selectedAll.length === 0) { alert('No entries selected.'); return; }
+
+  if (getInAndroid() && selectedManual.length === manualEntries.length && manualEntries.length > 0) {
+    // All manual entries selected: use native export bridge.
+    // Native has no filter, so this only makes sense when all are selected.
+    Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
+    if (selectedAi.length > 0) {
+      const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+  } else {
+    const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   window._exportSelectMode = false;
   window._exportSelectedTitles = null;
   renderDbList();
