@@ -34,57 +34,36 @@ jobs:
       id: changes
       run: |
         echo "Current HEAD: $(git rev-parse HEAD)"
-        echo "Event name: ${{ github.event_name }}"
-        echo "Event before: ${{ github.event.before }}"
 
-        # Determine the correct base to diff against.
-        # - push: compare against the commit that was HEAD before the push
-        #   (github.event.before), which covers pushes with multiple commits.
-        # - workflow_dispatch (or any other trigger without a meaningful
-        #   "before"): fall back to comparing against the previous commit
-        #   on the branch (HEAD^), and if that doesn't exist, build everything.
-        BASE_SHA="${{ github.event.before }}"
+        # Each module tracks its own "last attempted build" marker tag,
+        # updated after every build attempt of that module (success or
+        # failure - an attempted commit doesn't need to be rebuilt again).
+        # A module is only rebuilt if files under its path changed since
+        # its own marker, not since some generic previous run.
+        check_module() {
+          local tag_name="$1"
+          local path_prefix="$2"
 
-        if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
-          BASE_SHA=$(git rev-parse HEAD^ 2>/dev/null || echo "")
-        fi
+          if ! git rev-parse "refs/tags/$tag_name" >/dev/null 2>&1; then
+            echo "true"
+            return
+          fi
 
-        if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
-          echo "app=true" >> $GITHUB_OUTPUT
-          echo "humanoperator=true" >> $GITHUB_OUTPUT
-          echo "shared=true" >> $GITHUB_OUTPUT
-          echo "No valid base commit found - building all modules"
-          exit 0
-        fi
+          local base_sha
+          base_sha=$(git rev-parse "refs/tags/$tag_name")
+          local changed
+          changed=$(git diff --name-only "$base_sha" HEAD -- "$path_prefix" 2>/dev/null || echo "")
 
-        echo "Base commit: $BASE_SHA"
-        CHANGED_FILES=$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null || echo "")
+          if [ -n "$changed" ]; then
+            echo "true"
+          else
+            echo "false"
+          fi
+        }
 
-        if [ -z "$CHANGED_FILES" ]; then
-          echo "app=true" >> $GITHUB_OUTPUT
-          echo "humanoperator=true" >> $GITHUB_OUTPUT
-          echo "shared=true" >> $GITHUB_OUTPUT
-          echo "Empty diff - building all modules"
-          exit 0
-        fi
-
-        echo "Changed files:"
-        echo "$CHANGED_FILES"
-
-        SHARED_CHANGED=false
-        if echo "$CHANGED_FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradle\.properties|gradle/|buildSrc/)'; then
-          SHARED_CHANGED=true
-        fi
-
-        APP_CHANGED=false
-        if echo "$CHANGED_FILES" | grep -q '^app/'; then
-          APP_CHANGED=true
-        fi
-
-        HUMANOPERATOR_CHANGED=false
-        if echo "$CHANGED_FILES" | grep -q '^humanoperator/'; then
-          HUMANOPERATOR_CHANGED=true
-        fi
+        APP_CHANGED=$(check_module "last-build-app" "app/")
+        HUMANOPERATOR_CHANGED=$(check_module "last-build-humanoperator" "humanoperator/")
+        SHARED_CHANGED=$(check_module "last-build-shared" "build.gradle settings.gradle gradle.properties gradle/ buildSrc/")
 
         echo "app=$APP_CHANGED" >> $GITHUB_OUTPUT
         echo "humanoperator=$HUMANOPERATOR_CHANGED" >> $GITHUB_OUTPUT
@@ -202,3 +181,41 @@ jobs:
         echo "|--------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
         echo "| app | ${{ needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
         echo "| humanoperator | ${{ needs.detect-changes.outputs.humanoperator_changed == 'true' || needs.detect-changes.outputs.shared_changed == 'true' }} | APK (debug) |" >> $GITHUB_STEP_SUMMARY
+
+  update-build-markers:
+    needs: [detect-changes, build-apk]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Move build marker tags to current commit
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        move_tag() {
+          local tag_name="$1"
+          git tag -f "$tag_name" HEAD
+          git push origin "refs/tags/$tag_name" --force
+        }
+
+        # A module's marker moves whenever a build for that module was
+        # attempted in this run (detect-changes said it changed, or shared
+        # config changed), regardless of whether the attempt succeeded.
+        if [ "${{ needs.detect-changes.outputs.app_changed }}" = "true" ] || [ "${{ needs.detect-changes.outputs.shared_changed }}" = "true" ]; then
+          move_tag "last-build-app"
+        fi
+
+        if [ "${{ needs.detect-changes.outputs.humanoperator_changed }}" = "true" ] || [ "${{ needs.detect-changes.outputs.shared_changed }}" = "true" ]; then
+          move_tag "last-build-humanoperator"
+        fi
+
+        if [ "${{ needs.detect-changes.outputs.shared_changed }}" = "true" ]; then
+          move_tag "last-build-shared"
+        fi
