@@ -1436,7 +1436,7 @@ let _humanExpertConnected = false;
 const _DB_DEFAULT_ENTRIES = [
   {
     title: "If Termux commands doesn't work",
-    guide: "1. Open Termux; if that has no effect, it is not installed and you will need to download the GitHub version using a browser.\n\n2. Else go ~/.termux/termux.properties uncomment \nallow-external-apps = true in Termux\nConfirm Android Termux access permissions request.\n\n3. The \"Run commands in Termux environment\" permission must be approved in the Screen Operator app info in the Android settings. But this should be already turned on so try Termux(\"Your command\") again."
+    guide: "Do you get uncommend in ~/.termux/termux.properties allow-external-apps = true when requesting to Termux, you have to open Termux and do this manually before you can properly send commands. To write something in Termux you must be sure the ESC HOME banner is in the negative pixel range. If not: press back() but only if the keyboard is displayed then just: scrollRight(75%, 99%, 50%, 50) tapAtCoordinates(50%, 99%) this in one message. To show the keyboard in Termux if the banner is gone: tapAtCoordinates(50%, 99%) Now you can uncommend allow-external-apps = true in ~/.termux/termux.properties with write(\"sample\"). You must always Enter() twice. After you've finished everything, you can use Termux(\"command\") without Enter() and opened Termux.\n\nIf you get nothing open Termux; if that has no effect, it is not installed and you will need to download the GitHub version using a browser.\n\nWhen Termux opens approve the \"Run commands in Termux environment\" permission in the Screen Operator app info in the Android settings and grant the permission if necessary. Thereafter try Termux(\"Your command\") again."
   },
   {
     title: "Chromium-based Browser",
@@ -9401,6 +9401,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
