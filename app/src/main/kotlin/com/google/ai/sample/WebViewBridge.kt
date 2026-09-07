@@ -13,6 +13,7 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningUiState
 import com.google.ai.sample.util.GenerationSettingsPreferences
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
+import com.google.ai.sample.util.ActiveModelCapabilities
 import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -916,6 +917,17 @@ class WebViewBridge(private val mainActivity: MainActivity) {
     @JavascriptInterface
     fun isScreenCaptureActive(): Boolean {
         return ScreenCaptureService.isRunning()
+    }
+
+    @JavascriptInterface
+    fun currentModelSupportsScreenshot(): Boolean {
+        return ActiveModelCapabilities.currentModelSupportsScreenshot(context)
+    }
+
+    @JavascriptInterface
+    fun requestScreenCapturePermission() {
+        Log.d(TAG, "WebView requested screen capture permission")
+        mainActivity.requestMediaProjectionPermission()
     }
 
     @JavascriptInterface

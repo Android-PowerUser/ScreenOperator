@@ -1147,6 +1147,9 @@ const Bridge = {
   runTermuxCommand:(command)=>{ if(getInAndroid()) Android.runTermuxCommand(String(command)); },
   waitSeconds:(seconds)=>{ if(getInAndroid()) Android.waitSeconds(Number(seconds)||0); },
   requestScreenshot:()=>{ if(getInAndroid()) Android.requestScreenshot(); },
+  requestScreenCapturePermission:()=>{ if(getInAndroid()) Android.requestScreenCapturePermission(); },
+  currentModelSupportsScreenshot:()=> getInAndroid() ? Android.currentModelSupportsScreenshot() : false,
+  isScreenCaptureActive:()=> getInAndroid() ? Android.isScreenCaptureActive() : false,
   markCompleted:()=>{ if(getInAndroid()) Android.markCompleted(); },
   /* pinchGesture(centerX, centerY, startDistance, endDistance, durationMs)
      endDistance > startDistance = zoom in; endDistance < startDistance = zoom out.
@@ -6600,6 +6603,35 @@ function onTaskInputBlur() {
 function onTaskKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
+let _pendingSend = null;
+let _permissionPollTimer = null;
+
+function _pollSendAfterPermission() {
+  if (!_pendingSend) {
+    if (_permissionPollTimer) { clearInterval(_permissionPollTimer); _permissionPollTimer = null; }
+    return;
+  }
+  try {
+    if (Bridge.isScreenCaptureActive()) {
+      clearInterval(_permissionPollTimer);
+      _permissionPollTimer = null;
+      const p = _pendingSend;
+      _pendingSend = null;
+      if (p.hasImages) {
+        Bridge.sendMessageWithImages(p.text, p.imagesCsv);
+      } else {
+        Bridge.sendMessage(p.text);
+      }
+      selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
+      selectedImages = [];
+      renderImagePreviews();
+      window.onGenerationStateChanged(true, false);
+    }
+  } catch (e) {
+    console.error('Poll send error', e);
+  }
+}
+
 function sendMessage() {
   // If Accessibility Service is not enabled, redirect to its settings instead of sending.
   if (getInAndroid() && !Bridge.isAccessibilityServiceEnabled()) {
@@ -6618,6 +6650,24 @@ function sendMessage() {
     const firstThumb = selectedImages.find(img => !img.isVideo && img.objectUrl);
     addUserBubble(text || "(attached images)", firstThumb ? firstThumb.objectUrl : null);
   }
+
+  // For screenshot-supporting models, request MediaProjection permission first
+  // and delay the actual message send until it is granted.
+  const needsPermission = getInAndroid() && Bridge.currentModelSupportsScreenshot() && !Bridge.isScreenCaptureActive();
+  if (needsPermission) {
+    const imagesCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
+    const hasImages = selectedImages.length > 0;
+    Bridge.requestScreenCapturePermission();
+    _pendingSend = { text, hasImages, imagesCsv };
+    input.value = '';
+    input.style.height = '';
+    onTaskInput();
+    if (!_permissionPollTimer) {
+      _permissionPollTimer = setInterval(_pollSendAfterPermission, 300);
+    }
+    return;
+  }
+
   input.value = '';
   input.style.height = '';
   onTaskInput();
