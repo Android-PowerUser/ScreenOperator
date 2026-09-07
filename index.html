@@ -5601,6 +5601,7 @@ const TrialState = Object.freeze({
 let _currentTrialState = TrialState.NOT_YET_STARTED_AWAITING_INTERNET;
 let _trialTimerHandle = null;
 let _trialTimerRunning = false;
+let _trialFetchController = null; // aborted when the app goes to background
 
 /*
  * All trial state below is read/written through Bridge, which - when running inside the
@@ -5789,9 +5790,13 @@ function isTrialBlocking() {
  * MAX_RETRIES attempts with increasing delay, returns null if all attempts fail).
  */
 async function _fetchInternetUtcTimeMsWithRetry() {
+  _trialFetchController = new AbortController();
+  const outerSignal = _trialFetchController.signal;
   for (let attempt = 0; attempt < TRIAL_MAX_RETRIES; attempt++) {
+    if (outerSignal.aborted) break;
     try {
       const controller = new AbortController();
+      outerSignal.addEventListener('abort', () => controller.abort(), { once: true });
       const timeoutId = setTimeout(() => controller.abort(), TRIAL_CONNECT_TIMEOUT_MS);
       const resp = await fetch(TRIAL_TIME_API_URL, { signal: controller.signal, cache: 'no-store' });
       clearTimeout(timeoutId);
@@ -5811,6 +5816,7 @@ async function _fetchInternetUtcTimeMsWithRetry() {
       await new Promise(res => setTimeout(res, delayMs));
     }
   }
+  _trialFetchController = null;
   return null; // all attempts failed
 }
 
@@ -5861,9 +5867,32 @@ function _stopTrialTimer() {
   }
 }
 
+/** Stops any in-flight internet-time fetch and pauses the trial loop (background). */
+function _pauseTrialTimerForBackground() {
+  if (_trialFetchController) { _trialFetchController.abort(); _trialFetchController = null; }
+  _stopTrialTimer();
+}
+
+/** Resumes the trial loop when the app returns to the foreground. */
+function _resumeTrialTimerForForeground() {
+  if (_currentTrialState === TrialState.PURCHASED ||
+      _currentTrialState === TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) return;
+  _startTrialTimerLoop();
+}
+
+// Pause network polling while in background, resume on foreground.
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    _pauseTrialTimerForBackground();
+  } else {
+    _resumeTrialTimerForForeground();
+  }
+});
+
 /** Starts the repeating 10-minute check loop, matches TrialTimerService.startTimerLogic. */
 function _startTrialTimerLoop() {
   if (_trialTimerRunning) return;
+  if (document.hidden) return; // don't start polling while in background
   _trialTimerRunning = true;
 
   const loop = async () => {
