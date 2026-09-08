@@ -9111,52 +9111,64 @@ function _collapseOldScreenElementBubbles() {
 
   function attemptSequence() {
     if (isActive()) { console.log('[MP] already active, abort'); resetFlight(); return; }
-    var texts = getTexts();
+    var texts = getTexts(); // [single, entire, share, startNow]
     var enTexts = LANG_MAP['en'];
     var isOld = !hasNewBridge();
     console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' isOld=' + isOld + ' texts=' + JSON.stringify(texts));
 
-    if (!isOld) {
-      // New Android 14+ 3-step dialog – NO DELAY between taps
-      safeTap(texts[0]);
-      if (texts[0] !== enTexts[0]) safeTap(enTexts[0]);
-
-      safeTap(texts[1]);
-      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
-
-      safeTap(texts[2]);
-      if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
-
-      safeTap(texts[3]);
-      if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
-    } else {
-      // Old APKs: leave 3rd (Bildschirm teilen) away, no coordinates per user request
-      console.log('[MP] old APK – skip 3rd click, no coords');
-      safeTap(texts[1]);
-      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
-      safeTap(texts[3]);
-      if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
-      safeTap(GENERIC_CONFIRMS[0]);
-      safeTap(GENERIC_CONFIRMS[1]);
+    // Helper: burst tap with small interval, stops when active
+    function burstTap(primary, fallback, times, intervalMs, startDelayMs) {
+      var count = 0;
+      setTimeout(function() {
+        var timer = setInterval(function() {
+          if (isActive()) { clearInterval(timer); resetFlight(); return; }
+          if (count >= times) { clearInterval(timer); return; }
+          safeTap(primary);
+          if (fallback && primary !== fallback) safeTap(fallback);
+          count++;
+        }, intervalMs);
+        // immediate first
+        if (isActive()) return;
+        safeTap(primary);
+        if (fallback && primary !== fallback) safeTap(fallback);
+        count++;
+      }, startDelayMs);
     }
 
-    // One quick confirm-only retry after 700ms if still not active
+    if (!isOld) {
+      // New Android 14+ 3-step dialog – ultra fast, minimal gaps for animation
+      // 1st: dropdown "Eine App teilen" / "Share one app" – immediate
+      burstTap(texts[0], enTexts[0], 2, 80, 0);
+
+      // 2nd: "Gesamten Bildschirm teilen" – start after 80ms (dropdown animation), then rapid 80ms retries
+      burstTap(texts[1], enTexts[1], 4, 80, 80);
+
+      // 3rd: "Bildschirm teilen" – start after 160ms, rapid retries (this was reported as slow)
+      burstTap(texts[2], enTexts[2], 6, 80, 160);
+
+      // Final confirm "Jetzt starten"/"Start now" – start after 240ms
+      burstTap(texts[3], enTexts[3], 4, 80, 240);
+    } else {
+      // Old APKs: skip 3rd, no coords per user
+      console.log('[MP] old APK – skip 3rd click, no coords');
+      burstTap(texts[1], enTexts[1], 2, 80, 0);
+      burstTap(texts[3], enTexts[3], 4, 80, 80);
+      burstTap(GENERIC_CONFIRMS[0], GENERIC_CONFIRMS[1], 2, 80, 160);
+    }
+
+    // Final safety: if still not active after 1200ms, one more confirm burst and reset
     setTimeout(function() {
       if (isActive()) { resetFlight(); return; }
       if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
         _mpAttemptsConfirm++;
-        console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' isOld=' + isOld);
-        if (!isOld) {
-          safeTap(texts[2]);
-          if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
-        }
-        safeTap(texts[3]);
-        if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
-        setTimeout(function(){ resetFlight(); }, 600);
+        console.log('[MP] final confirm burst retry #' + _mpAttemptsConfirm);
+        burstTap(texts[isOld ? 3 : 2], enTexts[isOld ? 3 : 2], 3, 60, 0);
+        burstTap(texts[3], enTexts[3], 3, 60, 30);
+        setTimeout(function(){ resetFlight(); }, 500);
       } else {
         resetFlight();
       }
-    }, 700);
+    }, 1200);
   }
 
   function triggerAutoAccept(force) {
