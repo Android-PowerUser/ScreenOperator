@@ -9182,7 +9182,7 @@ function _collapseOldScreenElementBubbles() {
     _mpLastTrigger = now;
     _mpAttemptsConfirm = 0;
     console.log('[MP] triggerAutoAccept force=' + !!force);
-    setTimeout(attemptSequence, 200);
+    setTimeout(attemptSequence, 400);
   }
 
   window._triggerMediaProjectionAutoAccept = triggerAutoAccept;
@@ -9252,7 +9252,7 @@ function _collapseOldScreenElementBubbles() {
             _mpInFlight = true;
             _mpLastTrigger = now;
             _mpAttemptsConfirm = 0;
-            setTimeout(attemptSequence, 200);
+            setTimeout(attemptSequence, 400);
           }
         }
       } catch(e) {}
