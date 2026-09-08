@@ -6887,8 +6887,8 @@ function renderKeyList() {
         if (e.target.classList.contains('key-del')) return;
         const radio = row.querySelector('.key-radio');
         if (radio && !radio.checked) { radio.checked=true; _setCustomKeyIndex(modelId, i); }
-        showKeyPopup(k);
       });
+      _addLongPress(row, function() { showKeyPopup(k); });
       list.appendChild(row);
     });
     return;
@@ -6913,8 +6913,8 @@ function renderKeyList() {
         radio.checked = true;
         Bridge.setCurrentKeyIndex(i, currentProviderId);
       }
-      showKeyPopup(k);
     });
+    _addLongPress(row, function() { showKeyPopup(k); });
     list.appendChild(row);
   });
 }
@@ -7793,6 +7793,19 @@ function overlayClose(e, id) { if (e.target.id===id) closePopup(id); }
 ════════════════════════════════════════════════════════ */
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _addLongPress(el, cb, ms) {
+  ms = ms || 500;
+  var timer = null;
+  var moved = false;
+  function start(e) { moved=false; timer=setTimeout(function(){ if(!moved){ e.preventDefault(); cb(); } },ms); }
+  function cancel() { clearTimeout(timer); timer=null; }
+  el.addEventListener('touchstart', start, {passive:false});
+  el.addEventListener('touchend',   cancel);
+  el.addEventListener('touchmove',  function(){ moved=true; cancel(); });
+  el.addEventListener('mousedown',  start);
+  el.addEventListener('mouseup',    cancel);
+  el.addEventListener('mouseleave', cancel);
 }
 function escAttr(s) {
   return String(s)
