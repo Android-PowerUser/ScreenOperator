@@ -1222,26 +1222,23 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with text: $buttonText (across windows)")
             showToast("Button found: \"$buttonText\"", false)
             
-            // Add a small delay before clicking
-            Handler(Looper.getMainLooper()).postDelayed({
-                // Perform the click
-                val clickResult = performClickOnNode(node)
+            // Perform the click immediately (no delay)
+            val clickResult = performClickOnNode(node)
+            
+            if (clickResult) {
+                Log.d(TAG, "Successfully clicked on button: $buttonText")
+                showToast("Clicked button \"$buttonText\" successfully", false)
+            } else {
+                Log.e(TAG, "Failed to click on button: $buttonText")
+                showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
                 
-                if (clickResult) {
-                    Log.d(TAG, "Successfully clicked on button: $buttonText")
-                    showToast("Clicked button \"$buttonText\" successfully", false)
-                } else {
-                    Log.e(TAG, "Failed to click on button: $buttonText")
-                    showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
-                    
-                    // Try alternative methods
-                    tryAlternativeClickMethods(node, buttonText)
-                }
-                
-                // Recycle the node
-                node.recycle()
-                scheduleNextCommandProcessing()
-            }, 200)
+                // Try alternative methods
+                tryAlternativeClickMethods(node, buttonText)
+            }
+            
+            // Recycle the node
+            node.recycle()
+            scheduleNextCommandProcessing()
         } else {
             Log.e(TAG, "Could not find node with text: $buttonText, trying content description.")
             // findAndClickButtonByContentDescription will call scheduleNextCommandProcessing
