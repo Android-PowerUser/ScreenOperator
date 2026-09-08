@@ -9026,7 +9026,7 @@ function _collapseOldScreenElementBubbles() {
   var _mpLastTrigger = 0;
   var _mpAttemptsConfirm = 0;
   var MAX_CONFIRM_RETRIES = 2;
-  var COOLDOWN_MS = 10000;
+  var COOLDOWN_MS = 3000;
   var _mpOldApkDone = false;
 
   // Correct AOSP translations from frameworks/base/packages/SystemUI/res/values-*/strings.xml
@@ -9116,59 +9116,70 @@ function _collapseOldScreenElementBubbles() {
     var isOld = !hasNewBridge();
     console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' isOld=' + isOld + ' texts=' + JSON.stringify(texts));
 
-    // Helper: burst tap with small interval, stops when active
-    function burstTap(primary, fallback, times, intervalMs, startDelayMs) {
-      var count = 0;
-      setTimeout(function() {
-        var timer = setInterval(function() {
-          if (isActive()) { clearInterval(timer); resetFlight(); return; }
-          if (count >= times) { clearInterval(timer); return; }
-          safeTap(primary);
-          if (fallback && primary !== fallback) safeTap(fallback);
-          count++;
-        }, intervalMs);
-        // immediate first
-        if (isActive()) return;
-        safeTap(primary);
-        if (fallback && primary !== fallback) safeTap(fallback);
-        count++;
-      }, startDelayMs);
-    }
+    function tapBoth(a,b){ if(!a) return; safeTap(a); if(b && a!==b) safeTap(b); }
 
     if (!isOld) {
-      // New Android 14+ 3-step dialog – ultra fast, minimal gaps for animation
-      // 1st: dropdown "Eine App teilen" / "Share one app" – immediate
-      burstTap(texts[0], enTexts[0], 2, 80, 0);
+      // New Android 14+ 3-step dialog – sequential with UI-friendly delays
+      // This works with both old native (500ms queue+200ms click) and new fast native (30ms/0ms)
+      // 1st: dropdown "Eine App teilen" / "Share one app" – immediate, was already fast before
+      console.log('[MP] step1 single app');
+      tapBoth(texts[0], enTexts[0]);
 
-      // 2nd: "Gesamten Bildschirm teilen" – start after 80ms (dropdown animation), then rapid 80ms retries
-      burstTap(texts[1], enTexts[1], 4, 80, 80);
+      // 2nd: "Gesamten Bildschirm teilen" – after dropdown animation (400-500ms)
+      setTimeout(function(){
+        if (isActive()) { console.log('[MP] active before step2'); resetFlight(); return; }
+        console.log('[MP] step2 entire screen');
+        tapBoth(texts[1], enTexts[1]);
+      }, 550);
 
-      // 3rd: "Bildschirm teilen" – start after 160ms, rapid retries (this was reported as slow)
-      burstTap(texts[2], enTexts[2], 6, 80, 160);
+      // 3rd: "Bildschirm teilen" – after list switches to confirmation screen
+      setTimeout(function(){
+        if (isActive()) { console.log('[MP] active before step3'); resetFlight(); return; }
+        console.log('[MP] step3 share screen');
+        tapBoth(texts[2], enTexts[2]);
+      }, 1100);
 
-      // Final confirm "Jetzt starten"/"Start now" – start after 240ms
-      burstTap(texts[3], enTexts[3], 4, 80, 240);
+      // 4th: "Jetzt starten" / "Start now" – final confirm
+      setTimeout(function(){
+        if (isActive()) { console.log('[MP] active before step4'); resetFlight(); return; }
+        console.log('[MP] step4 start now');
+        tapBoth(texts[3], enTexts[3]);
+      }, 1650);
+
+      // Retry confirms if still not active
+      setTimeout(function(){
+        if (isActive()) { resetFlight(); return; }
+        if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+          _mpAttemptsConfirm++;
+          console.log('[MP] retry confirm #' + _mpAttemptsConfirm);
+          tapBoth(texts[2], enTexts[2]);
+          tapBoth(texts[3], enTexts[3]);
+        }
+      }, 2300);
+
+      setTimeout(function(){ resetFlight(); }, 3500);
+
     } else {
-      // Old APKs: skip 3rd, no coords per user
-      console.log('[MP] old APK – skip 3rd click, no coords');
-      burstTap(texts[1], enTexts[1], 2, 80, 0);
-      burstTap(texts[3], enTexts[3], 4, 80, 80);
-      burstTap(GENERIC_CONFIRMS[0], GENERIC_CONFIRMS[1], 2, 80, 160);
+      // Old APK: 2 steps only, skip 3rd (Bildschirm teilen) per user request, no coords
+      console.log('[MP] old APK flow – 2 steps');
+      tapBoth(texts[1], enTexts[1]);
+      setTimeout(function(){
+        if (isActive()) { resetFlight(); return; }
+        console.log('[MP] old APK step2 start now');
+        tapBoth(texts[3], enTexts[3]);
+        safeTap(GENERIC_CONFIRMS[0]);
+        safeTap(GENERIC_CONFIRMS[1]);
+      }, 700);
+      setTimeout(function(){
+        if (isActive()) { resetFlight(); return; }
+        if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+          _mpAttemptsConfirm++;
+          console.log('[MP] old APK retry confirm');
+          tapBoth(texts[3], enTexts[3]);
+        }
+      }, 1600);
+      setTimeout(function(){ resetFlight(); }, 2600);
     }
-
-    // Final safety: if still not active after 1200ms, one more confirm burst and reset
-    setTimeout(function() {
-      if (isActive()) { resetFlight(); return; }
-      if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
-        _mpAttemptsConfirm++;
-        console.log('[MP] final confirm burst retry #' + _mpAttemptsConfirm);
-        burstTap(texts[isOld ? 3 : 2], enTexts[isOld ? 3 : 2], 3, 60, 0);
-        burstTap(texts[3], enTexts[3], 3, 60, 30);
-        setTimeout(function(){ resetFlight(); }, 500);
-      } else {
-        resetFlight();
-      }
-    }, 1200);
   }
 
   function triggerAutoAccept(force) {
