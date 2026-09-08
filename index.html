@@ -9074,7 +9074,7 @@ function _collapseOldScreenElementBubbles() {
   };
 
   var GENERIC_CONFIRMS = [
-    'Start now','Jetzt starten','Bildschirm teilen','Share screen',
+    'Start now','Jetzt starten',
     'Commencer','Empezar ahora','Avvia adesso','Iniciar agora','Nu starten','Rozpocznij teraz',
     'Начать','Şimdi başlat','立即开始','今すぐ開始','시작하기','البدء الآن','अभी शुरू करें','Starta nu','Start nå','Aloita nyt'
   ];
@@ -9103,188 +9103,78 @@ function _collapseOldScreenElementBubbles() {
   }
 
   function safeTap(text) {
-    if (!text) return false;
-    var ok = false;
-    try { console.log('[MP] safeTap try: ' + text); } catch(e){}
-    // 1) direct Android.tapByText
+    if (!text) return;
     try {
+      console.log('[MP] tapByText: ' + text);
       if (getInAndroid() && typeof Android.tapByText === 'function') {
         Android.tapByText(String(text));
-        ok = true;
-        console.log('[MP] -> Android.tapByText OK: ' + text);
-      }
-    } catch(e) { console.log('[MP] Android.tapByText fail: ' + e); }
-    // 2) dispatch fallback
-    try {
-      if (getInAndroid() && typeof Android.dispatch === 'function') {
-        var r = Android.dispatch('tapByText', JSON.stringify({buttonText: String(text)}));
-        console.log('[MP] -> dispatch tapByText result: ' + r + ' for ' + text);
-        ok = true;
-      }
-    } catch(e) { console.log('[MP] dispatch tapByText fail: ' + e); }
-    // 3) Bridge wrapper
-    try {
-      if (typeof Bridge !== 'undefined' && typeof Bridge.tapByText === 'function') {
+      } else if (typeof Bridge !== 'undefined' && typeof Bridge.tapByText === 'function') {
         Bridge.tapByText(String(text));
-        ok = true;
-        console.log('[MP] -> Bridge.tapByText OK: ' + text);
       }
-    } catch(e) { console.log('[MP] Bridge.tapByText fail: ' + e); }
-    return ok;
-  }
-
-  function safeTapCoord(xPercent, yPercent) {
-    if (!hasNewBridge()) return false; // old APKs: no coords per user
-    var xs = String(xPercent), ys = String(yPercent);
-    if (xs.indexOf('%') === -1) xs += '%';
-    if (ys.indexOf('%') === -1) ys += '%';
-    try { console.log('[MP] safeTapCoord try: ' + xs + ' , ' + ys); } catch(e){}
-    try {
-      if (getInAndroid() && typeof Android.tapAtCoordinates === 'function') {
-        Android.tapAtCoordinates(xs, ys);
-        console.log('[MP] -> Android.tapAtCoordinates OK');
-        return true;
-      }
-    } catch(e) { console.log('[MP] tapAtCoordinates fail: ' + e); }
-    try {
-      if (getInAndroid() && typeof Android.dispatch === 'function') {
-        var r = Android.dispatch('tapAtCoordinates', JSON.stringify({x: xs, y: ys}));
-        console.log('[MP] -> dispatch tapAtCoordinates: ' + r);
-        return true;
-      }
-    } catch(e) { console.log('[MP] dispatch coord fail: ' + e); }
-    try {
-      if (typeof Bridge !== 'undefined' && typeof Bridge.tapAtCoordinates === 'function') {
-        Bridge.tapAtCoordinates(xs, ys);
-        console.log('[MP] -> Bridge.tapAtCoordinates OK');
-        return true;
-      }
-    } catch(e) { console.log('[MP] Bridge coord fail: ' + e); }
-    return false;
-  }
-
-  function tapBoth(a,b){
-    if (!a) return;
-    safeTap(a);
-    if (b && a!==b) safeTap(b);
-  }
-
-  function tapBothWithCoord(a,b,coordX,coordY){
-    tapBoth(a,b);
-    // coordinate fallback only for new APKs
-    if (coordX && coordY && hasNewBridge()) {
-      setTimeout(function(){
-        if (isActive()) return;
-        safeTapCoord(coordX, coordY);
-      }, 250);
-    }
+    } catch(e) { console.log('[MP] tap error: ' + e); }
   }
 
   function resetFlight() {
     _mpInFlight = false;
     _mpAttemptsConfirm = 0;
-    try { console.log('[MP] resetFlight'); } catch(e){}
+    console.log('[MP] resetFlight, lastTrigger=' + _mpLastTrigger);
   }
 
   function attemptSequence() {
     if (isActive()) { console.log('[MP] already active, abort'); resetFlight(); return; }
-    var texts = getTexts(); // [single, entire, share, startNow]
+    var texts = getTexts();
     var enTexts = LANG_MAP['en'];
     var isOld = !hasNewBridge();
-    try { console.log('[MP] attemptSequence lang=' + (navigator.language||'en') + ' isOld=' + isOld + ' texts=' + JSON.stringify(texts)); } catch(e){}
+    console.log('[MP] attemptSequence start lang=' + (navigator.language||'en') + ' isOld=' + isOld + ' texts=' + JSON.stringify(texts));
 
     if (!isOld) {
-      // NEW APK – full 4 steps with text + coord fallback, timings for stable native (500ms queue)
-      console.log('[MP] NEW flow start');
+      // New Android 14+ 3-step dialog – NO DELAY between taps
+      safeTap(texts[0]);
+      if (texts[0] !== enTexts[0]) safeTap(enTexts[0]);
 
-      // Step1: dropdown "Eine App teilen" – immediate
-      tapBothWithCoord(texts[0], enTexts[0], '50%', '50%');
+      safeTap(texts[1]);
+      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
 
-      setTimeout(function(){
-        if (isActive()) { console.log('[MP] active before step2'); resetFlight(); return; }
-        console.log('[MP] step2 entire screen');
-        tapBothWithCoord(texts[1], enTexts[1], '50%', '60%');
-      }, 900);
+      safeTap(texts[2]);
+      if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
 
-      setTimeout(function(){
-        if (isActive()) { console.log('[MP] active before step3'); resetFlight(); return; }
-        console.log('[MP] step3 share screen');
-        tapBothWithCoord(texts[2], enTexts[2], '50%', '85%');
-      }, 1800);
-
-      setTimeout(function(){
-        if (isActive()) { console.log('[MP] active before step4'); resetFlight(); return; }
-        console.log('[MP] step4 start now');
-        tapBothWithCoord(texts[3], enTexts[3], '85%', '92%');
-        // also generic confirms
-        setTimeout(function(){
-          if (isActive()) return;
-          safeTap(GENERIC_CONFIRMS[0]);
-          safeTap(GENERIC_CONFIRMS[1]);
-          if (hasNewBridge()) { safeTapCoord('50%','92%'); safeTapCoord('80%','90%'); }
-        }, 300);
-      }, 2700);
-
-      setTimeout(function(){
-        if (isActive()) { resetFlight(); return; }
-        if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
-          _mpAttemptsConfirm++;
-          console.log('[MP] retry confirm #' + _mpAttemptsConfirm);
-          tapBoth(texts[2], enTexts[2]);
-          tapBoth(texts[3], enTexts[3]);
-          if (hasNewBridge()) { safeTapCoord('50%','92%'); safeTapCoord('85%','92%'); }
-        }
-      }, 3600);
-
-      setTimeout(function(){ resetFlight(); }, 5500);
-
+      safeTap(texts[3]);
+      if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
     } else {
-      // OLD APK – include dropdown again (fix regression), no coords, same timings
-      console.log('[MP] OLD flow start – includes dropdown');
-
-      // Step1 dropdown
-      tapBoth(texts[0], enTexts[0]);
-
-      setTimeout(function(){
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] old step2 entire screen');
-        tapBoth(texts[1], enTexts[1]);
-      }, 900);
-
-      setTimeout(function(){
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] old step3 share screen');
-        tapBoth(texts[2], enTexts[2]);
-      }, 1800);
-
-      setTimeout(function(){
-        if (isActive()) { resetFlight(); return; }
-        console.log('[MP] old step4 start now');
-        tapBoth(texts[3], enTexts[3]);
-        safeTap(GENERIC_CONFIRMS[0]);
-        safeTap(GENERIC_CONFIRMS[1]);
-      }, 2700);
-
-      setTimeout(function(){
-        if (isActive()) { resetFlight(); return; }
-        if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
-          _mpAttemptsConfirm++;
-          console.log('[MP] old retry confirm');
-          tapBoth(texts[2], enTexts[2]);
-          tapBoth(texts[3], enTexts[3]);
-          safeTap(GENERIC_CONFIRMS[0]);
-        }
-      }, 3600);
-
-      setTimeout(function(){ resetFlight(); }, 5500);
+      // Old APKs: leave 3rd (Bildschirm teilen) away, no coordinates per user request
+      console.log('[MP] old APK – skip 3rd click, no coords');
+      safeTap(texts[1]);
+      if (texts[1] !== enTexts[1]) safeTap(enTexts[1]);
+      safeTap(texts[3]);
+      if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
+      safeTap(GENERIC_CONFIRMS[0]);
+      safeTap(GENERIC_CONFIRMS[1]);
     }
+
+    // One quick confirm-only retry after 700ms if still not active
+    setTimeout(function() {
+      if (isActive()) { resetFlight(); return; }
+      if (_mpAttemptsConfirm < MAX_CONFIRM_RETRIES) {
+        _mpAttemptsConfirm++;
+        console.log('[MP] confirm retry #' + _mpAttemptsConfirm + ' isOld=' + isOld);
+        if (!isOld) {
+          safeTap(texts[2]);
+          if (texts[2] !== enTexts[2]) safeTap(enTexts[2]);
+        }
+        safeTap(texts[3]);
+        if (texts[3] !== enTexts[3]) safeTap(enTexts[3]);
+        setTimeout(function(){ resetFlight(); }, 600);
+      } else {
+        resetFlight();
+      }
+    }, 700);
   }
 
   function triggerAutoAccept(force) {
     var now = Date.now();
     if (_mpInFlight) { console.log('[MP] trigger ignored – inFlight'); return; }
     if (!force && (now - _mpLastTrigger) < COOLDOWN_MS) {
-      console.log('[MP] trigger ignored – cooldown');
+      console.log('[MP] trigger ignored – cooldown ' + (now - _mpLastTrigger) + 'ms');
       return;
     }
     if (!force && isActive()) { console.log('[MP] trigger ignored – already active'); return; }
@@ -9292,12 +9182,11 @@ function _collapseOldScreenElementBubbles() {
     _mpLastTrigger = now;
     _mpAttemptsConfirm = 0;
     console.log('[MP] triggerAutoAccept force=' + !!force);
-    setTimeout(attemptSequence, 250);
+    setTimeout(attemptSequence, 200);
   }
 
   window._triggerMediaProjectionAutoAccept = triggerAutoAccept;
   window._triggerMediaProjectionAutoAcceptForce = function() { triggerAutoAccept(true); };
-  window._mpDebug = function(){ return {inFlight:_mpInFlight, last:_mpLastTrigger, attempts:_mpAttemptsConfirm, hasNew:hasNewBridge(), active:isActive()}; };
 
   try {
     var _origReqPerm = Bridge.requestScreenCapturePermission;
@@ -9317,7 +9206,7 @@ function _collapseOldScreenElementBubbles() {
         if (!hasNewBridge()) {
           var now = Date.now();
           if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
-            console.log('[MP] hook Bridge.sendMessage old APK');
+            console.log('[MP] hook Bridge.sendMessage old APK done=' + _mpOldApkDone);
             triggerAutoAccept(true);
             _mpOldApkDone = true;
           }
@@ -9334,7 +9223,7 @@ function _collapseOldScreenElementBubbles() {
         if (!hasNewBridge()) {
           var now = Date.now();
           if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
-            console.log('[MP] hook Bridge.sendMessageWithImages old APK');
+            console.log('[MP] hook Bridge.sendMessageWithImages old APK done=' + _mpOldApkDone);
             triggerAutoAccept(true);
             _mpOldApkDone = true;
           }
@@ -9352,7 +9241,7 @@ function _collapseOldScreenElementBubbles() {
         if (getInAndroid() && !hasNewBridge()) {
           var now = Date.now();
           if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
-            console.log('[MP] hook Bridge.requestScreenshot old APK');
+            console.log('[MP] hook Bridge.requestScreenshot old APK done=' + _mpOldApkDone);
             triggerAutoAccept(true);
             _mpOldApkDone = true;
           }
@@ -9363,7 +9252,7 @@ function _collapseOldScreenElementBubbles() {
             _mpInFlight = true;
             _mpLastTrigger = now;
             _mpAttemptsConfirm = 0;
-            setTimeout(attemptSequence, 250);
+            setTimeout(attemptSequence, 200);
           }
         }
       } catch(e) {}
@@ -9412,7 +9301,7 @@ function _collapseOldScreenElementBubbles() {
         } else if (!hasNewBridge()) {
           var now = Date.now();
           if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
-            console.log('[MP] onGenerationStateChanged old APK');
+            console.log('[MP] onGenerationStateChanged old APK done=' + _mpOldApkDone);
             triggerAutoAccept(true);
             _mpOldApkDone = true;
           }
@@ -9422,7 +9311,6 @@ function _collapseOldScreenElementBubbles() {
     };
   } catch(e) {}
 })();
-
 </script>
 </body>
 </html>
