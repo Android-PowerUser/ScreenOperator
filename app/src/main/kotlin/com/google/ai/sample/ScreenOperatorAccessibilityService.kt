@@ -268,51 +268,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Accessibility Service is enabled and connected", false)
     }
 
-    // Fast-path for MediaProjection dialog – those clicks must be as quick as possible
-    private fun isMediaProjectionFastPath(text: String): Boolean {
-        val l = text.lowercase()
-        return l.contains("teilen") || l.contains("bildschirm") || l.contains("share") ||
-               l.contains("screen") || l.contains("start now") || l.contains("jetzt starten") ||
-               l.contains("partager") || l.contains("écran") || l.contains("compartir") ||
-               l.contains("pantalla") || l.contains("condividi") || l.contains("schermo") ||
-               l.contains("compartilhar") || l.contains("tela") || l.contains("delen") ||
-               l.contains("scherm") || l.contains("udostępnij") || l.contains("ekran") ||
-               l.contains("показать") || l.contains("экран") || l.contains("начать") ||
-               l.contains("paylaş") || l.contains("ekranı") || l.contains("başlat") ||
-               l.contains("共享") || l.contains("共有") || l.contains("画面") ||
-               l.contains("共有") || l.contains("시작") || l.contains("공유") ||
-               l.contains("مشاركة") || l.contains("الشاشة") || l.contains("البدء") ||
-               l.contains("शेयर") || l.contains("स्क्रीन") || l.contains("शुरू") ||
-               l.contains("bagikan") || l.contains("layar") || l.contains("mulai") ||
-               l.contains("dela") || l.contains("skärm") || l.contains("skjerm") ||
-               l.contains("skærm") || l.contains("jaa") || l.contains("näyttö") ||
-               l.contains("sdílet") || l.contains("obrazovku") || l.contains("zdieľať") ||
-               l.contains("megosztása") || l.contains("képernyő") || l.contains("permite") ||
-               l.contains("accesul") || l.contains("κοινή") || l.contains("χρήση") ||
-               l.contains("οθόνης") || l.contains("показати") || l.contains("แชร์") ||
-               l.contains("หน้าจอ") || l.contains("chia sẻ") || l.contains("màn hình")
-    }
-
     private fun scheduleNextCommandProcessing() {
-        val peek = commandQueue.peek()
-        val nextCommandDelay = when {
-            peek is Command.TakeScreenshot -> {
-                Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 50ms delay.")
-                50L
-            }
-            peek is Command.ClickButton && isMediaProjectionFastPath(peek.buttonText) -> {
-                Log.d(TAG, "Next is MediaProjection fast-path ClickButton '${peek.buttonText}', scheduling with 30ms delay.")
-                30L
-            }
-            else -> {
-                // Reduced from 500ms to 100ms for overall faster AI operation per user request
-                100L
-            }
+        val nextCommandDelay = if (commandQueue.peek() is Command.TakeScreenshot) {
+            Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 50ms delay.")
+            50L
+        } else {
+            500L
         }
 
         handler.postDelayed({
-            commandQueue.releaseProcessing()
-            processCommandQueue()
+            commandQueue.releaseProcessing() // Release the lock before the next cycle
+            processCommandQueue()        // Try to process the next command
         }, nextCommandDelay)
     }
 
@@ -1014,8 +980,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun refreshRootNode() {
         val currentTime = System.currentTimeMillis()
         
-        // Reduced from 200ms to 30ms for faster MediaProjection dialog handling per user request
-        if (currentTime - lastRootNodeRefreshTime < 30) {
+        // Only refresh if more than 200ms have passed since the last refresh
+        if (currentTime - lastRootNodeRefreshTime < 200) {
             return
         }
         
@@ -1256,8 +1222,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with text: $buttonText (across windows)")
             showToast("Button found: \"$buttonText\"", false)
             
-            val clickDelay = if (isMediaProjectionFastPath(buttonText)) 0L else 50L
+            // Add a small delay before clicking
             Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
                 val clickResult = performClickOnNode(node)
                 
                 if (clickResult) {
@@ -1266,14 +1233,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 } else {
                     Log.e(TAG, "Failed to click on button: $buttonText")
                     showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
+                    
+                    // Try alternative methods
                     tryAlternativeClickMethods(node, buttonText)
                 }
                 
+                // Recycle the node
                 node.recycle()
                 scheduleNextCommandProcessing()
-            }, clickDelay)
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with text: $buttonText, trying content description.")
+            // findAndClickButtonByContentDescription will call scheduleNextCommandProcessing
             findAndClickButtonByContentDescription(buttonText)
         }
     }
@@ -1315,7 +1286,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with text: $buttonText")
             showToast("Button found: \"$buttonText\"", false)
 
-            val clickDelay = if (isMediaProjectionFastPath(buttonText)) 0L else 50L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
@@ -1327,7 +1297,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 node.recycle()
                 scheduleNextCommandProcessing()
-            }, clickDelay)
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with text: $buttonText, trying content description.")
             findAndLongClickButtonByContentDescription(buttonText)
@@ -1350,7 +1320,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with content description: $description")
             showToast("Button found with description: \"$description\"", false)
 
-            val clickDelay = if (isMediaProjectionFastPath(description)) 0L else 50L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
@@ -1362,7 +1331,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 node.recycle()
                 scheduleNextCommandProcessing()
-            }, clickDelay)
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with content description: $description, trying ID.")
             findAndLongClickButtonById(description)
@@ -1385,7 +1354,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
 
-            val clickDelay = if (isMediaProjectionFastPath(id)) 0L else 50L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
@@ -1397,7 +1365,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 node.recycle()
                 scheduleNextCommandProcessing()
-            }, clickDelay)
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with ID: $id")
             showToast("Button with ID \"$id\" not found", true)
@@ -1423,8 +1391,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with content description: $description (across windows)")
             showToast("Button found with description: \"$description\"", false)
             
-            val clickDelay = if (isMediaProjectionFastPath(description)) 0L else 50L
+            // Add a small delay before clicking
             Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
                 val clickResult = performClickOnNode(node)
                 
                 if (clickResult) {
@@ -1433,14 +1402,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 } else {
                     Log.e(TAG, "Failed to click on button with description: $description")
                     showToast("Failed to click button with description \"$description\", trying alternative methods", true)
+                    
+                    // Try alternative methods
                     tryAlternativeClickMethods(node, description)
                 }
                 
+                // Recycle the node
                 node.recycle()
                 scheduleNextCommandProcessing()
-            }, clickDelay)
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with content description: $description, trying ID.")
+            // findAndClickButtonById will call scheduleNextCommandProcessing
             findAndClickButtonById(description)
         }
     }
@@ -1462,8 +1435,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
             
-            val clickDelay = if (isMediaProjectionFastPath(id)) 0L else 50L
+            // Add a small delay before clicking
             Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
                 val clickResult = performClickOnNode(node)
                 
                 if (clickResult) {
@@ -1472,12 +1446,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 } else {
                     Log.e(TAG, "Failed to click on button with ID: $id")
                     showToast("Failed to click button with ID \"$id\", trying alternative methods", true)
+                    
+                    // Try alternative methods
                     tryAlternativeClickMethods(node, id)
                 }
                 
+                // Recycle the node
                 node.recycle()
                 scheduleNextCommandProcessing()
-            }, clickDelay)
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with ID: $id")
             showToast("Button with ID \"$id\" not found", true)
