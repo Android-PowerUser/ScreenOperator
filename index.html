@@ -6521,14 +6521,23 @@ function _resendLastUserMessage() {
 
   // Signal onUserMessage to skip adding a new bubble (the existing one stays)
   // and skip _appendUserToHistory (message is already the last entry in history).
+  // The flag stays set until the message actually goes out (which may be delayed
+  // by the screen-capture permission gate below).
   _resendInProgress = true;
-  // Re-send via Bridge just like sendMessage does
-  if (imageDataUri) {
-    Bridge.sendMessageWithImages(text, imageDataUri);
-  } else {
-    Bridge.sendMessage(text);
-  }
-  window.onGenerationStateChanged(true, false);
+  // Re-send via the SAME MediaProjection gate as sendMessage(): when the model
+  // needs screenshots and no capture session is active, the permission dialog is
+  // opened FROM THE WEBVIEW (so the auto-tap sequence fires — previously it never
+  // fired for the in-bubble button because the dialog was opened natively), and
+  // the actual re-send is replayed once the session is active. A previously
+  // granted and then revoked projection is re-requested automatically.
+  _withScreenCapturePermission(function() {
+    if (imageDataUri) {
+      Bridge.sendMessageWithImages(text, imageDataUri);
+    } else {
+      Bridge.sendMessage(text);
+    }
+    window.onGenerationStateChanged(true, false);
+  });
 }
 function undoLast(text) {
   document.getElementById('task-input').value = text;
@@ -6616,36 +6625,74 @@ function onTaskInputBlur() {
 function onTaskKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
-let _pendingSend = null;
-let _permissionPollTimer = null;
+/* ── MediaProjection permission gate (managed entirely in the WebView) ──────
+   Every code path that hands a chat message to native code must first make sure
+   the screen-capture session is running when the active model needs screenshots
+   (HUMAN_EXPERT manages its own WebRTC projection and is excluded). When it is
+   not, the WebView itself requests the MediaProjection permission here via
+   Android.requestScreenCapturePermission() — which is what makes the auto-tap
+   sequence for the system dialog fire reliably — and only performs the actual
+   send once ScreenCaptureService.isRunning() reports active.
 
-function _pollSendAfterPermission() {
-  if (!_pendingSend) {
-    if (_permissionPollTimer) { clearInterval(_permissionPollTimer); _permissionPollTimer = null; }
-    return;
-  }
+   This works identically no matter where the message originates: the normal
+   input field, the in-bubble resend button, or an internal re-send (repetition
+   guard / Termux timeout / popup answers). Because the check reads the LIVE
+   service state every time, a previously granted projection that was revoked
+   (system "stop sharing", service cleanup) is re-requested on the very next
+   message instead of being assumed still granted.
+
+   Old APKs without the new bridge methods are not gated here; they keep the
+   existing force-auto-tap flow in the MediaProjection auto-accept module below. */
+let _captureWaiters = [];
+let _capturePollTimer = null;
+
+function _screenCaptureNeededForSend() {
   try {
-    if (Bridge.isScreenCaptureActive()) {
-      clearInterval(_permissionPollTimer);
-      _permissionPollTimer = null;
-      const p = _pendingSend;
-      _pendingSend = null;
-      if (p.hasImages) {
-        Bridge.sendMessageWithImages(p.text, p.imagesCsv);
-      } else {
-        Bridge.sendMessage(p.text);
-      }
-      // Jetzt erst Textfeld leeren und Bilder aufräumen
-      const taskInput = document.getElementById('task-input');
-      if (taskInput) { taskInput.value = ''; taskInput.style.height = ''; }
-      if (typeof onTaskInput === 'function') onTaskInput();
-      selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
-      selectedImages = [];
-      renderImagePreviews();
-      window.onGenerationStateChanged(true, false);
-    }
-  } catch (e) {
-    console.error('Poll send error', e);
+    if (!getInAndroid()) return false;
+    // Old APKs don't have these bridge methods — their flow is handled elsewhere.
+    if (typeof Android.currentModelSupportsScreenshot !== 'function'
+        || typeof Android.requestScreenCapturePermission !== 'function'
+        || typeof Android.isScreenCaptureActive !== 'function') return false;
+    // Human Expert uses a separate WebRTC MediaProjection — never gate on it.
+    if (typeof currentModelId !== 'undefined' && currentModelId === 'HUMAN_EXPERT') return false;
+    if (!Android.currentModelSupportsScreenshot()) return false;
+    // Live check: false as soon as the projection is revoked / service cleaned up.
+    return !Android.isScreenCaptureActive();
+  } catch (e) { return false; }
+}
+
+function _flushCaptureWaiters() {
+  let active = false;
+  try { active = !!Android.isScreenCaptureActive(); } catch (e) { active = false; }
+  if (!active) return;
+  const waiters = _captureWaiters;
+  _captureWaiters = [];
+  if (_capturePollTimer) { clearInterval(_capturePollTimer); _capturePollTimer = null; }
+  waiters.forEach(function(fn) {
+    try { fn(); } catch (e) { console.error('Screen capture waiter error', e); }
+  });
+}
+
+function _withScreenCapturePermission(run) {
+  if (!_screenCaptureNeededForSend()) { run(); return; }
+  // If a permission request is already in flight (the system dialog is open or
+  // was just dismissed), REPLACE the pending send instead of stacking another
+  // one — pressing send/resend twice while waiting must never deliver the same
+  // message twice. This mirrors the old _pendingSend overwrite semantics.
+  if (_capturePollTimer) {
+    _captureWaiters = [run];
+  } else {
+    _captureWaiters.push(run);
+  }
+  // Request the dialog FROM THE WEBVIEW on every attempt so a dismissed dialog
+  // re-opens when send is pressed again. The auto-accept module wraps
+  // Android.requestScreenCapturePermission too; the explicit trigger below is
+  // a belt-and-braces duplicate, safely ignored while an auto-tap flight is
+  // already in progress.
+  try { Android.requestScreenCapturePermission(); } catch (e) {}
+  try { if (window._triggerMediaProjectionAutoAccept) window._triggerMediaProjectionAutoAccept(); } catch (e) {}
+  if (!_capturePollTimer) {
+    _capturePollTimer = setInterval(_flushCaptureWaiters, 300);
   }
 }
 
@@ -6668,51 +6715,39 @@ function sendMessage() {
     addUserBubble(text || "(attached images)", firstThumb ? firstThumb.objectUrl : null);
   }
 
-  // Rückwärtskompatibel: Nur verzögern, wenn alle neuen Native-Brücken existieren.
-  // Alte APKs haben currentModelSupportsScreenshot / requestScreenCapturePermission nicht.
-  const newBridgeAvailable = getInAndroid()
-    && typeof Android.currentModelSupportsScreenshot === 'function'
-    && typeof Android.requestScreenCapturePermission === 'function'
-    && typeof Android.isScreenCaptureActive === 'function';
-  const needsPermission = newBridgeAvailable
-    && Android.currentModelSupportsScreenshot()
-    && !Android.isScreenCaptureActive();
-  if (needsPermission) {
-    const imagesCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
-    const hasImages = selectedImages.length > 0;
-    Android.requestScreenCapturePermission();
-    // Trigger robust auto-accept for MediaProjection dialog (new flow)
-    try { if (window._triggerMediaProjectionAutoAccept) window._triggerMediaProjectionAutoAccept(); } catch(e) {}
-    _pendingSend = { text, hasImages, imagesCsv };
-    // Textfeld bleibt erhalten, bis senden tatsächlich passiert
-    if (!_permissionPollTimer) {
-      _permissionPollTimer = setInterval(_pollSendAfterPermission, 300);
-    }
-    return;
-  }
+  // Capture the image CSV now (same as the former pending-send path) so the
+  // send is deterministic even if the selection changes while we wait.
+  const _imagesCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
+  const _hasImages = selectedImages.length > 0;
 
-  input.value = '';
-  input.style.height = '';
-  onTaskInput();
-  // Pass image URIs to Android if any
-  if (selectedImages.length > 0) {
-    const urisCsv = selectedImages.map(img => img.uri || img.objectUrl).join(',');
-    Bridge.sendMessageWithImages(text, urisCsv);
-  } else {
-    Bridge.sendMessage(text);
-  }
-  // Clear selected images
-  selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
-  selectedImages = [];
-  renderImagePreviews();
-  // NOTE: do NOT create the pending model bubble here. Bridge.sendMessage /
-  // Bridge.sendMessageWithImages return immediately (the Android side dispatches to
-  // the UI thread asynchronously), so any bubble created synchronously at this point
-  // would always land in the DOM before the native onUserMessage/onAiMessage callbacks
-  // fire — showing the spinner above the user's own message. The pending model bubble
-  // is created by window.onAiMessage('', true) once Android actually starts generating,
-  // which is guaranteed to happen after onUserMessage has added the user bubble.
-  window.onGenerationStateChanged(true, false);
+  // Go through the single WebView-managed MediaProjection gate: this requests
+  // permission up front (auto-tap fires) when the model needs screenshots and
+  // replays the send once the capture session is active. On old APKs and when
+  // capture is already active, the callback runs immediately. The input field
+  // and attached images stay intact until the message is actually handed off.
+  _withScreenCapturePermission(function() {
+    input.value = '';
+    input.style.height = '';
+    onTaskInput();
+    // Pass image URIs to Android if any
+    if (_hasImages) {
+      Bridge.sendMessageWithImages(text, _imagesCsv);
+    } else {
+      Bridge.sendMessage(text);
+    }
+    // Clear selected images
+    selectedImages.forEach(img => { if (img.objectUrl) URL.revokeObjectURL(img.objectUrl); });
+    selectedImages = [];
+    renderImagePreviews();
+    // NOTE: do NOT create the pending model bubble here. Bridge.sendMessage /
+    // Bridge.sendMessageWithImages return immediately (the Android side dispatches to
+    // the UI thread asynchronously), so any bubble created synchronously at this point
+    // would always land in the DOM before the native onUserMessage/onAiMessage callbacks
+    // fire — showing the spinner above the user's own message. The pending model bubble
+    // is created by window.onAiMessage('', true) once Android actually starts generating,
+    // which is guaranteed to happen after onUserMessage has added the user bubble.
+    window.onGenerationStateChanged(true, false);
+  });
 }
 
 // Selected media: array of {objectUrl, name} (browser) or {uri} (Android)
@@ -9198,18 +9233,41 @@ function _collapseOldScreenElementBubbles() {
     };
   } catch(e) {}
 
+  // Safety net for send paths that don't go through sendMessage()'s own gate
+  // (internal re-sends such as the repetition guard, Termux timeout warnings and
+  // batched popup answers): on new APKs, if a message is about to go out while
+  // the model needs screenshots but no capture session is active, hold it until
+  // the permission has been (re-)granted. The dialog is then opened from JS, so
+  // this auto-tap sequence fires; the call replays automatically once active.
+  // Old APKs keep their existing force-trigger behavior below.
+  function _gateSendThroughPermission(orig, args, tag) {
+    try {
+      if (hasNewBridge()
+          && typeof window._screenCaptureNeededForSend === 'function'
+          && window._screenCaptureNeededForSend()) {
+        console.log('[MP] ' + tag + ' gated – screen capture permission required first');
+        window._withScreenCapturePermission(function() { orig.apply(Bridge, args); });
+        return;
+      }
+    } catch(e) {}
+    orig.apply(Bridge, args);
+  }
+
   try {
     var _origSendMsg = Bridge.sendMessage;
     Bridge.sendMessage = function() {
-      var res = _origSendMsg.apply(this, arguments);
+      var args = arguments, self = this;
+      if (hasNewBridge()) {
+        _gateSendThroughPermission(_origSendMsg, args, 'hook Bridge.sendMessage');
+        return;
+      }
+      var res = _origSendMsg.apply(self, args);
       try {
-        if (!hasNewBridge()) {
-          var now = Date.now();
-          if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
-            console.log('[MP] hook Bridge.sendMessage old APK done=' + _mpOldApkDone);
-            triggerAutoAccept(true);
-            _mpOldApkDone = true;
-          }
+        var now = Date.now();
+        if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
+          console.log('[MP] hook Bridge.sendMessage old APK done=' + _mpOldApkDone);
+          triggerAutoAccept(true);
+          _mpOldApkDone = true;
         }
       } catch(e) {}
       return res;
@@ -9218,15 +9276,18 @@ function _collapseOldScreenElementBubbles() {
   try {
     var _origSendMsgImg = Bridge.sendMessageWithImages;
     Bridge.sendMessageWithImages = function() {
-      var res = _origSendMsgImg.apply(this, arguments);
+      var args = arguments, self = this;
+      if (hasNewBridge()) {
+        _gateSendThroughPermission(_origSendMsgImg, args, 'hook Bridge.sendMessageWithImages');
+        return;
+      }
+      var res = _origSendMsgImg.apply(self, args);
       try {
-        if (!hasNewBridge()) {
-          var now = Date.now();
-          if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
-            console.log('[MP] hook Bridge.sendMessageWithImages old APK done=' + _mpOldApkDone);
-            triggerAutoAccept(true);
-            _mpOldApkDone = true;
-          }
+        var now = Date.now();
+        if (!_mpOldApkDone || (now - _mpLastTrigger) < 20000) {
+          console.log('[MP] hook Bridge.sendMessageWithImages old APK done=' + _mpOldApkDone);
+          triggerAutoAccept(true);
+          _mpOldApkDone = true;
         }
       } catch(e) {}
       return res;
