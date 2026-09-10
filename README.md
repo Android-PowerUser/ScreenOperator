@@ -20,7 +20,7 @@ Due to a GitHub restriction, you must be logged in to view the nightly download 
 [nightly builds](https://github.com/Android-PowerUser/ScreenOperator/actions) from Github actions (You probably must reinstall the app because of different signatures) or install the </br>
 [Screen Operator v4.1 (hotfix).apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.09.05/ScreenOperator.v4.1.hotfix.apk) (without log in)
 
-Updates in Github are much faster than on the Play Store and have no restrictions.
+Updates in Github are much faster than on the Play Store.
 </br>
 
 ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/latest/total.svg?label=Screen%20Operator%20latest%20release%20Downloads&v=72) ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/total.svg?label=Screen%20Operator%20Downloads&v=69) from Github (without nightly builds)
