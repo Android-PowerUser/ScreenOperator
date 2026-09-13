@@ -297,16 +297,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         val peek = commandQueue.peek()
         val nextCommandDelay = when {
             peek is Command.TakeScreenshot -> {
-                Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 50ms delay.")
-                50L
+                Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 300ms delay.")
+                300L
             }
             peek is Command.ClickButton && isMediaProjectionFastPath(peek.buttonText) -> {
-                Log.d(TAG, "Next is MediaProjection fast-path ClickButton '${peek.buttonText}', scheduling with 30ms delay.")
-                30L
+                Log.d(TAG, "Next is MediaProjection fast-path ClickButton '${peek.buttonText}', scheduling with 0ms delay.")
+                0L
             }
             else -> {
-                // Reduced from 500ms to 100ms for overall faster AI operation per user request
-                100L
+                400L
             }
         }
 
@@ -1014,8 +1013,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun refreshRootNode() {
         val currentTime = System.currentTimeMillis()
         
-        // Reduced from 200ms to 30ms for faster MediaProjection dialog handling per user request
-        if (currentTime - lastRootNodeRefreshTime < 30) {
+        if (currentTime - lastRootNodeRefreshTime < 400) {
             return
         }
         
@@ -1317,7 +1315,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with text: $buttonText")
             showToast("Button found: \"$buttonText\"", false)
 
-            val clickDelay = if (isMediaProjectionFastPath(buttonText)) 0L else 50L
+            val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
@@ -1352,7 +1350,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with content description: $description")
             showToast("Button found with description: \"$description\"", false)
 
-            val clickDelay = if (isMediaProjectionFastPath(description)) 0L else 50L
+            val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
@@ -1387,7 +1385,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
 
-            val clickDelay = if (isMediaProjectionFastPath(id)) 0L else 50L
+            val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
@@ -1425,7 +1423,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with content description: $description (across windows)")
             showToast("Button found with description: \"$description\"", false)
             
-            val clickDelay = if (isMediaProjectionFastPath(description)) 0L else 50L
+            val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val clickResult = performClickOnNode(node)
                 
@@ -1464,7 +1462,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Found node with ID: $id")
             showToast("Button found with ID: \"$id\"", false)
             
-            val clickDelay = if (isMediaProjectionFastPath(id)) 0L else 50L
+            val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val clickResult = performClickOnNode(node)
                 
@@ -1947,7 +1945,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         
         try {
-            val gesture = buildTapGesture(x = x, y = y, durationMs = 300)
+            val gesture = buildTapGesture(x = x, y = y, durationMs = 1000)
             
             dispatchGestureWithCallbacks(
                 gesture = gesture,
