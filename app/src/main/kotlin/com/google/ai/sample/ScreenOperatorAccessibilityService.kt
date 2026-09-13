@@ -265,7 +265,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         isServiceConnected.set(true)
         
         // Show a toast to indicate the service is connected
-        showToast("Accessibility Service is enabled and connected", false)
     }
 
     // Fast-path for MediaProjection dialog – those clicks must be as quick as possible
@@ -341,7 +340,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             is Command.TapCoordinates -> {
                 val point = ScreenCommandGeometryResolver.resolvePoint(command.x, command.y, screenWidth, screenHeight, ::convertCoordinate)
                 Log.d(TAG, "Tapping at coordinates: (${command.x} -> ${point.xPx}, ${command.y} -> ${point.yPx})")
-                this.showToast("Trying to tap coordinates: (${point.xPx}, ${point.yPx})", false)
                 this.tapAtCoordinates(point.xPx, point.yPx)
                 true // Asynchronous
             }
@@ -618,7 +616,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 sawNonTermuxCommandSinceLastScreenshot = false
             } else {
                 Log.d(TAG, "Command.TakeScreenshot: Capturing screen info and sending request broadcast to MainActivity.")
-                showToast("Preparing screenshot...", false)
 
                 val screenInfo = captureScreenInformation()
 
@@ -1035,7 +1032,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun writeText(text: String) {
         Log.d(TAG, "Writing text: $text")
-        showToast("Writing text: \"$text\"", false)
         
         try {
             // Refresh the root node
@@ -1047,7 +1043,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             if (focusedNode != null) {
                 Log.d(TAG, "Found focused editable node")
-                showToast("Text field found, writing text: \"$text\"", false)
                 
                 // Set the text in the editable field
                 val bundle = android.os.Bundle()
@@ -1076,7 +1071,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (editableNode != null) {
                     Log.d(TAG, "Found editable node")
-                    showToast("Editable text field found, trying to focus", false)
                     
                     // Focus the editable field
                     val focusResult = editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -1193,7 +1187,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun pasteText(node: AccessibilityNodeInfo, text: String) {
         try {
             Log.d(TAG, "Trying to paste text: $text")
-            showToast("Trying to paste text: \"$text\"", false)
             
             // First, select all existing text
             val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -1235,7 +1228,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun findAndClickButtonByText(buttonText: String) {
         Log.d(TAG, "Finding and clicking button with text: $buttonText")
-        showToast("Searching for button with text: \"$buttonText\"", false)
         
         // Refresh the root node
         refreshRootNode()
@@ -1252,14 +1244,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText (across windows)")
-            showToast("Button found: \"$buttonText\"", false)
             
             // Perform the click immediately (no delay)
             val clickResult = performClickOnNode(node)
             
             if (clickResult) {
                 Log.d(TAG, "Successfully clicked on button: $buttonText")
-                showToast("Clicked button \"$buttonText\" successfully", false)
             } else {
                 Log.e(TAG, "Failed to click on button: $buttonText")
                 showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
@@ -1291,7 +1281,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val centerY = rect.centerY()
             
             Log.d(TAG, "Trying alternative tap for button \"$buttonText\" at center: ($centerX, $centerY)")
-            showToast("Trying to tap coordinates: ($centerX, $centerY)", false)
             
             // Tap at the center of the button
             tapAtCoordinates(centerX.toFloat(), centerY.toFloat())
@@ -1303,7 +1292,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun findAndLongClickButtonByText(buttonText: String) {
         Log.d(TAG, "Finding and long clicking button with text: $buttonText")
-        showToast("Searching for button to long click with text: \"$buttonText\"", false)
 
         refreshRootNode()
         var node = findNodeByTextAcrossWindows(buttonText)
@@ -1313,14 +1301,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
-            showToast("Button found: \"$buttonText\"", false)
 
             val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
                     Log.d(TAG, "Successfully long clicked on button: $buttonText")
-                    showToast("Long clicked button \"$buttonText\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to long click on button: $buttonText")
                     showToast("Failed to long click button \"$buttonText\"", true)
@@ -1339,7 +1325,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndLongClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and long clicking button with content description: $description")
-        showToast("Searching for button to long click with description: \"$description\"", false)
 
         var node = findNodeByContentDescriptionAcrossWindows(description)
         if (node == null) {
@@ -1348,14 +1333,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
-            showToast("Button found with description: \"$description\"", false)
 
             val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
                     Log.d(TAG, "Successfully long clicked on button with description: $description")
-                    showToast("Long clicked button with description \"$description\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to long click on button with description: $description")
                     showToast("Failed to long click button with description \"$description\"", true)
@@ -1374,7 +1357,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndLongClickButtonById(id: String) {
         Log.d(TAG, "Finding and long clicking button with ID: $id")
-        showToast("Searching for button to long click with ID: \"$id\"", false)
 
         var node = findNodeByIdAcrossWindows(id)
         if (node == null) {
@@ -1383,14 +1365,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
-            showToast("Button found with ID: \"$id\"", false)
 
             val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
                 val longClickResult = performLongClickOnNode(node)
                 if (longClickResult) {
                     Log.d(TAG, "Successfully long clicked on button with ID: $id")
-                    showToast("Long clicked button with ID \"$id\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to long click on button with ID: $id")
                     showToast("Failed to long click button with ID \"$id\"", true)
@@ -1410,7 +1390,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and clicking button with content description: $description")
-        showToast("Searching for button with description: \"$description\"", false)
         
         // Search across all windows
         var node = findNodeByContentDescriptionAcrossWindows(description)
@@ -1421,7 +1400,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description (across windows)")
-            showToast("Button found with description: \"$description\"", false)
             
             val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
@@ -1429,7 +1407,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (clickResult) {
                     Log.d(TAG, "Successfully clicked on button with description: $description")
-                    showToast("Clicked button with description \"$description\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to click on button with description: $description")
                     showToast("Failed to click button with description \"$description\", trying alternative methods", true)
@@ -1450,7 +1427,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndClickButtonById(id: String) {
         Log.d(TAG, "Finding and clicking button with ID: $id")
-        showToast("Searching for button with ID: \"$id\"", false)
         
         var node = findNodeByIdAcrossWindows(id)
         if (node == null) {
@@ -1460,7 +1436,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
-            showToast("Button found with ID: \"$id\"", false)
             
             val clickDelay = 0L
             Handler(Looper.getMainLooper()).postDelayed({
@@ -1468,7 +1443,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (clickResult) {
                     Log.d(TAG, "Successfully clicked on button with ID: $id")
-                    showToast("Clicked button with ID \"$id\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to click on button with ID: $id")
                     showToast("Failed to click button with ID \"$id\", trying alternative methods", true)
@@ -1897,7 +1871,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     fun tapAtCoordinates(x: Float, y: Float) {
         Log.d(TAG, "Tapping at coordinates: ($x, $y)")
-        showToast("Tapping at coordinates: ($x, $y)", false)
         
         if (!ensureGestureApiAvailable("Tap")) {
             return
@@ -1910,7 +1883,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 gesture = gesture,
                 onCompleted = {
                     Log.d(TAG, "Tap gesture completed")
-                    showToast("Tapped coordinates ($x, $y) successfully", false)
                     scheduleNextCommandProcessing()
                 },
                 onCancelled = {
@@ -1938,7 +1910,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun tapAtCoordinatesWithLongerDuration(x: Float, y: Float) {
         Log.d(TAG, "Tapping at coordinates with longer duration: ($x, $y)")
-        showToast("Trying to tap with longer duration at: ($x, $y)", false)
         
         if (!ensureGestureApiAvailable("Long tap")) {
             return
@@ -1951,7 +1922,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 gesture = gesture,
                 onCompleted = {
                     Log.d(TAG, "Long tap gesture completed")
-                    showToast("Tapped with longer duration at coordinates ($x, $y) successfully", false)
                     scheduleNextCommandProcessing()
                 },
                 onCancelled = {
@@ -2003,7 +1973,6 @@ fun pressEnterKey() {
             override fun onCompleted(gestureDescription: GestureDescription) {
                 super.onCompleted(gestureDescription)
                 Log.d(TAG, "Enter key tap gesture completed")
-                showToast("Enter key pressed successfully", false)
                 scheduleNextCommandProcessing() // Continue queue after completion
             }
             
@@ -2055,7 +2024,6 @@ fun openApp(appNameOrPackage: String) {
         }
 
         Log.d(TAG, "Attempting to open package: $packageName (app name: $appName)")
-        showToast("Opening app: $appName", false)
 
         // Try different methods to open the app
         if (openAppUsingLaunchIntent(packageName, appName)) {
@@ -2122,7 +2090,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
             applicationContext.startActivity(launchIntent)
 
             Log.d(TAG, "Successfully opened app using launch intent: $packageName")
-            showToast("App opened: $appName", false)
             return true
         } else {
             Log.d(TAG, "No launch intent found for package: $packageName")
@@ -2168,7 +2135,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     applicationContext.startActivity(launchIntent)
                     
                     Log.d(TAG, "Successfully opened app using main activity: $packageName")
-                    showToast("App opened: $appName", false)
                     return true
                 }
             }
@@ -2214,7 +2180,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                 applicationContext.startActivity(launchIntent)
                 
                 Log.d(TAG, "Successfully opened app using query intent activities: $packageName")
-                showToast("App opened: $appName", false)
                 return true
             }
             
@@ -2496,7 +2461,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollDown() {
         Log.d(TAG, "Scrolling down")
-        showToast("Scrolling down...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2562,7 +2526,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollDown(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "scrollDown method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling down from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position upward by the specified distance)
@@ -2588,7 +2551,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                 gesture = gestureBuilder.build(),
                 onCompleted = {
                     Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                    showToast("Successfully scrolled down from position ($startX, $startY)", false)
                     scheduleNextCommandProcessing()
                 },
                 onCancelled = {
@@ -2614,7 +2576,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollUp() {
         Log.d(TAG, "Scrolling up")
-        showToast("Scrolling up...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2643,7 +2604,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll up gesture completed")
-                        showToast("Successfully scrolled up", false)
                         scheduleNextCommandProcessing()
                     }
                     
@@ -2681,7 +2641,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollUp(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "scrollUp method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling up from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position downward by the specified distance)
@@ -2710,7 +2669,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollUp method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled up from position ($startX, $startY)", false)
                         scheduleNextCommandProcessing()
                     }
                     
@@ -2741,7 +2699,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollLeft() {
         Log.d(TAG, "Scrolling left")
-        showToast("Scrolling left...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2770,7 +2727,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll left gesture completed")
-                        showToast("Successfully scrolled left", false)
                         scheduleNextCommandProcessing()
                     }
                     
@@ -2806,7 +2762,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "scrollLeft method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling left from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe L-R, content moves Left)
@@ -2835,7 +2790,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollLeft method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled left from position ($startX, $startY)", false)
                         scheduleNextCommandProcessing()
                     }
                     
@@ -2866,7 +2820,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollRight() {
         Log.d(TAG, "Scrolling right")
-        showToast("Scrolling right...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2895,7 +2848,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll right gesture completed")
-                        showToast("Successfully scrolled right", false)
                         scheduleNextCommandProcessing()
                     }
                     
@@ -2931,7 +2883,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
      */
     fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "scrollRight method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling right from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe R-L, content moves Right)
@@ -2960,7 +2911,6 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollRight method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled right from position ($startX, $startY)", false)
                         scheduleNextCommandProcessing()
                     }
                     
