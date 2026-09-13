@@ -1013,7 +1013,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun refreshRootNode() {
         val currentTime = System.currentTimeMillis()
         
-        if (currentTime - lastRootNodeRefreshTime < 400) {
+        if (currentTime - lastRootNodeRefreshTime < 30) {
             return
         }
         
