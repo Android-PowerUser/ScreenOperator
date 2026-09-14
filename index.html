@@ -2671,7 +2671,14 @@ function _showModelSelectWebPopup(errorMessage, failedModelId, orderedModels, pa
     ].join(";");
     banner.innerHTML = "✨ Much more with Freedom";
     banner.addEventListener("click", () => {
-      _dismissModelSelectPopup();
+      // Save popup context so we can re-show it after the purchase flow ends.
+      _pendingModelSelectAfterFreedom = {
+        resolve:      _modelSelectResolve,
+        reject:       _modelSelectReject,
+        errorMessage: document.getElementById('model-select-error-title')?.textContent || '',
+        payload:      payload,
+      };
+      document.getElementById('model-select-overlay')?.classList.remove('visible');
       initiateFreedomPurchase();
     });
     banner.addEventListener("mousedown", ()=>{ banner.style.opacity=".8"; });
@@ -2734,6 +2741,7 @@ function _installModelSelectNativeHandler(orderedModels, payload) {
 // When the user picks a model that has no API key yet, we store the pending
 // selection here, open the API-key popup, and re-show the model-list on close.
 let _pendingModelSelectAfterApiKey = null;
+let _pendingModelSelectAfterFreedom = null;
 
 function _modelNeedsApiKey(model) {
   if (!model || model.isOffline || model.id === 'HUMAN_EXPERT') return false;
@@ -7850,6 +7858,16 @@ window.onFreedomPurchaseStateChanged = function(isFreedom) {
   }
   // Pass the authoritative value directly – no Bridge re-read.
   _applyDonationState(Bridge.isPurchased(), isFreedom === true);
+
+  // Re-show the model-select popup if the user came from the Freedom upsell banner.
+  if (_pendingModelSelectAfterFreedom) {
+    const pending = _pendingModelSelectAfterFreedom;
+    _pendingModelSelectAfterFreedom = null;
+    _modelSelectResolve = pending.resolve;
+    _modelSelectReject  = pending.reject;
+    const orderedModels = _getModelSelectOrder(null);
+    _showModelSelectWebPopup(pending.errorMessage, null, orderedModels, pending.payload);
+  }
 };
 
 /* ════════════════════════════════════════════════════════
