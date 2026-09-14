@@ -360,7 +360,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
   color:var(--outline);
   pointer-events:none;
   transform-origin:left top;
-  transition:transform .15s cubic-bezier(0.4,0,0.2,1),color .15s cubic-bezier(0.4,0,0.2,1),top .15s cubic-bezier(0.4,0,0.2,1);
+  transition:transform .15s cubic-bezier(0.4,0,0.2,1),color .15s cubic-bezier(0.4,0,0.2,1),top .15s cubic-bezier(0.4,0,0.2,1),left .15s cubic-bezier(0.4,0,0.2,1);
   z-index:2;
   background:transparent;
   max-width:calc(100% - 32px);
@@ -371,6 +371,7 @@ html.dark-mode .task-input { color: var(--text-primary); }
 /* Floating (shrunk into notch) state: set via JS by toggling .floating */
 .m3-field-label.floating{
   top:0;
+  left:20px;
   transform:translateY(-50%) scale(0.75);
   color:var(--outline);
 }
