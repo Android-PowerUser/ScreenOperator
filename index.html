@@ -2623,6 +2623,40 @@ function _showModelSelectWebPopup(errorMessage, failedModelId, orderedModels, pa
   errTitle.textContent = errorMessage || '';
   options.replaceChildren();
 
+  // ── "Much more with Freedom" upsell banner (always first) ──
+  (function() {
+    const banner = document.createElement('button');
+    banner.type = 'button';
+    banner.id = 'freedom-upsell-banner';
+    banner.style.cssText = [
+      'display:block',
+      'width:100%',
+      'text-align:center',
+      'padding:14px 16px',
+      'border-radius:14px',
+      'border:none',
+      'cursor:pointer',
+      'font-size:16px',
+      'font-weight:700',
+      'letter-spacing:.01em',
+      'background:linear-gradient(135deg,#7B4FA6 0%,#A855F7 50%,#EC4899 100%)',
+      'color:#fff',
+      'box-shadow:0 2px 12px rgba(123,79,166,.45)',
+      'margin-bottom:4px',
+      'transition:opacity .15s',
+    ].join(";");
+    banner.innerHTML = "✨ Much more with Freedom";
+    banner.addEventListener("click", () => {
+      _dismissModelSelectPopup();
+      initiateFreedomPurchase();
+    });
+    banner.addEventListener("mousedown", ()=>{ banner.style.opacity=".8"; });
+    banner.addEventListener("mouseup",   ()=>{ banner.style.opacity="1"; });
+    banner.addEventListener("touchstart",()=>{ banner.style.opacity=".8"; }, {passive:true});
+    banner.addEventListener("touchend",  ()=>{ banner.style.opacity="1"; });
+    options.appendChild(banner);
+  })();
+
   for (const def of orderedModels) {
     if (def._isSectionHeader) {
       const hdr = document.createElement('div');
