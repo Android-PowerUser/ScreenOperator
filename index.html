@@ -198,6 +198,29 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
 .btn-text{background:none;border:none;color:var(--primary);font-size:15px;font-weight:500;cursor:pointer;padding:4px 2px}
 .btn-icon{width:48px;height:48px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-primary);cursor:pointer;font-size:22px;flex-shrink:0}
 .btn-icon:active{background:var(--item-hover)}
+
+/* ── Freedom button eye-candy ───────────────────────────── */
+@keyframes freedom-shimmer{
+  0%{background-position:200% center}
+  100%{background-position:-200% center}
+}
+@keyframes freedom-pulse{
+  0%,100%{box-shadow:0 2px 12px rgba(123,79,166,.5),0 0 0 0 rgba(123,79,166,.35)}
+  50%{box-shadow:0 4px 20px rgba(59,130,246,.6),0 0 0 6px rgba(59,130,246,.0)}
+}
+#freedom-btn,#freedom-upgrade-btn{
+  background:linear-gradient(270deg,#7B4FA6,#3B82F6,#7DD3FC,#3B82F6,#7B4FA6) !important;
+  background-size:300% auto !important;
+  animation:freedom-shimmer 4s linear infinite, freedom-pulse 2.4s ease-in-out infinite !important;
+  border:none;
+  font-weight:700 !important;
+  letter-spacing:.02em;
+  text-shadow:0 1px 3px rgba(0,0,0,.25);
+}
+#freedom-btn:active,#freedom-upgrade-btn:active{
+  opacity:.85;
+  animation:freedom-pulse 2.4s ease-in-out infinite !important;
+}
 .btn-circle{width:48px;height:48px;border-radius:50%;border:1px solid #000;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0}
 
 /* ── Chips ───────────────────────────────────────────────── */
@@ -629,14 +652,14 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       <div class="title-md" style="flex:1">Support improvements or get all models, always and automatically with freedom<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-left:8px;align-items:stretch">
         <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn">Pro (2,90 €/Month)</button>
-        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn" style="background:#7B4FA6">Freedom (7,90 €/Month)</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn">✨ Freedom (7,90 €/Month)</button>
       </div>
     </div>
     <!-- Shown when Pro purchased but not Freedom: upgrade to Freedom -->
     <div id="freedom-row" style="display:none">
       <div class="row between" id="freedom-upgrade-row">
         <div class="title-md" style="flex:1">get all models, always and automatically<br><span style="visibility:hidden;white-space:nowrap">or get all</span>🎉</div>
-        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="background:#7B4FA6;margin-left:8px">Freedom (7,90 €/Month)</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="margin-left:8px">✨ Freedom (7,90 €/Month)</button>
       </div>
     </div>
     <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
