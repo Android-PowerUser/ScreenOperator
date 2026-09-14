@@ -7130,19 +7130,51 @@ function copyKeyFromPopup() {
 
 /* ════════════════════════════════════════════════════════
    FIREBASE API-KEY SYNC
-   Uses Firebase Realtime Database REST API.
-   Path: apikeys/{deviceId}/{provider}/keys  → array of key strings
-   The deviceId is a stable UUID stored in localStorage.
+   Uses Firebase Realtime Database REST API + Anonymous Auth.
+   Path: apikeys/{uid}/{provider}/keys  → array of key strings
+   The uid comes from Firebase Anonymous Auth (stable per device,
+   stored in localStorage as firebase_anon_uid).
+   Rules: everyone can read, only the owner can write.
 ════════════════════════════════════════════════════════ */
 const FIREBASE_DB_URL = 'https://newagent-da72c.firebaseio.com';
+const FIREBASE_API_KEY = 'AIzaSyD_REPLACE_WITH_YOUR_WEB_API_KEY';
 
-function _getFirebaseDeviceId() {
-  let id = localStorage.getItem('firebase_device_id');
-  if (!id) {
-    id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-    localStorage.setItem('firebase_device_id', id);
+/** In-memory cache of the current Firebase ID token (JWT). */
+let _fbIdToken = null;
+let _fbUid = null;
+let _fbTokenExpiry = 0;
+
+/**
+ * Sign in anonymously via Firebase Auth REST API.
+ * Caches the idToken and uid in memory; persists uid in localStorage.
+ * Refreshes automatically when token is near expiry (< 5 min left).
+ */
+async function _ensureFirebaseAuth() {
+  const now = Date.now();
+  if (_fbIdToken && _fbUid && _fbTokenExpiry - now > 5 * 60 * 1000) return; // still valid
+  try {
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInAnonymously?key=${FIREBASE_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) }
+    );
+    if (!res.ok) throw new Error('Auth failed: ' + res.status);
+    const data = await res.json();
+    _fbIdToken = data.idToken;
+    _fbUid = data.localId;
+    _fbTokenExpiry = now + parseInt(data.expiresIn, 10) * 1000;
+    localStorage.setItem('firebase_anon_uid', _fbUid);
+  } catch (e) {
+    console.warn('[Firebase] Anonymous auth failed:', e);
+    // Fallback: use stored uid without auth token (reads will still work)
+    _fbUid = localStorage.getItem('firebase_anon_uid')
+          || ('dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10));
+    localStorage.setItem('firebase_anon_uid', _fbUid);
   }
-  return id;
+}
+
+/** Returns auth query param string for Firebase REST API, or empty string on failure. */
+function _fbAuthParam() {
+  return _fbIdToken ? `?auth=${_fbIdToken}` : '';
 }
 
 /** Sanitise a provider name so it is safe as a Firebase key (no . # $ [ ] /). */
@@ -7159,11 +7191,12 @@ async function _syncProviderToFirebase(provider) {
   try {
     const keys = Bridge.getAllApiKeys(provider);
     if (!keys || keys.length === 0) return;   // nothing local to upload
-    const deviceId = _getFirebaseDeviceId();
+    const uid = _fbUid;
     const safeProv = _fbSafeProvider(provider);
-    const url = `${FIREBASE_DB_URL}/apikeys/${deviceId}/${safeProv}.json`;
+    const readUrl  = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json`;
+    const writeUrl = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json${_fbAuthParam()}`;
     // Check whether data already exists in Firebase for this provider
-    const checkRes = await fetch(url);
+    const checkRes = await fetch(readUrl);
     if (checkRes.ok) {
       const existing = await checkRes.json();
       if (existing !== null && existing.keys && existing.keys.length > 0) {
@@ -7171,7 +7204,7 @@ async function _syncProviderToFirebase(provider) {
       }
     }
     // Not present yet – upload
-    await fetch(url, {
+    await fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys }),
@@ -7186,6 +7219,7 @@ async function _syncProviderToFirebase(provider) {
  * Each provider is only uploaded if its node is not already in Firebase.
  */
 async function syncAllApiKeysToFirebase() {
+  await _ensureFirebaseAuth();
   const providers = Object.keys(PROVIDERS).filter(p => p !== 'HUMAN_EXPERT');
   for (const prov of providers) {
     await _syncProviderToFirebase(prov);
