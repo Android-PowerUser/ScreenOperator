@@ -7190,25 +7190,34 @@ function _fbSafeProvider(provider) {
 async function _syncProviderToFirebase(provider) {
   try {
     const keys = Bridge.getAllApiKeys(provider);
-    if (!keys || keys.length === 0) return;   // nothing local to upload
+    if (!keys || keys.length === 0) { console.warn('[Firebase] No keys for', provider); return; }
     const uid = _fbUid;
+    if (!uid) { console.warn('[Firebase] No uid – auth not ready, skipping', provider); return; }
     const safeProv = _fbSafeProvider(provider);
     const readUrl  = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json`;
     const writeUrl = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json${_fbAuthParam()}`;
+    console.log('[Firebase] Syncing', provider, '→ uid:', uid, 'hasToken:', !!_fbIdToken);
     // Check whether data already exists in Firebase for this provider
     const checkRes = await fetch(readUrl);
     if (checkRes.ok) {
       const existing = await checkRes.json();
       if (existing !== null && existing.keys && existing.keys.length > 0) {
+        console.log('[Firebase] Already exists, skipping', provider);
         return; // already stored – skip upload
       }
     }
     // Not present yet – upload
-    await fetch(writeUrl, {
+    const putRes = await fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys }),
     });
+    if (putRes.ok) {
+      console.log('[Firebase] Uploaded', provider, keys.length, 'keys');
+    } else {
+      const err = await putRes.text();
+      console.warn('[Firebase] Upload failed for', provider, putRes.status, err);
+    }
   } catch (e) {
     console.warn('[Firebase] Sync failed for', provider, e);
   }
