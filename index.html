@@ -223,39 +223,35 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   position:relative !important;
   overflow:hidden !important;
 }
-/* Diagonal gloss bands. Two soft bands (::after and ::before) run the same
-   pure-CSS keyframe loop half a period apart, so while one band exits on
-   the right the other is already entering on the left - there is never a
-   long stretch with no sheen. The bands are deliberately soft (wide
-   feathered gradient + blur, low peak alpha) so they read as a gentle
-   sheen rather than a sharp stripe. */
+/* Diagonal gloss band. A SINGLE soft band runs a pure-CSS keyframe loop:
+   at 0% its right edge just touches the button's left edge, at 100% its
+   left edge just leaves the right edge - so it is (partially) visible for
+   the whole cycle and, the instant it exits on the right, the loop
+   restarts with it entering on the left. No gap, and never two bands at
+   once. The band is deliberately wide, heavily feathered and blurred
+   with low peak alpha so it reads as a gentle diffuse sheen. */
 @keyframes freedom-gloss{
-  0%{left:-26%}
+  0%{left:-42%}
   100%{left:100%}
 }
-#freedom-btn::before,#freedom-upgrade-btn::before,#apikey-freedom-btn::before,#trial-expired-subscribe-btn::before,#human-expert-subscribe-btn::before,#freedom-upsell-banner::before,
 #freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after{
   content:'';
   position:absolute;
-  top:-60%;left:-26%;
-  width:26%;height:220%;
+  top:-60%;left:-42%;
+  width:42%;height:220%;
   background:linear-gradient(90deg,
     rgba(255,255,255,0)    0%,
-    rgba(255,255,255,.04) 30%,
-    rgba(255,255,255,.14) 45%,
-    rgba(255,255,255,.28) 50%,
-    rgba(255,255,255,.14) 55%,
-    rgba(255,255,255,.04) 70%,
+    rgba(255,255,255,.03) 30%,
+    rgba(255,255,255,.09) 44%,
+    rgba(255,255,255,.20) 50%,
+    rgba(255,255,255,.09) 56%,
+    rgba(255,255,255,.03) 70%,
     rgba(255,255,255,0)    100%);
   transform:skewX(-20deg);
-  filter:blur(3px);
+  filter:blur(6px);
   pointer-events:none;
   z-index:3;
   animation:freedom-gloss 60s linear infinite;
-}
-/* Second band: offset by half a period (negative delay starts it mid-loop). */
-#freedom-btn::before,#freedom-upgrade-btn::before,#apikey-freedom-btn::before,#trial-expired-subscribe-btn::before,#human-expert-subscribe-btn::before,#freedom-upsell-banner::before{
-  animation-delay:-30s;
 }
 /* Button label (text is split into .fg-ch spans by JS for outline tracking) */
 .freedom-gloss-label{position:relative;z-index:2;display:inline-block;white-space:nowrap}
@@ -7880,7 +7876,7 @@ function initiateDonation() {
   const BTN_IDS = ['freedom-btn','freedom-upgrade-btn','apikey-freedom-btn',
                    'trial-expired-subscribe-btn','human-expert-subscribe-btn','freedom-upsell-banner'];
   const PERIOD_MS = 60000;     // must match the freedom-gloss CSS animation
-  const BAND_W    = 0.26;      // must match the ::before/::after width in CSS
+  const BAND_W    = 0.42;      // must match the ::after width in CSS
   const BAND_L0   = -BAND_W;   // keyframe 0% left
   const BAND_L1   = 1.0;       // keyframe 100% left
   const SKEW_TAN  = Math.tan(-20 * Math.PI/180); // must match skewX(-20deg)
@@ -8004,26 +8000,20 @@ function initiateDonation() {
     });
   }
 
-  /* Current band-left fractions for a button (two bands run half a period
-     apart). Reads the live CSS animation positions (exact even for
-     dynamically created buttons); falls back to a time-based estimate if
-     the browser refuses to report pseudo styles. */
-  function bandLefts(btn){
-    const out = [];
-    const pseudo = (which, phaseOffset)=>{
-      try{
-        const v = getComputedStyle(btn, which).left;
-        if(v && v.endsWith('px')){
-          const f = parseFloat(v) / btn.getBoundingClientRect().width;
-          if(isFinite(f)){ out.push(f); return; }
-        }
-      }catch(e){}
-      let p = (((performance.now() - t0) % PERIOD_MS) / PERIOD_MS + phaseOffset) % 1;
-      out.push(BAND_L0 + (BAND_L1-BAND_L0)*p);
-    };
-    pseudo('::after', 0);
-    pseudo('::before', 0.5);
-    return out;
+  /* Current band-left fraction for the single ::after band. Reads the live
+     CSS animation position (exact even for dynamically created buttons);
+     falls back to a time-based estimate if the browser refuses to report
+     pseudo styles. */
+  function bandLeft(btn){
+    try{
+      const v = getComputedStyle(btn, '::after').left;
+      if(v && v.endsWith('px')){
+        const f = parseFloat(v) / btn.getBoundingClientRect().width;
+        if(isFinite(f)) return f;
+      }
+    }catch(e){}
+    const p = ((performance.now() - t0) % PERIOD_MS) / PERIOD_MS;
+    return BAND_L0 + (BAND_L1-BAND_L0)*p;
   }
 
   function isVisible(btn){
@@ -8066,23 +8056,18 @@ function initiateDonation() {
       }
       if(!st.edges || !st.edges.length) return;
 
-      // Band crossing check on the skewed bands (inverse skewX mapping);
-      // an edge point counts if under either of the two offset bands.
-      const Ls = bandLefts(btn), W = st.w, cy = st.h/2;
+      // Band crossing check on the single skewed band (inverse skewX map).
+      const L = bandLeft(btn), W = st.w, cy = st.h/2;
       const cands = [];
       let totalW = 0;
       for(let i=0;i<st.edges.length;i++){
         const e = st.edges[i];
         const xPre = e.x - (e.y - cy)*SKEW_TAN;
-        let wBest = 0;
-        for(let b=0;b<Ls.length;b++){
-          const t = (xPre - Ls[b]*W)/(BAND_W*W);
-          if(t > 0.15 && t < 0.85){
-            const w = Math.pow(Math.max(0, 1 - Math.abs(t-0.5)/0.35), 1.6);
-            if(w > wBest) wBest = w;
-          }
+        const t = (xPre - L*W)/(BAND_W*W);
+        if(t > 0.12 && t < 0.88){
+          const w = Math.pow(Math.max(0, 1 - Math.abs(t-0.5)/0.38), 1.6);
+          e._w = w; cands.push(e); totalW += w;
         }
-        if(wBest > 0){ e._w = wBest; cands.push(e); totalW += wBest; }
       }
       if(!cands.length){
         // Band is between/outside text: the next sparkle is due shortly
