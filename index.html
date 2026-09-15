@@ -213,10 +213,10 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   50%{box-shadow:0 4px 22px rgba(236,72,153,.6),0 0 0 6px rgba(236,72,153,.0)}
 }
 @keyframes freedom-gloss{
-  0%{background-position:-200% 200%}
-  100%{background-position:300% -100%}
+  0%{left:-80%}
+  100%{left:130%}
 }
-#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#trial-expired-subscribe-btn,#human-expert-subscribe-btn{
+#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#trial-expired-subscribe-btn,#human-expert-subscribe-btn,#freedom-upsell-banner{
   background:linear-gradient(to right,var(--primary),#2563eb,#ec4899) !important;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
   border:none !important;
@@ -227,17 +227,17 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   position:relative !important;
   overflow:hidden !important;
 }
-#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after{
+#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after{
   content:'';
   position:absolute;
   top:-60%;left:-80%;
   width:55%;height:220%;
-  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%);
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.22) 50%,transparent 70%);
   transform:skewX(-20deg);
-  animation:freedom-gloss 7s ease-in-out infinite;
+  animation:freedom-gloss 14s linear infinite;
   pointer-events:none;
 }
-#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active{
+#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
   opacity:.85;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
 }
