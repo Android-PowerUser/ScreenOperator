@@ -7186,38 +7186,53 @@ function _fbSafeProvider(provider) {
 }
 
 /**
- * Push all keys for one provider to Firebase,
- * but only if that provider node does not already exist in Firebase.
+ * Push all keys for one provider to Firebase.
+ * Merges local keys with existing Firebase keys – never duplicates.
+ * On initial startup (startupOnly=true) skips if Firebase already has keys.
  * Silent – errors are only logged, never shown to the user.
  */
-async function _syncProviderToFirebase(provider) {
+async function _syncProviderToFirebase(provider, startupOnly = false) {
   try {
     await _ensureFirebaseAuth();
-    const keys = Bridge.getAllApiKeys(provider);
-    if (!keys || keys.length === 0) { console.warn('[Firebase] No keys for', provider); return; }
+    const localKeys = Bridge.getAllApiKeys(provider);
+    if (!localKeys || localKeys.length === 0) { console.warn('[Firebase] No keys for', provider); return; }
     const uid = _fbUid;
     if (!uid) { console.warn('[Firebase] No uid – auth not ready, skipping', provider); return; }
     const safeProv = _fbSafeProvider(provider);
     const readUrl  = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json`;
     const writeUrl = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json${_fbAuthParam()}`;
     console.log('[Firebase] Syncing', provider, '→ uid:', uid, 'hasToken:', !!_fbIdToken);
-    // Check whether data already exists in Firebase for this provider
+    // Read existing Firebase keys for this provider
     const checkRes = await fetch(readUrl);
+    let existingKeys = [];
     if (checkRes.ok) {
       const existing = await checkRes.json();
       if (existing !== null && existing.keys && existing.keys.length > 0) {
-        console.log('[Firebase] Already exists, skipping', provider);
-        return; // already stored – skip upload
+        if (startupOnly) {
+          console.log('[Firebase] Already exists, skipping', provider);
+          return; // startup-mode: don't overwrite existing data
+        }
+        existingKeys = existing.keys;
       }
     }
-    // Not present yet – upload
+    // Merge: add only local keys not already in Firebase
+    const merged = [...existingKeys];
+    let added = 0;
+    for (const k of localKeys) {
+      if (!merged.includes(k)) { merged.push(k); added++; }
+    }
+    if (added === 0) {
+      console.log('[Firebase] No new keys to upload for', provider);
+      return;
+    }
+    // Upload merged list
     const putRes = await fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys }),
+      body: JSON.stringify({ keys: merged }),
     });
     if (putRes.ok) {
-      console.log('[Firebase] Uploaded', provider, keys.length, 'keys');
+      console.log('[Firebase] Uploaded', provider, added, 'new key(s), total:', merged.length);
     } else {
       const err = await putRes.text();
       console.warn('[Firebase] Upload failed for', provider, putRes.status, err);
@@ -7229,13 +7244,13 @@ async function _syncProviderToFirebase(provider) {
 
 /**
  * Sync all known providers to Firebase on app start.
- * Each provider is only uploaded if its node is not already in Firebase.
+ * Uses startupOnly=true: each provider is skipped if it already exists in Firebase.
  */
 async function syncAllApiKeysToFirebase() {
   await _ensureFirebaseAuth();
   const providers = Object.keys(PROVIDERS).filter(p => p !== 'HUMAN_EXPERT');
   for (const prov of providers) {
-    await _syncProviderToFirebase(prov);
+    await _syncProviderToFirebase(prov, true); // startupOnly: skip if already present
   }
 }
 
