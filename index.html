@@ -177,8 +177,10 @@ html.dark-mode {
 .ctx-dot-plus.disabled{border-color:var(--outline-variant);color:var(--outline-variant);opacity:0.4}
 
 /* ── Card ────────────────────────────────────────────────── */
-.card{background:var(--bg-card);border-radius:28px;padding:16px;margin:8px 0}
-.card-accent{background:var(--bg-primary-container);border-radius:28px;padding:14px;margin:8px 0}
+.card{background:var(--bg-card);border-radius:28px;padding:24px 16px;margin:8px 0}
+.card:has(.card-tile){padding:16px}
+.card-accent{background:var(--bg-primary-container);border-radius:28px;padding:14px 14px 22px;margin:8px 0}
+#chat-sys-wrap .card-accent{padding-top:14px}
 /* Icon-Kacheln (API Key / Model Selection) */
 .card-tile{width:44px;height:44px;border-radius:16px;background:color-mix(in srgb,var(--bg-primary-container) 55%,var(--bg-card) 45%);color:var(--text-on-primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .card-tile svg{display:block}
@@ -256,10 +258,10 @@ textarea.text-input{resize:vertical;min-height:80px;line-height:1.5}
 .slider-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px}
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent;outline:none;--fill:0%}
 input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:999px;background:linear-gradient(to right,var(--primary) var(--fill),var(--slider-rest) var(--fill))}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;background:#fff;border:3px solid var(--primary);cursor:pointer;box-shadow:0 0 0 5px var(--primary) inset,0 1px 4px var(--shadow)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;background:var(--primary);border:3px solid #fff;cursor:pointer;box-shadow:0 1px 4px var(--shadow)}
 input[type=range]::-moz-range-track{height:8px;border-radius:999px;background:var(--slider-rest)}
 input[type=range]::-moz-range-progress{height:8px;border-radius:999px;background:var(--primary)}
-input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--primary);cursor:pointer;box-sizing:border-box;box-shadow:0 0 0 5px var(--primary) inset,0 1px 4px var(--shadow)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--primary);border:3px solid #fff;cursor:pointer;box-sizing:border-box;box-shadow:0 1px 4px var(--shadow)}
 
 /* ── Model dropdown ──────────────────────────────────────── */
 #model-dropdown{display:inline-block}
@@ -682,15 +684,15 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div class="row between" id="donation-row">
       <div class="title-md" style="flex:1">Support improvements<div style="display:flex;align-items:center;gap:8px;margin:6px 0"><span style="flex:1;height:1px;background:var(--outline-variant);display:block"></span><span style="font-size:11px;color:var(--text-secondary)"></span><span style="flex:1;height:1px;background:var(--outline-variant);display:block"></span></div>or get all models, always and automatically with freedom<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-left:8px;align-items:stretch">
-        <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn" style="padding:10px 28px;font-size:15px;font-weight:700;letter-spacing:.04em">Pro</button>
-        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn" style="padding:10px 28px;font-size:15px;font-weight:700;letter-spacing:.04em">✨ Freedom</button>
+        <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn" style="padding:9px 36px;font-size:15px;font-weight:700;letter-spacing:.04em">Pro</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn" style="padding:9px 28px;font-size:15px;font-weight:700;letter-spacing:.04em">✨ Freedom</button>
       </div>
     </div>
     <!-- Shown when Pro purchased but not Freedom: upgrade to Freedom -->
     <div id="freedom-row" style="display:none">
       <div class="row between" id="freedom-upgrade-row">
         <div class="title-md" style="flex:1">get all models, always and automatically<br><span style="visibility:hidden;white-space:nowrap">or get all</span>🎉</div>
-        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="margin-left:8px;padding:10px 28px;font-size:15px;font-weight:700;letter-spacing:.04em">✨ Freedom</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="margin-left:8px;padding:9px 28px;font-size:15px;font-weight:700;letter-spacing:.04em">✨ Freedom</button>
       </div>
     </div>
     <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
@@ -9590,6 +9592,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
