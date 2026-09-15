@@ -1,0 +1,89 @@
+name: Deploy Firebase Auth Proxy to Deno Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'cloudflare-worker/firebase-auth-proxy/firebase_auth_proxy.ts'
+      - 'cloudflare-worker/firebase-auth-proxy/deno.json'
+      - '.github/workflows/deploy-firebase-auth-proxy.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.4.5
+
+      - name: Deploy to Deno Deploy
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ORG="android-poweruser"
+          APP="screenoperator-firebase-auth-proxy"
+          SRC_DIR="cloudflare-worker/firebase-auth-proxy"
+          ENTRYPOINT="firebase_auth_proxy.ts"
+          API="https://console.deno.com/api/v2"
+          AUTH="Authorization: Bearer $DENO_DEPLOY_TOKEN"
+
+          cd "$SRC_DIR"
+
+          echo "=== Current apps in org (diagnostic) ==="
+          curl -sS -H "$AUTH" "$API/apps" | head -c 1500; echo
+          echo "=== GET app $APP ==="
+          GET_CODE=$(curl -sS -o /tmp/app.json -w '%{http_code}' -H "$AUTH" "$API/apps/$APP" || echo 000)
+          echo "GET -> $GET_CODE"
+          echo "--- app body ---"; head -c 1500 /tmp/app.json 2>/dev/null; echo
+          RT=$(cat /tmp/app.json 2>/dev/null | python3 -c "
+          import json,sys
+          try:
+              a=json.load(sys.stdin)
+              cfg=a.get('config') or a.get('app',{}).get('config') or {}
+              rt=cfg.get('runtime',{}) if isinstance(cfg,dict) else {}
+              print(rt.get('type','') + '|' + str(rt.get('entrypoint','')))
+          except Exception:
+              print('|')
+          " 2>/dev/null || echo "|")
+          RT_TYPE="${RT%%|*}"; RT_ENTRY="${RT#*|}"
+          echo "Parsed: runtime='${RT_TYPE}' entrypoint='${RT_ENTRY}'"
+          if [ "$GET_CODE" = "200" ] && { [ "$RT_TYPE" = "static" ] || [ "$RT_TYPE" != "dynamic" ] || [ "$RT_ENTRY" != "$ENTRYPOINT" ]; }; then
+            echo "App exists but wrong config. Deleting."            DEL_CODE=$(curl -sS -o /tmp/del.out -w '%{http_code}' -X DELETE -H "$AUTH" "$API/apps/$APP" || echo 000)
+            echo "DELETE -> $DEL_CODE"; head -c 400 /tmp/del.out 2>/dev/null; echo
+            for w in 1 2 3 4 5 6; do
+              sleep 5
+              G2=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$API/apps/$APP" || echo 000)
+              echo "post-delete GET attempt $w: $G2"
+              [ "$G2" = "404" ] && break
+            done
+          fi
+
+          deno deploy create             --org="$ORG"             --app="$APP"             --token="$DENO_DEPLOY_TOKEN"             --source=local             --do-not-use-detected-build-config             --runtime-mode=dynamic             --entrypoint="$ENTRYPOINT"             --region=us             . 2>&1 || echo "create skipped (app already exists)"
+
+          deno deploy             --org="$ORG"             --app="$APP"             --token="$DENO_DEPLOY_TOKEN"             --prod
+
+      - name: Verify proxy is alive
+        run: |
+          set -euo pipefail
+          URL="https://screenoperator-firebase-auth-proxy.android-poweruser.deno.net/v1/accounts:signInAnonymously?key=test"
+
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL"               -H "Origin: https://android-poweruser.github.io"               -H "Access-Control-Request-Method: POST" --max-time 20 || echo 000)
+            echo "attempt $i: OPTIONS=$PRE"
+            if [ "$PRE" = "200" ]; then
+              echo "Proxy is live."
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "::error::Proxy did not answer correctly."
+          exit 1
