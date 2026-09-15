@@ -223,38 +223,57 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   position:relative !important;
   overflow:hidden !important;
 }
-/* Diagonal gloss band. Its horizontal position is driven from JS via the
-   --gloss-x custom property (see "Freedom button gloss + edge sparkles"
-   module below) so the glyph-edge sparkles stay perfectly in sync with it.
-   screen blending + symmetric stops give a smooth, clean colour transition
-   instead of the harsh color-dodge band the old keyframe animation had. */
+/* Diagonal gloss bands. Two soft bands (::after and ::before) run the same
+   pure-CSS keyframe loop half a period apart, so while one band exits on
+   the right the other is already entering on the left - there is never a
+   long stretch with no sheen. The bands are deliberately soft (wide
+   feathered gradient + blur, low peak alpha) so they read as a gentle
+   sheen rather than a sharp stripe. */
+@keyframes freedom-gloss{
+  0%{left:-26%}
+  100%{left:100%}
+}
+#freedom-btn::before,#freedom-upgrade-btn::before,#apikey-freedom-btn::before,#trial-expired-subscribe-btn::before,#human-expert-subscribe-btn::before,#freedom-upsell-banner::before,
 #freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after{
   content:'';
   position:absolute;
-  top:-60%;left:var(--gloss-x,-55%);
-  width:24%;height:220%;
+  top:-60%;left:-26%;
+  width:26%;height:220%;
   background:linear-gradient(90deg,
     rgba(255,255,255,0)    0%,
-    rgba(255,255,255,.10) 26%,
-    rgba(255,255,255,.42) 43%,
-    rgba(255,255,255,.68) 50%,
-    rgba(255,255,255,.42) 57%,
-    rgba(255,255,255,.10) 74%,
+    rgba(255,255,255,.04) 30%,
+    rgba(255,255,255,.14) 45%,
+    rgba(255,255,255,.28) 50%,
+    rgba(255,255,255,.14) 55%,
+    rgba(255,255,255,.04) 70%,
     rgba(255,255,255,0)    100%);
   transform:skewX(-20deg);
-  mix-blend-mode:screen;
+  filter:blur(3px);
   pointer-events:none;
   z-index:3;
+  animation:freedom-gloss 60s linear infinite;
+}
+/* Second band: offset by half a period (negative delay starts it mid-loop). */
+#freedom-btn::before,#freedom-upgrade-btn::before,#apikey-freedom-btn::before,#trial-expired-subscribe-btn::before,#human-expert-subscribe-btn::before,#freedom-upsell-banner::before{
+  animation-delay:-30s;
 }
 /* Button label (text is split into .fg-ch spans by JS for outline tracking) */
 .freedom-gloss-label{position:relative;z-index:2;display:inline-block;white-space:nowrap}
 .freedom-gloss-label .fg-ch{white-space:pre}
-/* Twinkles placed on glyph outlines by the gloss module */
+/* Rare twinkles placed on glyph outlines by the gloss module. The pop
+   animation itself is CSS-driven so no per-frame JavaScript is needed. */
 .fg-spark{
   position:absolute;left:0;top:0;z-index:5;
   pointer-events:none;line-height:1;opacity:0;
-  color:#fff;user-select:none;will-change:transform,opacity;
-  text-shadow:0 0 4px rgba(255,255,255,.95),0 0 9px rgba(255,255,255,.6);
+  color:#fff;user-select:none;
+  text-shadow:0 0 4px rgba(255,255,255,.95),0 0 9px rgba(255,255,255,.55);
+  animation:fg-twinkle var(--fg-dur,1100ms) ease-out forwards;
+}
+@keyframes fg-twinkle{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(0) rotate(var(--fg-rot,0deg))}
+  30%{opacity:1;transform:translate(-50%,-50%) scale(1.05) rotate(var(--fg-rot,0deg))}
+  55%{opacity:.95;transform:translate(-50%,-50%) scale(.92) rotate(var(--fg-rot,0deg))}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(.3) rotate(var(--fg-rot,0deg))}
 }
 #freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
   opacity:.85;
@@ -7845,74 +7864,81 @@ function updateDonationCard(freedomOverride) {
 function initiateDonation() {
   Bridge.initiateDonation();
 }
-/* ── Freedom buttons: diagonal gloss with glyph-edge sparkles ──
-   The diagonal gloss band (the buttons' ::after pseudo-element) is driven
-   from here through the --gloss-x CSS variable, so sparkle positions stay
-   perfectly in sync with it. Sparkles do NOT slide across the button any
-   more: each button's label is split into per-character spans, every
-   character's actual glyph outline is extracted once with an offscreen
-   canvas (alpha edge detection, cached per glyph+font), and while the
-   diagonal band sweeps over a letter, sparkles twinkle exactly on that
-   letter's outline edges. Everything here is WebView-only cosmetic logic. */
+/* ── Freedom buttons: diagonal gloss with rare glyph-edge sparkles ──
+   The diagonal gloss band is a plain CSS keyframe loop (see the
+   freedom-gloss keyframes above) that immediately re-enters on the left
+   after exiting on the right. This module only places the occasional
+   twinkle: each button's label is split into per-character spans, every
+   character's glyph outline is extracted once with an offscreen canvas
+   (alpha edge detection, 3x supersampled, cached per glyph+font), and
+   every few seconds a single sparkle pops on the outline edge that the
+   gloss band is currently crossing. The pop animation is CSS-driven, so
+   there is no requestAnimationFrame loop at all - a 400 ms interval is
+   enough. Everything here is WebView-only cosmetic logic. */
 (function(){
   'use strict';
   const BTN_IDS = ['freedom-btn','freedom-upgrade-btn','apikey-freedom-btn',
                    'trial-expired-subscribe-btn','human-expert-subscribe-btn','freedom-upsell-banner'];
-  const PERIOD_MS = 60000;     // full sweep cadence (same as the old CSS keyframes)
-  const BAND_W    = 0.24;      // gloss band width as a fraction of button width
-  const L0 = -0.55;            // band-left fraction at sweep start ...
-  const L1 = 1.35;             // ... and at sweep end
-  const SKEW_TAN  = Math.tan(-20 * Math.PI/180); // must match skewX(-20deg) in CSS
-  const POOL_SIZE = 9;         // reusable sparkle elements per button
-  const SPAWN_MS  = 130;       // min gap between new twinkles while band crosses text
+  const PERIOD_MS = 60000;     // must match the freedom-gloss CSS animation
+  const BAND_W    = 0.26;      // must match the ::before/::after width in CSS
+  const BAND_L0   = -BAND_W;   // keyframe 0% left
+  const BAND_L1   = 1.0;       // keyframe 100% left
+  const SKEW_TAN  = Math.tan(-20 * Math.PI/180); // must match skewX(-20deg)
+  const TICK_MS   = 400;
+  const MIN_GAP_MS = 1800;     // ... a sparkle appears every 1.8-4.2 s
+  const MAX_GAP_MS = 4200;
   const SS = 3;                // supersampling factor for glyph rasterisation
   const STAR_GLYPHS = ['✦','✧','⋆'];
 
-  const edgeCache = new Map(); // glyph+font -> outline points (ink-box relative)
+  const edgeCache = new Map(); // glyph+font -> outline points (CSS px, ink-box relative)
   const states = new Map();    // button element -> state
   let fontRev = 0;             // bumped when fonts load / viewport changes
+  const t0 = performance.now();
 
-  /* ── Glyph outline extraction ───────────────────────────── */
+  /* ── Glyph outline extraction ─────────────────────────────
+     The glyph is rasterised at SS× the CSS font size. All returned
+     coordinates are already in CSS pixels, relative to the glyph's
+     tight ink box (0/0 = top-left of the ink box). */
   function glyphEdges(ch, font){
     const key = ch+'|'+font.style+'|'+font.weight+'|'+font.size+'|'+font.family;
     let pts = edgeCache.get(key);
     if(pts) return pts;
     pts = [];
-    pts._left = 0; pts._ascent = font.size*0.8; pts._descent = font.size*0.2;
+    pts._left = 0; pts._right = font.size; pts._ascent = font.size*0.8; pts._descent = font.size*0.2;
     try{
       const cv = document.createElement('canvas');
       const cx = cv.getContext('2d', { willReadFrequently:true });
-      cx.font = font.style+' '+font.weight+' '+Math.round(font.size*SS)+'px '+font.family;
+      const size3 = Math.round(font.size*SS);
+      cx.font = font.style+' '+font.weight+' '+size3+'px '+font.family;
       const m = cx.measureText(ch);
+      // Ink box in CSS px (fallbacks for old WebViews without actualBoundingBox*).
+      const l = (m.actualBoundingBoxLeft   !== undefined) ? m.actualBoundingBoxLeft/SS  : font.size*0.25;
+      const r = (m.actualBoundingBoxRight  !== undefined) ? m.actualBoundingBoxRight/SS : font.size*0.75;
+      const a = (m.actualBoundingBoxAscent !== undefined) ? m.actualBoundingBoxAscent/SS: font.size*0.8;
+      const d = (m.actualBoundingBoxDescent!== undefined) ? m.actualBoundingBoxDescent/SS:font.size*0.2;
+      pts._left = l; pts._right = r; pts._ascent = a; pts._descent = d;
       const pad = SS;
-      // Fallbacks for old WebViews without actualBoundingBox* metrics.
-      const bbL  = (m.actualBoundingBoxLeft   !== undefined) ? m.actualBoundingBoxLeft   : font.size*0.25;
-      const bbR  = (m.actualBoundingBoxRight  !== undefined) ? m.actualBoundingBoxRight  : font.size*0.75;
-      const bbA  = (m.actualBoundingBoxAscent !== undefined) ? m.actualBoundingBoxAscent : font.size*0.8;
-      const bbD  = (m.actualBoundingBoxDescent!== undefined) ? m.actualBoundingBoxDescent: font.size*0.2;
-      const inkW = Math.max(1, Math.ceil((bbL + bbR)*SS));
-      const inkH = Math.max(1, Math.ceil((bbA + bbD)*SS));
-      cv.width = inkW + pad*2;
-      cv.height = inkH + pad*2;
-      // Setting width/height resets the context state, so re-apply the font.
-      cx.font = font.style+' '+font.weight+' '+Math.round(font.size*SS)+'px '+font.family;
+      cv.width  = Math.max(1, Math.ceil((l+r)*SS)) + pad*2;
+      cv.height = Math.max(1, Math.ceil((a+d)*SS)) + pad*2;
+      // Setting width/height resets context state - re-apply the font.
+      cx.font = font.style+' '+font.weight+' '+size3+'px '+font.family;
       cx.fillStyle = '#000';
       cx.textBaseline = 'alphabetic';
-      cx.fillText(ch, pad + bbL*SS, pad + bbA*SS);
+      cx.fillText(ch, pad + l*SS, pad + a*SS);
       const img = cx.getImageData(0,0,cv.width,cv.height).data;
-      const alphaAt = (x,y)=> (x<0||y<0||x>=cv.width||y>=cv.height) ? 0 : img[(y*cv.width+x)*4+3];
-      const isInk = (x,y)=> alphaAt(x,y) > 110;
-      pts._left = bbL; pts._ascent = bbA; pts._descent = bbD;
-      // Thin the edge cloud to roughly one point per 1.7 CSS px grid cell -
-      // enough twinkle density without thousands of points per character.
+      const isInk = (x,y)=>{
+        if(x<0||y<0||x>=cv.width||y>=cv.height) return false;
+        return img[(y*cv.width+x)*4+3] > 110;
+      };
+      // Outline pixels only (>=1 empty 4-neighbour), thinned to roughly
+      // one point per 1.7 CSS px grid cell.
       const cell = Math.max(1, Math.round(1.7*SS));
       const taken = new Set();
       for(let y=0;y<cv.height;y++){
         for(let x=0;x<cv.width;x++){
           if(!isInk(x,y)) continue;
-          // Outline pixel only: at least one 4-neighbour is outside the glyph.
           if(isInk(x-1,y)&&isInk(x+1,y)&&isInk(x,y-1)&&isInk(x,y+1)) continue;
-          const gx = Math.floor(x/cell), gy = Math.floor(y/cell), gk = gx*100003+gy;
+          const gk = Math.floor(x/cell)*100003 + Math.floor(y/cell);
           if(taken.has(gk)) continue;
           taken.add(gk);
           pts.push({ x:(x-pad)/SS, y:(y-pad)/SS });
@@ -7923,59 +7949,39 @@ function initiateDonation() {
     return pts;
   }
 
-  /* ─- Label wrapping: split the button text into per-character spans ── */
+  /* Label wrapping: split the button text into per-character spans */
   function wrapLabel(btn){
     const label = document.createElement('span');
     label.className = 'freedom-gloss-label';
-    const text = btn.textContent;
-    const frag = document.createDocumentFragment();
-    for(const ch of text){
+    for(const ch of btn.textContent){
       const s = document.createElement('span');
       s.className = 'fg-ch';
       s.textContent = ch;
-      frag.appendChild(s);
+      label.appendChild(s);
     }
-    label.appendChild(frag);
     btn.textContent = '';
     btn.appendChild(label);
-  }
-
-  function buildStars(btn){
-    const arr = [];
-    for(let i=0;i<POOL_SIZE;i++){
-      const el = document.createElement('span');
-      el.className = 'fg-spark';
-      el.textContent = STAR_GLYPHS[i % STAR_GLYPHS.length];
-      btn.appendChild(el);
-      arr.push({ el:el, t0:-1e12, dur:800, size:9, rot:0, x:0, y:0 });
-    }
-    return arr;
   }
 
   function setupButton(btn){
     let st = states.get(btn);
     if(!st){
-      st = { btn:btn, edges:null, w:0, h:0, fontRev:-1, stars:[], lastSpawn:-1e12 };
+      st = { edges:null, w:0, h:0, fontRev:-1, active:0, nextAt:0 };
       states.set(btn, st);
     }
     // textContent may be replaced externally (e.g. trial dialog localisation)
-    // which wipes label + sparkle spans - rebuild what is missing.
+    // which wipes the label and sparkle spans - rebuild what is missing.
     if(!btn.querySelector('.freedom-gloss-label')){
-      st.stars.forEach(s=>s.el.remove());
-      st.stars = [];
+      btn.querySelectorAll('.fg-spark').forEach(el=>el.remove());
+      st.active = 0;
       wrapLabel(btn);
       st.edges = null;
-    }
-    if(btn.querySelectorAll('.fg-spark').length < POOL_SIZE){
-      btn.querySelectorAll('.fg-spark').forEach(el=>el.remove());
-      st.stars = buildStars(btn);
     }
     return st;
   }
 
-  /* Measure every glyph outline point in button-relative pixel coordinates. */
-  function rebuildGeometry(st){
-    const btn = st.btn;
+  /* Measure every glyph outline point in button-relative CSS pixels. */
+  function rebuildGeometry(st, btn){
     const cs = getComputedStyle(btn);
     const font = { style:cs.fontStyle, weight:cs.fontWeight,
                    size:parseFloat(cs.fontSize)||15, family:cs.fontFamily };
@@ -7983,20 +7989,41 @@ function initiateDonation() {
     st.w = br.width; st.h = br.height; st.fontRev = fontRev;
     st.edges = [];
     if(!br.width || !br.height) return;
-    const spans = btn.querySelectorAll('.freedom-gloss-label .fg-ch');
-    spans.forEach(sp=>{
+    btn.querySelectorAll('.freedom-gloss-label .fg-ch').forEach(sp=>{
       const ch = sp.textContent;
       if(/\s/.test(ch)) return;
       const r = sp.getBoundingClientRect();
       const pts = glyphEdges(ch, font);
-      // Pen origin sits at the span's left edge; vertically centre the ink
-      // box inside the span's line box.
-      const baseX = r.left - br.left + pts._left;
+      // Points are relative to the tight ink box; centre that ink box in
+      // the span's line box.
+      const baseX = r.left - br.left + (r.width  - pts._left - pts._right)/2 + pts._left;
       const baseY = r.top  - br.top  + (r.height - pts._ascent - pts._descent)/2;
       for(let i=0;i<pts.length;i++){
         st.edges.push({ x:baseX + pts[i].x, y:baseY + pts[i].y });
       }
     });
+  }
+
+  /* Current band-left fractions for a button (two bands run half a period
+     apart). Reads the live CSS animation positions (exact even for
+     dynamically created buttons); falls back to a time-based estimate if
+     the browser refuses to report pseudo styles. */
+  function bandLefts(btn){
+    const out = [];
+    const pseudo = (which, phaseOffset)=>{
+      try{
+        const v = getComputedStyle(btn, which).left;
+        if(v && v.endsWith('px')){
+          const f = parseFloat(v) / btn.getBoundingClientRect().width;
+          if(isFinite(f)){ out.push(f); return; }
+        }
+      }catch(e){}
+      let p = (((performance.now() - t0) % PERIOD_MS) / PERIOD_MS + phaseOffset) % 1;
+      out.push(BAND_L0 + (BAND_L1-BAND_L0)*p);
+    };
+    pseudo('::after', 0);
+    pseudo('::before', 0.5);
+    return out;
   }
 
   function isVisible(btn){
@@ -8007,166 +8034,91 @@ function initiateDonation() {
     return true;
   }
 
-  function easeOutBack(u){
-    const c1 = 1.70158, c3 = c1 + 1;
-    return 1 + c3*Math.pow(u-1,3) + c1*Math.pow(u-1,2);
+  function spawnSparkle(btn, st, edge){
+    const el = document.createElement('span');
+    el.className = 'fg-spark';
+    el.textContent = STAR_GLYPHS[Math.floor(Math.random()*STAR_GLYPHS.length)];
+    const size = 8 + Math.random()*5;
+    const dur  = 950 + Math.random()*350;
+    const rot  = Math.round(Math.random()*60 - 30);
+    el.style.left = edge.x.toFixed(1)+'px';
+    el.style.top  = edge.y.toFixed(1)+'px';
+    el.style.fontSize = size.toFixed(1)+'px';
+    el.style.setProperty('--fg-dur', dur.toFixed(0)+'ms');
+    el.style.setProperty('--fg-rot', rot+'deg');
+    st.active++;
+    const done = ()=>{ if(el.parentNode){ el.remove(); st.active--; } };
+    el.addEventListener('animationend', done, { once:true });
+    setTimeout(done, dur + 250); // safety net
+    btn.appendChild(el);
   }
 
-  /* ── Per-frame: move band, collect edge points under it, twinkle ── */
-  function update(now){
-    const p = (now % PERIOD_MS) / PERIOD_MS;
-    const L = L0 + (L1-L0)*p;
-    let anyVisible = false;
-
-    states.forEach((st, btn)=>{
-      if(!btn.isConnected){ states.delete(btn); return; }
-      btn.style.setProperty('--gloss-x', (L*100)+'%');
+  function tick(){
+    const now = performance.now();
+    BTN_IDS.forEach(id=>{
+      const btn = document.getElementById(id);
+      if(!btn) return;
+      const st = setupButton(btn);
       if(!isVisible(btn)) return;
-      anyVisible = true;
-
       const br = btn.getBoundingClientRect();
       if(!st.edges || st.w !== br.width || st.h !== br.height || st.fontRev !== fontRev){
-        rebuildGeometry(st);
+        rebuildGeometry(st, btn);
       }
-      const W = st.w, H = st.h, cy = H/2;
       if(!st.edges || !st.edges.length) return;
 
-      // Inverse-map the CSS skew: xPre is where the point sits inside the
-      // un-skewed band box; t is its position across the band (0..1).
+      // Band crossing check on the skewed bands (inverse skewX mapping);
+      // an edge point counts if under either of the two offset bands.
+      const Ls = bandLefts(btn), W = st.w, cy = st.h/2;
       const cands = [];
       let totalW = 0;
       for(let i=0;i<st.edges.length;i++){
         const e = st.edges[i];
         const xPre = e.x - (e.y - cy)*SKEW_TAN;
-        const t = (xPre - L*W)/(BAND_W*W);
-        if(t > 0.08 && t < 0.92){
-          const w = Math.max(0, 1 - Math.abs(t-0.5)/0.42); // brightest at band core
-          cands.push(e); totalW += w;
-          e._w = w;
-        }
-      }
-
-      if(cands.length && now - st.lastSpawn > SPAWN_MS){
-        let idle = null;
-        for(let i=0;i<st.stars.length;i++){
-          if(now - st.stars[i].t0 > st.stars[i].dur){ idle = st.stars[i]; break; }
-        }
-        if(idle){
-          let r = Math.random()*totalW, pick = cands[0];
-          for(let i=0;i<cands.length;i++){
-            r -= cands[i]._w;
-            if(r <= 0){ pick = cands[i]; break; }
+        let wBest = 0;
+        for(let b=0;b<Ls.length;b++){
+          const t = (xPre - Ls[b]*W)/(BAND_W*W);
+          if(t > 0.15 && t < 0.85){
+            const w = Math.pow(Math.max(0, 1 - Math.abs(t-0.5)/0.35), 1.6);
+            if(w > wBest) wBest = w;
           }
-          idle.x = pick.x; idle.y = pick.y;
-          idle.t0 = now;
-          idle.dur = 650 + Math.random()*450;
-          idle.size = 7 + Math.random()*6;
-          idle.rot = Math.random()*60 - 30;
-          idle.el.textContent = STAR_GLYPHS[Math.floor(Math.random()*STAR_GLYPHS.length)];
-          idle.el.style.left = idle.x.toFixed(1)+'px';
-          idle.el.style.top  = idle.y.toFixed(1)+'px';
-          idle.el.style.fontSize = idle.size.toFixed(1)+'px';
-          st.lastSpawn = now;
         }
+        if(wBest > 0){ e._w = wBest; cands.push(e); totalW += wBest; }
       }
-
-      for(let i=0;i<st.stars.length;i++){
-        const s = st.stars[i], q = (now - s.t0)/s.dur;
-        if(q < 0 || q >= 1){ s.el.style.opacity = '0'; s.el.style.transform = 'none'; continue; }
-        let scale, opacity;
-        if(q < 0.3){
-          const u = q/0.3;
-          scale = easeOutBack(u); opacity = Math.min(1, u*1.6);
-        } else if(q < 0.62){
-          scale = 1; opacity = 1;
-        } else {
-          const u = (q-0.62)/0.38;
-          scale = 1 - u*0.7; opacity = 1-u;
-        }
-        s.el.style.opacity = opacity.toFixed(3);
-        s.el.style.transform = 'translate(-50%,-50%) scale('+scale.toFixed(3)+') rotate('+s.rot.toFixed(1)+'deg)';
-      }
-    });
-    return anyVisible;
-  }
-
-  /* The band only needs per-frame animation while it actually crosses a
-     button; while it sweeps through empty margin (or no Freedom button is
-     visible) we sleep with a single setTimeout instead of burning rAF. */
-  const BAND_ENTER = -0.35; // band-left fraction where text crossing starts
-  const BAND_EXIT  =  1.05; // band-left fraction where text crossing ends
-  let rafId = null, wakeId = null, stopped = false;
-
-  function phaseAt(now){ return (now % PERIOD_MS) / PERIOD_MS; }
-  function bandLAt(p){ return L0 + (L1-L0)*p; }
-  function msUntilBandEnter(now){
-    const p = phaseAt(now);
-    const pEnter = (BAND_ENTER - L0)/(L1-L0);
-    let dP = pEnter - p;
-    while(dP <= 0) dP += 1;
-    // Wake slightly early so the first rendered frame already shows the band.
-    return Math.max(0, dP*PERIOD_MS - 80);
-  }
-
-  function frame(now){
-    rafId = null;
-    if(stopped) return;
-    let active = false;
-    try{ active = update(now); }catch(e){ console.warn('[FreedomGloss] frame error', e); }
-    const bandCrossing = active && bandLAt(phaseAt(now)) >= BAND_ENTER
-                                && bandLAt(phaseAt(now)) <= BAND_EXIT;
-    if(bandCrossing && !document.hidden){
-      rafId = requestAnimationFrame(frame);
-    }else{
-      if(states.size === 0){
-        // Every Freedom button this module knew is gone - the page was
-        // replaced (live hot-reload) and nothing will re-register us; stop
-        // the loop for good so the reloaded module owns the only one.
-        stopped = true;
+      if(!cands.length){
+        // Band is between/outside text: the next sparkle is due shortly
+        // after it reaches a letter again.
+        if(now > st.nextAt) st.nextAt = now;
         return;
       }
-      let delay;
-      if(!active){
-        delay = 1500; // no visible button right now - poll for one
-      }else{
-        delay = Math.min(msUntilBandEnter(now), 20000);
+      if(st.active > 0 || now < st.nextAt) return;
+      let rnd = Math.random()*totalW, pick = cands[0];
+      for(let i=0;i<cands.length;i++){
+        rnd -= cands[i]._w;
+        if(rnd <= 0){ pick = cands[i]; break; }
       }
-      wakeId = setTimeout(()=>{ wakeId = null; rafId = requestAnimationFrame(frame); }, delay);
-    }
-  }
-  function kick(){
-    if(stopped) return;
-    if(rafId === null && wakeId === null) rafId = requestAnimationFrame(frame);
+      spawnSparkle(btn, st, pick);
+      st.nextAt = now + MIN_GAP_MS + Math.random()*(MAX_GAP_MS-MIN_GAP_MS);
+    });
   }
 
+  setInterval(tick, TICK_MS);
+
+  // Static buttons exist now; the "Much more with Freedom" banner is created
+  // dynamically, and labels may be replaced via textContent - wire promptly.
   let refreshQueued = false;
-  function refresh(){
-    BTN_IDS.forEach(id=>{
-      const btn = document.getElementById(id);
-      if(btn) setupButton(btn);
-    });
-    kick();
-  }
-  // Coalesce DOM mutation bursts (e.g. streaming chat) to one refresh/frame.
-  function scheduleRefresh(){
+  function scheduleTick(){
     if(refreshQueued) return;
     refreshQueued = true;
-    requestAnimationFrame(()=>{ refreshQueued = false; refresh(); });
+    requestAnimationFrame(()=>{ refreshQueued = false; tick(); });
   }
-
-  // Static buttons already exist at this point; the "Much more with Freedom"
-  // banner is created dynamically, and the trial Subscribe label may be
-  // replaced via textContent - observe the DOM and (re)wire as needed.
-  refresh();
+  tick();
   if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', refresh);
+    document.addEventListener('DOMContentLoaded', tick);
   }
-  new MutationObserver(scheduleRefresh).observe(document.documentElement, { childList:true, subtree:true });
-  document.addEventListener('visibilitychange', kick);
-  window.addEventListener('focus', kick);
-  window.addEventListener('resize', ()=>{ fontRev++; kick(); });
+  new MutationObserver(scheduleTick).observe(document.documentElement, { childList:true, subtree:true });
+  window.addEventListener('resize', ()=>{ fontRev++; });
   if(document.fonts && document.fonts.ready){
-    document.fonts.ready.then(()=>{ edgeCache.clear(); fontRev++; kick(); });
+    document.fonts.ready.then(()=>{ edgeCache.clear(); fontRev++; });
   }
 })();
 
