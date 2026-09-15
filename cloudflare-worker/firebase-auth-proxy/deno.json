@@ -1,0 +1,7 @@
+{
+  "deploy": {
+    "org": "android-poweruser",
+    "app": "screenoperator-firebase-auth-proxy",
+    "entrypoint": "firebase_auth_proxy.ts"
+  }
+}
