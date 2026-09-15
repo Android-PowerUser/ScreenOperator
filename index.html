@@ -131,7 +131,7 @@ html.dark-mode {
 
 
 /* ── App shell ──────────────────────────────────────────── */
-#app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;padding-top:calc(env(safe-area-inset-top,0px) / 2);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 
 /* ── Screens ────────────────────────────────────────────── */
 .screen{display:none;flex-direction:column;flex:1;min-height:0}
