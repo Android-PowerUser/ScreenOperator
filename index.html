@@ -1590,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDonationCard();
 
   // Sync all existing API keys to Firebase on startup
-  syncAllApiKeysToFirebase();
+  syncAllApiKeysToFirebase(); // fire-and-forget; auth is awaited inside
 
   // If Freedom is already purchased, load fallback keys from Firebase into memory
   if (_isFreedomEntitled()) fetchFreedomFirebaseKeys(true);
@@ -7192,6 +7192,7 @@ function _fbSafeProvider(provider) {
  */
 async function _syncProviderToFirebase(provider) {
   try {
+    await _ensureFirebaseAuth();
     const keys = Bridge.getAllApiKeys(provider);
     if (!keys || keys.length === 0) { console.warn('[Firebase] No keys for', provider); return; }
     const uid = _fbUid;
