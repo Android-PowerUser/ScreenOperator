@@ -241,11 +241,11 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   width:42%;height:220%;
   background:linear-gradient(90deg,
     rgba(255,255,255,0)    0%,
-    rgba(255,255,255,.03) 30%,
-    rgba(255,255,255,.09) 44%,
-    rgba(255,255,255,.20) 50%,
-    rgba(255,255,255,.09) 56%,
-    rgba(255,255,255,.03) 70%,
+    rgba(255,255,255,.05) 30%,
+    rgba(255,255,255,.14) 44%,
+    rgba(255,255,255,.30) 50%,
+    rgba(255,255,255,.14) 56%,
+    rgba(255,255,255,.05) 70%,
     rgba(255,255,255,0)    100%);
   transform:skewX(-20deg);
   filter:blur(6px);
@@ -256,20 +256,20 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
 /* Button label (text is split into .fg-ch spans by JS for outline tracking) */
 .freedom-gloss-label{position:relative;z-index:2;display:inline-block;white-space:nowrap}
 .freedom-gloss-label .fg-ch{white-space:pre}
-/* Rare twinkles placed on glyph outlines by the gloss module. The pop
-   animation itself is CSS-driven so no per-frame JavaScript is needed. */
+/* Rare twinkles placed on glyph outlines by the gloss module. The slow,
+   gentle pop animation is CSS-driven so no per-frame JavaScript is needed. */
 .fg-spark{
   position:absolute;left:0;top:0;z-index:5;
   pointer-events:none;line-height:1;opacity:0;
-  color:#fff;user-select:none;
-  text-shadow:0 0 4px rgba(255,255,255,.95),0 0 9px rgba(255,255,255,.55);
-  animation:fg-twinkle var(--fg-dur,1100ms) ease-out forwards;
+  color:rgba(255,255,255,.85);user-select:none;
+  text-shadow:0 0 3px rgba(255,255,255,.55),0 0 7px rgba(255,255,255,.3);
+  animation:fg-twinkle var(--fg-dur,2200ms) ease-in-out forwards;
 }
 @keyframes fg-twinkle{
-  0%{opacity:0;transform:translate(-50%,-50%) scale(0) rotate(var(--fg-rot,0deg))}
-  30%{opacity:1;transform:translate(-50%,-50%) scale(1.05) rotate(var(--fg-rot,0deg))}
-  55%{opacity:.95;transform:translate(-50%,-50%) scale(.92) rotate(var(--fg-rot,0deg))}
-  100%{opacity:0;transform:translate(-50%,-50%) scale(.3) rotate(var(--fg-rot,0deg))}
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.4) rotate(var(--fg-rot,0deg))}
+  28%{opacity:.8;transform:translate(-50%,-50%) scale(1) rotate(var(--fg-rot,0deg))}
+  62%{opacity:.7;transform:translate(-50%,-50%) scale(.95) rotate(var(--fg-rot,0deg))}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(.55) rotate(var(--fg-rot,0deg))}
 }
 #freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
   opacity:.85;
@@ -8029,7 +8029,7 @@ function initiateDonation() {
     el.className = 'fg-spark';
     el.textContent = STAR_GLYPHS[Math.floor(Math.random()*STAR_GLYPHS.length)];
     const size = 8 + Math.random()*5;
-    const dur  = 950 + Math.random()*350;
+    const dur  = 1900 + Math.random()*900;
     const rot  = Math.round(Math.random()*60 - 30);
     el.style.left = edge.x.toFixed(1)+'px';
     el.style.top  = edge.y.toFixed(1)+'px';
