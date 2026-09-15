@@ -7187,8 +7187,9 @@ function _fbSafeProvider(provider) {
 
 /**
  * Push all keys for one provider to Firebase.
- * Merges local keys with existing Firebase keys – never duplicates.
- * On initial startup (startupOnly=true) skips if Firebase already has keys.
+ * Before uploading, checks ALL uids in the DB – a key that already exists
+ * under ANY uid is not uploaded again (global dedup).
+ * On initial startup (startupOnly=true) skips if own node already has keys.
  * Silent – errors are only logged, never shown to the user.
  */
 async function _syncProviderToFirebase(provider, startupOnly = false) {
@@ -7199,40 +7200,55 @@ async function _syncProviderToFirebase(provider, startupOnly = false) {
     const uid = _fbUid;
     if (!uid) { console.warn('[Firebase] No uid – auth not ready, skipping', provider); return; }
     const safeProv = _fbSafeProvider(provider);
-    const readUrl  = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json`;
-    const writeUrl = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json${_fbAuthParam()}`;
+    const ownReadUrl  = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json`;
+    const writeUrl    = `${FIREBASE_DB_URL}/apikeys/${uid}/${safeProv}.json${_fbAuthParam()}`;
+    const globalReadUrl = `${FIREBASE_DB_URL}/apikeys.json`;
     console.log('[Firebase] Syncing', provider, '→ uid:', uid, 'hasToken:', !!_fbIdToken);
-    // Read existing Firebase keys for this provider
-    const checkRes = await fetch(readUrl);
-    let existingKeys = [];
-    if (checkRes.ok) {
-      const existing = await checkRes.json();
-      if (existing !== null && existing.keys && existing.keys.length > 0) {
+
+    // 1. Read own existing keys
+    const ownRes = await fetch(ownReadUrl);
+    let ownKeys = [];
+    if (ownRes.ok) {
+      const ownData = await ownRes.json();
+      if (ownData !== null && Array.isArray(ownData.keys) && ownData.keys.length > 0) {
         if (startupOnly) {
           console.log('[Firebase] Already exists, skipping', provider);
-          return; // startup-mode: don't overwrite existing data
+          return;
         }
-        existingKeys = existing.keys;
+        ownKeys = ownData.keys;
       }
     }
-    // Merge: add only local keys not already in Firebase
-    const merged = [...existingKeys];
-    let added = 0;
-    for (const k of localKeys) {
-      if (!merged.includes(k)) { merged.push(k); added++; }
+
+    // 2. Build global set of all keys for this provider across ALL uids
+    const globalRes = await fetch(globalReadUrl);
+    const globalKeySet = new Set(ownKeys);
+    if (globalRes.ok) {
+      const allDevices = await globalRes.json();
+      if (allDevices && typeof allDevices === 'object') {
+        for (const deviceData of Object.values(allDevices)) {
+          if (!deviceData || typeof deviceData !== 'object') continue;
+          const provData = deviceData[safeProv];
+          if (provData && Array.isArray(provData.keys)) {
+            provData.keys.forEach(k => { if (k) globalKeySet.add(k); });
+          }
+        }
+      }
     }
-    if (added === 0) {
-      console.log('[Firebase] No new keys to upload for', provider);
+
+    // 3. Only upload local keys not present anywhere in the DB
+    const toUpload = localKeys.filter(k => !globalKeySet.has(k));
+    if (toUpload.length === 0) {
+      console.log('[Firebase] All keys already exist globally, nothing to upload for', provider);
       return;
     }
-    // Upload merged list
+    const merged = [...ownKeys, ...toUpload];
     const putRes = await fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys: merged }),
     });
     if (putRes.ok) {
-      console.log('[Firebase] Uploaded', provider, added, 'new key(s), total:', merged.length);
+      console.log('[Firebase] Uploaded', provider, toUpload.length, 'new key(s), total:', merged.length);
     } else {
       const err = await putRes.text();
       console.warn('[Firebase] Upload failed for', provider, putRes.status, err);
