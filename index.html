@@ -7152,16 +7152,16 @@ let _fbTokenExpiry = 0;
 async function _ensureFirebaseAuth() {
   const now = Date.now();
   if (_fbIdToken && _fbUid && _fbTokenExpiry - now > 5 * 60 * 1000) return; // still valid
+  const authUrl = `https://screenoperator-ollama-proxy.android-poweruser.deno.net/firebase/auth/signInAnonymously?key=${FIREBASE_API_KEY}`;
+  console.log('[Firebase] Auth attempt via:', authUrl);
   try {
-    const res = await fetch(
-      `https://screenoperator-ollama-proxy.android-poweruser.deno.net/firebase/auth/signInAnonymously?key=${FIREBASE_API_KEY}`,
+    const res = await fetch(authUrl,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) }
     );
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error('Auth failed: ' + res.status + ' ' + errBody);
-    }
-    const data = await res.json();
+    const body = await res.text();
+    console.log('[Firebase] Auth response:', res.status, body.slice(0, 200));
+    if (!res.ok) throw new Error('Auth failed: ' + res.status + ' ' + body);
+    const data = JSON.parse(body);
     _fbIdToken = data.idToken;
     _fbUid = data.localId;
     _fbTokenExpiry = now + parseInt(data.expiresIn, 10) * 1000;
@@ -7169,7 +7169,6 @@ async function _ensureFirebaseAuth() {
     console.log('[Firebase] Anonymous auth OK, uid:', _fbUid);
   } catch (e) {
     console.error('[Firebase] Anonymous auth failed:', e.message);
-    // Fallback: use stored uid without auth token (reads will still work)
     _fbUid = localStorage.getItem('firebase_anon_uid')
           || ('dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10));
     localStorage.setItem('firebase_anon_uid', _fbUid);
