@@ -214,6 +214,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
 }
 @keyframes freedom-gloss{
   0%{left:-90%}
+  35%{left:140%}
   100%{left:140%}
 }
 @keyframes freedom-star-1{
@@ -299,12 +300,13 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   content:'';
   position:absolute;
   top:-60%;left:-90%;
-  width:45%;height:220%;
-  background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.12) 40%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.12) 60%,transparent 75%);
+  width:30%;height:220%;
+  background:linear-gradient(105deg,transparent 20%,rgba(255,255,255,.0) 35%,rgba(255,255,255,.85) 50%,rgba(255,255,255,.0) 65%,transparent 80%);
   transform:skewX(-20deg);
-  animation:freedom-gloss 28s linear infinite;
+  mix-blend-mode:overlay;
+  animation:freedom-gloss 18s linear infinite;
   pointer-events:none;
-  z-index:1;
+  z-index:3;
 }
 #freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
   opacity:.85;
@@ -9730,6 +9732,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
