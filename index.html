@@ -7154,7 +7154,7 @@ async function _ensureFirebaseAuth() {
   if (_fbIdToken && _fbUid && _fbTokenExpiry - now > 5 * 60 * 1000) return; // still valid
   try {
     const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInAnonymously?key=${FIREBASE_API_KEY}`,
+      `https://screenoperator-firebase-auth-proxy.android-poweruser.deno.net/v1/accounts:signInAnonymously?key=${FIREBASE_API_KEY}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) }
     );
     if (!res.ok) {
