@@ -7157,14 +7157,18 @@ async function _ensureFirebaseAuth() {
       `https://identitytoolkit.googleapis.com/v1/accounts:signInAnonymously?key=${FIREBASE_API_KEY}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) }
     );
-    if (!res.ok) throw new Error('Auth failed: ' + res.status);
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error('Auth failed: ' + res.status + ' ' + errBody);
+    }
     const data = await res.json();
     _fbIdToken = data.idToken;
     _fbUid = data.localId;
     _fbTokenExpiry = now + parseInt(data.expiresIn, 10) * 1000;
     localStorage.setItem('firebase_anon_uid', _fbUid);
+    console.log('[Firebase] Anonymous auth OK, uid:', _fbUid);
   } catch (e) {
-    console.warn('[Firebase] Anonymous auth failed:', e);
+    console.error('[Firebase] Anonymous auth failed:', e.message);
     // Fallback: use stored uid without auth token (reads will still work)
     _fbUid = localStorage.getItem('firebase_anon_uid')
           || ('dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10));
