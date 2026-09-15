@@ -131,7 +131,7 @@ html.dark-mode {
 
 
 /* ── App shell ──────────────────────────────────────────── */
-#app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;padding-top:calc(env(safe-area-inset-top,0px) / 2);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#app{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 
 /* ── Screens ────────────────────────────────────────────── */
 .screen{display:none;flex-direction:column;flex:1;min-height:0}
@@ -6405,6 +6405,20 @@ window.onCustomAction = window.onCustomAction || function(id, groups, batchSize)
 };
 
 window.onAndroidReady = function() {
+  // Apply top padding: half the status-bar height.
+  // env(safe-area-inset-top) may return 0 in loadDataWithBaseURL WebViews,
+  // so we measure it via a temporary element and fall back to 12px if it is 0.
+  (function() {
+    var tmp = document.createElement('div');
+    tmp.style.cssText = 'position:fixed;top:env(safe-area-inset-top,0px);left:0;width:1px;height:1px;pointer-events:none;visibility:hidden';
+    document.body.appendChild(tmp);
+    var insetPx = tmp.getBoundingClientRect().top;
+    document.body.removeChild(tmp);
+    // If the inset is 0 or very small, fall back to 12px (approx half a typical status bar)
+    var halfInset = insetPx > 4 ? Math.round(insetPx / 2) : 12;
+    console.log('[SafeArea] measured inset-top=' + insetPx + 'px, using half=' + halfInset + 'px');
+    document.getElementById('app').style.paddingTop = halfInset + 'px';
+  })();
   currentModelId = _resolveValidModelId(Bridge.getSelectedModelId());
   if (currentModelId === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
     currentModelId = 'PUTER_QWEN3_7_PLUS';
