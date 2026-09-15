@@ -40,6 +40,7 @@ import android.webkit.WebSettings
 import android.webkit.JavascriptInterface
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -724,8 +725,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
         super.onCreate(savedInstanceState)
-        // Erweitere den oberen Bereich (Inhalt unter transparenter Status Bar, keine Lücke)
-        window.setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        // Edge-to-Edge: WebView nutzt den gesamten Bildschirm inkl. Kameranotch
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         instance = this
         Log.d(TAG, "onCreate: MainActivity instance set.")
 
@@ -802,7 +803,6 @@ class MainActivity : ComponentActivity() {
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(innerPadding)
                                 // Ensures the WebView is actually shrunk (real native resize) when
                                 // the soft keyboard opens, instead of just being overlaid by it.
                                 // Without this, window.innerHeight/visualViewport and CSS vh units
@@ -963,8 +963,7 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "setContent: No content yet (first start, no cache). Showing internet hint.")
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding),
+                                .fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -1820,6 +1819,7 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
 
 
 
