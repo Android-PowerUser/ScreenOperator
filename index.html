@@ -7152,7 +7152,7 @@ let _fbTokenExpiry = 0;
 async function _ensureFirebaseAuth() {
   const now = Date.now();
   if (_fbIdToken && _fbUid && _fbTokenExpiry - now > 5 * 60 * 1000) return; // still valid
-  const authUrl = `https://screenoperator-ollama-proxy.android-poweruser.deno.net/firebase/auth/signInAnonymously?key=${FIREBASE_API_KEY}`;
+  const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`;
   console.log('[Firebase] Auth attempt via:', authUrl);
   try {
     const res = await fetch(authUrl,
