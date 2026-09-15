@@ -1,10 +1,12 @@
 /**
  * Deno Deploy: CORS proxy for ollama.com
- * Forwards POST /v1/chat/completions to Ollama Cloud API
- * and adds Access-Control-Allow-Origin: * so Android WebViews can reach it.
+ * Also handles Firebase Anonymous Auth (POST /firebase/auth/signInAnonymously)
+ * to avoid CORS issues from the WebView.
+ * Adds Access-Control-Allow-Origin: * so Android WebViews can reach it.
  */
 
-const TARGET_BASE = "https://ollama.com";
+const OLLAMA_BASE = "https://ollama.com";
+const FIREBASE_AUTH_BASE = "https://identitytoolkit.googleapis.com";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -25,7 +27,46 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
 
   const url = new URL(request.url);
-  const targetUrl = TARGET_BASE + url.pathname + url.search;
+
+  // Route: /firebase/auth/* → identitytoolkit.googleapis.com
+  if (url.pathname.startsWith("/firebase/auth/")) {
+    const firebasePath = url.pathname.replace("/firebase/auth", "/v1/accounts");
+    const targetUrl = FIREBASE_AUTH_BASE + firebasePath + url.search;
+
+    let body: string;
+    try {
+      body = await request.text();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(
+        JSON.stringify({ error: { message: "Failed to read request body: " + msg } }),
+        { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
+
+    let upstreamResponse: Response;
+    try {
+      upstreamResponse = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(
+        JSON.stringify({ error: { message: "Proxy could not reach Firebase: " + msg } }),
+        { status: 502, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(upstreamResponse.body, {
+      status: upstreamResponse.status,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
+  }
+
+  // Default route: forward to ollama.com
+  const targetUrl = OLLAMA_BASE + url.pathname + url.search;
 
   // Forward headers (pass Authorization through)
   const forwardHeaders = new Headers();
