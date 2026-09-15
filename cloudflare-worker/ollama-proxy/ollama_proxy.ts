@@ -30,7 +30,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   // Route: /firebase/auth/* → identitytoolkit.googleapis.com
   if (url.pathname.startsWith("/firebase/auth/")) {
-    const firebasePath = url.pathname.replace("/firebase/auth", "/v1/accounts");
+    const firebasePath = url.pathname.replace("/firebase/auth/", "/v1/accounts:");
     const targetUrl = FIREBASE_AUTH_BASE + firebasePath + url.search;
 
     let body: string;
