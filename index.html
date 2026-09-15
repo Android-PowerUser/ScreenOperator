@@ -177,10 +177,10 @@ html.dark-mode {
 .ctx-dot-plus.disabled{border-color:var(--outline-variant);color:var(--outline-variant);opacity:0.4}
 
 /* ── Card ────────────────────────────────────────────────── */
-.card{background:var(--bg-card);border-radius:28px;padding:16px;margin:8px 0}
-.card-accent{background:var(--bg-primary-container);border-radius:28px;padding:14px;margin:8px 0}
+.card{background:var(--bg-card);border-radius:28px;padding:20px 16px;margin:8px 0}
+.card-accent{background:var(--bg-primary-container);border-radius:28px;padding:18px 14px;margin:8px 0}
 /* Icon-Kacheln (API Key / Model Selection) */
-.card-tile{width:44px;height:44px;border-radius:16px;background:var(--bg-primary-container);color:var(--text-on-primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-tile{width:44px;height:44px;border-radius:16px;background:color-mix(in srgb,var(--bg-primary-container) 55%,var(--bg-card) 45%);color:var(--text-on-primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .card-tile svg{display:block}
 
 /* ── Typography ──────────────────────────────────────────── */
@@ -206,15 +206,15 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
 .btn-icon:active{background:var(--item-hover)}
 
 /* ── Freedom button eye-candy ───────────────────────────── */
-@keyframes freedom-shimmer{
-  0%{background-position:200% center}
-  100%{background-position:-200% center}
-}
 @keyframes freedom-pulse{
   0%,100%{box-shadow:0 2px 12px rgba(168,85,247,.55),0 0 0 0 rgba(168,85,247,.35)}
   50%{box-shadow:0 4px 22px rgba(236,72,153,.6),0 0 0 6px rgba(236,72,153,.0)}
 }
-#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn{
+@keyframes freedom-gloss{
+  0%{background-position:-200% 200%}
+  100%{background-position:300% -100%}
+}
+#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#trial-expired-subscribe-btn,#human-expert-subscribe-btn{
   background:linear-gradient(to right,var(--primary),#2563eb,#ec4899) !important;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
   border:none !important;
@@ -222,8 +222,20 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   letter-spacing:.02em;
   text-shadow:0 1px 3px rgba(0,0,0,.25);
   color:#fff !important;
+  position:relative !important;
+  overflow:hidden !important;
 }
-#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active{
+#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after{
+  content:'';
+  position:absolute;
+  top:-60%;left:-80%;
+  width:55%;height:220%;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%);
+  transform:skewX(-20deg);
+  animation:freedom-gloss 7s ease-in-out infinite;
+  pointer-events:none;
+}
+#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active{
   opacity:.85;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
 }
@@ -244,10 +256,10 @@ textarea.text-input{resize:vertical;min-height:80px;line-height:1.5}
 .slider-label{font-size:13px;color:var(--text-secondary);margin-bottom:4px}
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent;outline:none;--fill:0%}
 input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:999px;background:linear-gradient(to right,var(--primary) var(--fill),var(--slider-rest) var(--fill))}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;background:#fff;border:6px solid var(--primary);cursor:pointer;box-shadow:0 1px 4px var(--shadow)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;background:#fff;border:3px solid var(--primary);cursor:pointer;box-shadow:0 1px 4px var(--shadow)}
 input[type=range]::-moz-range-track{height:8px;border-radius:999px;background:var(--slider-rest)}
 input[type=range]::-moz-range-progress{height:8px;border-radius:999px;background:var(--primary)}
-input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:6px solid var(--primary);cursor:pointer;box-sizing:border-box;box-shadow:0 1px 4px var(--shadow)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--primary);cursor:pointer;box-sizing:border-box;box-shadow:0 1px 4px var(--shadow)}
 
 /* ── Model dropdown ──────────────────────────────────────── */
 #model-dropdown{display:inline-block}
@@ -601,7 +613,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="card">
     <div class="row between">
       <div class="row" style="flex:1;min-width:0;gap:12px">
-        <span class="card-tile"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.65 2a5.5 5.5 0 0 0-5.42 6.44L2 13.7V18h4v3h4v-2h2l1.85-1.85A5.5 5.5 0 1 0 12.65 2zM16 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></span>
+        <span class="card-tile"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 14a4 4 0 1 1 4-4 4 4 0 0 1-4 4zm0-6a2 2 0 1 0 2 2 2 2 0 0 0-2-2zm4.28 4.61 1.06 1.06-1.41 1.41-1.06-1.06zm1.53 1.53 6.19 6.19-1.41 1.41-6.19-6.19zm.9-1.72 1.06 1.06-1.41 1.41-1.06-1.06z"/></svg></span>
         <span class="title-md">API Key Management</span>
       </div>
       <button class="btn btn-solid" onclick="openApiKeyPopup()">Change API Key</button>
@@ -665,17 +677,17 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="card" id="donation-card">
     <!-- Shown when no subscription: both buttons -->
     <div class="row between" id="donation-row">
-      <div class="title-md" style="flex:1">Support improvements or get all models, always and automatically with freedom<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
+      <div class="title-md" style="flex:1">Support improvements<div style="display:flex;align-items:center;gap:8px;margin:6px 0"><span style="flex:1;height:1px;background:var(--outline-variant);display:block"></span><span style="font-size:11px;color:var(--text-secondary)"></span><span style="flex:1;height:1px;background:var(--outline-variant);display:block"></span></div>or get all models, always and automatically with freedom<br><span style="visibility:hidden;white-space:nowrap">Support I</span>🎉</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-left:8px;align-items:stretch">
-        <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn">Pro (2,90 €/Month)</button>
-        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn">✨ Freedom (7,90 €/Month)</button>
+        <button class="btn btn-solid" onclick="initiateDonation()" id="pro-btn">Pro</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-btn">✨ Freedom ✨</button>
       </div>
     </div>
     <!-- Shown when Pro purchased but not Freedom: upgrade to Freedom -->
     <div id="freedom-row" style="display:none">
       <div class="row between" id="freedom-upgrade-row">
         <div class="title-md" style="flex:1">get all models, always and automatically<br><span style="visibility:hidden;white-space:nowrap">or get all</span>🎉</div>
-        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="margin-left:8px">✨ Freedom (7,90 €/Month)</button>
+        <button class="btn btn-solid" onclick="initiateFreedomPurchase()" id="freedom-upgrade-btn" style="margin-left:8px">✨ Freedom ✨</button>
       </div>
     </div>
     <div id="pro-thanks" class="pro-thanks" style="display:none">Thank you for supporting the development! 🎉💛</div>
@@ -685,7 +697,6 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <!-- Info -->
   <div class="card">
     <div class="body-sm" style="color:var(--text-primary);line-height:1.7">
-      &bull; <strong style="font-weight:bold">Preview Models</strong> could be deactivated by Google without a final release.<br>
       &bull; <strong style="font-weight:bold">API Keys</strong> switch automatically when one is exhausted.<br>
       &bull; Models with strikethrough do not work properly.<br>
       &bull; <strong style="font-weight:bold">Vercel</strong> GPT models need a credit card; $5 free budget/month.<br>
@@ -819,10 +830,10 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div class="chips" id="provider-chips"></div>
     <div style="margin-bottom:12px">
       <a id="get-key-link" href="#" target="_blank" class="btn btn-solid" style="display:block;width:100%;box-sizing:border-box;text-align:center;text-decoration:none;margin-bottom:8px;font-size:13px;padding:8px 16px;opacity:.85">Get API Key ↗</a>
-      <button id="apikey-freedom-btn" type="button" onclick="(function(){closePopup('popup-apikey');initiateFreedomPurchase();})()" style="display:block;width:100%;box-sizing:border-box;text-align:center;margin-bottom:12px;font-size:15px;padding:12px 16px;border-radius:999px;cursor:pointer;font-family:inherit;letter-spacing:.01em">✨ Skip with Freedom</button>
+      <button id="apikey-freedom-btn" type="button" onclick="(function(){closePopup('popup-apikey');initiateFreedomPurchase();})()" style="display:block;width:75%;margin:0 auto 12px auto;box-sizing:border-box;text-align:center;font-size:15px;padding:12px 16px;border-radius:999px;cursor:pointer;font-family:inherit;letter-spacing:.01em">✨ Skip with Freedom</button>
       <div class="row" style="gap:8px">
         <input type="text" id="new-key-input" class="text-input" placeholder="Enter API Key" style="flex:1;height:38px">
-        <button class="btn btn-solid" onclick="addApiKey()" style="padding:9px 16px">Add</button>
+        <button class="btn btn-solid" onclick="addApiKey()" style="padding:9px 16px;opacity:.55">Add</button>
       </div>
       <div id="key-error" style="color:var(--error);font-size:12px;margin-top:4px;display:none"></div>
     </div>
@@ -894,7 +905,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div class="trial-dialog">
     <div class="trial-dialog-title" id="trial-expired-title">Trial period expired</div>
     <div class="trial-dialog-body" id="trial-expired-body">Please support the development of the app so that you can continue using it 🎉</div>
-    <button class="btn btn-solid" id="trial-expired-subscribe-btn" onclick="initiateGooglePlay()">Subscribe</button>
+    <button class="btn btn-solid" id="trial-expired-subscribe-btn" onclick="initiateFreedomPurchase()">Subscribe</button>
   </div>
 </div>
 
@@ -911,7 +922,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 <div id="human-expert-overlay" class="overlay" onclick="if(event.target.id==='human-expert-overlay')closeHumanExpertPopup()">
   <div class="trial-dialog" onclick="event.stopPropagation()">
     <div class="trial-dialog-body" id="human-expert-body">To ensure that a human expert accepts the task, you need to support them.</div>
-    <button class="btn btn-solid" id="human-expert-subscribe-btn" onclick="initiateGooglePlay()">Subscribe</button>
+    <button class="btn btn-solid" id="human-expert-subscribe-btn" onclick="initiateFreedomPurchase()">Subscribe</button>
   </div>
 </div>
 
@@ -9576,4 +9587,5 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
