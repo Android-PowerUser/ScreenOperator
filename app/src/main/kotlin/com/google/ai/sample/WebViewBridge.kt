@@ -1178,6 +1178,7 @@ class WebViewBridge(private val mainActivity: MainActivity) {
                 "loadChatHistory"               -> loadChatHistory()
                 "clearChatHistoryJs"            -> { clearChatHistoryJs(); "" }
                 "getScreenDimensions"           -> getScreenDimensions()
+                "getStatusBarHeight"            -> getStatusBarHeight().toString()
                 // ── Macros & Extension Slots (self-referential but safe) ──────
                 "setMacros"                     -> setMacros(a.getString("json")).toString()
                 "getMacros"                     -> getMacros()
@@ -1427,6 +1428,14 @@ class WebViewBridge(private val mainActivity: MainActivity) {
         } catch (e: Exception) {
             "{\"width\":1080,\"height\":1920}"
         }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun getStatusBarHeight(): Int {
+        return try {
+            val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
+        } catch (e: Exception) { 0 }
     }
 
 
