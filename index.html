@@ -1848,6 +1848,19 @@ function _consumePendingRetrievedInfo() {
   _pendingScreenInfo = null;
 }
 
+// When a Wait() command was automatically dropped because it followed a Termux() command,
+// this flag is set so the reminder is prepended to the Termux output message – both in
+// the chat bubble (onUserMessage) and in the AI payload (onCustomModelRequest).
+let _pendingTermuxWaitWarning = false;
+const _TERMUX_WAIT_WARNING = 'DO NOT use wait(seconds) commands when using Termux.';
+function _applyTermuxWaitWarning(text) {
+  if (!_pendingTermuxWaitWarning) return text;
+  return _TERMUX_WAIT_WARNING + (text ? '\n\n' + text : '');
+}
+function _consumeTermuxWaitWarning() {
+  _pendingTermuxWaitWarning = false;
+}
+
 window.onUserMessage = function(text, imageDataUri) {
   // New user message → reset scroll state so the response is auto-scrolled.
   _userScrolledUp = false;
@@ -1860,6 +1873,8 @@ window.onUserMessage = function(text, imageDataUri) {
     text = _applyPendingTruncationWarning(text || '');
     // Then prepend retrieved DB info so it is always absolute top, same as AI payload.
     text = _applyPendingRetrievedInfo(text || '');
+    // Prepend Termux/Wait reminder at the very top if a Wait() was dropped after Termux().
+    text = _applyTermuxWaitWarning(text || '');
     if (_resendInProgress) {
       // Resend: the existing last user bubble stays — don't add a duplicate.
       _resendInProgress = false;
@@ -2957,10 +2972,13 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   // so chat bubble and AI payload show identical text and Stop keeps working with a single screenshot.
   payload.userText = _applyPendingTruncationWarning(payload.userText || '');
   payload.userText = _applyPendingRetrievedInfo(payload.userText || '');
-  // Consume after both have been injected; onUserMessage (which ran earlier for this turn)
-  // already displayed the same content because it also applies both helpers without consuming.
+  // Prepend Termux/Wait reminder at the very top if a Wait() was dropped after Termux().
+  payload.userText = _applyTermuxWaitWarning(payload.userText || '');
+  // Consume after all have been injected; onUserMessage (which ran earlier for this turn)
+  // already displayed the same content because it also applies all helpers without consuming.
   _consumePendingTruncationWarning();
   _consumePendingRetrievedInfo();
+  _consumeTermuxWaitWarning();
 
   // Enrich payload from the JS MODELS list.
   // The native side passes the correct modelId (stored by setSelectedModel) but
@@ -5071,8 +5089,9 @@ async function _executeCommandsFromResponse(text) {
     cmdList.push(c);
     lastWasTermux = (c.type === 'TERMUX');
   }
-  // Expose the flag so showTermuxWaitingBubble can read it.
-  _executeCommandsFromResponse._waitDropped = _waitAfterTermuxDropped;
+  // If any WAIT was dropped, set the pending warning so the next Termux output
+  // bubble (onUserMessage + onCustomModelRequest) prepends the reminder.
+  if (_waitAfterTermuxDropped) _pendingTermuxWaitWarning = true;
 
   if (!hasScreenshot && !hasCompleted) {
     cmdList.push({ type: 'SCREENSHOT' });
@@ -6559,14 +6578,7 @@ function showTermuxWaitingBubble() {
   removeTermuxWaitingBubble();
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
-  // If WAIT commands were dropped because they followed a Termux() command, prepend
-  // a bold reminder above the normal "Waiting for Termux" content.
-  const waitDropped = _executeCommandsFromResponse._waitDropped;
-  _executeCommandsFromResponse._waitDropped = false; // reset after reading
-  const warningHtml = waitDropped
-    ? `<div style="font-weight:bold;margin-bottom:6px;color:#b00020;">⚠️ DO NOT use wait(seconds) commands when using Termux.</div>`
-    : '';
-  wrap.innerHTML = `<div class="bubble user">${warningHtml}<span class="termux-waiting-label">Waiting for Termux</span><span class="termux-waiting-spinner"></span></div>`;
+  wrap.innerHTML = `<div class="bubble user"><span class="termux-waiting-label">Waiting for Termux</span><span class="termux-waiting-spinner"></span></div>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
   _termuxPendingBubbleWrap = wrap;
