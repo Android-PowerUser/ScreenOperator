@@ -4761,8 +4761,8 @@ function parseCommandsFromText(rawText) {
     { re: /\blowReasoningModel\(\)/gi, type: 'LOW_REASONING', single: true, build: () => null },
 
     // Write text
-    { re: /\bwriteText\(["']([^"']+)["']\)/gi, type: 'WRITE_TEXT', single: false,
-      build: (m) => ({ type: 'WRITE_TEXT', text: m[1] }) },
+    { re: /\bwriteText\(\s*(["'])((?:\\[\s\S]|(?!\1\s*\))[\s\S])*)\1\s*\)/gi, type: 'WRITE_TEXT', single: false,
+      build: (m) => ({ type: 'WRITE_TEXT', text: _unescapeQuotedCommandText(m[2]) }) },
 
     // Termux (supports escaped quotes inside; [\s\S] instead of . so newlines inside the command are matched too)
     { re: /\bTermux\(\s*(["'])((?:\\[\s\S]|(?!\1\s*\))[\s\S])*)\1\s*\)/gi, type: 'TERMUX', single: false,
