@@ -1884,8 +1884,36 @@ window.onUserMessage = function(text, imageDataUri) {
     try { window.__customModelAbortController.abort(); } catch(e) {}
     window.__customModelAbortController = null;
   }
-  // Remove Termux waiting placeholder (if any) so the real bubble replaces it.
-  removeTermuxWaitingBubble();
+  // Check whether this message is the late Termux output that arrived after the
+  // 15-second timeout warning was already sent to the AI.
+  // A real Termux reply from Android always contains "Termux output:" in the text.
+  const _isLateTermuxOutput = _termuxTimeoutFired
+    && typeof text === 'string'
+    && text.indexOf('Termux output:') !== -1;
+
+  if (_isLateTermuxOutput) {
+    // The real Termux answer finally arrived. Clear the flag and remove the bubble.
+    _termuxTimeoutFired = false;
+    removeTermuxWaitingBubble();
+    // Show the bubble in chat so the user can see what Termux returned.
+    let displayText = text;
+    displayText = _applyPendingTruncationWarning(displayText);
+    displayText = _applyPendingRetrievedInfo(displayText);
+    displayText = _applyTermuxWaitWarning(displayText);
+    if (!_resendInProgress) addUserBubble(displayText, imageDataUri);
+    else _resendInProgress = false;
+    // Forward the late output to the AI so it can continue working.
+    Bridge.sendMessage(text);
+    window.onGenerationStateChanged(true, false);
+    return;
+  }
+
+  // Normal path: remove Termux waiting placeholder (if any) so the real bubble replaces it.
+  // When _termuxTimeoutFired is still true here the incoming message is the AI reply to the
+  // timeout warning (not yet the Termux output), so we keep the waiting bubble alive.
+  if (!_termuxTimeoutFired) {
+    removeTermuxWaitingBubble();
+  }
   if (text || imageDataUri) {
     // First apply truncation warning (inserts above Screen elements marker, or top if no marker)
     text = _applyPendingTruncationWarning(text || '');
@@ -4935,6 +4963,11 @@ let _termuxSessionArmed = false;
 let _termuxPendingBubbleWrap = null;
 /* Timer handle for the 15-second Termux no-response warning */
 let _termuxTimeoutHandle = null;
+/* Set to true when the 15-s timeout warning was forwarded to the AI.
+   While true: onUserMessage keeps the waiting bubble alive (instead of
+   removing it) for the timeout-warning reply, and re-forwards the real
+   Termux output to the AI once it eventually arrives. Cleared after that. */
+let _termuxTimeoutFired = false;
 
 /** Keywords that indicate a long-running command → no timeout. */
 const _TERMUX_NO_TIMEOUT_RE = /\b(pkg|apt|curl|wget|make)\b/;
@@ -4980,6 +5013,7 @@ function _armTermuxTimeout(command) {
     // which causes onUserMessage() to fire, and onUserMessage() already calls addUserBubble.
     // Calling addUserBubble here too would show the bubble twice.
     if (!getInAndroid()) addUserBubble(msg);
+    _termuxTimeoutFired = true; // real Termux output may still arrive later
     Bridge.sendMessage(msg);
     window.onGenerationStateChanged(true, false);
     // Do NOT remove the waiting bubble — we keep waiting for Termux in parallel.
@@ -6625,6 +6659,7 @@ function removeTermuxWaitingBubble() {
     _termuxPendingBubbleWrap = null;
   }
   _clearTermuxTimeout();
+  _termuxTimeoutFired = false;
 }
 // Tapping a screenshot thumbnail opens it full-size in a simple lightbox overlay.
 function _showThumbLightbox(src) {
@@ -10106,6 +10141,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
