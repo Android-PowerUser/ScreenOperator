@@ -6574,6 +6574,10 @@ window.onBackPressed = function() {
     collapseSysTextarea();
     return true;
   }
+  if (document.getElementById('chat-search-nav')?.style.display === 'flex') {
+    chatSearchClear();
+    return true;
+  }
   if (document.getElementById('screen-chat').classList.contains('active')) {
     navigateToMenu();
     return true;
