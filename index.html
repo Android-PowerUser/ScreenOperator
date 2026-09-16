@@ -3424,6 +3424,8 @@ async function _callGemini(payload) {
 // (Kotlin's PuterRequest.stream was always hardcoded false), array-based message
 // content ({type:"text"|"image_url", ...}), response parsed from choices[0].message.content.
 async function _callPuter(payload) {
+  let rawContentAcc = '';
+  let structuredThinkingAcc = '';
   const keys = _getKeysWithFallback('PUTER');
   if (!keys.length) {
     throw new Error('NO_KEY:No Puter auth token configured. Please add one in the menu.');
@@ -3546,8 +3548,8 @@ async function _callPuter(payload) {
       }
     }
 
-    let rawContentAcc = '';
-    let structuredThinkingAcc = '';
+    rawContentAcc = '';
+    structuredThinkingAcc = '';
     let puterFirstAnswerSeen = false;
     const _puterRepState = _createRepetitionState();
     let _puterThinkingEndedSinceCheck = false;
@@ -9890,6 +9892,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
