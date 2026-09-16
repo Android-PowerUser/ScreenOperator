@@ -3596,132 +3596,181 @@ async function _callPuter(payload) {
     auth_token: token,
   });
 
+  // Sentinel error thrown when a stream-body reports insufficient_funds/402
+  // so the outer key-rotation loop can catch it and try the next key.
+  class _PuterKeyExhaustedError extends Error {
+    constructor(msg) { super(msg); this.name = '_PuterKeyExhaustedError'; }
+  }
+
   window.__customModelAbortController = new AbortController();
   try {
-    let response = await fetch('https://api.puter.com/drivers/call', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;actually=json',
-        'Authorization': 'Bearer ' + apiKey,
-      },
-      body: buildDriversCallBody(apiKey),
-      signal: window.__customModelAbortController.signal,
-    });
+    // ── Key-rotation loop ────────────────────────────────────────────────
+    // We try every key in round-robin order starting from the currently
+    // active key.  If a key fails with a key-level error (HTTP or inside
+    // the stream body) we advance to the next one.  We stop as soon as
+    // one succeeds or we have tried every key exactly once (including the
+    // starting key as the last attempt), after which we throw the last
+    // recorded error.
+    const startIdx = keyIdx;
+    let lastKeyErrMsg = '';
+    let keyRotationSucceeded = false;
 
-    if (!response.ok) {
-      let errBody = '';
-      try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
-      const errMsg = 'Puter API Error (' + response.status + '): ' + errBody;
-      if (_isKeyError(response.status, errMsg) && keys.length > 1) {
-        const startIdx = keyIdx;
-        let lastErrMsg = errMsg;
-        for (let attempt = 1; attempt <= keys.length; attempt++) {
-          keyIdx = (keyIdx + 1) % keys.length;
-          Bridge.setCurrentKeyIndex(keyIdx, 'PUTER');
-          if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'PUTER') renderKeyList();
-          apiKey = keys[keyIdx];
-          let retryResp;
-          try {
-            retryResp = await fetch('https://api.puter.com/drivers/call', {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;actually=json', 'Authorization': 'Bearer ' + apiKey },
-              body: buildDriversCallBody(apiKey),
-              signal: window.__customModelAbortController.signal,
-            });
-          } catch(fe) { throw fe; }
-          if (retryResp.ok) { response = retryResp; break; }
-          let rd = '';
-          try { rd = (await retryResp.text()).slice(0, 400); } catch(e2) {}
-          lastErrMsg = 'Puter API Error (' + retryResp.status + '): ' + rd;
-          if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
+    for (let attempt = 0; attempt < keys.length; attempt++) {
+      // On attempt 0 use the current key; on subsequent attempts rotate.
+      if (attempt > 0) {
+        keyIdx = (keyIdx + 1) % keys.length;
+        Bridge.setCurrentKeyIndex(keyIdx, 'PUTER');
+        if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'PUTER') renderKeyList();
+        apiKey = keys[keyIdx];
+      }
+
+      let response;
+      try {
+        response = await fetch('https://api.puter.com/drivers/call', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;actually=json',
+            'Authorization': 'Bearer ' + apiKey,
+          },
+          body: buildDriversCallBody(apiKey),
+          signal: window.__customModelAbortController.signal,
+        });
+      } catch(fe) {
+        // Network-level failure (e.g. AbortError) — propagate immediately.
+        throw fe;
+      }
+
+      if (!response.ok) {
+        let errBody = '';
+        try { errBody = (await response.text()).slice(0, 400); } catch(e2) {}
+        const errMsg = 'Puter API Error (' + response.status + '): ' + errBody;
+        if (_isKeyError(response.status, errMsg)) {
+          lastKeyErrMsg = errMsg;
+          continue; // try next key
         }
-        if (!response.ok) throw new Error(lastErrMsg);
-      } else {
-        throw new Error(errMsg);
+        throw new Error(errMsg); // non-key error → propagate immediately
       }
-    }
 
-    rawContentAcc = '';
-    structuredThinkingAcc = '';
-    let puterFirstAnswerSeen = false;
-    const _puterRepState = _createRepetitionState();
-    let _puterThinkingEndedSinceCheck = false;
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop();
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t) continue;
-        // /drivers/call streams NDJSON lines: {"type":"text","text":"..."} or
-        // {"type":"thinking","text":"..."} etc. — no "data:" prefix.
-        // The old /puterai/openai/v1/ endpoint sent SSE ("data: {...}").
-        // We handle both formats so the parser is resilient.
-        let json = null;
-        try {
-          if (t.startsWith('data:')) {
-            // Legacy SSE format (fallback / future endpoint changes)
-            const data = t.slice(5).trim();
-            if (!data || data === '[DONE]') continue;
-            const parsed = JSON.parse(data);
-            // Convert OpenAI SSE delta format to drivers/call NDJSON-like shape
-            const d = parsed.choices?.[0]?.delta || {};
-            const thinkingDelta = _thinkingFromOpenAiDelta(d);
-            const textDelta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
-            if (thinkingDelta) json = { type: 'thinking', text: thinkingDelta };
-            else if (textDelta) json = { type: 'text', text: textDelta };
-          } else {
-            // /drivers/call NDJSON format
-            json = JSON.parse(t);
-          }
-        } catch(e2) { continue; /* ignore unparseable lines */ }
-        if (!json) continue;
-        try {
-          const thinkingDelta = json.type === 'thinking' ? (json.text || '') : '';
-          const delta = json.type === 'text' ? (json.text || '') : '';
-          const hadThinking = !!structuredThinkingAcc;
-          if (thinkingDelta) {
-            if (puterFirstAnswerSeen) {
-              rawContentAcc += thinkingDelta;
+      // ── Stream the response ───────────────────────────────────────────
+      rawContentAcc = '';
+      structuredThinkingAcc = '';
+      let puterFirstAnswerSeen = false;
+      const _puterRepState = _createRepetitionState();
+      let _puterThinkingEndedSinceCheck = false;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let streamKeyError = null; // set if a key-exhaustion error appears in the body
+
+      streamLoop:
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t) continue;
+          // /drivers/call streams NDJSON lines: {"type":"text","text":"..."} or
+          // {"type":"thinking","text":"..."} etc. — no "data:" prefix.
+          // The old /puterai/openai/v1/ endpoint sent SSE ("data: {...}").
+          // We handle both formats so the parser is resilient.
+          let json = null;
+          try {
+            if (t.startsWith('data:')) {
+              // Legacy SSE format (fallback / future endpoint changes)
+              const data = t.slice(5).trim();
+              if (!data || data === '[DONE]') continue;
+              const parsed = JSON.parse(data);
+              // Convert OpenAI SSE delta format to drivers/call NDJSON-like shape
+              const d = parsed.choices?.[0]?.delta || {};
+              const thinkingDelta = _thinkingFromOpenAiDelta(d);
+              const textDelta = typeof d.content === 'string' ? d.content : _reasoningText(d.content);
+              if (thinkingDelta) json = { type: 'thinking', text: thinkingDelta };
+              else if (textDelta) json = { type: 'text', text: textDelta };
             } else {
-              structuredThinkingAcc += thinkingDelta;
+              // /drivers/call NDJSON format
+              json = JSON.parse(t);
             }
-          }
-          if (delta) {
-            rawContentAcc += delta;
-            puterFirstAnswerSeen = true;
-          }
-          // Thinking ended if we had thinking before and now have answer delta
-          if (hadThinking && delta) _puterThinkingEndedSinceCheck = true;
-          if (thinkingDelta || delta) {
-            const inline = _separateInlineThinking(rawContentAcc);
-            Bridge.onCustomModelPartialResponse(
-              _composeThinkingAndAnswer(structuredThinkingAcc + inline.thinking, inline.answer)
-            );
-            const answerSoFar = inline.answer;
-            if (_checkRepetition(answerSoFar, _puterThinkingEndedSinceCheck, _puterRepState)) {
-              _puterThinkingEndedSinceCheck = false;
-              _handleRepetition(window.__customModelAbortController);
-              return;
-            }
-            _puterThinkingEndedSinceCheck = false;
-          }
-        } catch(e2) { /* ignore bad chunk */ }
-      }
-    }
-    const inline = _separateInlineThinking(rawContentAcc);
-    const thinkingAcc = structuredThinkingAcc + inline.thinking;
-    const acc = inline.answer;
-    if (!acc && !thinkingAcc) throw new Error('No response from model');
+          } catch(e2) { continue; /* ignore unparseable lines */ }
+          if (!json) continue;
 
-    const composed = _composeThinkingAndAnswer(thinkingAcc, acc);
-    Bridge.onCustomModelFinalResponse(composed);
-    await _executeCommandsFromResponse(acc);
+          // Detect key-exhaustion errors delivered inside the stream body.
+          // Puter returns e.g. {"error":"No usage left for request.","code":"insufficient_funds"}
+          // or {"error":{"code":402,...},"message":"..."} as a streamed JSON line.
+          if (json.error || json.code) {
+            const errCode = (typeof json.error === 'object' ? json.error?.code : null) || json.code || '';
+            const errMsg  = (typeof json.error === 'string' ? json.error : json.message) || JSON.stringify(json);
+            const fakeStatus = (errCode === 'insufficient_funds' || String(errCode) === '402') ? 402
+                             : (errCode === 'unauthorized' || String(errCode) === '401')       ? 401
+                             : (errCode === 'rate_limit'   || String(errCode) === '429')       ? 429
+                             : 0;
+            if (fakeStatus && _isKeyError(fakeStatus, errMsg)) {
+              streamKeyError = new _PuterKeyExhaustedError('Puter stream error (' + errCode + '): ' + errMsg);
+              break streamLoop;
+            }
+            // Non-key stream error — treat as fatal.
+            throw new Error('Puter stream error: ' + errMsg);
+          }
+
+          try {
+            const thinkingDelta = json.type === 'thinking' ? (json.text || '') : '';
+            const delta = json.type === 'text' ? (json.text || '') : '';
+            const hadThinking = !!structuredThinkingAcc;
+            if (thinkingDelta) {
+              if (puterFirstAnswerSeen) {
+                rawContentAcc += thinkingDelta;
+              } else {
+                structuredThinkingAcc += thinkingDelta;
+              }
+            }
+            if (delta) {
+              rawContentAcc += delta;
+              puterFirstAnswerSeen = true;
+            }
+            // Thinking ended if we had thinking before and now have answer delta
+            if (hadThinking && delta) _puterThinkingEndedSinceCheck = true;
+            if (thinkingDelta || delta) {
+              const inline = _separateInlineThinking(rawContentAcc);
+              Bridge.onCustomModelPartialResponse(
+                _composeThinkingAndAnswer(structuredThinkingAcc + inline.thinking, inline.answer)
+              );
+              const answerSoFar = inline.answer;
+              if (_checkRepetition(answerSoFar, _puterThinkingEndedSinceCheck, _puterRepState)) {
+                _puterThinkingEndedSinceCheck = false;
+                _handleRepetition(window.__customModelAbortController);
+                return;
+              }
+              _puterThinkingEndedSinceCheck = false;
+            }
+          } catch(e2) { /* ignore bad chunk */ }
+        }
+      }
+
+      // If a key-exhaustion error appeared in the stream body, rotate and retry.
+      if (streamKeyError) {
+        lastKeyErrMsg = streamKeyError.message;
+        continue;
+      }
+
+      // ── Stream finished successfully ──────────────────────────────────
+      const inline = _separateInlineThinking(rawContentAcc);
+      const thinkingAcc = structuredThinkingAcc + inline.thinking;
+      const acc = inline.answer;
+      if (!acc && !thinkingAcc) throw new Error('No response from model');
+
+      const composed = _composeThinkingAndAnswer(thinkingAcc, acc);
+      Bridge.onCustomModelFinalResponse(composed);
+      await _executeCommandsFromResponse(acc);
+      keyRotationSucceeded = true;
+      break; // done — exit key-rotation loop
+    }
+
+    if (!keyRotationSucceeded) {
+      // Every key was tried and all failed with a key-level error.
+      throw new Error(lastKeyErrMsg || 'All Puter keys exhausted.');
+    }
   } catch(e) {
     if (e && e.name === 'AbortError') {
       const inline = _separateInlineThinking(rawContentAcc);
@@ -10170,6 +10219,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
