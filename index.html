@@ -5004,8 +5004,8 @@ function parseCommandsFromText(rawText) {
       build: (m) => ({ type: 'RETRIEVE', title: _unescapeQuotedCommandText(m[2]) }) },
 
     // AI adds a new skill to the skill set
-    { re: /\bnewSkill\(["']([\s\S]*?)["']\s*,\s*["']([\s\S]*?)["']\)/gi, type: 'NEW_SKILL', single: false,
-      build: (m) => ({ type: 'NEW_SKILL', title: m[1], guide: m[2] }) },
+    { re: /\bnewSkill\(\s*(["'])((?:\\[\s\S]|(?!\1)[\s\S])*?)\1\s*,\s*(["'])((?:\\[\s\S]|(?!\3)[\s\S])*?)\3\s*\)/gi, type: 'NEW_SKILL', single: false,
+      build: (m) => ({ type: 'NEW_SKILL', title: _unescapeQuotedCommandText(m[2]), guide: _unescapeQuotedCommandText(m[4]) }) },
 
     // Copy to clipboard
     { re: /\bcopyToClipboard\(["']([^"']*)["']\)/gi, type: 'COPY_CLIP', single: false,
