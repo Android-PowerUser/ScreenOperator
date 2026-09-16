@@ -8540,16 +8540,51 @@ function _saveJsChatHistory() {
 function _loadJsChatHistory() {
   try {
     const raw = Bridge.loadChatHistory();
-    _jsChatHistory = JSON.parse(raw) || [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      // Plain history array (either the legacy single-context format, or the
+      // multi-context module has already replaced Bridge.loadChatHistory with a
+      // per-context accessor): use it directly.
+      _jsChatHistory = parsed;
+    } else if (parsed && Array.isArray(parsed.contexts)) {
+      // The raw multi-context payload {v, idx, contexts} reached us before the
+      // multi-context module had a chance to wrap Bridge.loadChatHistory (race
+      // between onAndroidReady and its own init — e.g. after a hot reload where
+      // its DOMContentLoaded listener fires late). Extract the active context's
+      // history here instead of stomping _jsChatHistory with a non-array object,
+      // which previously crashed _renderRestoredChatBubbles (for..of over an
+      // object) and aborted the rest of onAndroidReady.
+      const idx = Math.min(Math.max(parsed.idx || 0, 0), parsed.contexts.length - 1);
+      const h = parsed.contexts[idx] && parsed.contexts[idx].history;
+      _jsChatHistory = Array.isArray(h) ? h.slice() : [];
+    }
+    // else: unknown format — keep whatever _jsChatHistory currently holds.
   } catch(e) {
     _jsChatHistory = [];
     console.warn('_loadJsChatHistory error:', e);
   }
-  // Render bubbles for the restored history. Kotlin only persists the history
-  // for the next AI-turn payload; it never replays onUserMessage/onAiMessage
-  // into the WebView on startup, so without this the chat area is empty after
-  // the app is closed and reopened even though the history itself survived.
-  _renderRestoredChatBubbles();
+  // Render bubbles for the restored history — but ONLY if the chat area is still
+  // empty. Kotlin only persists the history for the next AI-turn payload; it
+  // never replays onUserMessage/onAiMessage into the WebView on startup, so a
+  // rebuild from _jsChatHistory is needed when nothing else restored the chat.
+  //
+  // The multi-context module restores the chat from its domHTML snapshot (which
+  // contains EVERY bubble, including ones that already fell out of the 40-entry
+  // AI-history cap) during its own init, and that init usually runs before
+  // onAndroidReady. Unconditionally rebuilding here from the capped history used
+  // to WIPE (container.innerHTML = '') that already-restored, fuller DOM — so
+  // the oldest chat message(s) silently disappeared on every app restart and on
+  // every hot reload. The next _snapshotCurrentCtx then persisted the truncated
+  // DOM back into domHTML, making the loss permanent and advancing one message
+  // further on each subsequent restart. Skipping the rebuild when bubbles are
+  // already present fixes the message loss in any init order:
+  //   - multi-context init first: domHTML is intact, rebuild is skipped;
+  //   - this loader first: we render from history, then the multi-context init
+  //     overwrites the container with its fuller domHTML snapshot anyway.
+  const container = document.getElementById('chat-messages');
+  if (container && container.children.length === 0) {
+    _renderRestoredChatBubbles();
+  }
 }
 
 /** Rebuilds the visible chat bubbles from _jsChatHistory (e.g. after an app restart). */
