@@ -1351,7 +1351,7 @@ let MODELS = [
   { id:'GROQ_GPT_OSS_120B',        displayName:'GPT-OSS 120B (Groq)',                     modelName:'openai/gpt-oss-120b',                      apiProvider:'GROQ',      supportsScreenshot:false, supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Text-only model. 30 free requests per min – thinking enabled',   strike:false },
   { id:'MISTRAL_LARGE_3',          displayName:'Mistral Large 3',                          modelName:'mistral-large-latest',                     apiProvider:'MISTRAL',   supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GPT_OSS_120B',             displayName:'GPT-OSS 120B (Cerebras)',                  modelName:'gpt-oss-120b',                             apiProvider:'CEREBRAS',  supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Text-only model. Cerebras may restrict free access or change rate limits.', strike:false },
-  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3.7 Flash',                         modelName:'gemini-3.7-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
+  { id:'GEMINI_3_FLASH',           displayName:'Gemini 3.8 Flash',                         modelName:'gemini-3.8-flash',                         apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images.',                              strike:false },
   { id:'GEMMA_3N_E4B_IT',          displayName:'Gemma 3n E4B it (offline)',                modelName:'gemma-3n-e4b-it',                          apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'Supports images. 4.92 GB download required.',    strike:false },
   { id:'GEMMA_4_E4B_IT',           displayName:'Gemma 4 E4B it (offline)',                 modelName:'gemma-4-e4b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'Supports images. 3.40 GB download required.',   strike:false },
   { id:'HUMAN_EXPERT',             displayName:'Human Expert',                              modelName:'human-expert',                             apiProvider:'HUMAN_EXPERT', supportsScreenshot:true, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Requires Pro subscription.',  strike:false },
@@ -3332,7 +3332,12 @@ async function _callGemini(payload) {
   let keyIdx = Bridge.getCurrentKeyIndex('GOOGLE') || 0;
   let apiKey = keys[keyIdx] || keys[0];
   const modelName = payload.modelName;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
+  // For Gemini 3.8 Flash: on 503/high-demand, fall back through older versions per request
+  const _geminiHighDemandFallbacks = modelName === 'gemini-3.8-flash'
+    ? ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash']
+    : [modelName];
+  let _currentGeminiModel = _geminiHighDemandFallbacks[0];
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${_currentGeminiModel}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
   // Build contents array (screen-element history trimmed, then consecutive same-role
   // messages merged - mirrors PhotoReasoningHistoryBuilder.kt exactly).
@@ -3419,6 +3424,30 @@ async function _callGemini(payload) {
           if (!_isKeyError(retryResp.status, lastErrMsg)) throw new Error(lastErrMsg);
         }
         if (!response.ok) throw new Error(lastErrMsg);
+      } else if (_isHighDemandError(errMsg) && _geminiHighDemandFallbacks.length > 1) {
+        // 503 / high-demand: try next model version in the fallback chain
+        let hdLastErr = errMsg;
+        const startFbIdx = _geminiHighDemandFallbacks.indexOf(_currentGeminiModel);
+        for (let fbStep = startFbIdx + 1; fbStep < _geminiHighDemandFallbacks.length; fbStep++) {
+          _currentGeminiModel = _geminiHighDemandFallbacks[fbStep];
+          Bridge.showToast('Gemini 503 – trying ' + _currentGeminiModel, false);
+          const hdUrl = `https://generativelanguage.googleapis.com/v1beta/models/${_currentGeminiModel}:streamGenerateContent?key=${apiKey}&alt=sse`;
+          let hdResp;
+          try {
+            hdResp = await fetch(hdUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestBody),
+              signal: window.__customModelAbortController.signal,
+            });
+          } catch(fe) { throw fe; }
+          if (hdResp.ok) { response = hdResp; break; }
+          let hd = '';
+          try { hd = (await hdResp.text()).slice(0, 400); } catch(e2) {}
+          hdLastErr = 'Gemini HTTP ' + hdResp.status + (hd ? ': ' + hd : '');
+          if (!_isHighDemandError(hdLastErr)) throw new Error(hdLastErr);
+        }
+        if (!response.ok) throw new Error(hdLastErr);
       } else {
         throw new Error(errMsg);
       }
