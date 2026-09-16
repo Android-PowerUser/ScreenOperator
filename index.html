@@ -3173,8 +3173,8 @@ function _handleRepetition(abortController) {
     try { abortController.abort(); } catch(e) {}
   }
   const repeatMsg = "You're repeating yourself. If necessary, write an EOF token.";
-  // Show as a right-side user bubble immediately
-  addUserBubble(repeatMsg);
+  // In Android mode onUserMessage() will add the bubble; only add directly in browser/demo mode.
+  if (!getInAndroid()) addUserBubble(repeatMsg);
   // Send to model as next user message
   Bridge.sendMessage(repeatMsg);
   window.onGenerationStateChanged(true, false);
@@ -4958,7 +4958,10 @@ function _armTermuxTimeout(command) {
     // Only fire if we are still waiting for Termux (bubble still present)
     if (!_termuxPendingBubbleWrap) return;
     const msg = "Termux didn't respond after 15 seconds. If this is normal for your command, do nothing. Otherwise, write a new command.";
-    addUserBubble(msg);
+    // Do NOT call addUserBubble here directly: Bridge.sendMessage triggers Android.sendMessage
+    // which causes onUserMessage() to fire, and onUserMessage() already calls addUserBubble.
+    // Calling addUserBubble here too would show the bubble twice.
+    if (!getInAndroid()) addUserBubble(msg);
     Bridge.sendMessage(msg);
     window.onGenerationStateChanged(true, false);
     // Do NOT remove the waiting bubble — we keep waiting for Termux in parallel.
@@ -9929,6 +9932,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
