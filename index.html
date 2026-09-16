@@ -8015,11 +8015,13 @@ function exportDatabase() {
   if (selectedAll.length === 0) { alert('No entries selected.'); return; }
 
   if (getInAndroid()) {
-    // Export all selected entries (manual + AI) in a single unified JSON file via blob download
-    const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
-    URL.revokeObjectURL(url);
+    // Write all selected entries (manual + AI) into the native DB temporarily,
+    // export via the native method (which handles file saving on Android),
+    // then restore the original DB.
+    const originalJson = Bridge.getRawDatabaseJson();
+    Bridge.setRawDatabaseJson(JSON.stringify(selectedAll.map(e => { const c = {...e}; delete c._ai; return c; })));
+    Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
+    Bridge.setRawDatabaseJson(originalJson);
   } else {
     const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
