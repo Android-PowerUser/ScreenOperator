@@ -435,6 +435,8 @@ html.dark-mode .task-input { color: var(--text-primary); }
 .send-icon.active{color:var(--primary)}
 /* ── Toast ───────────────────────────────────────────────── */
 #toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:999px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .25s;z-index:200;white-space:nowrap}
+.chat-search-highlight{background:#ffe066;color:#000;border-radius:2px}
+.chat-search-highlight.current{background:#ff9800;color:#000;outline:2px solid #e65100;border-radius:2px}
 
 /* ── Resend button inside last user bubble ───────────────── */
 .bubble.user{position:relative}
@@ -791,7 +793,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div id="chat-input-card">
       <div class="input-row">
         <div class="col" style="flex-shrink:0;gap:4px">
-          <button class="btn-icon" onclick="pickImage()" title="Add image">+</button>
+          <button id="pick-or-search-btn" class="btn-icon" onclick="pickImage()" title="Add image">+</button>
           <button class="btn-circle" onclick="clearChat()">New</button>
         </div>
         <div id="task-field-wrap" class="m3-outlined-field">
@@ -821,6 +823,14 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 </div><!-- /app -->
 <div id="toast"></div>
+
+<!-- Chat search navigation bar -->
+<div id="chat-search-nav" style="display:none;position:fixed;bottom:80px;right:12px;z-index:210;display:none;flex-direction:column;gap:6px;align-items:center">
+  <button id="chat-search-up" class="btn-icon" onclick="chatSearchStep(-1)" title="Previous match" style="font-size:18px;line-height:1">&#8593;</button>
+  <span id="chat-search-count" style="font-size:11px;color:var(--text-secondary);min-width:28px;text-align:center"></span>
+  <button id="chat-search-down" class="btn-icon" onclick="chatSearchStep(1)" title="Next match" style="font-size:18px;line-height:1">&#8595;</button>
+  <button id="chat-search-close" class="btn-icon" onclick="chatSearchClear()" title="Close search" style="font-size:14px;line-height:1">✕</button>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════
      POPUPS
@@ -5517,9 +5527,19 @@ function applyModelSelection(id) {
   // Top K slider
   document.getElementById('topk-row').style.display = m.supportsTopK ? 'block' : 'none';
 
-  // + button (image/video picker): hide for models that do not support screenshots
-  const pickBtn = document.querySelector('button[onclick="pickImage()"]');
-  if (pickBtn) pickBtn.style.display = m.supportsScreenshot ? '' : 'none';
+  // + / 🔍 button: show + (image picker) for vision models, 🔍 (chat search) for others
+  const pickBtn = document.getElementById('pick-or-search-btn');
+  if (pickBtn) {
+    if (m.supportsScreenshot) {
+      pickBtn.textContent = '+';
+      pickBtn.title = 'Add image';
+      pickBtn.onclick = pickImage;
+    } else {
+      pickBtn.textContent = '🔍';
+      pickBtn.title = 'Search in chat';
+      pickBtn.onclick = chatSearch;
+    }
+  }
 
   // Try it card text
   if (id === 'HUMAN_EXPERT') {
@@ -6744,6 +6764,7 @@ function undoLast(text) {
   window.onGenerationStateChanged(false, false);
 }
 function clearChat() {
+  chatSearchClear();
   document.getElementById('chat-messages').innerHTML = '';
   document.getElementById('cmd-status-wrap').innerHTML = '';
   _humanExpertConnected = false;
@@ -7005,6 +7026,112 @@ function showToast(msg, durationMs) {
   el.style.opacity = '1';
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => { el.style.opacity = '0'; }, durationMs || 2500);
+}
+
+/* ─── Chat search ───────────────────────────────────────── */
+let _chatSearchMatches = [];
+let _chatSearchIdx = -1;
+
+function chatSearch() {
+  const query = (document.getElementById('task-input').value || '').trim();
+  if (!query) { showToast('Enter something in the text field'); return; }
+
+  // Clear previous highlights
+  chatSearchClear(true);
+
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+
+  // Walk all text nodes inside chat-messages and wrap matches
+  const regex = new RegExp(escapeRegExp(query), 'gi');
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  const nodesToProcess = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (regex.test(node.textContent)) nodesToProcess.push(node);
+    regex.lastIndex = 0;
+  }
+
+  _chatSearchMatches = [];
+  nodesToProcess.forEach(textNode => {
+    const parent = textNode.parentNode;
+    if (!parent || parent.classList && parent.classList.contains('chat-search-highlight')) return;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let m;
+    regex.lastIndex = 0;
+    const text = textNode.textContent;
+    while ((m = regex.exec(text)) !== null) {
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const mark = document.createElement('mark');
+      mark.className = 'chat-search-highlight';
+      mark.textContent = m[0];
+      frag.appendChild(mark);
+      _chatSearchMatches.push(mark);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    parent.replaceChild(frag, textNode);
+  });
+
+  if (_chatSearchMatches.length === 0) { showToast('Could not be found'); return; }
+
+  // Find nearest visible match to current scroll position
+  const wrap = document.getElementById('chat-messages-wrap');
+  const scrollTop = wrap ? wrap.scrollTop : 0;
+  const wrapTop = wrap ? wrap.getBoundingClientRect().top : 0;
+  let bestIdx = 0, bestDist = Infinity;
+  _chatSearchMatches.forEach((el, i) => {
+    const r = el.getBoundingClientRect();
+    const elCenter = r.top - wrapTop + scrollTop + r.height / 2;
+    const dist = Math.abs(elCenter - scrollTop);
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+  });
+
+  _chatSearchIdx = bestIdx;
+  chatSearchApplyCurrent();
+  chatSearchShowNav();
+}
+
+function chatSearchStep(dir) {
+  if (_chatSearchMatches.length === 0) return;
+  _chatSearchIdx = (_chatSearchIdx + dir + _chatSearchMatches.length) % _chatSearchMatches.length;
+  chatSearchApplyCurrent();
+}
+
+function chatSearchApplyCurrent() {
+  _chatSearchMatches.forEach((el, i) => {
+    el.classList.toggle('current', i === _chatSearchIdx);
+  });
+  const cur = _chatSearchMatches[_chatSearchIdx];
+  if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const countEl = document.getElementById('chat-search-count');
+  if (countEl) countEl.textContent = (_chatSearchIdx + 1) + '/' + _chatSearchMatches.length;
+}
+
+function chatSearchShowNav() {
+  const nav = document.getElementById('chat-search-nav');
+  if (nav) { nav.style.display = 'flex'; }
+}
+
+function chatSearchClear(keepNav) {
+  // Unwrap all highlight marks
+  document.querySelectorAll('.chat-search-highlight').forEach(mark => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    parent.replaceChild(document.createTextNode(mark.textContent), mark);
+    parent.normalize();
+  });
+  _chatSearchMatches = [];
+  _chatSearchIdx = -1;
+  if (!keepNav) {
+    const nav = document.getElementById('chat-search-nav');
+    if (nav) nav.style.display = 'none';
+  }
+}
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function toggleTermuxMode() {
@@ -9940,6 +10067,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
