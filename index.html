@@ -1920,9 +1920,10 @@ window.onGenerationStateChanged = function(running, isOfflineLoaded) {
     wrap.style.display = 'none';
     if (inputCard) inputCard.style.display = '';
   }
-  // Show resend button only when not generating
-  const resendBtn = document.querySelector('#chat-messages .bubble-resend-btn');
-  if (resendBtn) resendBtn.style.display = running ? 'none' : 'flex';
+  // Show resend buttons in all user bubbles only when not generating
+  document.querySelectorAll('#chat-messages .bubble-resend-btn').forEach(btn => {
+    btn.style.display = running ? 'none' : 'flex';
+  });
 };
 
 window.onModelRegistered = function(modelId, displayName) {
@@ -6514,14 +6515,6 @@ window.onBackPressed = function() {
    CHAT
 ════════════════════════════════════════════════════════ */
 function addUserBubble(text, imageDataUri) {
-  // Remove resend button from previous last user bubble
-  const prevResend = document.querySelector('#chat-messages .bubble-resend-btn');
-  if (prevResend) {
-    const prevBubble = prevResend.closest('.bubble.user');
-    if (prevBubble) prevBubble.classList.remove('has-resend');
-    prevResend.remove();
-  }
-
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
   const thumbHtml = imageDataUri
@@ -6531,8 +6524,8 @@ function addUserBubble(text, imageDataUri) {
   const undoBtnHtml = isFirstUserMsg
     ? `\n    <button class="btn-icon" onclick="undoLast('${escAttr(text)}')" title="Undo">&#10227;</button>`
     : '';
-  // Resend button: shown only when generation is not running (managed by onGenerationStateChanged)
-  const resendBtnHtml = `<button class="bubble-resend-btn" onclick="_resendLastUserMessage()" title="Erneut senden" style="display:${generationRunning ? 'none' : 'flex'}">&#10227;</button>`;
+  // Resend button: shown in every user bubble, hidden while generation is running
+  const resendBtnHtml = `<button class="bubble-resend-btn" onclick="_resendUserMessage(this)" title="Erneut senden" style="display:${generationRunning ? 'none' : 'flex'}">&#10227;</button>`;
   wrap.innerHTML = `<div class="bubble user has-resend">${escHtml(text)}${thumbHtml}${resendBtnHtml}</div>${undoBtnHtml}`;
   // Store resend data on the wrap element
   wrap.dataset.resendText = text;
@@ -6616,18 +6609,24 @@ function scrollToBottom(force) {
     });
   });
 }
-function _resendLastUserMessage() {
+/** Called with the clicked resend button element; resolves the correct user-wrap. */
+function _resendUserMessage(btn) {
+  const clickedWrap = btn ? btn.closest('.user-wrap') : null;
+  _resendLastUserMessage(clickedWrap);
+}
+function _resendLastUserMessage(targetWrap) {
   // If Accessibility Service is not enabled, redirect to its settings instead of resending.
   if (getInAndroid() && !Bridge.isAccessibilityServiceEnabled()) {
     activateAccessibilityService();
     return;
   }
   // Find the bubble wrap that was clicked (the reload button sits inside a user bubble).
-  // We support reloading ANY user bubble, not just the last one — so we search for the
-  // wrap that contains the pressed button. As fallback we use the last user wrap.
+  // We support reloading ANY user bubble, not just the last one — targetWrap is passed in.
   const allUserWraps = [...document.querySelectorAll('#chat-messages .user-wrap')];
   if (!allUserWraps.length) return;
-  const lastWrap = allUserWraps[allUserWraps.length - 1];
+  const lastWrap = targetWrap && allUserWraps.includes(targetWrap)
+    ? targetWrap
+    : allUserWraps[allUserWraps.length - 1];
   const text = lastWrap.dataset.resendText || '';
   const imageDataUri = lastWrap.dataset.resendImage || null;
   if (!text && !imageDataUri) return;
@@ -6644,18 +6643,7 @@ function _resendLastUserMessage() {
       for (let i = allBubbleWraps.length - 1; i > resendWrapIdx; i--) {
         allBubbleWraps[i].remove();
       }
-      // Reattach resend button to the now-last user bubble (it may have been stripped)
-      const bubble = lastWrap.querySelector('.bubble.user');
-      if (bubble && !lastWrap.querySelector('.bubble-resend-btn')) {
-        bubble.classList.add('has-resend');
-        const btn = document.createElement('button');
-        btn.className = 'bubble-resend-btn';
-        btn.title = 'Erneut senden';
-        btn.innerHTML = '&#10227;';
-        btn.style.display = 'flex';
-        btn.onclick = _resendLastUserMessage;
-        bubble.appendChild(btn);
-      }
+      // No need to reattach resend button — all user bubbles keep their own button
     }
   }
 
@@ -9902,6 +9890,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
