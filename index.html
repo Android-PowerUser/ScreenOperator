@@ -7778,7 +7778,7 @@ function _makeEntryRow(e, isAi) {
     menuBtn.onclick = toggleSelection;
     pill.onclick = toggleSelection;
   } else {
-    pill.onclick = () => openEditEntry(e);
+    pill.onclick = () => isAi ? openEditAiEntry(e) : openEditEntry(e);
     menuBtn.onclick = (ev) => {
       ev.stopPropagation();
       const wasOpen = menu.classList.contains('open');
@@ -7940,13 +7940,48 @@ function fitGuideTextarea() {
 }
 function closeEditEntry() {
   closePopup('popup-edit-entry');
+  window._editingAiSkill = false;
   // Database popup stays open, just re-render the list to reflect any changes
   renderDbList();
+}
+// Opens the shared edit popup for an AI-generated skill
+function openEditAiEntry(entry) {
+  window._editingAiSkill = true;
+  editingEntryOriginalTitle = entry ? entry.title : null;
+  document.getElementById('edit-entry-title').textContent = entry ? 'Edit AI Skill' : 'New AI Skill';
+  document.getElementById('entry-title-input').value = entry ? entry.title : '';
+  const guideEl = document.getElementById('entry-guide-input');
+  guideEl.value = entry ? entry.guide : '';
+  openPopup('popup-edit-entry');
+  fitDbPopup(document.querySelector('#popup-edit-entry .db-edit-popup'));
+  fitGuideTextarea();
 }
 function saveEntry() {
   const title = document.getElementById('entry-title-input').value.trim();
   const guide = document.getElementById('entry-guide-input').value.trim();
   if (!title || !guide) { alert('Title and Guide cannot be empty.'); return; }
+  if (window._editingAiSkill) {
+    // Save into AI skills localStorage
+    const skills = _getAiSkills();
+    if (editingEntryOriginalTitle) {
+      const idx = skills.findIndex(e => e.title === editingEntryOriginalTitle);
+      if (idx !== -1) {
+        skills[idx] = { title, guide };
+      } else {
+        skills.push({ title, guide });
+      }
+    } else {
+      if (skills.some(e => e.title.toLowerCase() === title.toLowerCase())) {
+        alert('An AI skill with this title already exists.'); return;
+      }
+      skills.push({ title, guide });
+    }
+    _saveAiSkills(skills);
+    closePopup('popup-edit-entry');
+    window._editingAiSkill = false;
+    renderDbList();
+    return;
+  }
   if (editingEntryOriginalTitle) {
     Bridge.updateDatabaseEntry(editingEntryOriginalTitle, title, guide);
   } else {
@@ -7980,19 +8015,11 @@ function exportDatabase() {
   if (selectedAll.length === 0) { alert('No entries selected.'); return; }
 
   if (getInAndroid()) {
-    // Temporarily write only the selected manual entries so the native
-    // exportDatabaseEntries() picks up exactly the chosen subset.
-    const originalJson = Bridge.getRawDatabaseJson();
-    Bridge.setRawDatabaseJson(JSON.stringify(selectedManual));
-    Android.exportDatabaseEntries('ScreenOperatorSkillSet.json');
-    Bridge.setRawDatabaseJson(originalJson); // restore immediately after
-    // AI entries are not stored natively, export them via blob alongside.
-    if (selectedAi.length > 0) {
-      const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet_AI.json'; a.click();
-      URL.revokeObjectURL(url);
-    }
+    // Export all selected entries (manual + AI) in a single unified JSON file via blob download
+    const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='ScreenOperatorSkillSet.json'; a.click();
+    URL.revokeObjectURL(url);
   } else {
     const blob = new Blob([JSON.stringify(selectedAll, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
