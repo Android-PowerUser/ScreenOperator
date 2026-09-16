@@ -2756,12 +2756,16 @@ function _showModelSelectPopup(errorMessage, failedModelId, payload) {
     const answerLabels  = nativeModels.map(m =>
       m.id === failedModelId ? '↺ ' + m.displayName : m.displayName
     );
+    // Prepend Freedom upsell as first option in the native overlay (only when not yet subscribed)
+    const _fpNative = (window._cachedIsFreedom !== null && window._cachedIsFreedom !== undefined) ? window._cachedIsFreedom : (getInAndroid() ? Bridge.isFreedomPurchased() : false);
+    const _freedomNativeLabel = '✨ Much more with Freedom';
+    const nativeLabelsWithFreedom = _fpNative ? answerLabels : [_freedomNativeLabel, ...answerLabels];
     const title = (errorMessage || 'Model error') + '\nWhich model should be used now?';
 
     // Background: use native accessibility overlay if available
     const useNative = getInAndroid() && !Bridge.isAppInForeground();
     if (useNative) {
-      _modelSelectShownNatively = Bridge.showQuestionOverlay(title, answerLabels);
+      _modelSelectShownNatively = Bridge.showQuestionOverlay(title, nativeLabelsWithFreedom);
       if (_modelSelectShownNatively) {
         // Response comes via onNativeAiQuestionAnswer — we temporarily hook it
         _installModelSelectNativeHandler(nativeModels, payload);
@@ -2796,7 +2800,7 @@ function _showModelSelectWebPopup(errorMessage, failedModelId, orderedModels, pa
       'display:block',
       'width:100%',
       'text-align:center',
-      'padding:14px 16px',
+      'padding:12px 14px',
       'border-radius:14px',
       'border:none',
       'cursor:pointer',
@@ -2861,6 +2865,18 @@ function _installModelSelectNativeHandler(orderedModels, payload) {
     window.onNativeAiQuestionDismissed = _prevDismiss;
     // Match the label back to a model id
     const label = String(answer || '');
+    // Handle Freedom upsell button
+    if (label === '✨ Much more with Freedom') {
+      _pendingModelSelectAfterFreedom = {
+        resolve:      _modelSelectResolve,
+        reject:       _modelSelectReject,
+        errorMessage: '',
+        payload:      payload,
+      };
+      _modelSelectResolve = null; _modelSelectReject = null;
+      initiateFreedomPurchase();
+      return;
+    }
     const chosen = orderedModels.find(m =>
       label === m.displayName || label === '↺ ' + m.displayName
     );
@@ -10219,6 +10235,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
