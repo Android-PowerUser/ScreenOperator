@@ -1866,6 +1866,14 @@ window.onUserMessage = function(text, imageDataUri) {
   _userScrolledUp = false;
   const _scrollBtn = document.getElementById('scroll-to-bottom-btn');
   if (_scrollBtn) _scrollBtn.style.display = 'none';
+  // If a JS-model stream is still running (e.g. Termux output arrives while the model
+  // is still generating), abort it immediately so the new turn can start cleanly.
+  // This handles both: Termux answer interrupting the model mid-response, AND the
+  // 15-second timeout warning arriving while the model is still generating.
+  if (window.__customModelAbortController) {
+    try { window.__customModelAbortController.abort(); } catch(e) {}
+    window.__customModelAbortController = null;
+  }
   // Remove Termux waiting placeholder (if any) so the real bubble replaces it.
   removeTermuxWaitingBubble();
   if (text || imageDataUri) {
