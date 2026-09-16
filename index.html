@@ -5055,7 +5055,25 @@ async function _executeCommandsFromResponse(text) {
   // supportsScreenshot here, text-only models never get Bridge.requestScreenshot() called
   // after a non-Termux command, so the conversation loop silently stalls (no further
   // message is ever sent back to the model).
-  const cmdList = [...commands];
+  // Filter out WAIT commands that immediately follow a TERMUX command.
+  // Termux runs asynchronously and wait() has no effect there; the system prompt
+  // already tells the AI not to use Wait() after Termux(). If any such WAIT is
+  // found we set a flag so showTermuxWaitingBubble() can prepend the reminder.
+  let _waitAfterTermuxDropped = false;
+  const cmdListRaw = [...commands];
+  const cmdList = [];
+  let lastWasTermux = false;
+  for (const c of cmdListRaw) {
+    if (lastWasTermux && c.type === 'WAIT') {
+      _waitAfterTermuxDropped = true;
+      continue; // drop this WAIT silently (except for the bubble warning)
+    }
+    cmdList.push(c);
+    lastWasTermux = (c.type === 'TERMUX');
+  }
+  // Expose the flag so showTermuxWaitingBubble can read it.
+  _executeCommandsFromResponse._waitDropped = _waitAfterTermuxDropped;
+
   if (!hasScreenshot && !hasCompleted) {
     cmdList.push({ type: 'SCREENSHOT' });
   }
@@ -6541,7 +6559,14 @@ function showTermuxWaitingBubble() {
   removeTermuxWaitingBubble();
   const wrap = document.createElement('div');
   wrap.className = 'bubble-wrap user-wrap';
-  wrap.innerHTML = `<div class="bubble user"><span class="termux-waiting-label">Waiting for Termux</span><span class="termux-waiting-spinner"></span></div>`;
+  // If WAIT commands were dropped because they followed a Termux() command, prepend
+  // a bold reminder above the normal "Waiting for Termux" content.
+  const waitDropped = _executeCommandsFromResponse._waitDropped;
+  _executeCommandsFromResponse._waitDropped = false; // reset after reading
+  const warningHtml = waitDropped
+    ? `<div style="font-weight:bold;margin-bottom:6px;color:#b00020;">⚠️ DO NOT use wait(seconds) commands when using Termux.</div>`
+    : '';
+  wrap.innerHTML = `<div class="bubble user">${warningHtml}<span class="termux-waiting-label">Waiting for Termux</span><span class="termux-waiting-spinner"></span></div>`;
   document.getElementById('chat-messages').appendChild(wrap);
   scrollToBottom();
   _termuxPendingBubbleWrap = wrap;
@@ -9892,6 +9917,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
