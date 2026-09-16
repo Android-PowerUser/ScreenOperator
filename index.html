@@ -1552,6 +1552,18 @@ const _DB_LEGACY_TITLE_MAP = {
 
 // localStorage key tracking which migrations have already run
 const _DB_MIGRATION_KEY = 'dbMigrationsDone_v2';
+// localStorage key for default entries the user has explicitly deleted
+const _DB_DELETED_KEY = 'dbUserDeletedDefaults_v1';
+
+function _getDeletedDefaults() {
+  try { return new Set(JSON.parse(LS.getItem(_DB_DELETED_KEY) || '[]')); }
+  catch(e) { return new Set(); }
+}
+function _addDeletedDefault(title) {
+  const s = _getDeletedDefaults();
+  s.add(title);
+  LS.setItem(_DB_DELETED_KEY, JSON.stringify([...s]));
+}
 
 /**
  * Ensures all default skill-set entries exist and are up-to-date.
@@ -1580,7 +1592,8 @@ function _ensureDefaultDbEntries() {
       LS.setItem(_DB_MIGRATION_KEY, 'true');
     }
 
-    // Step 2: Upsert each default entry
+    // Step 2: Add missing default entries (never overwrite user edits, never restore user-deleted)
+    const deletedDefaults = _getDeletedDefaults();
     _DB_DEFAULT_ENTRIES.forEach(required => {
       const titleLc = required.title.toLowerCase();
       const legacyTitles = Object.entries(_DB_LEGACY_TITLE_MAP)
@@ -1588,20 +1601,19 @@ function _ensureDefaultDbEntries() {
         .map(([k]) => k.toLowerCase());
       const allTitles = [titleLc, ...legacyTitles];
 
+      // Skip entries the user has explicitly deleted
+      if (deletedDefaults.has(required.title)) return;
+
       const matchingIndices = entries
         .map((e, i) => allTitles.includes(e.title.toLowerCase()) ? i : -1)
         .filter(i => i !== -1);
 
       if (matchingIndices.length === 0) {
+        // Only add if missing — never overwrite existing user edits
         entries.push({ title: required.title, guide: required.guide });
         changed = true;
       } else {
-        const keepIdx = matchingIndices[0];
-        if (entries[keepIdx].title !== required.title || entries[keepIdx].guide !== required.guide) {
-          entries[keepIdx] = { title: required.title, guide: required.guide };
-          changed = true;
-        }
-        // Remove duplicates (keep first match only)
+        // Remove duplicates (keep first match only), but do NOT overwrite content
         for (let i = matchingIndices.length - 1; i >= 1; i--) {
           entries.splice(matchingIndices[i], 1);
           changed = true;
@@ -7589,6 +7601,9 @@ function restoreSystemMessage() {
 }
 function deleteEntry(title) {
   if (!confirm('Delete "'+title+'"?')) return;
+  // If this is a default entry, remember the user deleted it so it won't be restored on restart
+  const isDefault = _DB_DEFAULT_ENTRIES.some(d => d.title === title);
+  if (isDefault) _addDeletedDefault(title);
   Bridge.deleteDatabaseEntry(title);
   renderDbList();
 }
@@ -9887,6 +9902,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
