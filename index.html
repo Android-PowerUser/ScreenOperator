@@ -212,7 +212,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   0%,100%{box-shadow:0 2px 12px rgba(168,85,247,.55),0 0 0 0 rgba(168,85,247,.35)}
   50%{box-shadow:0 4px 22px rgba(236,72,153,.6),0 0 0 6px rgba(236,72,153,.0)}
 }
-#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#human-expert-subscribe-btn,#freedom-upsell-banner{
+#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#trial-expired-subscribe-btn,#human-expert-subscribe-btn,#freedom-upsell-banner{
   background:linear-gradient(to right,var(--primary),#2563eb,#ec4899) !important;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
   border:none !important;
@@ -234,7 +234,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   0%{left:-42%}
   100%{left:100%}
 }
-#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after{
+#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after{
   content:'';
   position:absolute;
   top:-60%;left:-42%;
@@ -271,7 +271,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   62%{opacity:.7;transform:translate(-50%,-50%) scale(.95) rotate(var(--fg-rot,0deg))}
   100%{opacity:0;transform:translate(-50%,-50%) scale(.55) rotate(var(--fg-rot,0deg))}
 }
-#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
+#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
   opacity:.85;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
 }
@@ -7888,7 +7888,7 @@ function initiateDonation() {
 (function(){
   'use strict';
   const BTN_IDS = ['freedom-btn','freedom-upgrade-btn','apikey-freedom-btn',
-                   'human-expert-subscribe-btn','freedom-upsell-banner'];
+                   'trial-expired-subscribe-btn','human-expert-subscribe-btn','freedom-upsell-banner'];
   const PERIOD_MS = 60000;     // must match the freedom-gloss CSS animation
   const BAND_W    = 0.42;      // must match the ::after width in CSS
   const BAND_L0   = -BAND_W;   // keyframe 0% left
