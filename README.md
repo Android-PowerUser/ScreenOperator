@@ -12,8 +12,6 @@ It can now execute commands directly in Termux via API. After each update, click
 
 ## Download and install
 
-#### The hotfix that works when the app is new installed is currently in the review queue at Google. Until then, get the hotfix from here.
-
 Due to a GitHub restriction, you must be logged in to view the nightly download links:
 </br>
 
