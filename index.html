@@ -3472,6 +3472,7 @@ async function _callGemini(payload) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let firstChunk = true;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -3488,10 +3489,18 @@ async function _callGemini(payload) {
           const parts = json.candidates?.[0]?.content?.parts || [];
           let text = '';
           let gotThinkingEnd = false;
+          // Show a placeholder while waiting for the first real content,
+          // so the user sees that the model is thinking even if Gemini
+          // does not stream thought-parts (a known API inconsistency).
+          if (firstChunk && payload.supportsThinking) {
+            firstChunk = false;
+            Bridge.onCustomModelPartialResponse('🧠 Thinking:\n…');
+          } else {
+            firstChunk = false;
+          }
           for (const part of parts) {
             if (!part.text) continue;
             if (part.thought) {
-              const prevLen = thinkingAcc.length;
               thinkingAcc += part.text;
             } else {
               text += part.text;
@@ -10328,6 +10337,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
