@@ -3657,28 +3657,30 @@ async function _callGeminiLive(payload) {
           } catch(e) { /* skip bad image */ }
         }
 
-        // 3. Send user turn via clientContent with turnComplete:true to trigger response
-        if (userParts.length) {
-          ws.send(JSON.stringify({
-            clientContent: {
-              turns: [{ role: 'user', parts: userParts }],
-              turnComplete: true
-            }
-          }));
-        }
+        // 3. Send user turn — always send turnComplete:true to trigger response
+        // Even if userParts is empty, we need turnComplete to start generation
+        const partsToSend = userParts.length ? userParts : [{ text: payload.userText || '' }];
+        ws.send(JSON.stringify({
+          clientContent: {
+            turns: [{ role: 'user', parts: partsToSend }],
+            turnComplete: true
+          }
+        }));
         return;
       }
 
       // Handle server content
-      // Native audio model: text comes via outputTranscription, not part.text
+      // Native audio model: text comes via outputTranscription.
+      // turnComplete can arrive before the last transcription chunk,
+      // so we defer settle() briefly to collect all pending transcription.
       if (msg.serverContent) {
         const sc = msg.serverContent;
-        // Collect transcription text (outputTranscription per official docs)
+        // Collect transcription text
         if (sc.outputTranscription?.text) {
           acc += sc.outputTranscription.text;
           Bridge.onCustomModelPartialResponse(acc);
         }
-        // Also check modelTurn parts for any inline text (fallback)
+        // Fallback: modelTurn inline text (for future TEXT modality support)
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
           if (part.text) {
@@ -3687,9 +3689,11 @@ async function _callGeminiLive(payload) {
           }
         }
         if (sc.turnComplete) {
-          turnComplete = true;
-          Bridge.onCustomModelFinalResponse(acc || '');
-          settle(null);
+          // Defer slightly so any trailing transcription messages arrive first
+          setTimeout(() => {
+            Bridge.onCustomModelFinalResponse(acc || '(no text response)');
+            settle(null);
+          }, 300);
         }
       }
 
