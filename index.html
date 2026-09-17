@@ -1335,7 +1335,8 @@ const CUSTOM_PROVIDERS = [
     endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-live-preview:generateContent',
     modelName:'gemini-3.1-flash-live-preview', apiKeyHeader:'X-Goog-Api-Key', apiKeyPrefix:'',
     supportsScreenshot:true, supportsTopK:false, supportsThinking:false, stream:false,
-    hint:'Supports images. Uses WebSocket (Live API).' },
+    hint:'Supports images. Uses WebSocket (Live API).',
+    reuseProviderChip: 'GOOGLE' },
 ];
 
 // Built-in model list — matches GenerativeAiViewModelFactory.kt enum order used in MenuScreen
@@ -7469,7 +7470,16 @@ function _getCustomKeyIndex(modelId) { return _customKeyIndex[modelId] || 0; }
 function _setCustomKeyIndex(modelId, idx) { _customKeyIndex[modelId] = idx; }
 
 function openApiKeyPopup(forceProviderId) {
-  if (forceProviderId) currentProviderId = forceProviderId;
+  if (forceProviderId) {
+    // If the requested provider is a custom one that reuses another provider's chip,
+    // redirect to that provider so the user edits the correct key slot.
+    if (typeof forceProviderId === 'string' && forceProviderId.startsWith('CUSTOM:')) {
+      const _cpId = forceProviderId.slice('CUSTOM:'.length);
+      const _cp = CUSTOM_PROVIDERS.find(c => c.id === _cpId);
+      if (_cp && _cp.reuseProviderChip) { forceProviderId = _cp.reuseProviderChip; }
+    }
+    currentProviderId = forceProviderId;
+  }
   // Build provider chips: fixed providers first, then one chip per CUSTOM_PROVIDERS entry.
   const chips = document.getElementById('provider-chips');
   chips.innerHTML = '';
@@ -7482,6 +7492,7 @@ function openApiKeyPopup(forceProviderId) {
     chips.appendChild(btn);
   });
   CUSTOM_PROVIDERS.forEach(cp => {
+    if (cp.reuseProviderChip) return; // Skip: reuses an existing provider's chip
     const pid = 'CUSTOM:' + cp.id;
     const btn = document.createElement('button');
     btn.className = 'chip' + (pid===currentProviderId?' active':'');
