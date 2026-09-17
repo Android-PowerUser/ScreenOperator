@@ -1331,9 +1331,9 @@ const CUSTOM_PROVIDERS = [
   // dummy values: native code only uses them to recognize the model id and route
   // the request to onCustomModelRequest(). The actual WebSocket call happens in
   // _callGeminiLive() below, which reads the real Google API key via _getKeysWithFallback.
-  { id:'GEMINI_FLASH_LIVE_PREVIEW', displayName:'Gemini 2.5 Flash Live Preview',
-    endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-live-preview:generateContent',
-    modelName:'gemini-2.5-flash-live-preview', apiKeyHeader:'X-Goog-Api-Key', apiKeyPrefix:'',
+  { id:'GEMINI_FLASH_LIVE_PREVIEW', displayName:'Gemini 3.1 Flash Live Preview',
+    endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-live-preview:generateContent',
+    modelName:'gemini-3.1-flash-live-preview', apiKeyHeader:'X-Goog-Api-Key', apiKeyPrefix:'',
     supportsScreenshot:true, supportsTopK:false, supportsThinking:false, stream:false,
     hint:'Supports images. Uses WebSocket (Live API).',
     reuseProviderChip: 'GOOGLE' },
@@ -1370,7 +1370,7 @@ let MODELS = [
   { id:'GPT_5_1_CODEX_MINI',       displayName:'GPT-5.1 Codex Mini (Vercel)',              modelName:'openai/gpt-5.1-codex-mini',                apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:true,  isOffline:false, hint:'Supports images. $0.25/M input | $0.03/M read cache | $2/M output - Vercel only allows a few requests in a row – thinking enabled',strike:false },
   { id:'GPT_5_NANO',               displayName:'GPT-5.4 Nano (Vercel)',                     modelName:'openai/gpt-5.4-nano',                      apiProvider:'VERCEL',    supportsScreenshot:true,  supportsTopK:false, supportsThinking:true,  isOffline:false, hint:'Supports images. $0.2/M input | $0.02/M read cache | $1.25/M output - Vercel only allows a few requests in a row – thinking enabled', strike:false },
   { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
-  { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 2.5 Flash Live Preview',            modelName:'gemini-2.5-flash-live-preview',             apiProvider:'GEMINI_LIVE',supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images. Uses WebSocket (Live API).',    strike:false },
+  { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 3.1 Flash Live Preview',            modelName:'gemini-3.1-flash-live-preview',             apiProvider:'GEMINI_LIVE',supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images. Uses WebSocket (Live API).',    strike:false },
   { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'6.3 GB download required.',     strike:true },
   { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Supports images. Approx. 15 responses per day are free.', strike:true },
 ];
@@ -3113,7 +3113,7 @@ window.onCustomModelRequest = async function(payloadJsonString) {
     if (payload.modelId === 'GEMINI_FLASH_LIVE_PREVIEW' || provider === 'GEMINI_LIVE') {
       // Ensure modelName and Google key are resolved correctly
       payload.apiProvider = 'GEMINI_LIVE';
-      payload.modelName   = 'gemini-2.5-flash-live-preview';
+      payload.modelName   = 'gemini-3.1-flash-live-preview';
       await _callGeminiLive(payload);
     } else if (provider === 'GOOGLE') {
       await _callGemini(payload);
@@ -3559,7 +3559,7 @@ async function _callGemini(payload) {
 }
 
 /* ── GEMINI LIVE API (WebSocket / bidiGenerateContent) ───────── */
-// Used exclusively for GEMINI_FLASH_LIVE_PREVIEW (gemini-2.5-flash-live-preview).
+// Used exclusively for GEMINI_FLASH_LIVE_PREVIEW (gemini-3.1-flash-live-preview).
 // Sends text via realtimeInput, requests TEXT responseModality only, so it
 // integrates cleanly into the existing chat bubble system without audio.
 async function _callGeminiLive(payload) {
@@ -3568,7 +3568,7 @@ async function _callGeminiLive(payload) {
     throw new Error('NO_KEY:No Google API key configured. Please add one in the menu.');
   }
   const apiKey = keys[Bridge.getCurrentKeyIndex('GOOGLE') || 0] || keys[0];
-  const modelName = payload.modelName; // e.g. gemini-2.5-flash-live-preview
+  const modelName = payload.modelName; // e.g. gemini-3.1-flash-live-preview
   const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
   return new Promise((resolve, reject) => {
