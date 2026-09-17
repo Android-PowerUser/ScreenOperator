@@ -7881,43 +7881,67 @@ function newSkill(title, guide) {
   const existing = _getAiSkills();
   const dupIdx = existing.findIndex(e => e.title.toLowerCase() === title.toLowerCase());
   if (dupIdx !== -1) {
-    // Ask user whether to overwrite the existing skill
-    _enqueueAiQuestionItem(
-      'Can "' + existing[dupIdx].title + '" be overwritten?',
-      ['Yes', 'No'],
-      1
-    );
-    // Store pending overwrite; resolved when user answers via _submitAiQuestionAnswer
-    _pendingSkillOverwrite = { dupIdx, title, guide };
+    _showSkillOverwriteConfirm(existing[dupIdx].title, title, guide, dupIdx);
     return;
   }
   existing.push({ title, guide });
   _saveAiSkills(existing);
 }
 
-// Holds a pending skill overwrite request until the user confirms.
-let _pendingSkillOverwrite = null;
-
-// Patch _submitAiQuestionAnswer to intercept overwrite confirmations.
-(function() {
-  const _origSubmit = _submitAiQuestionAnswer;
-  // We intentionally wrap via prototype-style so the original stays callable.
-  window._submitAiQuestionAnswer = _submitAiQuestionAnswer = function(answer) {
-    if (_pendingSkillOverwrite) {
-      const pending = _pendingSkillOverwrite;
-      _pendingSkillOverwrite = null;
-      if (String(answer).trim().toLowerCase() === 'yes') {
-        const skills = _getAiSkills();
-        skills[pending.dupIdx] = { title: pending.title, guide: pending.guide };
-        _saveAiSkills(skills);
-      }
-      // Clear popup state without sending a message back to the AI
-      _clearActiveAiQuestion();
+/* ── Skill-overwrite confirmation popup ──────────────────────────────────────
+ * Uses its own standalone UI path so it never feeds into the AI question
+ * queue and never triggers Bridge.sendMessage(). The AI is paused until the
+ * user decides; execution resumes (or not) purely in the WebView.
+ */
+function _showSkillOverwriteConfirm(existingTitle, newTitle, newGuide, dupIdx) {
+  const question = 'Can "' + existingTitle + '" be overwritten?';
+  const onYes = () => {
+    const skills = _getAiSkills();
+    skills[dupIdx] = { title: newTitle, guide: newGuide };
+    _saveAiSkills(skills);
+  };
+  // Background: use native accessibility overlay with dedicated handler
+  if (getInAndroid() && !Bridge.isAppInForeground()) {
+    const shown = Bridge.showQuestionOverlay(question, ['Yes', 'No']);
+    if (shown) {
+      const prevHandler = window.onNativeAiQuestionAnswer;
+      const prevDismiss = window.onNativeAiQuestionDismissed;
+      const restore = () => {
+        window.onNativeAiQuestionAnswer  = prevHandler;
+        window.onNativeAiQuestionDismissed = prevDismiss;
+      };
+      window.onNativeAiQuestionAnswer = (answer) => { restore(); if (String(answer).trim().toLowerCase() === 'yes') onYes(); };
+      window.onNativeAiQuestionDismissed = () => { restore(); };
       return;
     }
-    _origSubmit(answer);
+    // Fallback: bring app to foreground, show WebView popup
+    Bridge.openAppByNameOrPackage('io.github.android_poweruser');
+  }
+  // Foreground (or fallback): show inline popup using the ai-question-overlay
+  // but with a completely separate answer handler that never calls Bridge.sendMessage.
+  const overlay  = document.getElementById('ai-question-overlay');
+  const textEl   = document.getElementById('ai-question-text');
+  const optionsEl = document.getElementById('ai-answer-options');
+  if (!overlay || !textEl || !optionsEl) return;
+  textEl.textContent = question;
+  optionsEl.replaceChildren();
+  const close = () => {
+    overlay.classList.remove('visible');
+    overlay.onclick = () => _dismissAiQuestion();
+    optionsEl.replaceChildren();
   };
-})();
+  ['Yes', 'No'].forEach(label => {
+    const btn = document.createElement('button');
+    btn.className = 'ai-answer-option';
+    btn.textContent = label;
+    btn.onclick = () => { close(); if (label === 'Yes') onYes(); };
+    optionsEl.appendChild(btn);
+  });
+  // Temporarily override dismiss so closing also just closes, no message sent
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.classList.add('visible');
+  if (window._fitWebAiQuestionPopup) _fitWebAiQuestionPopup();
+}
 
 function copyToSystemMessage(text) {
   const ta = document.getElementById('sys-msg-textarea');
