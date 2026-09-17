@@ -2918,7 +2918,9 @@ function _modelNeedsApiKey(model) {
   if (model.apiProvider === 'KILO') return false;
   if (model.apiProvider === 'PUTER' && _isFreedomEntitled()) return false;
   if (model.apiProvider === 'CUSTOM') return _getCustomModelApiKeys(model.id).length === 0;
-  const k = _getKeysWithFallback(model.apiProvider);
+  // GEMINI_LIVE uses the Google API key slot — map it before lookup.
+  const _rp = model.apiProvider === 'GEMINI_LIVE' ? 'GOOGLE' : model.apiProvider;
+  const k = _getKeysWithFallback(_rp);
   return !(k && k.length);
 }
 
@@ -2938,7 +2940,7 @@ function _resolveModelSelect(chosenModelId, payload) {
     // Open API-key popup pre-selected on the missing provider.
     const pid = chosenModel.apiProvider === 'CUSTOM'
       ? ('CUSTOM:' + chosenModel.id)
-      : chosenModel.apiProvider;
+      : (chosenModel.apiProvider === 'GEMINI_LIVE' ? 'GOOGLE' : chosenModel.apiProvider);
     openApiKeyPopup(pid);
     return;
   }
