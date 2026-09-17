@@ -3574,6 +3574,7 @@ async function _callGeminiLive(payload) {
   return new Promise((resolve, reject) => {
     let ws;
     let acc = '';
+    let debugLog = [];
     let setupDone = false;
     let settled = false;
     let turnTimer = null;
@@ -3635,14 +3636,17 @@ async function _callGeminiLive(payload) {
       let msg;
       try { msg = JSON.parse(event.data); } catch(e) { return; }
 
-      // DEBUG: log every server message
-      console.log('[GeminiLive] msg:', JSON.stringify(msg).substring(0, 500));
+      // DEBUG: stream every raw server message into the chat bubble
+      const raw = JSON.stringify(msg);
+      debugLog.push(raw.substring(0, 300));
+      Bridge.onCustomModelPartialResponse('[DEBUG]
+' + debugLog.join('
+---
+'));
 
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
-        console.log('[GeminiLive] setupComplete received, sending content');
 
-        // Build all turns: history + current user turn in one clientContent message
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
         const turns = merged.map(h => ({
@@ -3650,7 +3654,6 @@ async function _callGeminiLive(payload) {
           parts: [{ text: h.text || '' }]
         }));
 
-        // Add current user turn
         const userParts = [];
         if (payload.userText) userParts.push({ text: payload.userText });
         for (const dataUri of (payload.images || [])) {
@@ -3665,35 +3668,29 @@ async function _callGeminiLive(payload) {
         else turns.push({ role: 'user', parts: [{ text: '' }] });
 
         const sendMsg = { clientContent: { turns, turnComplete: true } };
-        console.log('[GeminiLive] sending:', JSON.stringify(sendMsg).substring(0, 300));
+        debugLog.push('SENT: ' + JSON.stringify(sendMsg).substring(0, 200));
+        Bridge.onCustomModelPartialResponse('[DEBUG]
+' + debugLog.join('
+---
+'));
         ws.send(JSON.stringify(sendMsg));
         return;
       }
 
       if (msg.serverContent) {
         const sc = msg.serverContent;
-        console.log('[GeminiLive] serverContent keys:', Object.keys(sc));
-        if (sc.outputTranscription) {
-          console.log('[GeminiLive] outputTranscription:', JSON.stringify(sc.outputTranscription));
-          if (sc.outputTranscription.text) {
-            acc += sc.outputTranscription.text;
-            Bridge.onCustomModelPartialResponse(acc);
-          }
+        if (sc.outputTranscription?.text) {
+          acc += sc.outputTranscription.text;
         }
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
-          if (part.text) {
-            acc += part.text;
-            Bridge.onCustomModelPartialResponse(acc);
-          }
+          if (part.text) acc += part.text;
         }
         if (sc.generationComplete) {
-          console.log('[GeminiLive] generationComplete, acc:', acc);
           if (turnTimer) clearTimeout(turnTimer);
           turnTimer = setTimeout(finishTurn, 500);
         }
         if (sc.turnComplete) {
-          console.log('[GeminiLive] turnComplete, acc:', acc);
           if (turnTimer) clearTimeout(turnTimer);
           clearTimeout(globalTimeout);
           turnTimer = setTimeout(finishTurn, 200);
