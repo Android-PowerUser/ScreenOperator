@@ -5348,7 +5348,12 @@ async function _executeSingleCommand(cmd) {
       break;
     }
     case 'NEW_SKILL':
-      newSkill(cmd.title, cmd.guide);
+      if (newSkill(cmd.title, cmd.guide)) {
+        // Overwrite confirmation popup was shown – halt the command loop so no
+        // auto-screenshot fires before the user has answered. A fresh screenshot
+        // is requested by _showSkillOverwriteConfirm after the user decides.
+        _stopExecution = true;
+      }
       break;
     case 'SCREENSHOT':
       // Kotlin pipeline: captures screen → addScreenshotToConversation → reason() → onCustomModelRequest.
@@ -7876,13 +7881,13 @@ function _showToast(msg) {
 }
 // Called by AI via newSkill("Title","Guide")
 function newSkill(title, guide) {
-  if (!title || !guide) return;
-  if (!_aiSkillsEnabled()) return; // toggle off → silently ignore
+  if (!title || !guide) return false;
+  if (!_aiSkillsEnabled()) return false; // toggle off → silently ignore
   const existing = _getAiSkills();
   const dupIdx = existing.findIndex(e => e.title.toLowerCase() === title.toLowerCase());
   if (dupIdx !== -1) {
     _showSkillOverwriteConfirm(existing[dupIdx].title, title, guide, dupIdx);
-    return;
+    return true; // signals: execution must be paused
   }
   existing.push({ title, guide });
   _saveAiSkills(existing);
@@ -7910,8 +7915,8 @@ function _showSkillOverwriteConfirm(existingTitle, newTitle, newGuide, dupIdx) {
         window.onNativeAiQuestionAnswer  = prevHandler;
         window.onNativeAiQuestionDismissed = prevDismiss;
       };
-      window.onNativeAiQuestionAnswer = (answer) => { restore(); if (String(answer).trim().toLowerCase() === 'yes') onYes(); };
-      window.onNativeAiQuestionDismissed = () => { restore(); };
+      window.onNativeAiQuestionAnswer = (answer) => { restore(); if (String(answer).trim().toLowerCase() === 'yes') onYes(); Bridge.requestScreenshot(); };
+      window.onNativeAiQuestionDismissed = () => { restore(); Bridge.requestScreenshot(); };
       return;
     }
     // Fallback: bring app to foreground, show WebView popup
@@ -7934,7 +7939,7 @@ function _showSkillOverwriteConfirm(existingTitle, newTitle, newGuide, dupIdx) {
     const btn = document.createElement('button');
     btn.className = 'ai-answer-option';
     btn.textContent = label;
-    btn.onclick = () => { close(); if (label === 'Yes') onYes(); };
+    btn.onclick = () => { close(); if (label === 'Yes') onYes(); Bridge.requestScreenshot(); };
     optionsEl.appendChild(btn);
   });
   // Temporarily override dismiss so closing also just closes, no message sent
