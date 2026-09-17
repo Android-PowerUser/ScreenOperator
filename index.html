@@ -3574,7 +3574,6 @@ async function _callGeminiLive(payload) {
   return new Promise((resolve, reject) => {
     let ws;
     let acc = '';
-    let debugLog = [];
     let setupDone = false;
     let settled = false;
     let turnTimer = null;
@@ -3615,15 +3614,12 @@ async function _callGeminiLive(payload) {
 
     ws.onopen = () => {
       const sysParts = _buildSystemParts(payload);
-      // Per API reference: responseModalities in generationConfig,
-      // outputAudioTranscription directly in setup (not in generationConfig)
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
           generationConfig: {
-            responseModalities: ['AUDIO'],
+            responseModalities: ['TEXT'],
           },
-          outputAudioTranscription: {},
         }
       };
       if (sysParts.length) {
@@ -3636,13 +3632,7 @@ async function _callGeminiLive(payload) {
       let msg;
       try { msg = JSON.parse(event.data); } catch(e) { return; }
 
-      // DEBUG: stream every raw server message into the chat bubble
-      const raw = JSON.stringify(msg);
-      debugLog.push(raw.substring(0, 300));
-      Bridge.onCustomModelPartialResponse('[DEBUG]
-' + debugLog.join('
----
-'));
+      
 
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
@@ -3668,23 +3658,18 @@ async function _callGeminiLive(payload) {
         else turns.push({ role: 'user', parts: [{ text: '' }] });
 
         const sendMsg = { clientContent: { turns, turnComplete: true } };
-        debugLog.push('SENT: ' + JSON.stringify(sendMsg).substring(0, 200));
-        Bridge.onCustomModelPartialResponse('[DEBUG]
-' + debugLog.join('
----
-'));
         ws.send(JSON.stringify(sendMsg));
         return;
       }
 
       if (msg.serverContent) {
         const sc = msg.serverContent;
-        if (sc.outputTranscription?.text) {
-          acc += sc.outputTranscription.text;
-        }
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
-          if (part.text) acc += part.text;
+          if (part.text) {
+            acc += part.text;
+            Bridge.onCustomModelPartialResponse(acc);
+          }
         }
         if (sc.generationComplete) {
           if (turnTimer) clearTimeout(turnTimer);
@@ -3695,6 +3680,13 @@ async function _callGeminiLive(payload) {
           clearTimeout(globalTimeout);
           turnTimer = setTimeout(finishTurn, 200);
         }
+      }
+
+      if (msg.error) {
+        clearTimeout(globalTimeout);
+        const errMsg = msg.error.message || JSON.stringify(msg.error);
+        settle(new Error('Gemini Live: ' + errMsg));
+        return;
       }
 
       if (msg.goAway) {
