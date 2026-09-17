@@ -2801,16 +2801,16 @@ function _showModelSelectWebPopup(errorMessage, failedModelId, orderedModels, pa
       'width:100%',
       'text-align:center',
       'padding:12px 14px',
-      'border-radius:14px',
-      'border:none',
+      'border-radius:18px',
+      'border:1.5px solid transparent',
       'cursor:pointer',
-      'font-size:16px',
+      'font-size:15px',
       'font-weight:700',
       'letter-spacing:.01em',
       'background:linear-gradient(135deg,#7B4FA6 0%,#3B82F6 50%,#7DD3FC 100%)',
       'color:#fff',
       'box-shadow:0 2px 12px rgba(123,79,166,.45)',
-      'margin-bottom:4px',
+      'margin-bottom:0',
       'transition:opacity .15s',
     ].join(";");
     banner.innerHTML = "✨ Much more with Freedom";
@@ -3350,7 +3350,7 @@ async function _callGemini(payload) {
   const modelName = payload.modelName;
   // For Gemini 3.8 Flash: on 503/high-demand, fall back through older versions per request
   const _geminiHighDemandFallbacks = modelName === 'gemini-3.8-flash'
-    ? ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash']
+    ? ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
     : [modelName];
   let _currentGeminiModel = _geminiHighDemandFallbacks[0];
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${_currentGeminiModel}:streamGenerateContent?key=${apiKey}&alt=sse`;
