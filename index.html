@@ -3603,11 +3603,13 @@ async function _callGeminiLive(payload) {
       const sysParts = _buildSystemParts(payload);
 
       // Setup message per official Google Live API WebSocket docs:
-      // responseModalities goes directly in setup (not nested in generationConfig)
+      // gemini-3.1-flash-live-preview is a native audio model and only supports AUDIO modality.
+      // TEXT modality causes immediate 1007 close. Text is received via outputAudioTranscription.
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
-          responseModalities: ['TEXT'],
+          responseModalities: ['AUDIO'],
+          outputAudioTranscription: {},
         }
       };
       if (sysParts.length) {
@@ -3659,8 +3661,15 @@ async function _callGeminiLive(payload) {
       }
 
       // Handle server content
+      // Native audio model: text comes via outputTranscription, not part.text
       if (msg.serverContent) {
         const sc = msg.serverContent;
+        // Collect transcription text (outputTranscription per official docs)
+        if (sc.outputTranscription?.text) {
+          acc += sc.outputTranscription.text;
+          Bridge.onCustomModelPartialResponse(acc);
+        }
+        // Also check modelTurn parts for any inline text (fallback)
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
           if (part.text) {
