@@ -3602,13 +3602,12 @@ async function _callGeminiLive(payload) {
       // Build system instruction
       const sysParts = _buildSystemParts(payload);
 
-      // Setup message: text-only response, include system instruction if any
+      // Setup message per official Google Live API WebSocket docs:
+      // responseModalities goes directly in setup (not nested in generationConfig)
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
-          generationConfig: {
-            responseModalities: ['TEXT'],
-          },
+          responseModalities: ['TEXT'],
         }
       };
       if (sysParts.length) {
@@ -3621,42 +3620,41 @@ async function _callGeminiLive(payload) {
       let msg;
       try { msg = JSON.parse(event.data); } catch(e) { return; }
 
-      // After setup is acknowledged, send history + user message
+      // After setup is acknowledged, send history then user message
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
 
-        // Send conversation history + current user turn as a single clientContent
-        // with all turns. Each historical turn is complete; the final user turn
-        // triggers the model response (turnComplete: true on the last message).
+        // 1. Inject conversation history via clientContent (turnComplete: false)
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
+        if (merged.length) {
+          const turns = merged.map(h => ({
+            role: h.role === 'user' ? 'user' : 'model',
+            parts: [{ text: h.text || '' }]
+          }));
+          ws.send(JSON.stringify({
+            clientContent: { turns: turns, turnComplete: false }
+          }));
+        }
 
-        // Build turns array from history
-        const turns = merged.map(h => ({
-          role: h.role === 'user' ? 'user' : 'model',
-          parts: [{ text: h.text || '' }]
-        }));
+        // 2. Send current user text via realtimeInput (per official docs)
+        if (payload.userText) {
+          ws.send(JSON.stringify({
+            realtimeInput: { text: payload.userText }
+          }));
+        }
 
-        // Build current user turn parts (text + optional images)
-        const userParts = [];
-        if (payload.userText) userParts.push({ text: payload.userText });
+        // 3. Send images via realtimeInput.mediaChunks
         for (const dataUri of (payload.images || [])) {
           try {
             const commaIdx = dataUri.indexOf(',');
             const mimeType = dataUri.substring(0, commaIdx).split(':')[1].split(';')[0];
             const data = dataUri.substring(commaIdx + 1);
-            userParts.push({ inlineData: { mimeType, data } });
+            ws.send(JSON.stringify({
+              realtimeInput: { mediaChunks: [{ mimeType, data }] }
+            }));
           } catch(e) { /* skip bad image */ }
         }
-        if (userParts.length) turns.push({ role: 'user', parts: userParts });
-
-        // Send all turns in one clientContent message with turnComplete: true
-        ws.send(JSON.stringify({
-          clientContent: {
-            turns: turns,
-            turnComplete: true
-          }
-        }));
         return;
       }
 
