@@ -3602,14 +3602,20 @@ async function _callGeminiLive(payload) {
       // Build system instruction
       const sysParts = _buildSystemParts(payload);
 
-      // Setup message per official Google Live API WebSocket docs:
-      // gemini-3.1-flash-live-preview is a native audio model and only supports AUDIO modality.
-      // TEXT modality causes immediate 1007 close. Text is received via outputAudioTranscription.
+      // Setup per official BidiGenerateContentSetup API reference:
+      // - responseModalities goes inside generationConfig
+      // - outputAudioTranscription is a direct setup field (not in generationConfig)
+      // - historyConfig.initialHistoryInClientContent enables clientContent for history
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
-          responseModalities: ['AUDIO'],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+          },
           outputAudioTranscription: {},
+          historyConfig: {
+            initialHistoryInClientContent: true,
+          },
         }
       };
       if (sysParts.length) {
@@ -3626,7 +3632,7 @@ async function _callGeminiLive(payload) {
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
 
-        // 1. Inject conversation history via clientContent (turnComplete: false)
+        // 1. Inject history via clientContent (enabled by historyConfig.initialHistoryInClientContent)
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
         if (merged.length) {
@@ -3639,23 +3645,26 @@ async function _callGeminiLive(payload) {
           }));
         }
 
-        // 2. Send current user text via realtimeInput (per official docs)
-        if (payload.userText) {
-          ws.send(JSON.stringify({
-            realtimeInput: { text: payload.userText }
-          }));
-        }
-
-        // 3. Send images via realtimeInput.mediaChunks
+        // 2. Build user turn parts
+        const userParts = [];
+        if (payload.userText) userParts.push({ text: payload.userText });
         for (const dataUri of (payload.images || [])) {
           try {
             const commaIdx = dataUri.indexOf(',');
             const mimeType = dataUri.substring(0, commaIdx).split(':')[1].split(';')[0];
             const data = dataUri.substring(commaIdx + 1);
-            ws.send(JSON.stringify({
-              realtimeInput: { mediaChunks: [{ mimeType, data }] }
-            }));
+            userParts.push({ inlineData: { mimeType, data } });
           } catch(e) { /* skip bad image */ }
+        }
+
+        // 3. Send user turn via clientContent with turnComplete:true to trigger response
+        if (userParts.length) {
+          ws.send(JSON.stringify({
+            clientContent: {
+              turns: [{ role: 'user', parts: userParts }],
+              turnComplete: true
+            }
+          }));
         }
         return;
       }
