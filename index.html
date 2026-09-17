@@ -3635,8 +3635,12 @@ async function _callGeminiLive(payload) {
       let msg;
       try { msg = JSON.parse(event.data); } catch(e) { return; }
 
+      // DEBUG: log every server message
+      console.log('[GeminiLive] msg:', JSON.stringify(msg).substring(0, 500));
+
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
+        console.log('[GeminiLive] setupComplete received, sending content');
 
         // Build all turns: history + current user turn in one clientContent message
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
@@ -3660,18 +3664,21 @@ async function _callGeminiLive(payload) {
         if (userParts.length) turns.push({ role: 'user', parts: userParts });
         else turns.push({ role: 'user', parts: [{ text: '' }] });
 
-        // Single clientContent with all turns + turnComplete:true
-        ws.send(JSON.stringify({
-          clientContent: { turns, turnComplete: true }
-        }));
+        const sendMsg = { clientContent: { turns, turnComplete: true } };
+        console.log('[GeminiLive] sending:', JSON.stringify(sendMsg).substring(0, 300));
+        ws.send(JSON.stringify(sendMsg));
         return;
       }
 
       if (msg.serverContent) {
         const sc = msg.serverContent;
-        if (sc.outputTranscription?.text) {
-          acc += sc.outputTranscription.text;
-          Bridge.onCustomModelPartialResponse(acc);
+        console.log('[GeminiLive] serverContent keys:', Object.keys(sc));
+        if (sc.outputTranscription) {
+          console.log('[GeminiLive] outputTranscription:', JSON.stringify(sc.outputTranscription));
+          if (sc.outputTranscription.text) {
+            acc += sc.outputTranscription.text;
+            Bridge.onCustomModelPartialResponse(acc);
+          }
         }
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
@@ -3680,13 +3687,13 @@ async function _callGeminiLive(payload) {
             Bridge.onCustomModelPartialResponse(acc);
           }
         }
-        // generationComplete: model done generating, collect remaining transcription
         if (sc.generationComplete) {
+          console.log('[GeminiLive] generationComplete, acc:', acc);
           if (turnTimer) clearTimeout(turnTimer);
           turnTimer = setTimeout(finishTurn, 500);
         }
-        // turnComplete: definitive end of turn
         if (sc.turnComplete) {
+          console.log('[GeminiLive] turnComplete, acc:', acc);
           if (turnTimer) clearTimeout(turnTimer);
           clearTimeout(globalTimeout);
           turnTimer = setTimeout(finishTurn, 200);
