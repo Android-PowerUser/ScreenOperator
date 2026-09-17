@@ -2682,6 +2682,7 @@ async function _dispatchToModel(modelId, payload) {
     supportsScreenshot: !!modelDef.supportsScreenshot,
   });
   const prov = modelDef.apiProvider;
+  if (p.modelId === 'GEMINI_FLASH_LIVE_PREVIEW') return _callGeminiLive(p);
   if (prov === 'GOOGLE')     return _callGemini(p);
   if (prov === 'PUTER')      return _callPuter(p);
   if (prov === 'MISTRAL')    return _callMistral(p);
@@ -3535,6 +3536,141 @@ async function _callGemini(payload) {
   } finally {
     window.__customModelAbortController = null;
   }
+}
+
+/* ── GEMINI LIVE API (WebSocket / bidiGenerateContent) ───────── */
+// Used exclusively for GEMINI_FLASH_LIVE_PREVIEW (gemini-3.1-flash-live-preview).
+// Sends text via realtimeInput, requests TEXT responseModality only, so it
+// integrates cleanly into the existing chat bubble system without audio.
+async function _callGeminiLive(payload) {
+  const keys = _getKeysWithFallback('GOOGLE');
+  if (!keys.length) {
+    throw new Error('NO_KEY:No Google API key configured. Please add one in the menu.');
+  }
+  const apiKey = keys[Bridge.getCurrentKeyIndex('GOOGLE') || 0] || keys[0];
+  const modelName = payload.modelName; // e.g. gemini-3.1-flash-live-preview
+  const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+
+  return new Promise((resolve, reject) => {
+    let ws;
+    let acc = '';
+    let setupDone = false;
+    let settled = false;
+    let turnComplete = false;
+
+    const settle = (err) => {
+      if (settled) return;
+      settled = true;
+      try { ws && ws.close(); } catch(e) {}
+      window.__customModelAbortController = null;
+      if (err) reject(err); else resolve();
+    };
+
+    // Allow Bridge.stopGeneration() to close the socket
+    window.__customModelAbortController = {
+      abort: () => settle(new DOMException('Aborted', 'AbortError'))
+    };
+
+    try {
+      ws = new WebSocket(WS_URL);
+    } catch(e) {
+      settle(new Error('Gemini Live: WebSocket could not be created: ' + e.message));
+      return;
+    }
+
+    ws.onopen = () => {
+      // Build system instruction
+      const sysParts = _buildSystemParts(payload);
+
+      // Setup message: text-only response, include system instruction if any
+      const setupMsg = {
+        setup: {
+          model: `models/${modelName}`,
+          responseModalities: ['TEXT'],
+        }
+      };
+      if (sysParts.length) {
+        setupMsg.setup.systemInstruction = { parts: sysParts };
+      }
+      ws.send(JSON.stringify(setupMsg));
+    };
+
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch(e) { return; }
+
+      // After setup is acknowledged, send history + user message
+      if (!setupDone && msg.setupComplete !== undefined) {
+        setupDone = true;
+
+        // Send conversation history as client turns
+        const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
+        const merged = _mergeConsecutiveSameRole(sanitized);
+        for (const h of merged) {
+          ws.send(JSON.stringify({
+            clientContent: {
+              turns: [{ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text || '' }] }],
+              turnComplete: false
+            }
+          }));
+        }
+
+        // Send current user message
+        const userParts = [];
+        if (payload.userText) userParts.push({ text: payload.userText });
+        // Images: send as inline_data blobs
+        for (const dataUri of (payload.images || [])) {
+          try {
+            const commaIdx = dataUri.indexOf(',');
+            const mimeType = dataUri.substring(0, commaIdx).split(':')[1].split(';')[0];
+            const data = dataUri.substring(commaIdx + 1);
+            userParts.push({ inlineData: { mimeType, data } });
+          } catch(e) { /* skip bad image */ }
+        }
+        ws.send(JSON.stringify({
+          realtimeInput: { text: payload.userText || '' }
+        }));
+        return;
+      }
+
+      // Handle server content
+      if (msg.serverContent) {
+        const sc = msg.serverContent;
+        const parts = sc.modelTurn?.parts || [];
+        for (const part of parts) {
+          if (part.text) {
+            acc += part.text;
+            Bridge.onCustomModelPartialResponse(acc);
+          }
+        }
+        if (sc.turnComplete) {
+          turnComplete = true;
+          Bridge.onCustomModelFinalResponse(acc || '');
+          settle(null);
+        }
+      }
+
+      // goAway / session error
+      if (msg.goAway) {
+        settle(new Error('Gemini Live: session ended by server (goAway)'));
+      }
+    };
+
+    ws.onerror = (event) => {
+      settle(new Error('Gemini Live: WebSocket error'));
+    };
+
+    ws.onclose = (event) => {
+      if (!settled) {
+        if (acc) {
+          Bridge.onCustomModelFinalResponse(acc);
+          settle(null);
+        } else {
+          settle(new Error('Gemini Live: connection closed unexpectedly (code ' + event.code + ')'));
+        }
+      }
+    };
+  });
 }
 
 /* ── PUTER API ───────────────────────────────────────────────── */
