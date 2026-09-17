@@ -3606,11 +3606,13 @@ async function _callGeminiLive(payload) {
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
-          responseModalities: ['TEXT'],
+          generation_config: {
+            response_modalities: ['TEXT'],
+          },
         }
       };
       if (sysParts.length) {
-        setupMsg.setup.systemInstruction = { parts: sysParts };
+        setupMsg.setup.system_instruction = { parts: sysParts };
       }
       ws.send(JSON.stringify(setupMsg));
     };
