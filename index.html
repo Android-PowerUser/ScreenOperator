@@ -2098,7 +2098,9 @@ function hasRequiredApiKeyForCurrentModel() {
   // For Puter: Freedom subscribers never need to add their own key (Firebase provides keys),
   // so skip the key check when Freedom is active — even if Firebase keys haven't loaded yet.
   if (m.apiProvider === 'PUTER' && _isFreedomEntitled()) return true;
-  const keys = _getKeysWithFallback(m.apiProvider);
+  // GEMINI_LIVE uses the Google API key slot — map it before lookup.
+  const _resolvedProvider = m.apiProvider === 'GEMINI_LIVE' ? 'GOOGLE' : m.apiProvider;
+  const keys = _getKeysWithFallback(_resolvedProvider);
   return !!(keys && keys.length);
 }
 function navigateToChat() {
@@ -2122,7 +2124,7 @@ function navigateToChat() {
     // Preselect the popup on the provider that's missing a key, then bail
     // out - the user stays on the menu screen until a key is added (or a
     // different, already-configured model is chosen).
-    openApiKeyPopup(m && m.apiProvider === 'CUSTOM' ? ('CUSTOM:' + m.id) : (m ? m.apiProvider : currentProviderId));
+    openApiKeyPopup(m && m.apiProvider === 'CUSTOM' ? ('CUSTOM:' + m.id) : (m ? (m.apiProvider === 'GEMINI_LIVE' ? 'GOOGLE' : m.apiProvider) : currentProviderId));
     return;
   }
   history.pushState({screen:'chat'}, '');
