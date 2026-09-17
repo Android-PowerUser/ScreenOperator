@@ -3568,7 +3568,7 @@ async function _callGeminiLive(payload) {
     throw new Error('NO_KEY:No Google API key configured. Please add one in the menu.');
   }
   const apiKey = keys[Bridge.getCurrentKeyIndex('GOOGLE') || 0] || keys[0];
-  const modelName = payload.modelName; // e.g. gemini-3.1-flash-live-preview
+  const modelName = payload.modelName;
   const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
   return new Promise((resolve, reject) => {
@@ -3576,36 +3576,46 @@ async function _callGeminiLive(payload) {
     let acc = '';
     let setupDone = false;
     let settled = false;
-    let turnComplete = false;
+    let turnTimer = null;
 
     const settle = (err) => {
       if (settled) return;
       settled = true;
+      if (turnTimer) { clearTimeout(turnTimer); turnTimer = null; }
       try { ws && ws.close(); } catch(e) {}
       window.__customModelAbortController = null;
       if (err) reject(err); else resolve();
     };
 
-    // Allow Bridge.stopGeneration() to close the socket
+    const finishTurn = () => {
+      Bridge.onCustomModelFinalResponse(acc || '(no transcription)');
+      settle(null);
+    };
+
+    // Timeout: if no turnComplete within 30s after sending, give up
+    let globalTimeout = setTimeout(() => {
+      if (!settled) {
+        Bridge.onCustomModelFinalResponse(acc || '');
+        settle(null);
+      }
+    }, 30000);
+
     window.__customModelAbortController = {
-      abort: () => settle(new DOMException('Aborted', 'AbortError'))
+      abort: () => { clearTimeout(globalTimeout); settle(new DOMException('Aborted', 'AbortError')); }
     };
 
     try {
       ws = new WebSocket(WS_URL);
     } catch(e) {
+      clearTimeout(globalTimeout);
       settle(new Error('Gemini Live: WebSocket could not be created: ' + e.message));
       return;
     }
 
     ws.onopen = () => {
-      // Build system instruction
       const sysParts = _buildSystemParts(payload);
-
-      // Setup per official BidiGenerateContentSetup API reference:
-      // - responseModalities goes inside generationConfig
-      // - outputAudioTranscription is a direct setup field (not in generationConfig)
-      // - historyConfig.initialHistoryInClientContent enables clientContent for history
+      // Per API reference: responseModalities in generationConfig,
+      // outputAudioTranscription directly in setup (not in generationConfig)
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
@@ -3613,9 +3623,6 @@ async function _callGeminiLive(payload) {
             responseModalities: ['AUDIO'],
           },
           outputAudioTranscription: {},
-          historyConfig: {
-            initialHistoryInClientContent: true,
-          },
         }
       };
       if (sysParts.length) {
@@ -3628,24 +3635,18 @@ async function _callGeminiLive(payload) {
       let msg;
       try { msg = JSON.parse(event.data); } catch(e) { return; }
 
-      // After setup is acknowledged, send history then user message
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
 
-        // 1. Inject history via clientContent (enabled by historyConfig.initialHistoryInClientContent)
+        // Build all turns: history + current user turn in one clientContent message
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
-        if (merged.length) {
-          const turns = merged.map(h => ({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.text || '' }]
-          }));
-          ws.send(JSON.stringify({
-            clientContent: { turns: turns, turnComplete: false }
-          }));
-        }
+        const turns = merged.map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.text || '' }]
+        }));
 
-        // 2. Build user turn parts
+        // Add current user turn
         const userParts = [];
         if (payload.userText) userParts.push({ text: payload.userText });
         for (const dataUri of (payload.images || [])) {
@@ -3654,33 +3655,24 @@ async function _callGeminiLive(payload) {
             const mimeType = dataUri.substring(0, commaIdx).split(':')[1].split(';')[0];
             const data = dataUri.substring(commaIdx + 1);
             userParts.push({ inlineData: { mimeType, data } });
-          } catch(e) { /* skip bad image */ }
+          } catch(e) {}
         }
+        if (userParts.length) turns.push({ role: 'user', parts: userParts });
+        else turns.push({ role: 'user', parts: [{ text: '' }] });
 
-        // 3. Send user turn — always send turnComplete:true to trigger response
-        // Even if userParts is empty, we need turnComplete to start generation
-        const partsToSend = userParts.length ? userParts : [{ text: payload.userText || '' }];
+        // Single clientContent with all turns + turnComplete:true
         ws.send(JSON.stringify({
-          clientContent: {
-            turns: [{ role: 'user', parts: partsToSend }],
-            turnComplete: true
-          }
+          clientContent: { turns, turnComplete: true }
         }));
         return;
       }
 
-      // Handle server content
-      // Native audio model: text comes via outputTranscription.
-      // turnComplete can arrive before the last transcription chunk,
-      // so we defer settle() briefly to collect all pending transcription.
       if (msg.serverContent) {
         const sc = msg.serverContent;
-        // Collect transcription text
         if (sc.outputTranscription?.text) {
           acc += sc.outputTranscription.text;
           Bridge.onCustomModelPartialResponse(acc);
         }
-        // Fallback: modelTurn inline text (for future TEXT modality support)
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
           if (part.text) {
@@ -3688,33 +3680,35 @@ async function _callGeminiLive(payload) {
             Bridge.onCustomModelPartialResponse(acc);
           }
         }
+        // generationComplete: model done generating, collect remaining transcription
+        if (sc.generationComplete) {
+          if (turnTimer) clearTimeout(turnTimer);
+          turnTimer = setTimeout(finishTurn, 500);
+        }
+        // turnComplete: definitive end of turn
         if (sc.turnComplete) {
-          // Defer slightly so any trailing transcription messages arrive first
-          setTimeout(() => {
-            Bridge.onCustomModelFinalResponse(acc || '(no text response)');
-            settle(null);
-          }, 300);
+          if (turnTimer) clearTimeout(turnTimer);
+          clearTimeout(globalTimeout);
+          turnTimer = setTimeout(finishTurn, 200);
         }
       }
 
-      // goAway / session error
       if (msg.goAway) {
+        clearTimeout(globalTimeout);
         settle(new Error('Gemini Live: session ended by server (goAway)'));
       }
     };
 
-    ws.onerror = (event) => {
+    ws.onerror = () => {
+      clearTimeout(globalTimeout);
       settle(new Error('Gemini Live: WebSocket error'));
     };
 
     ws.onclose = (event) => {
+      clearTimeout(globalTimeout);
       if (!settled) {
-        if (acc) {
-          Bridge.onCustomModelFinalResponse(acc);
-          settle(null);
-        } else {
-          settle(new Error('Gemini Live: connection closed unexpectedly (code ' + event.code + ')'));
-        }
+        Bridge.onCustomModelFinalResponse(acc || '');
+        settle(null);
       }
     };
   });
