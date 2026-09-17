@@ -3623,22 +3623,21 @@ async function _callGeminiLive(payload) {
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
 
-        // Send conversation history as client turns
+        // Send conversation history + current user turn as a single clientContent
+        // with all turns. Each historical turn is complete; the final user turn
+        // triggers the model response (turnComplete: true on the last message).
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
-        for (const h of merged) {
-          ws.send(JSON.stringify({
-            clientContent: {
-              turns: [{ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text || '' }] }],
-              turnComplete: false
-            }
-          }));
-        }
 
-        // Send current user message
+        // Build turns array from history
+        const turns = merged.map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.text || '' }]
+        }));
+
+        // Build current user turn parts (text + optional images)
         const userParts = [];
         if (payload.userText) userParts.push({ text: payload.userText });
-        // Images: send as inline_data blobs
         for (const dataUri of (payload.images || [])) {
           try {
             const commaIdx = dataUri.indexOf(',');
@@ -3647,8 +3646,14 @@ async function _callGeminiLive(payload) {
             userParts.push({ inlineData: { mimeType, data } });
           } catch(e) { /* skip bad image */ }
         }
+        if (userParts.length) turns.push({ role: 'user', parts: userParts });
+
+        // Send all turns in one clientContent message with turnComplete: true
         ws.send(JSON.stringify({
-          realtimeInput: { text: payload.userText || '' }
+          clientContent: {
+            turns: turns,
+            turnComplete: true
+          }
         }));
         return;
       }
