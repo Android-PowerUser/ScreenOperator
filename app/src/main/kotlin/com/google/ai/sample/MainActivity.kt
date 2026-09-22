@@ -17,6 +17,7 @@ import android.provider.Settings
 import android.util.Log
 import android.media.projection.MediaProjectionManager
 import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionConfig
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -448,7 +449,13 @@ class MainActivity : ComponentActivity() {
         if (!isMediaProjectionManagerInitialized(caller)) {
             return
         }
-        val intent = mediaProjectionManager.createScreenCaptureIntent()
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            mediaProjectionManager.createScreenCaptureIntent(
+                MediaProjectionConfig.createConfigForDefaultDisplay()
+            )
+        } else {
+            mediaProjectionManager.createScreenCaptureIntent()
+        }
         launcher.launch(intent)
     }
 
@@ -1819,6 +1826,7 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
 
 
 
