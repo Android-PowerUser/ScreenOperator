@@ -1331,11 +1331,11 @@ const CUSTOM_PROVIDERS = [
   // dummy values: native code only uses them to recognize the model id and route
   // the request to onCustomModelRequest(). The actual WebSocket call happens in
   // _callGeminiLive() below, which reads the real Google API key via _getKeysWithFallback.
-  { id:'GEMINI_FLASH_LIVE_PREVIEW', displayName:'Gemini 3.1 Flash Live Preview',
-    endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-live-preview:generateContent',
-    modelName:'gemini-3.1-flash-live-preview', apiKeyHeader:'X-Goog-Api-Key', apiKeyPrefix:'',
-    supportsScreenshot:true, supportsTopK:false, supportsThinking:false, stream:false,
-    hint:'Supports images. Uses WebSocket (Live API).',
+  { id:'GEMINI_3_8_LIVE', displayName:'Gemini 3.8 Live',
+    endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-live:generateContent',
+    modelName:'gemini-3.8-live', apiKeyHeader:'X-Goog-Api-Key', apiKeyPrefix:'',
+    supportsScreenshot:false, supportsTopK:false, supportsThinking:false, stream:false,
+    hint:'Text-only. Uses WebSocket (Live API).',
     reuseProviderChip: 'GOOGLE' },
 ];
 
@@ -1372,7 +1372,7 @@ let MODELS = [
   { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
   { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'6.3 GB download required.',     strike:true },
   { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Supports images. Approx. 15 responses per day are free.', strike:true },
-  { id:'GEMINI_FLASH_LIVE_PREVIEW',displayName:'Gemini 3.1 Flash Live Preview',            modelName:'gemini-3.1-flash-live-preview',             apiProvider:'GEMINI_LIVE',supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports images. Uses WebSocket (Live API).',    strike:true },
+  { id:'GEMINI_3_8_LIVE',          displayName:'Gemini 3.8 Live',                          modelName:'gemini-3.8-live',                          apiProvider:'GEMINI_LIVE',supportsScreenshot:false, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Text-only. Uses WebSocket (Live API).',           strike:false },
 ];
 
 /* ════════════════════════════════════════════════════════
@@ -2695,7 +2695,7 @@ async function _dispatchToModel(modelId, payload) {
     supportsScreenshot: !!modelDef.supportsScreenshot,
   });
   const prov = modelDef.apiProvider;
-  if (p.modelId === 'GEMINI_FLASH_LIVE_PREVIEW') return _callGeminiLive(p);
+  if (p.modelId === 'GEMINI_3_8_LIVE') return _callGeminiLive(p);
   if (prov === 'GOOGLE')     return _callGemini(p);
   if (prov === 'PUTER')      return _callPuter(p);
   if (prov === 'MISTRAL')    return _callMistral(p);
@@ -3110,10 +3110,10 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   window.__lastPayload = payload;
 
   try {
-    if (payload.modelId === 'GEMINI_FLASH_LIVE_PREVIEW' || provider === 'GEMINI_LIVE') {
+    if (payload.modelId === 'GEMINI_3_8_LIVE' || provider === 'GEMINI_LIVE') {
       // Ensure modelName and Google key are resolved correctly
       payload.apiProvider = 'GEMINI_LIVE';
-      payload.modelName   = 'gemini-3.1-flash-live-preview';
+      payload.modelName   = 'gemini-3.8-live';
       await _callGeminiLive(payload);
     } else if (provider === 'GOOGLE') {
       await _callGemini(payload);
@@ -3559,16 +3559,17 @@ async function _callGemini(payload) {
 }
 
 /* ── GEMINI LIVE API (WebSocket / bidiGenerateContent) ───────── */
-// Used exclusively for GEMINI_FLASH_LIVE_PREVIEW (gemini-3.1-flash-live-preview).
-// Sends text via realtimeInput, requests TEXT responseModality only, so it
-// integrates cleanly into the existing chat bubble system without audio.
+// Used for GEMINI_3_8_LIVE (gemini-3.8-live).
+// Sends conversation via clientContent after setupComplete; TEXT modality only.
+// No audio — integrates cleanly into the existing chat bubble system.
+// Protocol: https://ai.google.dev/gemini-api/docs/live-api/get-started-websocket
 async function _callGeminiLive(payload) {
   const keys = _getKeysWithFallback('GOOGLE');
   if (!keys.length) {
     throw new Error('NO_KEY:No Google API key configured. Please add one in the menu.');
   }
   const apiKey = keys[Bridge.getCurrentKeyIndex('GOOGLE') || 0] || keys[0];
-  const modelName = payload.modelName;
+  const modelName = payload.modelName || 'gemini-3.8-live';
   const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
   return new Promise((resolve, reject) => {
@@ -3577,66 +3578,70 @@ async function _callGeminiLive(payload) {
     let setupDone = false;
     let settled = false;
     let turnTimer = null;
+    let globalTimeout = null;
 
     const settle = (err) => {
       if (settled) return;
       settled = true;
       if (turnTimer) { clearTimeout(turnTimer); turnTimer = null; }
-      try { ws && ws.close(); } catch(e) {}
+      if (globalTimeout) { clearTimeout(globalTimeout); globalTimeout = null; }
+      try { if (ws && ws.readyState < 2) ws.close(); } catch(e) {}
       window.__customModelAbortController = null;
       if (err) reject(err); else resolve();
     };
 
     const finishTurn = () => {
-      Bridge.onCustomModelFinalResponse(acc || '(no transcription)');
+      Bridge.onCustomModelFinalResponse(acc || '(empty response)');
       settle(null);
     };
 
-    // Timeout: if no turnComplete within 30s after sending, give up
-    let globalTimeout = setTimeout(() => {
+    // Hard timeout: 60 s total
+    globalTimeout = setTimeout(() => {
       if (!settled) {
-        Bridge.onCustomModelFinalResponse(acc || '');
-        settle(null);
+        if (acc) Bridge.onCustomModelFinalResponse(acc);
+        settle(new Error('Gemini Live: timed out waiting for response'));
       }
-    }, 30000);
+    }, 60000);
 
     window.__customModelAbortController = {
-      abort: () => { clearTimeout(globalTimeout); settle(new DOMException('Aborted', 'AbortError')); }
+      abort: () => settle(new DOMException('Aborted', 'AbortError'))
     };
 
     try {
       ws = new WebSocket(WS_URL);
     } catch(e) {
-      clearTimeout(globalTimeout);
-      settle(new Error('Gemini Live: WebSocket could not be created: ' + e.message));
+      settle(new Error('Gemini Live: could not create WebSocket: ' + e.message));
       return;
     }
 
+    // ── 1. On open: send BidiGenerateContentSetup ─────────────────────────
     ws.onopen = () => {
       const sysParts = _buildSystemParts(payload);
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
           generationConfig: {
-            responseModalities: ['TEXT'],
-          },
+            responseModalities: ['TEXT']
+          }
         }
       };
-      if (sysParts.length) {
+      if (sysParts && sysParts.length) {
         setupMsg.setup.systemInstruction = { parts: sysParts };
       }
       ws.send(JSON.stringify(setupMsg));
     };
 
+    // ── 2. Message handler ────────────────────────────────────────────────
     ws.onmessage = (event) => {
       let msg;
       try { msg = JSON.parse(event.data); } catch(e) { return; }
 
-      
-
+      // setupComplete arrives once; send conversation afterwards
       if (!setupDone && msg.setupComplete !== undefined) {
         setupDone = true;
 
+        // Build conversation turns from history + current user message.
+        // Merge consecutive same-role entries to satisfy the alternating requirement.
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
         const turns = merged.map(h => ({
@@ -3644,72 +3649,73 @@ async function _callGeminiLive(payload) {
           parts: [{ text: h.text || '' }]
         }));
 
-        const userParts = [];
-        if (payload.userText) userParts.push({ text: payload.userText });
-        for (const dataUri of (payload.images || [])) {
-          try {
-            const commaIdx = dataUri.indexOf(',');
-            const mimeType = dataUri.substring(0, commaIdx).split(':')[1].split(';')[0];
-            const data = dataUri.substring(commaIdx + 1);
-            userParts.push({ inlineData: { mimeType, data } });
-          } catch(e) {}
-        }
-        if (userParts.length) turns.push({ role: 'user', parts: userParts });
-        else turns.push({ role: 'user', parts: [{ text: '' }] });
+        // Current user turn — text only (inlineData images not supported in
+        // TEXT responseModality clientContent for gemini-3.8-live)
+        turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
 
-        const sendMsg = { clientContent: { turns, turnComplete: true } };
-        ws.send(JSON.stringify(sendMsg));
+        // BidiGenerateContentClientContent
+        ws.send(JSON.stringify({
+          clientContent: {
+            turns: turns,
+            turnComplete: true
+          }
+        }));
         return;
       }
 
+      // serverContent carries model text output
       if (msg.serverContent) {
         const sc = msg.serverContent;
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
-          if (part.text) {
+          if (typeof part.text === 'string' && part.text) {
             acc += part.text;
             Bridge.onCustomModelPartialResponse(acc);
           }
         }
-        if (sc.generationComplete) {
-          if (turnTimer) clearTimeout(turnTimer);
-          turnTimer = setTimeout(finishTurn, 500);
-        }
+
+        // turnComplete: model finished this turn
         if (sc.turnComplete) {
           if (turnTimer) clearTimeout(turnTimer);
-          clearTimeout(globalTimeout);
-          turnTimer = setTimeout(finishTurn, 200);
+          turnTimer = setTimeout(finishTurn, 150);
+          return;
+        }
+
+        // generationComplete: older / parallel signal — honour it too
+        if (sc.generationComplete) {
+          if (turnTimer) clearTimeout(turnTimer);
+          turnTimer = setTimeout(finishTurn, 300);
+          return;
         }
       }
 
+      // Server-reported error
       if (msg.error) {
-        clearTimeout(globalTimeout);
         const errMsg = msg.error.message || JSON.stringify(msg.error);
         settle(new Error('Gemini Live: ' + errMsg));
         return;
       }
 
+      // GoAway: server is about to close
       if (msg.goAway) {
-        clearTimeout(globalTimeout);
-        settle(new Error('Gemini Live: session ended by server (goAway)'));
+        if (acc && !settled) Bridge.onCustomModelFinalResponse(acc);
+        settle(null);
       }
     };
 
+    // ── 3. Transport errors ───────────────────────────────────────────────
     ws.onerror = () => {
-      clearTimeout(globalTimeout);
       settle(new Error('Gemini Live: WebSocket error'));
     };
 
-    ws.onclose = (event) => {
-      clearTimeout(globalTimeout);
+    ws.onclose = () => {
       if (!settled) {
-        Bridge.onCustomModelFinalResponse(acc || '');
+        if (acc) Bridge.onCustomModelFinalResponse(acc);
         settle(null);
       }
     };
   });
 }
-
 /* ── PUTER API ───────────────────────────────────────────────── */
 // Matches PuterApiClient.kt exactly: OpenAI-compatible endpoint, NON-streaming
 // (Kotlin's PuterRequest.stream was always hardcoded false), array-based message
@@ -10521,6 +10527,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
