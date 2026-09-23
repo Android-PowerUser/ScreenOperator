@@ -3576,6 +3576,14 @@ async function _callGeminiLive(payload) {
   const modelName = payload.modelName || 'gemini-3.8-live';
   const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
+  // History budget: gemini-3.8-live opens a FRESH session for every request
+  // (no session resumption), so old turns only burn quota/tokens without
+  // adding useful context. ScreenOperator histories with "Screen elements"
+  // dumps can grow to several MB, and the server drops quota-blowing
+  // requests by closing the socket (1011). Keep only the most recent turns
+  // that fit this budget (~25k tokens at ~4 chars/token).
+  const HISTORY_CHAR_BUDGET = 100000;
+
   return new Promise((resolve, reject) => {
     let ws;
     let acc = '';
@@ -3599,11 +3607,16 @@ async function _callGeminiLive(payload) {
       settle(null);
     };
 
-    // Hard timeout: 60 s total
+    // Hard timeout: 60 s total. Deliver any partial content we already have;
+    // only reject (clear the "Loading" state with an error) if we got nothing.
     globalTimeout = setTimeout(() => {
       if (!settled) {
-        if (acc) Bridge.onCustomModelFinalResponse(acc);
-        settle(new Error('Gemini Live: timed out waiting for response'));
+        if (acc) {
+          Bridge.onCustomModelFinalResponse(acc);
+          settle(null);
+        } else {
+          settle(new Error('Gemini Live: timed out waiting for response'));
+        }
       }
     }, 60000);
 
@@ -3652,6 +3665,19 @@ async function _callGeminiLive(payload) {
         // Merge consecutive same-role entries to satisfy the alternating requirement.
         const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
         const merged = _mergeConsecutiveSameRole(sanitized);
+
+        // Trim the OLDEST turns beyond the char budget (most recent history is
+        // the useful context for a fresh Live session; see HISTORY_CHAR_BUDGET).
+        let histChars = 0;
+        for (const h of merged) histChars += (h.text || '').length;
+        while (histChars > HISTORY_CHAR_BUDGET && merged.length > 1) {
+          histChars -= (merged[0].text || '').length;
+          merged.shift();
+        }
+        // The Live API requires the first turn to be from the user — drop any
+        // leading model turns that may be left after trimming.
+        while (merged.length && merged[0].role !== 'user') merged.shift();
+
         const turns = merged.map(h => ({
           role: h.role === 'user' ? 'user' : 'model',
           parts: [{ text: h.text || '' }]
@@ -3714,21 +3740,44 @@ async function _callGeminiLive(payload) {
 
       // GoAway: server is about to close
       if (msg.goAway) {
-        if (acc && !settled) Bridge.onCustomModelFinalResponse(acc);
-        settle(null);
+        if (acc && !settled) {
+          Bridge.onCustomModelFinalResponse(acc);
+          settle(null);
+        } else if (!settled) {
+          settle(new Error('Gemini Live: server sent goAway before a response'));
+        }
+        return;
       }
     };
 
     // ── 3. Transport errors ───────────────────────────────────────────────
+    // IMPORTANT: a close WITHOUT any received content must be surfaced as an
+    // error, never resolved silently — otherwise the chat UI spins in
+    // "Loading" forever, because native clears the loading state only on
+    // onCustomModelFinalResponse / onCustomModelError.
     ws.onerror = () => {
-      settle(new Error('Gemini Live: WebSocket error'));
+      // The close event always follows and carries code/reason; it settles
+      // the promise. This only guards the rare case where onclose never fires.
+      setTimeout(() => {
+        if (!settled) settle(new Error('Gemini Live: WebSocket error'));
+      }, 3000);
     };
 
-    ws.onclose = () => {
-      if (!settled) {
-        if (acc) Bridge.onCustomModelFinalResponse(acc);
+    ws.onclose = (ev) => {
+      if (settled) return;
+      if (acc) {
+        // Partial content arrived before the drop — deliver what we have.
+        Bridge.onCustomModelFinalResponse(acc);
         settle(null);
+        return;
       }
+      // No content at all: the server rejected or dropped the session before
+      // responding (e.g. 1007 setup rejected, 1011 quota exceeded, invalid
+      // key, network loss). Surface code + reason so the user sees WHY.
+      const code = (ev && ev.code) || 0;
+      const reason = (ev && ev.reason) || '';
+      settle(new Error('Gemini Live: connection closed before a response (code '
+        + code + (reason ? '): ' + reason : '') + ')'));
     };
   });
 }
