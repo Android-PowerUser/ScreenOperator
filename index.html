@@ -3560,8 +3560,12 @@ async function _callGemini(payload) {
 
 /* ── GEMINI LIVE API (WebSocket / bidiGenerateContent) ───────── */
 // Used for GEMINI_3_8_LIVE (gemini-3.8-live).
-// Sends conversation via clientContent after setupComplete; TEXT modality only.
-// No audio — integrates cleanly into the existing chat bubble system.
+// gemini-3.8-live is a NATIVE-AUDIO model: it only accepts
+// responseModalities ['AUDIO'] (['TEXT'] makes the server close the socket
+// with 1007 "response modalities (TEXT) is not supported by the model").
+// With outputAudioTranscription: {} the spoken reply is delivered as text in
+// serverContent.outputTranscription; the PCM audio chunks in
+// modelTurn.parts are ignored, so the chat UX stays text-only.
 // Protocol: https://ai.google.dev/gemini-api/docs/live-api/get-started-websocket
 async function _callGeminiLive(payload) {
   const keys = _getKeysWithFallback('GOOGLE');
@@ -3620,8 +3624,12 @@ async function _callGeminiLive(payload) {
       const setupMsg = {
         setup: {
           model: `models/${modelName}`,
+          // gemini-3.8-live is a native-audio model: AUDIO is the only
+          // supported output modality. outputAudioTranscription makes the
+          // spoken reply arrive as text in serverContent.outputTranscription.
+          outputAudioTranscription: {},
           generationConfig: {
-            responseModalities: ['TEXT']
+            responseModalities: ['AUDIO']
           }
         }
       };
@@ -3649,8 +3657,8 @@ async function _callGeminiLive(payload) {
           parts: [{ text: h.text || '' }]
         }));
 
-        // Current user turn — text only (inlineData images not supported in
-        // TEXT responseModality clientContent for gemini-3.8-live)
+        // Current user turn — text only (no screenshots: the Live entry has
+        // supportsScreenshot:false)
         turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
 
         // BidiGenerateContentClientContent
@@ -3663,9 +3671,17 @@ async function _callGeminiLive(payload) {
         return;
       }
 
-      // serverContent carries model text output
+      // serverContent carries the model output. For gemini-3.8-live the reply
+      // text arrives via outputTranscription (see setup above); PCM audio
+      // chunks in modelTurn.parts are ignored. Plain text parts are handled
+      // as fallback for other Live models.
       if (msg.serverContent) {
         const sc = msg.serverContent;
+        const transcribed = sc.outputTranscription && sc.outputTranscription.text;
+        if (typeof transcribed === 'string' && transcribed) {
+          acc += transcribed;
+          Bridge.onCustomModelPartialResponse(acc);
+        }
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
           if (typeof part.text === 'string' && part.text) {
