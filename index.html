@@ -1169,7 +1169,7 @@ const Bridge = {
   setConfirmedExpired:(v)=>{ getInAndroid() ? Android.setConfirmedExpired(v) : LS.setItem('trialConfirmedExpired',String(v)); },
   isAwaitingFirstInternetTime:()=> getInAndroid() ? Android.isAwaitingFirstInternetTime() : (LS.getItem('trialAwaitingInternet')===null ? true : LS.getItem('trialAwaitingInternet')==='true'),
   setAwaitingFirstInternetTime:(v)=>{ getInAndroid() ? Android.setAwaitingFirstInternetTime(v) : LS.setItem('trialAwaitingInternet',String(v)); },
-  getTrialDurationMs:()=> getInAndroid() ? Android.getTrialDurationMs() : parseInt(LS.getItem('trialDurationMsOverride')||'604800000',10),
+  getTrialDurationMs:()=> getInAndroid() ? Android.getTrialDurationMs() : parseInt(LS.getItem('trialDurationMsOverride')||'86400000',10),
   isFirstLaunchInfoShown:()=> getInAndroid() ? Android.isFirstLaunchInfoShown() : (LS.getItem('trial_first_launch_info_shown')==='true'),
   setFirstLaunchInfoShown:(v)=>{ getInAndroid() ? Android.setFirstLaunchInfoShown(v) : LS.setItem('trial_first_launch_info_shown',String(v)); },
 
@@ -6017,7 +6017,7 @@ window.onSystemMessageChanged = function(msg) {
 ════════════════════════════════════════════════════════ */
 const _trialUiDefaults = {
   firstLaunchDialogTitle: 'Trial Information',
-  firstLaunchDialogBody:  'You can try Screen Operator for 3 days before you have to subscribe to support the development of more features.',
+  firstLaunchDialogBody:  'You can try Screen Operator for 1 day before you have to subscribe to support the development of more features.',
   firstLaunchDialogButton: 'OK',
   trialExpiredDialogTitle: 'Trial period expired',
   trialExpiredDialogBody:  'Please support the development of the app so that you can continue using it \uD83C\uDF89',
@@ -6105,7 +6105,7 @@ function initiateGooglePlay() {
    Bridge.isPurchased() / Bridge.initiateDonation(). This engine only
    decides the free-trial window and reflects native purchase state.
 ════════════════════════════════════════════════════════ */
-const TRIAL_DEFAULT_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days, matches DEFAULT_TRIAL_DURATION_MS
+const TRIAL_DEFAULT_DURATION_MS = 1 * 24 * 60 * 60 * 1000; // 1 day, matches DEFAULT_TRIAL_DURATION_MS
 const TRIAL_TIME_API_URL = 'https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC';
 const TRIAL_CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes, matches CHECK_INTERVAL_MS
 const TRIAL_CONNECT_TIMEOUT_MS = 30000;
@@ -10520,6 +10520,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
