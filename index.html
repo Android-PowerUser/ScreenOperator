@@ -993,7 +993,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* LIVE-DIAG (temporär): Versionsmarker — zeigt, welche index.html-Version das
    Gerät wirklich läuft. Sichtbar via Toast bei Live-Modell-Auswahl,
    im Chat-Bubble (LIVE-DIAG-Zeilen) und im logcat (Chrome_WebView). */
-const SO_PAGE_VERSION = 'liveshot-2026-09-24-7';
+const SO_PAGE_VERSION = 'livecmd-2026-09-24-8';
 try { console.log('[LIVE-DIAG] PAGE LOADED v=' + SO_PAGE_VERSION); } catch (e) {}
 
 /* ════════════════════════════════════════════════════════
@@ -3807,8 +3807,24 @@ async function _callGeminiLive(payload) {
       if (err) reject(new Error(prefix + err.message)); else resolve();
     };
 
+    // Deliver the final text AND execute any commands it contains — the
+    // SAME _executeCommandsFromResponse path as every other model. Without
+    // this the Live answer is shown but never acted upon. The command parser
+    // works on plain text (it regex-scans for openApp("..."), click("..."),
+    // completed(), ...), so no thinking/answer wrapping is required.
+    const deliverFinal = (text) => {
+      Bridge.onCustomModelFinalResponse(diagPrefix() + text);
+      try {
+        _executeCommandsFromResponse(text).catch(err => {
+          _liveDiag('EXCEPTION bei Command-Execution: ' + (err && err.message ? err.message : String(err)));
+        });
+      } catch (err) {
+        _liveDiag('EXCEPTION bei Command-Execution: ' + (err && err.message ? err.message : String(err)));
+      }
+    };
+
     const finishTurn = () => {
-      Bridge.onCustomModelFinalResponse(diagPrefix() + (acc || '(empty response)'));
+      deliverFinal(acc || '(empty response)');
       settle(null);
     };
 
@@ -3817,7 +3833,7 @@ async function _callGeminiLive(payload) {
       if (settled) return;
       _liveDiag('TIMEOUT nach ' + (GLOBAL_TIMEOUT_MS / 1000) + ' s (gesamt)');
       if (acc) {
-        Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
+        deliverFinal(acc);
         settle(null);
         return;
       }
@@ -4000,7 +4016,7 @@ async function _callGeminiLive(payload) {
         meaningfulMessageSeen = true;
         _liveDiag('GoAway erhalten (Server schließt die Session)');
         if (acc && !settled) {
-          Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
+          deliverFinal(acc);
           settle(null);
         } else if (!settled) {
           settle(new Error('Gemini Live: server sent goAway before a response'));
@@ -4142,7 +4158,7 @@ async function _callGeminiLive(payload) {
         if (settled || reconnecting) return;
         if (acc) {
           // Partial content arrived before the drop — deliver what we have.
-          Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
+          deliverFinal(acc);
           settle(null);
           return;
         }
