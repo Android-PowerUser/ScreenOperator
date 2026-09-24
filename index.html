@@ -3716,7 +3716,29 @@ async function _callGeminiLive(payload) {
       clearTimers();
       try { if (ws && ws.readyState < 2) ws.close(); } catch(e) {}
       window.__customModelAbortController = null;
-      if (err) reject(err); else resolve();
+      if (err) {
+        // User Stop (or a new user message interrupting the turn) aborts
+        // through the abort controller with an AbortError. Reject with the
+        // ORIGINAL error object so its name reaches _dispatchToModel, which
+        // treats AbortError as "user tapped Stop" and stays silent.
+        // Re-wrapping it into a generic Error used to make the stop look
+        // like a model error and open the model-select fallback popup.
+        //
+        // Exactly like the other models: deliver the partial answer
+        // collected so far plus the stop marker as the final response.
+        // (No command execution on a stopped turn — same as the other
+        // providers' abort paths.)
+        if (err && err.name === 'AbortError') {
+          const stoppedText = acc || '';
+          Bridge.onCustomModelFinalResponse(
+            stoppedText + (stoppedText ? '\n\n' : '') + '[stopped by user]');
+          reject(err);
+          return;
+        }
+        reject(err instanceof Error ? err : new Error(err.message));
+      } else {
+        resolve();
+      }
     };
 
     // Deliver the final text AND execute any commands it contains — the
@@ -10834,7 +10856,6 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
-
 
 
 
