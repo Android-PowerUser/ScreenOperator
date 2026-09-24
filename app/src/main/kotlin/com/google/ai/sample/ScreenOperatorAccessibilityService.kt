@@ -322,9 +322,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Execute the command
         return when (command) {
             is Command.ClickButton -> {
+                val isMpTap = isMediaProjectionFastPath(command.buttonText)
                 executeAsyncCommandAction(
                     logMessage = "Clicking button with text: ${command.buttonText}",
-                    toastMessage = "Trying to click button: \"${command.buttonText}\""
+                    toastMessage = if (isMpTap) null else "Trying to click button: \"${command.buttonText}\""
                 ) {
                     findAndClickButtonByText(command.buttonText)
                 }
@@ -661,22 +662,22 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private fun executeSyncCommandAction(
         logMessage: String,
-        toastMessage: String,
+        toastMessage: String?,
         action: () -> Unit
     ): Boolean {
         Log.d(TAG, logMessage)
-        showToast(toastMessage, false)
+        if (toastMessage != null) showToast(toastMessage, false)
         action()
         return false
     }
 
     private fun executeAsyncCommandAction(
         logMessage: String,
-        toastMessage: String,
+        toastMessage: String?,
         action: () -> Unit
     ): Boolean {
         Log.d(TAG, logMessage)
-        showToast(toastMessage, false)
+        if (toastMessage != null) showToast(toastMessage, false)
         action()
         return true
     }
@@ -1228,6 +1229,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun findAndClickButtonByText(buttonText: String) {
         Log.d(TAG, "Finding and clicking button with text: $buttonText")
+        val isMp = isMediaProjectionFastPath(buttonText)
         
         // Refresh the root node
         refreshRootNode()
@@ -1252,7 +1254,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 Log.d(TAG, "Successfully clicked on button: $buttonText")
             } else {
                 Log.e(TAG, "Failed to click on button: $buttonText")
-                showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
+                if (!isMp) showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
                 
                 // Try alternative methods
                 tryAlternativeClickMethods(node, buttonText)
@@ -1390,6 +1392,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and clicking button with content description: $description")
+        val isMp = isMediaProjectionFastPath(description)
         
         // Search across all windows
         var node = findNodeByContentDescriptionAcrossWindows(description)
@@ -1409,7 +1412,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Successfully clicked on button with description: $description")
                 } else {
                     Log.e(TAG, "Failed to click on button with description: $description")
-                    showToast("Failed to click button with description \"$description\", trying alternative methods", true)
+                    if (!isMp) showToast("Failed to click button with description \"$description\", trying alternative methods", true)
                     tryAlternativeClickMethods(node, description)
                 }
                 
@@ -1427,6 +1430,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndClickButtonById(id: String) {
         Log.d(TAG, "Finding and clicking button with ID: $id")
+        val isMp = isMediaProjectionFastPath(id)
         
         var node = findNodeByIdAcrossWindows(id)
         if (node == null) {
@@ -1445,7 +1449,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Successfully clicked on button with ID: $id")
                 } else {
                     Log.e(TAG, "Failed to click on button with ID: $id")
-                    showToast("Failed to click button with ID \"$id\", trying alternative methods", true)
+                    if (!isMp) showToast("Failed to click button with ID \"$id\", trying alternative methods", true)
                     tryAlternativeClickMethods(node, id)
                 }
                 
@@ -1454,7 +1458,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }, clickDelay)
         } else {
             Log.e(TAG, "Could not find node with ID: $id")
-            showToast("Button with ID \"$id\" not found", true)
+            if (!isMp) showToast("Button with ID \"$id\" not found", true)
             scheduleNextCommandProcessing()
         }
     }
@@ -2955,4 +2959,5 @@ private fun openAppUsingLaunchIntent(packageName: String, appName: String): Bool
         }
     }
 }
+
 
