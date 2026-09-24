@@ -990,6 +990,12 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 
 
 <script>
+/* LIVE-DIAG (temporär): Versionsmarker — zeigt, welche index.html-Version das
+   Gerät wirklich läuft. Sichtbar via Toast bei Live-Modell-Auswahl,
+   im Chat-Bubble (LIVE-DIAG-Zeilen) und im logcat (Chrome_WebView). */
+const SO_PAGE_VERSION = 'livefix-2026-09-23-3';
+try { console.log('[LIVE-DIAG] PAGE LOADED v=' + SO_PAGE_VERSION); } catch (e) {}
+
 /* ════════════════════════════════════════════════════════
    ANDROID BRIDGE
    Android must expose window.Android via WebView.addJavascriptInterface
@@ -2989,6 +2995,46 @@ function _dismissModelSelectPopup() {
   if (reject) reject(new Error('Model selection cancelled by user'));
 }
 
+/* ── LIVE-DIAG (temporär) ───────────────────────────────────────────────────
+   Sichtbare Diagnose für "Gemini 3.8 Live hängt im Laden": Der Fortschritt
+   wird als [LIVE-DIAG]-Zeilen in die laufende AI-Bubble gestreamt, damit ein
+   Screenshot zeigt, an welcher Station der Request im echten Gerät stirbt.
+   Die Zeilen sind KEIN Modell-Output: _stripLiveDiag() entfernt sie vor jeder
+   History-Übertragung an ein Modell.
+═══════════════════════════════════════════════════════════════════════════ */
+let __liveDiag = null; // { lines: [...] } — aktiv, solange ein Live-Request läuft
+
+function _liveDiagStart() { __liveDiag = { lines: [] }; }
+
+function _liveDiag(line) {
+  if (!__liveDiag) return;
+  __liveDiag.lines.push(line);
+  try { console.log('[LIVE-DIAG] ' + line); } catch (e) {}
+  try {
+    Bridge.onCustomModelPartialResponse(_liveDiagHeader() );
+  } catch (e) {}
+}
+
+function _liveDiagHeader() {
+  if (!__liveDiag || !__liveDiag.lines.length) return '';
+  return '[LIVE-DIAG v' + SO_PAGE_VERSION + ']\n' + __liveDiag.lines.join('\n') +
+    '\n────────────────';
+}
+
+function _liveDiagStop() {
+  if (__liveDiag) console.log('[LIVE-DIAG] END (v' + SO_PAGE_VERSION + ')');
+  __liveDiag = null;
+}
+
+/* Entfernt den LIVE-DIAG-Block aus einem Nachrichten-Text (History-Säuberung). */
+function _stripLiveDiag(text) {
+  if (!text || text.indexOf('[LIVE-DIAG') !== 0) return text;
+  const marker = '\n────────────────';
+  const idx = text.indexOf(marker);
+  if (idx < 0) return text;
+  return text.slice(idx + marker.length).replace(/^\n+/, '');
+}
+
 /* Public entry point so native WebViewBridge code can show the model-select popup:
    Android.evaluateJavascript("window.triggerFallbackCircle('" + modelId + "')") */
 window.triggerFallbackCircle = function(modelId) {
@@ -3007,8 +3053,21 @@ window.onCustomModelRequest = async function(payloadJsonString) {
   try {
     payload = JSON.parse(payloadJsonString);
   } catch (e) {
+    // LIVE-DIAG: ein Parse-Fehlern zeigt, dass der native evaluateJavascript-
+    // Aufruf ankam, aber die Payload defekt ist (z. B. nicht escapete Zeichen).
+    try { console.log('[LIVE-DIAG] payload JSON.parse FEHLER: ' + e.message +
+      ' | rohes JSON (200): ' + String(payloadJsonString).slice(0, 200)); } catch (e2) {}
     Bridge.onCustomModelError('Invalid request payload: ' + e.message);
     return;
+  }
+  // LIVE-DIAG: Eingang für ALLE Modelle (logcat) + sichtbare Trail-Start für Live
+  try { console.log('[LIVE-DIAG] onCustomModelRequest: modelId=' + payload.modelId +
+    ' | history=' + (payload.history || []).length + ' Turns | userText=' +
+    (payload.userText || '').length + ' Zeichen'); } catch (e) {}
+  if (payload.modelId === 'GEMINI_3_8_LIVE') {
+    _liveDiagStart();
+    _liveDiag('Request im WebView empfangen (modelId=' + payload.modelId +
+      ', history=' + (payload.history || []).length + ' Turns)');
   }
 
   // System message and database entry headings are deliberately NOT part of the
@@ -3102,6 +3161,15 @@ window.onCustomModelRequest = async function(payloadJsonString) {
       }
     }
     payload.history = jsHistory;
+  }
+
+  // LIVE-DIAG: DIAG-Header aus der History entfernen, damit er nie an ein
+  // Modell zurückgesendet wird (wird in der AI-Bubble als Final-Response
+  // gespeichert und sonst in den nächsten Turn kopiert).
+  if (payload.history) {
+    payload.history = payload.history.map(h =>
+      (h && typeof h.text === 'string' && h.text.indexOf('[LIVE-DIAG') === 0)
+        ? { ...h, text: _stripLiveDiag(h.text) } : h);
   }
 
   const provider = payload.apiProvider || 'PUTER';
@@ -3591,19 +3659,28 @@ async function _callGeminiLive(payload) {
     let settled = false;
     let turnTimer = null;
     let globalTimeout = null;
+    let firstResponse = false;
+
+    // LIVE-DIAG: Header für Bubble/Final/Errors (leer, wenn kein Live-Request)
+    const diagPrefix = () => {
+      const h = _liveDiagHeader();
+      return h ? (h + '\n') : '';
+    };
 
     const settle = (err) => {
       if (settled) return;
       settled = true;
       if (turnTimer) { clearTimeout(turnTimer); turnTimer = null; }
       if (globalTimeout) { clearTimeout(globalTimeout); globalTimeout = null; }
+      const prefix = diagPrefix(); // vor _liveDiagStop() einfangen
       try { if (ws && ws.readyState < 2) ws.close(); } catch(e) {}
       window.__customModelAbortController = null;
-      if (err) reject(err); else resolve();
+      _liveDiagStop();
+      if (err) reject(new Error(prefix + err.message)); else resolve();
     };
 
     const finishTurn = () => {
-      Bridge.onCustomModelFinalResponse(acc || '(empty response)');
+      Bridge.onCustomModelFinalResponse(diagPrefix() + (acc || '(empty response)'));
       settle(null);
     };
 
@@ -3611,8 +3688,9 @@ async function _callGeminiLive(payload) {
     // only reject (clear the "Loading" state with an error) if we got nothing.
     globalTimeout = setTimeout(() => {
       if (!settled) {
+        _liveDiag('TIMEOUT nach 60 s');
         if (acc) {
-          Bridge.onCustomModelFinalResponse(acc);
+          Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
           settle(null);
         } else {
           settle(new Error('Gemini Live: timed out waiting for response'));
@@ -3626,7 +3704,9 @@ async function _callGeminiLive(payload) {
 
     try {
       ws = new WebSocket(WS_URL);
+      _liveDiag('WebSocket wird geöffnet (Key endet auf …' + (apiKey.slice(-4) || '???') + ')');
     } catch(e) {
+      _liveDiag('WebSocket konnte NICHT angelegt werden: ' + e.message);
       settle(new Error('Gemini Live: could not create WebSocket: ' + e.message));
       return;
     }
@@ -3650,6 +3730,7 @@ async function _callGeminiLive(payload) {
         setupMsg.setup.systemInstruction = { parts: sysParts };
       }
       ws.send(JSON.stringify(setupMsg));
+      _liveDiag('WebSocket OFFEN – Setup gesendet (model=' + modelName + ')');
     };
 
     // ── 2. Message handler ────────────────────────────────────────────────
@@ -3688,12 +3769,15 @@ async function _callGeminiLive(payload) {
         turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
 
         // BidiGenerateContentClientContent
-        ws.send(JSON.stringify({
+        const ccMsg = JSON.stringify({
           clientContent: {
             turns: turns,
             turnComplete: true
           }
-        }));
+        });
+        ws.send(ccMsg);
+        _liveDiag('setupComplete – ' + turns.length + ' Turns (' + ccMsg.length
+          + ' Zeichen) gesendet');
         return;
       }
 
@@ -3705,14 +3789,16 @@ async function _callGeminiLive(payload) {
         const sc = msg.serverContent;
         const transcribed = sc.outputTranscription && sc.outputTranscription.text;
         if (typeof transcribed === 'string' && transcribed) {
+          if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Transcription)'); }
           acc += transcribed;
-          Bridge.onCustomModelPartialResponse(acc);
+          Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
         }
         const parts = sc.modelTurn?.parts || [];
         for (const part of parts) {
           if (typeof part.text === 'string' && part.text) {
+            if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Text-Part)'); }
             acc += part.text;
-            Bridge.onCustomModelPartialResponse(acc);
+            Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
           }
         }
 
@@ -3734,14 +3820,16 @@ async function _callGeminiLive(payload) {
       // Server-reported error
       if (msg.error) {
         const errMsg = msg.error.message || JSON.stringify(msg.error);
+        _liveDiag('Server-Fehler: ' + errMsg);
         settle(new Error('Gemini Live: ' + errMsg));
         return;
       }
 
       // GoAway: server is about to close
       if (msg.goAway) {
+        _liveDiag('GoAway erhalten (Server schließt die Session)');
         if (acc && !settled) {
-          Bridge.onCustomModelFinalResponse(acc);
+          Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
           settle(null);
         } else if (!settled) {
           settle(new Error('Gemini Live: server sent goAway before a response'));
@@ -3756,6 +3844,7 @@ async function _callGeminiLive(payload) {
     // "Loading" forever, because native clears the loading state only on
     // onCustomModelFinalResponse / onCustomModelError.
     ws.onerror = () => {
+      _liveDiag('WebSocket-Fehler (onerror)');
       // The close event always follows and carries code/reason; it settles
       // the promise. This only guards the rare case where onclose never fires.
       setTimeout(() => {
@@ -3764,18 +3853,19 @@ async function _callGeminiLive(payload) {
     };
 
     ws.onclose = (ev) => {
+      const code = (ev && ev.code) || 0;
+      const reason = (ev && ev.reason) || '';
+      _liveDiag('WebSocket GESCHLOSSEN: code=' + code + (reason ? ' | ' + reason : ''));
       if (settled) return;
       if (acc) {
         // Partial content arrived before the drop — deliver what we have.
-        Bridge.onCustomModelFinalResponse(acc);
+        Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
         settle(null);
         return;
       }
       // No content at all: the server rejected or dropped the session before
       // responding (e.g. 1007 setup rejected, 1011 quota exceeded, invalid
       // key, network loss). Surface code + reason so the user sees WHY.
-      const code = (ev && ev.code) || 0;
-      const reason = (ev && ev.reason) || '';
       settle(new Error('Gemini Live: connection closed before a response (code '
         + code + (reason ? '): ' + reason : '') + ')'));
     };
@@ -5853,6 +5943,15 @@ function _startModelDownload(modelId) {
 }
 
 function selectModel(id) {
+  // LIVE-DIAG (temporär): bestätigt per Toast, dass (a) die Seite wirklich
+  // neu ist (Versionsnummer) und (b) die JS-Seite live ist — Basis zur
+  // Einordnung, ob ein Live-Request im WebView ankommt.
+  if (id === 'GEMINI_3_8_LIVE') {
+    try {
+      console.log('[LIVE-DIAG] selectModel: Gemini 3.8 Live ausgewählt (v' + SO_PAGE_VERSION + ')');
+      if (getInAndroid()) Bridge.showToast('[LIVE-DIAG] Seite v' + SO_PAGE_VERSION + ' aktiv – Modell: Gemini 3.8 Live', true);
+    } catch (e) {}
+  }
   if (id === 'HUMAN_EXPERT' && !Bridge.isPurchased()) {
     openHumanExpertPopup();
     return;
