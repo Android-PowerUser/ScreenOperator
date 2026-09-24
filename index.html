@@ -993,7 +993,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* LIVE-DIAG (temporär): Versionsmarker — zeigt, welche index.html-Version das
    Gerät wirklich läuft. Sichtbar via Toast bei Live-Modell-Auswahl,
    im Chat-Bubble (LIVE-DIAG-Zeilen) und im logcat (Chrome_WebView). */
-const SO_PAGE_VERSION = 'liveretry-2026-09-24-4';
+const SO_PAGE_VERSION = 'liveretry2-2026-09-24-5';
 try { console.log('[LIVE-DIAG] PAGE LOADED v=' + SO_PAGE_VERSION); } catch (e) {}
 
 /* ════════════════════════════════════════════════════════
@@ -3635,13 +3635,25 @@ async function _callGemini(payload) {
 // serverContent.outputTranscription; the PCM audio chunks in
 // modelTurn.parts are ignored, so the chat UX stays text-only.
 //
-// Robustness (mobile networks): a stuck session (socket open, but the
-// server never sends setupComplete) is detected by a 15 s setup watchdog
-// and retried with a FRESH WebSocket (max 3 attempts). Abnormal closes
-// (1006 network, 1011/1013 overload) before any content are retried too.
-// The 120 s overall timeout ends with a small REST network probe so the
-// error message tells whether the device can reach Google at all.
+// Robustness (mobile networks):
+// - 15 s setup watchdog: no clientContent sent within 15 s -> close + retry
+//   with a FRESH WebSocket (max 3 attempts). The watchdog is disarmed ONLY
+//   when clientContent actually goes out — any other server message
+//   (keep-alive "{}", sessionResumptionUpdate, usageMetadata, ...) must NOT
+//   silence it. (Device finding 2026-09-24: a non-setupComplete message
+//   arriving early had silently disabled the watchdog -> 120 s of nothing.)
+// - 60 s response watchdog: clientContent sent but no serverContent arrives
+//   -> same retry procedure.
+// - abnormal closes (1006 network, 1011/1013 overload) before any MEANINGFUL
+//   content are retried too.
+// - 180 s overall timeout (covers all retries); on final failure a small REST
+//   probe is appended to the error so the screenshot tells whether the device
+//   can reach Google at all.
+// - EVERY server message is logged (first 3 per type) and the whole handler
+//   runs inside try/catch: no exception can ever be swallowed silently.
 // Protocol: https://ai.google.dev/gemini-api/docs/live-api/get-started-websocket
+// Server message types: setupComplete | serverContent | toolCall |
+//   toolCallCancellation | goAway | sessionResumptionUpdate (+ usageMetadata)
 
 /* Small, free REST call: proves the device can reach the Gemini API at all
    (used in the error path after the overall timeout, LIVE-DIAG). */
@@ -3672,21 +3684,41 @@ async function _callGeminiLive(payload) {
   // that fit this budget (~25k tokens at ~4 chars/token).
   const HISTORY_CHAR_BUDGET = 100000;
 
-  const SETUP_TIMEOUT_MS = 15000; // no setupComplete within 15 s -> stuck
-  const MAX_ATTEMPTS = 3;         // fresh WebSocket per attempt
+  const SETUP_TIMEOUT_MS = 15000;  // no clientContent sent within 15 s -> stuck
+  const RESPONSE_TIMEOUT_MS = 60000; // no first server answer within 60 s -> stuck
+  const MAX_ATTEMPTS = 3;           // fresh WebSocket per attempt
+  const GLOBAL_TIMEOUT_MS = 180000; // covers all retries + a long answer
+
+  // LIVE-DIAG: history shape (catches blown-out / malformed turns)
+  try {
+    const hs = (Array.isArray(payload.history) ? payload.history : []);
+    let tot = 0;
+    const sizes = [];
+    for (const h of hs) {
+      const t = (h && typeof h.text === 'string') ? h.text.length : 0;
+      tot += t;
+      sizes.push(((h && h.role) || '?').charAt(0) + ':' + t);
+    }
+    _liveDiag('History-Detail: ' + hs.length + ' Turns, gesamt ' + tot + ' Zeichen (letzte: '
+      + (sizes.slice(-6).join(' ') || 'keine') + ')');
+  } catch (e) {
+    _liveDiag('History-Detail: ungueltige History-Struktur (' + (e && e.message ? e.message : e) + ')');
+  }
 
   return new Promise((resolve, reject) => {
     let ws;
     let acc = '';
-    let setupDone = false;
     let settled = false;
     let turnTimer = null;
     let globalTimeout = null;
     let setupTimer = null;
-    let firstMessageSeen = false;
+    let responseTimer = null;
+    let clientContentSent = false;
+    let meaningfulMessageSeen = false;
     let reconnecting = false;
     let attempt = 0;
     let firstResponse = false;
+    const msgSeen = {}; // per label: how often already logged
 
     // LIVE-DIAG: Header für Bubble/Final/Errors (leer, wenn kein Live-Request)
     const diagPrefix = () => {
@@ -3698,6 +3730,7 @@ async function _callGeminiLive(payload) {
       if (turnTimer) { clearTimeout(turnTimer); turnTimer = null; }
       if (globalTimeout) { clearTimeout(globalTimeout); globalTimeout = null; }
       if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
+      if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
     };
 
     const settle = (err) => {
@@ -3716,10 +3749,10 @@ async function _callGeminiLive(payload) {
       settle(null);
     };
 
-    // Overall limit: 120 s (covers retries + a long answer).
+    // Overall limit: covers all retries + a long answer.
     globalTimeout = setTimeout(() => {
       if (settled) return;
-      _liveDiag('TIMEOUT nach 120 s (gesamt)');
+      _liveDiag('TIMEOUT nach ' + (GLOBAL_TIMEOUT_MS / 1000) + ' s (gesamt)');
       if (acc) {
         Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
         settle(null);
@@ -3728,12 +3761,44 @@ async function _callGeminiLive(payload) {
       _liveDiag('Netzwerk-Check läuft (kleiner REST-Request an Google)…');
       _liveRestProbe(apiKey).then((r) => {
         _liveDiag('Netzwerk-Check: ' + r);
-        settle(new Error('Gemini Live: keine Antwort nach 120 s | Netzwerk-Check: ' + r));
+        settle(new Error('Gemini Live: keine Antwort nach ' + (GLOBAL_TIMEOUT_MS / 1000)
+          + ' s | Netzwerk-Check: ' + r));
       });
-    }, 120000);
+    }, GLOBAL_TIMEOUT_MS);
 
     window.__customModelAbortController = {
       abort: () => settle(new DOMException('Aborted', 'AbortError'))
+    };
+
+    // Short, stable label for any incoming raw message (LIVE-DIAG).
+    const describeMsg = (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw); } catch (e) {
+        return 'nicht-JSON (' + String(raw).length + ' Zeichen)';
+      }
+      if (typeof msg !== 'object' || msg === null) return 'nicht-Objekt';
+      const keys = Object.keys(msg);
+      if (!keys.length) return 'leere Nachricht {}';
+      if (msg.setupComplete !== undefined) return 'setupComplete';
+      if (msg.serverContent) {
+        const sc = msg.serverContent;
+        const bits = [];
+        if (sc.outputTranscription && sc.outputTranscription.text) bits.push('Transcription');
+        if (sc.modelTurn && sc.modelTurn.parts) bits.push('modelTurn(' + sc.modelTurn.parts.length + ')');
+        if (sc.inputTranscription) bits.push('inputTranscription');
+        if (sc.turnComplete) bits.push('turnComplete');
+        if (sc.generationComplete) bits.push('generationComplete');
+        if (sc.waitingForInput) bits.push('waitingForInput');
+        if (sc.interrupted) bits.push('interrupted');
+        return 'serverContent{' + (bits.length ? bits.join(',') : 'leer') + '}';
+      }
+      if (msg.error) return 'error: ' + (msg.error.message || 'unbekannt');
+      if (msg.goAway) return 'goAway';
+      if (msg.sessionResumptionUpdate) return 'sessionResumptionUpdate';
+      if (msg.toolCall) return 'toolCall';
+      if (msg.toolCallCancellation) return 'toolCallCancellation';
+      if (msg.usageMetadata) return 'usageMetadata';
+      return 'unbekannt {keys: ' + keys.join(',') + '}';
     };
 
     // ── One connection attempt (fresh WebSocket + Setup) ─────────────────
@@ -3741,9 +3806,12 @@ async function _callGeminiLive(payload) {
       if (settled) return; // e.g. aborted or finished while a retry was pending
       attempt++;
       reconnecting = false;
-      firstMessageSeen = false;
-      setupDone = false;
-      if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; } // don't let a stale watchdog fire for the new attempt
+      meaningfulMessageSeen = false;
+      clientContentSent = false;
+      firstResponse = false;
+      Object.keys(msgSeen).forEach(k => delete msgSeen[k]);
+      if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
+      if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
 
       try {
         ws = new WebSocket(WS_URL);
@@ -3760,14 +3828,14 @@ async function _callGeminiLive(payload) {
       }
       _liveDiag('Versuch ' + attempt + '/' + MAX_ATTEMPTS + ': WebSocket wird geöffnet (Key endet auf …' + (apiKey.slice(-4) || '???') + ')');
 
-      // Setup watchdog: the server answers setupComplete in well under a
-      // second. If nothing arrives within 15 s the session is stuck (silent
-      // mobile-network stall observed on devices) — retry with a fresh WS.
+      // Setup watchdog: clientContent must go out within 15 s (setupComplete
+      // normally arrives in well under a second). Disarmed ONLY when
+      // clientContent is sent — any other message must not silence it.
       setupTimer = setTimeout(() => {
-        if (settled || setupDone || reconnecting) return;
+        if (settled || reconnecting || clientContentSent) return;
         if (attempt < MAX_ATTEMPTS) {
           reconnecting = true;
-          _liveDiag('Kein setupComplete nach 15 s (Versuch ' + attempt +
+          _liveDiag('Kein setupComplete nach ' + (SETUP_TIMEOUT_MS / 1000) + ' s (Versuch ' + attempt +
             '/' + MAX_ATTEMPTS + ') – Session wird neu verbunden…');
           try { ws.close(1000, 'setup-timeout'); } catch (e) {}
           setTimeout(tryConnect, 1000);
@@ -3779,130 +3847,179 @@ async function _callGeminiLive(payload) {
 
       // ── 1. On open: send BidiGenerateContentSetup ──────────────────────
       ws.onopen = () => {
-        const sysParts = _buildSystemParts(payload);
-        const setupMsg = {
-          setup: {
-            model: `models/${modelName}`,
-            // gemini-3.8-live is a native-audio model: AUDIO is the only
-            // supported output modality. outputAudioTranscription makes the
-            // spoken reply arrive as text in serverContent.outputTranscription.
-            outputAudioTranscription: {},
-            generationConfig: {
-              responseModalities: ['AUDIO']
+        try {
+          const sysParts = _buildSystemParts(payload);
+          const setupMsg = {
+            setup: {
+              model: `models/${modelName}`,
+              // gemini-3.8-live is a native-audio model: AUDIO is the only
+              // supported output modality. outputAudioTranscription makes the
+              // spoken reply arrive as text in serverContent.outputTranscription.
+              outputAudioTranscription: {},
+              generationConfig: {
+                responseModalities: ['AUDIO']
+              }
             }
+          };
+          if (sysParts && sysParts.length) {
+            setupMsg.setup.systemInstruction = { parts: sysParts };
           }
-        };
-        if (sysParts && sysParts.length) {
-          setupMsg.setup.systemInstruction = { parts: sysParts };
+          ws.send(JSON.stringify(setupMsg));
+          _liveDiag('Versuch ' + attempt + '/' + MAX_ATTEMPTS + ': WebSocket OFFEN – Setup gesendet (model=' + modelName + ')');
+        } catch (err) {
+          _liveDiag('EXCEPTION beim Setup: ' + (err && err.message ? err.message : String(err)));
+          if (attempt < MAX_ATTEMPTS) {
+            reconnecting = true;
+            try { ws.close(); } catch (e) {}
+            setTimeout(tryConnect, 1000);
+          } else {
+            settle(new Error('Gemini Live: EXCEPTION while preparing setup: ' + (err && err.message ? err.message : String(err))));
+          }
         }
-        ws.send(JSON.stringify(setupMsg));
-        _liveDiag('Versuch ' + attempt + '/' + MAX_ATTEMPTS + ': WebSocket OFFEN – Setup gesendet (model=' + modelName + ')');
       };
 
       // ── 2. Message handler ──────────────────────────────────────────────
       ws.onmessage = (event) => {
-        firstMessageSeen = true;
-        if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; } // server is alive
-        let msg;
-        try { msg = JSON.parse(event.data); } catch(e) { return; }
+        try {
+          const label = describeMsg(event.data);
+          const n = (msgSeen[label] = (msgSeen[label] || 0) + 1);
+          if (n <= 3) _liveDiag('Nachricht vom Server (' + n + '.): ' + label);
 
-        // setupComplete arrives once; send conversation afterwards
-        if (!setupDone && msg.setupComplete !== undefined) {
-          setupDone = true;
+          let msg;
+          try { msg = JSON.parse(event.data); } catch (e) { return; } // non-JSON: logged above
 
-          // Build conversation turns from history + current user message.
-          // Merge consecutive same-role entries to satisfy the alternating requirement.
-          const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
-          const merged = _mergeConsecutiveSameRole(sanitized);
+          // setupComplete arrives once; send conversation afterwards.
+          // THIS is the only message that may silence the setup watchdog.
+          if (msg.setupComplete !== undefined && !clientContentSent) {
+            if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
 
-          // Trim the OLDEST turns beyond the char budget (most recent history
-          // is the useful context for a fresh Live session; see HISTORY_CHAR_BUDGET).
-          let histChars = 0;
-          for (const h of merged) histChars += (h.text || '').length;
-          while (histChars > HISTORY_CHAR_BUDGET && merged.length > 1) {
-            histChars -= (merged[0].text || '').length;
-            merged.shift();
-          }
-          // The Live API requires the first turn to be from the user — drop
-          // any leading model turns that may be left after trimming.
-          while (merged.length && merged[0].role !== 'user') merged.shift();
+            // Build conversation turns from history + current user message.
+            // Merge consecutive same-role entries to satisfy the alternating requirement.
+            const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
+            const merged = _mergeConsecutiveSameRole(sanitized);
 
-          const turns = merged.map(h => ({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.text || '' }]
-          }));
-
-          // Current user turn — text only (no screenshots: the Live entry has
-          // supportsScreenshot:false)
-          turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
-
-          // BidiGenerateContentClientContent
-          const ccMsg = JSON.stringify({
-            clientContent: {
-              turns: turns,
-              turnComplete: true
+            // Trim the OLDEST turns beyond the char budget (most recent
+            // history is the useful context for a fresh Live session; see
+            // HISTORY_CHAR_BUDGET).
+            let histChars = 0;
+            for (const h of merged) histChars += (h.text || '').length;
+            while (histChars > HISTORY_CHAR_BUDGET && merged.length > 1) {
+              histChars -= (merged[0].text || '').length;
+              merged.shift();
             }
-          });
-          ws.send(ccMsg);
-          _liveDiag('setupComplete – ' + turns.length + ' Turns (' + ccMsg.length
-            + ' Zeichen) gesendet');
-          return;
-        }
+            // The Live API requires the first turn to be from the user — drop
+            // any leading model turns that may be left after trimming.
+            while (merged.length && merged[0].role !== 'user') merged.shift();
 
-        // serverContent carries the model output. For gemini-3.8-live the
-        // reply text arrives via outputTranscription (see setup above); PCM
-        // audio chunks in modelTurn.parts are ignored. Plain text parts are
-        // handled as fallback for other Live models.
-        if (msg.serverContent) {
-          const sc = msg.serverContent;
-          const transcribed = sc.outputTranscription && sc.outputTranscription.text;
-          if (typeof transcribed === 'string' && transcribed) {
-            if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Transcription)'); }
-            acc += transcribed;
-            Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
+            const turns = merged.map(h => ({
+              role: h.role === 'user' ? 'user' : 'model',
+              parts: [{ text: h.text || '' }]
+            }));
+
+            // Current user turn — text only (no screenshots: the Live entry
+            // has supportsScreenshot:false)
+            turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
+
+            // BidiGenerateContentClientContent
+            const ccMsg = JSON.stringify({
+              clientContent: {
+                turns: turns,
+                turnComplete: true
+              }
+            });
+            ws.send(ccMsg);
+            clientContentSent = true;
+            _liveDiag('setupComplete – ' + turns.length + ' Turns (' + ccMsg.length + ' Zeichen) gesendet');
+
+            // Response watchdog: the first answer normally arrives within
+            // seconds. If the session goes silent after clientContent, it is
+            // stuck the same way a missing setupComplete is -> retry.
+            responseTimer = setTimeout(() => {
+              if (settled || reconnecting || firstResponse) return;
+              if (attempt < MAX_ATTEMPTS) {
+                reconnecting = true;
+                _liveDiag('Keine Antwort nach ' + (RESPONSE_TIMEOUT_MS / 1000) + ' s (Versuch ' + attempt +
+                  '/' + MAX_ATTEMPTS + ') – Session wird neu verbunden…');
+                try { ws.close(1000, 'response-timeout'); } catch (e) {}
+                setTimeout(tryConnect, 1000);
+              } else {
+                settle(new Error('Gemini Live: Server sendet nach dem Gesprächsstart keine Antwort (3 Versuche)'));
+              }
+            }, RESPONSE_TIMEOUT_MS);
+            return;
           }
-          const parts = sc.modelTurn?.parts || [];
-          for (const part of parts) {
-            if (typeof part.text === 'string' && part.text) {
-              if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Text-Part)'); }
-              acc += part.text;
+
+          // serverContent carries the model output. For gemini-3.8-live the
+          // reply text arrives via outputTranscription (see setup above); PCM
+          // audio chunks in modelTurn.parts are ignored. Plain text parts are
+          // handled as fallback for other Live models.
+          if (msg.serverContent) {
+            meaningfulMessageSeen = true;
+            if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
+            const sc = msg.serverContent;
+            const transcribed = sc.outputTranscription && sc.outputTranscription.text;
+            if (typeof transcribed === 'string' && transcribed) {
+              if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Transcription)'); }
+              acc += transcribed;
               Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
             }
-          }
+            const parts = sc.modelTurn?.parts || [];
+            for (const part of parts) {
+              if (typeof part.text === 'string' && part.text) {
+                if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Text-Part)'); }
+                acc += part.text;
+                Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
+              }
+            }
 
-          // turnComplete: model finished this turn
-          if (sc.turnComplete) {
-            if (turnTimer) clearTimeout(turnTimer);
-            turnTimer = setTimeout(finishTurn, 150);
+            // turnComplete: model finished this turn
+            if (sc.turnComplete) {
+              if (turnTimer) clearTimeout(turnTimer);
+              turnTimer = setTimeout(finishTurn, 150);
+              return;
+            }
+
+            // generationComplete: older / parallel signal — honour it too
+            if (sc.generationComplete) {
+              if (turnTimer) clearTimeout(turnTimer);
+              turnTimer = setTimeout(finishTurn, 300);
+              return;
+            }
             return;
           }
 
-          // generationComplete: older / parallel signal — honour it too
-          if (sc.generationComplete) {
-            if (turnTimer) clearTimeout(turnTimer);
-            turnTimer = setTimeout(finishTurn, 300);
+          // Server-reported error
+          if (msg.error) {
+            meaningfulMessageSeen = true;
+            const errMsg = msg.error.message || JSON.stringify(msg.error);
+            _liveDiag('Server-Fehler: ' + errMsg);
+            settle(new Error('Gemini Live: ' + errMsg));
             return;
           }
-        }
 
-        // Server-reported error
-        if (msg.error) {
-          const errMsg = msg.error.message || JSON.stringify(msg.error);
-          _liveDiag('Server-Fehler: ' + errMsg);
-          settle(new Error('Gemini Live: ' + errMsg));
-          return;
-        }
-
-        // GoAway: server is about to close
-        if (msg.goAway) {
-          _liveDiag('GoAway erhalten (Server schließt die Session)');
-          if (acc && !settled) {
-            Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
-            settle(null);
-          } else if (!settled) {
-            settle(new Error('Gemini Live: server sent goAway before a response'));
+          // GoAway: server is about to close
+          if (msg.goAway) {
+            meaningfulMessageSeen = true;
+            _liveDiag('GoAway erhalten (Server schließt die Session)');
+            if (acc && !settled) {
+              Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
+              settle(null);
+            } else if (!settled) {
+              settle(new Error('Gemini Live: server sent goAway before a response'));
+            }
+            return;
           }
-          return;
+
+          // Informational messages: logged above via describeMsg, no action.
+          if (msg.sessionResumptionUpdate || msg.usageMetadata ||
+              msg.toolCallCancellation) {
+            return;
+          }
+          // toolCall: we do not register functions, so nothing to execute —
+          // logged above; keep the session alive and wait for turnComplete.
+        } catch (err) {
+          _liveDiag('EXCEPTION in Nachricht-Handler: ' + (err && err.message ? err.message : String(err)));
+          settle(new Error('Gemini Live: EXCEPTION while handling server message: ' + (err && err.message ? err.message : String(err))));
         }
       };
 
@@ -3931,9 +4048,10 @@ async function _callGeminiLive(payload) {
           settle(null);
           return;
         }
-        // Retry only for transient conditions BEFORE any content:
+        // Retry only for transient conditions BEFORE any meaningful content:
         // 1006 = abnormal closure (network), 1011/1013 = server overload.
-        if (!firstMessageSeen && (code === 1006 || code === 1011 || code === 1013)
+        // (Keep-alive pings do NOT count as meaningful content.)
+        if (!meaningfulMessageSeen && (code === 1006 || code === 1011 || code === 1013)
             && attempt < MAX_ATTEMPTS) {
           _liveDiag('Neuer Versuch wegen Verbindungsabbruch (Versuch ' + (attempt + 1) +
             '/' + MAX_ATTEMPTS + ')…');
