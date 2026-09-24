@@ -993,7 +993,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* LIVE-DIAG (temporär): Versionsmarker — zeigt, welche index.html-Version das
    Gerät wirklich läuft. Sichtbar via Toast bei Live-Modell-Auswahl,
    im Chat-Bubble (LIVE-DIAG-Zeilen) und im logcat (Chrome_WebView). */
-const SO_PAGE_VERSION = 'liveretry3-2026-09-24-6';
+const SO_PAGE_VERSION = 'liveshot-2026-09-24-7';
 try { console.log('[LIVE-DIAG] PAGE LOADED v=' + SO_PAGE_VERSION); } catch (e) {}
 
 /* ════════════════════════════════════════════════════════
@@ -1340,8 +1340,8 @@ const CUSTOM_PROVIDERS = [
   { id:'GEMINI_3_8_LIVE', displayName:'Gemini 3.8 Live',
     endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-live:generateContent',
     modelName:'gemini-3.8-live', apiKeyHeader:'X-Goog-Api-Key', apiKeyPrefix:'',
-    supportsScreenshot:false, supportsTopK:false, supportsThinking:false, stream:false,
-    hint:'Text-only. Uses WebSocket (Live API).',
+    supportsScreenshot:true, supportsTopK:false, supportsThinking:false, stream:false,
+    hint:'Supports screenshots. Uses WebSocket (Live API).',
     reuseProviderChip: 'GOOGLE' },
 ];
 
@@ -1378,7 +1378,7 @@ let MODELS = [
   { id:'GEMMA_3_27B_IT',           displayName:'Gemma 3 27B IT',                           modelName:'gemma-3-27b-it',                           apiProvider:'GOOGLE',    supportsScreenshot:false, supportsTopK:true,  supportsThinking:false, isOffline:false, hint:"Google doesn't support screenshots for this model.", strike:true },
   { id:'QWEN3_5_4B_OFFLINE',       displayName:'Qwen3.5 4B (offline)',                     modelName:'qwen3.5-4b-offline',                       apiProvider:'GOOGLE',    supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:true,  hint:'6.3 GB download required.',     strike:true },
   { id:'CLOUDFLARE_KIMI_K2_6',     displayName:'Kimi K2.6 (Cloudflare)',                   modelName:'@cf/moonshotai/kimi-k2.6',                 apiProvider:'CLOUDFLARE',supportsScreenshot:true,  supportsTopK:true,  supportsThinking:false, isOffline:false, hint:'Supports images. Approx. 15 responses per day are free.', strike:true },
-  { id:'GEMINI_3_8_LIVE',          displayName:'Gemini 3.8 Live',                          modelName:'gemini-3.8-live',                          apiProvider:'GEMINI_LIVE',supportsScreenshot:false, supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Text-only. Uses WebSocket (Live API).',           strike:false },
+  { id:'GEMINI_3_8_LIVE',          displayName:'Gemini 3.8 Live',                          modelName:'gemini-3.8-live',                          apiProvider:'GEMINI_LIVE',supportsScreenshot:true,  supportsTopK:false, supportsThinking:false, isOffline:false, hint:'Supports screenshots. Uses WebSocket (Live API).',  strike:false },
 ];
 
 /* ════════════════════════════════════════════════════════
@@ -3899,9 +3899,24 @@ async function _callGeminiLive(payload) {
           parts: [{ text: h.text || '' }]
         }));
 
-        // Current user turn — text only (no screenshots: the Live entry
-        // has supportsScreenshot:false)
-        turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
+        // Current user turn — screenshot (if the native side attached one,
+        // which it now does because the Live model entry has
+        // supportsScreenshot:true) as inlineData part(s) + the text.
+        // Image input for gemini-3.8-live is live-verified: the model
+        // answers about images sent exactly this way.
+        const userParts = [];
+        try {
+          (payload.images || []).forEach(uri => {
+            const im = /^data:([^;,]+)[^,]*base64,(.+)$/.exec(String(uri));
+            if (im) userParts.push({ inlineData: { mimeType: im[1], data: im[2] } });
+          });
+        } catch (e) { /* never break the turn because of a bad image */ }
+        userParts.push({ text: payload.userText || '' });
+        turns.push({ role: 'user', parts: userParts });
+        if (userParts.length > 1) {
+          _liveDiag('Screenshot angehängt (' + (userParts.length - 1)
+            + ' Bild' + (userParts.length > 2 ? 'er' : '') + ')');
+        }
 
         // BidiGenerateContentClientContent
         const ccMsg = JSON.stringify({
