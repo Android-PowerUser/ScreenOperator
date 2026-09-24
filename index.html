@@ -993,7 +993,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* LIVE-DIAG (temporär): Versionsmarker — zeigt, welche index.html-Version das
    Gerät wirklich läuft. Sichtbar via Toast bei Live-Modell-Auswahl,
    im Chat-Bubble (LIVE-DIAG-Zeilen) und im logcat (Chrome_WebView). */
-const SO_PAGE_VERSION = 'liveretry2-2026-09-24-5';
+const SO_PAGE_VERSION = 'liveretry3-2026-09-24-6';
 try { console.log('[LIVE-DIAG] PAGE LOADED v=' + SO_PAGE_VERSION); } catch (e) {}
 
 /* ════════════════════════════════════════════════════════
@@ -3635,13 +3635,17 @@ async function _callGemini(payload) {
 // serverContent.outputTranscription; the PCM audio chunks in
 // modelTurn.parts are ignored, so the chat UX stays text-only.
 //
+// MESSAGE DECODING (root cause found 2026-09-24 via the official reference
+// implementation gemini-live-api-examples/frontend/geminilive.js):
+// the Live API delivers its JSON messages as BINARY WebSocket frames. In a
+// browser/WebView a binary frame arrives as a Blob; JSON.parse(Blob) coerces
+// it to the 13-char string "[object Blob]" and fails. The reference handles
+// Blob / ArrayBuffer / string — we do the same (order-preserving queue).
+//
 // Robustness (mobile networks):
 // - 15 s setup watchdog: no clientContent sent within 15 s -> close + retry
-//   with a FRESH WebSocket (max 3 attempts). The watchdog is disarmed ONLY
-//   when clientContent actually goes out — any other server message
-//   (keep-alive "{}", sessionResumptionUpdate, usageMetadata, ...) must NOT
-//   silence it. (Device finding 2026-09-24: a non-setupComplete message
-//   arriving early had silently disabled the watchdog -> 120 s of nothing.)
+//   with a FRESH WebSocket (max 3 attempts). Disarmed ONLY when clientContent
+//   actually goes out — any other server message must not silence it.
 // - 60 s response watchdog: clientContent sent but no serverContent arrives
 //   -> same retry procedure.
 // - abnormal closes (1006 network, 1011/1013 overload) before any MEANINGFUL
@@ -3667,6 +3671,37 @@ function _liveRestProbe(apiKey) {
   }
 }
 
+/* Decode a raw WebSocket message payload (text frame string | binary frame
+   Blob/ArrayBuffer) into a UTF-8 string — mirrors the official reference
+   implementation (geminilive.js onReceiveMessage). */
+function _liveDecodeWsData(data) {
+  if (typeof data === 'string') {
+    return Promise.resolve({ text: data, frame: 'Text' });
+  }
+  const dec = (buf) => {
+    try { return new TextDecoder('utf-8').decode(buf); }
+    catch (e) { return String(data); }
+  };
+  try {
+    if (typeof Blob !== 'undefined' && data instanceof Blob) {
+      return data.text().then(t => ({ text: t, frame: 'Blob' }));
+    }
+    if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) {
+      return Promise.resolve({ text: dec(data), frame: 'ArrayBuffer' });
+    }
+  } catch (e) { /* fall through to duck-typing */ }
+  // Duck-typed fallback (covers Blob-like objects in special environments)
+  try {
+    if (data && typeof data.text === 'function') {
+      return data.text().then(t => ({ text: String(t), frame: 'Blob-like' }));
+    }
+    if (data && typeof data.arrayBuffer === 'function') {
+      return data.arrayBuffer().then(b => ({ text: dec(b), frame: 'Buffer-like' }));
+    }
+  } catch (e) { /* fall through */ }
+  return Promise.resolve({ text: String(data), frame: 'unknown(' + (data === null ? 'null' : typeof data) + ')' });
+}
+
 async function _callGeminiLive(payload) {
   const keys = _getKeysWithFallback('GOOGLE');
   if (!keys.length) {
@@ -3684,23 +3719,50 @@ async function _callGeminiLive(payload) {
   // that fit this budget (~25k tokens at ~4 chars/token).
   const HISTORY_CHAR_BUDGET = 100000;
 
-  const SETUP_TIMEOUT_MS = 15000;  // no clientContent sent within 15 s -> stuck
+  const SETUP_TIMEOUT_MS = 15000;   // no clientContent sent within 15 s -> stuck
   const RESPONSE_TIMEOUT_MS = 60000; // no first server answer within 60 s -> stuck
   const MAX_ATTEMPTS = 3;           // fresh WebSocket per attempt
   const GLOBAL_TIMEOUT_MS = 180000; // covers all retries + a long answer
 
-  // LIVE-DIAG: history shape (catches blown-out / malformed turns)
+  // Normalize the history into a real Array of {role, text} regardless of
+  // the shape it arrives in (native JSON, array-like, cross-realm array,
+  // even a JSON string).
+  const normalizeHistory = (h) => {
+    if (Array.isArray(h)) return h;
+    if (h && typeof h === 'object' && typeof h.length === 'number') {
+      const out = [];
+      try { for (let i = 0; i < h.length; i++) out.push(h[i]); } catch (e) { return []; }
+      return out;
+    }
+    if (typeof h === 'string') {
+      try { const p = JSON.parse(h); return Array.isArray(p) ? p : []; } catch (e) { return []; }
+    }
+    return [];
+  };
+  const histShape = (h) => {
+    try {
+      return typeof h + ' | ' + Object.prototype.toString.call(h) +
+        ' | isArray=' + Array.isArray(h) +
+        ' | ctor=' + (h && h.constructor && h.constructor.name ? h.constructor.name : '-') +
+        ' | len=' + (h ? h.length : 'n/a');
+    } catch (e) { return 'unlesbar'; }
+  };
+  const historyArr = normalizeHistory(payload.history);
+
+  // LIVE-DIAG: history shape (catches blown-out / malformed / wrong-typed turns)
   try {
-    const hs = (Array.isArray(payload.history) ? payload.history : []);
     let tot = 0;
     const sizes = [];
-    for (const h of hs) {
+    for (const h of historyArr) {
       const t = (h && typeof h.text === 'string') ? h.text.length : 0;
       tot += t;
       sizes.push(((h && h.role) || '?').charAt(0) + ':' + t);
     }
-    _liveDiag('History-Detail: ' + hs.length + ' Turns, gesamt ' + tot + ' Zeichen (letzte: '
+    _liveDiag('History-Detail: ' + historyArr.length + ' Turns, gesamt ' + tot + ' Zeichen (letzte: '
       + (sizes.slice(-6).join(' ') || 'keine') + ')');
+    if (!Array.isArray(payload.history)) {
+      _liveDiag('History-Shape (ungewöhnt!): ' + histShape(payload.history));
+    }
   } catch (e) {
     _liveDiag('History-Detail: ungueltige History-Struktur (' + (e && e.message ? e.message : e) + ')');
   }
@@ -3718,6 +3780,7 @@ async function _callGeminiLive(payload) {
     let reconnecting = false;
     let attempt = 0;
     let firstResponse = false;
+    let frameTypeSeen = '';
     const msgSeen = {}; // per label: how often already logged
 
     // LIVE-DIAG: Header für Bubble/Final/Errors (leer, wenn kein Live-Request)
@@ -3770,11 +3833,12 @@ async function _callGeminiLive(payload) {
       abort: () => settle(new DOMException('Aborted', 'AbortError'))
     };
 
-    // Short, stable label for any incoming raw message (LIVE-DIAG).
-    const describeMsg = (raw) => {
+    // Short, stable label for any decoded message (LIVE-DIAG).
+    const describeMsg = (text) => {
       let msg;
-      try { msg = JSON.parse(raw); } catch (e) {
-        return 'nicht-JSON (' + String(raw).length + ' Zeichen)';
+      try { msg = JSON.parse(text); } catch (e) {
+        return 'nicht-JSON (' + String(text).length + ' Zeichen: "'
+          + String(text).slice(0, 30) + '")';
       }
       if (typeof msg !== 'object' || msg === null) return 'nicht-Objekt';
       const keys = Object.keys(msg);
@@ -3801,6 +3865,143 @@ async function _callGeminiLive(payload) {
       return 'unbekannt {keys: ' + keys.join(',') + '}';
     };
 
+    // Process one fully decoded server message (all state logic lives here).
+    const handleMessageText = (text) => {
+      let msg;
+      try { msg = JSON.parse(text); } catch (e) { return; } // non-JSON: logged by caller
+
+      // setupComplete arrives once; send conversation afterwards.
+      // THIS is the only message that may silence the setup watchdog.
+      if (msg.setupComplete !== undefined && !clientContentSent) {
+        if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
+
+        // Build conversation turns from normalized history + current user
+        // message. Merge consecutive same-role entries to satisfy the
+        // alternating requirement.
+        const sanitized = _sanitizeHistoryForScreenElements(historyArr);
+        const merged = _mergeConsecutiveSameRole(sanitized);
+
+        // Trim the OLDEST turns beyond the char budget (most recent history
+        // is the useful context for a fresh Live session; see
+        // HISTORY_CHAR_BUDGET).
+        let histChars = 0;
+        for (const h of merged) histChars += (h.text || '').length;
+        while (histChars > HISTORY_CHAR_BUDGET && merged.length > 1) {
+          histChars -= (merged[0].text || '').length;
+          merged.shift();
+        }
+        // The Live API requires the first turn to be from the user — drop
+        // any leading model turns that may be left after trimming.
+        while (merged.length && merged[0].role !== 'user') merged.shift();
+
+        const turns = merged.map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.text || '' }]
+        }));
+
+        // Current user turn — text only (no screenshots: the Live entry
+        // has supportsScreenshot:false)
+        turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
+
+        // BidiGenerateContentClientContent
+        const ccMsg = JSON.stringify({
+          clientContent: {
+            turns: turns,
+            turnComplete: true
+          }
+        });
+        ws.send(ccMsg);
+        clientContentSent = true;
+        _liveDiag('setupComplete – ' + turns.length + ' Turns (' + ccMsg.length + ' Zeichen) gesendet');
+
+        // Response watchdog: the first answer normally arrives within
+        // seconds. If the session goes silent after clientContent, it is
+        // stuck the same way a missing setupComplete is -> retry.
+        responseTimer = setTimeout(() => {
+          if (settled || reconnecting || firstResponse) return;
+          if (attempt < MAX_ATTEMPTS) {
+            reconnecting = true;
+            _liveDiag('Keine Antwort nach ' + (RESPONSE_TIMEOUT_MS / 1000) + ' s (Versuch ' + attempt +
+              '/' + MAX_ATTEMPTS + ') – Session wird neu verbunden…');
+            try { ws.close(1000, 'response-timeout'); } catch (e) {}
+            setTimeout(tryConnect, 1000);
+          } else {
+            settle(new Error('Gemini Live: Server sendet nach dem Gesprächsstart keine Antwort (3 Versuche)'));
+          }
+        }, RESPONSE_TIMEOUT_MS);
+        return;
+      }
+
+      // serverContent carries the model output. For gemini-3.8-live the
+      // reply text arrives via outputTranscription (see setup above); PCM
+      // audio chunks in modelTurn.parts are ignored. Plain text parts are
+      // handled as fallback for other Live models.
+      if (msg.serverContent) {
+        meaningfulMessageSeen = true;
+        if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
+        const sc = msg.serverContent;
+        const transcribed = sc.outputTranscription && sc.outputTranscription.text;
+        if (typeof transcribed === 'string' && transcribed) {
+          if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Transcription)'); }
+          acc += transcribed;
+          Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
+        }
+        const parts = sc.modelTurn?.parts || [];
+        for (const part of parts) {
+          if (typeof part.text === 'string' && part.text) {
+            if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Text-Part)'); }
+            acc += part.text;
+            Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
+          }
+        }
+
+        // turnComplete: model finished this turn
+        if (sc.turnComplete) {
+          if (turnTimer) clearTimeout(turnTimer);
+          turnTimer = setTimeout(finishTurn, 150);
+          return;
+        }
+
+        // generationComplete: older / parallel signal — honour it too
+        if (sc.generationComplete) {
+          if (turnTimer) clearTimeout(turnTimer);
+          turnTimer = setTimeout(finishTurn, 300);
+          return;
+        }
+        return;
+      }
+
+      // Server-reported error
+      if (msg.error) {
+        meaningfulMessageSeen = true;
+        const errMsg = msg.error.message || JSON.stringify(msg.error);
+        _liveDiag('Server-Fehler: ' + errMsg);
+        settle(new Error('Gemini Live: ' + errMsg));
+        return;
+      }
+
+      // GoAway: server is about to close
+      if (msg.goAway) {
+        meaningfulMessageSeen = true;
+        _liveDiag('GoAway erhalten (Server schließt die Session)');
+        if (acc && !settled) {
+          Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
+          settle(null);
+        } else if (!settled) {
+          settle(new Error('Gemini Live: server sent goAway before a response'));
+        }
+        return;
+      }
+
+      // Informational messages: logged above via describeMsg, no action.
+      if (msg.sessionResumptionUpdate || msg.usageMetadata ||
+          msg.toolCallCancellation) {
+        return;
+      }
+      // toolCall: we do not register functions, so nothing to execute —
+      // logged above; keep the session alive and wait for turnComplete.
+    };
+
     // ── One connection attempt (fresh WebSocket + Setup) ─────────────────
     const tryConnect = () => {
       if (settled) return; // e.g. aborted or finished while a retry was pending
@@ -3812,6 +4013,10 @@ async function _callGeminiLive(payload) {
       Object.keys(msgSeen).forEach(k => delete msgSeen[k]);
       if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
       if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
+
+      // Order-preserving message pipeline: decode (async for binary frames)
+      // then process, strictly FIFO.
+      let decodeQueue = Promise.resolve();
 
       try {
         ws = new WebSocket(WS_URL);
@@ -3878,149 +4083,27 @@ async function _callGeminiLive(payload) {
         }
       };
 
-      // ── 2. Message handler ──────────────────────────────────────────────
+      // ── 2. Message handler (decode first — binary frames arrive as Blob)
       ws.onmessage = (event) => {
-        try {
-          const label = describeMsg(event.data);
+        decodeQueue = decodeQueue.then(() => {
+          return _liveDecodeWsData(event.data).catch(() => ({ text: String(event.data), frame: 'decode-error' }));
+        }).then((decoded) => {
+          if (settled) return;
+          const frameTag = (decoded.frame && decoded.frame !== frameTypeSeen) ? '[' + decoded.frame + '] ' : '';
+          if (decoded.frame && decoded.frame !== frameTypeSeen) {
+            frameTypeSeen = decoded.frame;
+            _liveDiag('Frame-Typ des Servers: ' + decoded.frame + (decoded.frame === 'Text' ? '' : ' (binär – dekodiert)'));
+          }
+          const label = describeMsg(decoded.text);
           const n = (msgSeen[label] = (msgSeen[label] || 0) + 1);
-          if (n <= 3) _liveDiag('Nachricht vom Server (' + n + '.): ' + label);
-
-          let msg;
-          try { msg = JSON.parse(event.data); } catch (e) { return; } // non-JSON: logged above
-
-          // setupComplete arrives once; send conversation afterwards.
-          // THIS is the only message that may silence the setup watchdog.
-          if (msg.setupComplete !== undefined && !clientContentSent) {
-            if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
-
-            // Build conversation turns from history + current user message.
-            // Merge consecutive same-role entries to satisfy the alternating requirement.
-            const sanitized = _sanitizeHistoryForScreenElements(payload.history || []);
-            const merged = _mergeConsecutiveSameRole(sanitized);
-
-            // Trim the OLDEST turns beyond the char budget (most recent
-            // history is the useful context for a fresh Live session; see
-            // HISTORY_CHAR_BUDGET).
-            let histChars = 0;
-            for (const h of merged) histChars += (h.text || '').length;
-            while (histChars > HISTORY_CHAR_BUDGET && merged.length > 1) {
-              histChars -= (merged[0].text || '').length;
-              merged.shift();
-            }
-            // The Live API requires the first turn to be from the user — drop
-            // any leading model turns that may be left after trimming.
-            while (merged.length && merged[0].role !== 'user') merged.shift();
-
-            const turns = merged.map(h => ({
-              role: h.role === 'user' ? 'user' : 'model',
-              parts: [{ text: h.text || '' }]
-            }));
-
-            // Current user turn — text only (no screenshots: the Live entry
-            // has supportsScreenshot:false)
-            turns.push({ role: 'user', parts: [{ text: payload.userText || '' }] });
-
-            // BidiGenerateContentClientContent
-            const ccMsg = JSON.stringify({
-              clientContent: {
-                turns: turns,
-                turnComplete: true
-              }
-            });
-            ws.send(ccMsg);
-            clientContentSent = true;
-            _liveDiag('setupComplete – ' + turns.length + ' Turns (' + ccMsg.length + ' Zeichen) gesendet');
-
-            // Response watchdog: the first answer normally arrives within
-            // seconds. If the session goes silent after clientContent, it is
-            // stuck the same way a missing setupComplete is -> retry.
-            responseTimer = setTimeout(() => {
-              if (settled || reconnecting || firstResponse) return;
-              if (attempt < MAX_ATTEMPTS) {
-                reconnecting = true;
-                _liveDiag('Keine Antwort nach ' + (RESPONSE_TIMEOUT_MS / 1000) + ' s (Versuch ' + attempt +
-                  '/' + MAX_ATTEMPTS + ') – Session wird neu verbunden…');
-                try { ws.close(1000, 'response-timeout'); } catch (e) {}
-                setTimeout(tryConnect, 1000);
-              } else {
-                settle(new Error('Gemini Live: Server sendet nach dem Gesprächsstart keine Antwort (3 Versuche)'));
-              }
-            }, RESPONSE_TIMEOUT_MS);
-            return;
+          if (n <= 3) _liveDiag('Nachricht vom Server (' + n + '.): ' + frameTag + label);
+          try {
+            handleMessageText(decoded.text);
+          } catch (err) {
+            _liveDiag('EXCEPTION in Nachricht-Handler: ' + (err && err.message ? err.message : String(err)));
+            settle(new Error('Gemini Live: EXCEPTION while handling server message: ' + (err && err.message ? err.message : String(err))));
           }
-
-          // serverContent carries the model output. For gemini-3.8-live the
-          // reply text arrives via outputTranscription (see setup above); PCM
-          // audio chunks in modelTurn.parts are ignored. Plain text parts are
-          // handled as fallback for other Live models.
-          if (msg.serverContent) {
-            meaningfulMessageSeen = true;
-            if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
-            const sc = msg.serverContent;
-            const transcribed = sc.outputTranscription && sc.outputTranscription.text;
-            if (typeof transcribed === 'string' && transcribed) {
-              if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Transcription)'); }
-              acc += transcribed;
-              Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
-            }
-            const parts = sc.modelTurn?.parts || [];
-            for (const part of parts) {
-              if (typeof part.text === 'string' && part.text) {
-                if (!firstResponse) { firstResponse = true; _liveDiag('Erste Antwort erhalten (Text-Part)'); }
-                acc += part.text;
-                Bridge.onCustomModelPartialResponse(diagPrefix() + acc);
-              }
-            }
-
-            // turnComplete: model finished this turn
-            if (sc.turnComplete) {
-              if (turnTimer) clearTimeout(turnTimer);
-              turnTimer = setTimeout(finishTurn, 150);
-              return;
-            }
-
-            // generationComplete: older / parallel signal — honour it too
-            if (sc.generationComplete) {
-              if (turnTimer) clearTimeout(turnTimer);
-              turnTimer = setTimeout(finishTurn, 300);
-              return;
-            }
-            return;
-          }
-
-          // Server-reported error
-          if (msg.error) {
-            meaningfulMessageSeen = true;
-            const errMsg = msg.error.message || JSON.stringify(msg.error);
-            _liveDiag('Server-Fehler: ' + errMsg);
-            settle(new Error('Gemini Live: ' + errMsg));
-            return;
-          }
-
-          // GoAway: server is about to close
-          if (msg.goAway) {
-            meaningfulMessageSeen = true;
-            _liveDiag('GoAway erhalten (Server schließt die Session)');
-            if (acc && !settled) {
-              Bridge.onCustomModelFinalResponse(diagPrefix() + acc);
-              settle(null);
-            } else if (!settled) {
-              settle(new Error('Gemini Live: server sent goAway before a response'));
-            }
-            return;
-          }
-
-          // Informational messages: logged above via describeMsg, no action.
-          if (msg.sessionResumptionUpdate || msg.usageMetadata ||
-              msg.toolCallCancellation) {
-            return;
-          }
-          // toolCall: we do not register functions, so nothing to execute —
-          // logged above; keep the session alive and wait for turnComplete.
-        } catch (err) {
-          _liveDiag('EXCEPTION in Nachricht-Handler: ' + (err && err.message ? err.message : String(err)));
-          settle(new Error('Gemini Live: EXCEPTION while handling server message: ' + (err && err.message ? err.message : String(err))));
-        }
+        });
       };
 
       // ── 3. Transport errors ─────────────────────────────────────────────
