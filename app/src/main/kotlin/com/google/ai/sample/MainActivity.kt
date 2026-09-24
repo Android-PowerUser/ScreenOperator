@@ -316,7 +316,6 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMediaProjectionPermissionDenied() {
         Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
-        Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_screen_capture_permission_denied", "Screen capture permission denied"), Toast.LENGTH_SHORT).show()
         resetExplicitScreenshotRequestFlagIfNeeded("explicit denial")
         _isMediaProjectionPermissionGranted.value = false
     }
@@ -341,7 +340,6 @@ class MainActivity : ComponentActivity() {
 
     private fun handleWebRtcMediaProjectionPermissionDenied() {
         Log.w(TAG, "WebRTC MediaProjection permission denied.")
-        Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_screen_capture_permission_denied", "Screen capture permission denied"), Toast.LENGTH_SHORT).show()
         onWebRtcMediaProjectionResult = null
     }
 
@@ -480,7 +478,6 @@ class MainActivity : ComponentActivity() {
             // This situation (service not running but takeAdditionalScreenshot called directly)
             // should ideally be handled by the caller checking isRunning() first.
             // If called from screenshotRequestHandler, it would have called requestMediaProjectionPermission instead.
-            Toast.makeText(this, com.google.ai.sample.util.UiStringsConfig.get("toast_screenshot_service_not_active", "Screenshot service not active. Please grant permission first."), Toast.LENGTH_LONG).show()
             // Optionally, trigger permission request again if appropriate for the use case.
             // requestMediaProjectionPermission() // This might be too aggressive if called from unexpected places.
         }
@@ -1826,6 +1823,7 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
 
 
 
