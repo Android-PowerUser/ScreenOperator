@@ -5495,6 +5495,10 @@ function parseCommandsFromText(rawText) {
     { re: /\bWait\(\s*(\d+)\s*\)/gi, type: 'WAIT', single: false,
       build: (m) => ({ type: 'WAIT', seconds: parseInt(m[1], 10) }) },
 
+    // Timeout – wait N seconds, then notify the AI that the command timed out
+    { re: /\btimeout\(\s*(\d+)\s*\)/gi, type: 'TIMEOUT', single: false,
+      build: (m) => ({ type: 'TIMEOUT', seconds: parseInt(m[1], 10) }) },
+
     // Navigation
     { re: /\bhome\(\)/gi, type: 'HOME', single: false, build: () => ({ type: 'HOME' }) },
     { re: /\bback\(\)/gi, type: 'BACK', single: false, build: () => ({ type: 'BACK' }) },
@@ -5862,6 +5866,11 @@ async function _executeSingleCommand(cmd) {
     case 'WAIT':
       await new Promise(r => setTimeout(r, (cmd.seconds || 1) * 1000));
       break;
+    case 'TIMEOUT':
+      await new Promise(r => setTimeout(r, (cmd.seconds || 1) * 1000));
+      Bridge.sendMessage('The command has timed out so write a new one.');
+      window.onGenerationStateChanged(true, false);
+      return; // stop executing further commands in this batch
     case 'RETRIEVE': {
       // retrieve() behaves like any other command (click, scroll, etc.):
       // - fetch the DB / AI-skill entry here in JS
@@ -5977,6 +5986,7 @@ function _cmdToString(cmd) {
     case 'COPY_CLIP':    return `copyToClipboard("${cmd.text}")`;
     case 'TOAST':        return `toast("${cmd.msg}")`;
     case 'WAIT':         return `Wait(${cmd.seconds})`;
+    case 'TIMEOUT':      return `timeout(${cmd.seconds})`;
     case 'RETRIEVE':     return `retrieve("${cmd.title}")`;
     case 'SCREENSHOT':   return 'takeScreenshot()';
     case 'COMPLETED':    return 'completed()';
