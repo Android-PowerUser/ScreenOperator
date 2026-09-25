@@ -3655,9 +3655,10 @@ async function _callGeminiLive(payload) {
   if (!keys.length) {
     throw new Error('NO_KEY:No Google API key configured. Please add one in the menu.');
   }
-  const apiKey = keys[Bridge.getCurrentKeyIndex('GOOGLE') || 0] || keys[0];
+  let keyIdx = Bridge.getCurrentKeyIndex('GOOGLE') || 0;
+  let apiKey = keys[keyIdx] || keys[0];
   const modelName = payload.modelName || 'gemini-3.8-live';
-  const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+  // WS_URL is computed per-attempt so key rotation is reflected in reconnects
 
   // History budget: gemini-3.8-live opens a FRESH session for every request
   // (no session resumption), so old turns only burn quota/tokens without
@@ -3930,6 +3931,8 @@ async function _callGeminiLive(payload) {
       // then process, strictly FIFO.
       let decodeQueue = Promise.resolve();
 
+      // Compute WS_URL here so key rotation (on quota errors) is reflected.
+      const WS_URL = ;
       try {
         ws = new WebSocket(WS_URL);
       } catch(e) {
@@ -4029,6 +4032,18 @@ async function _callGeminiLive(payload) {
         // (Keep-alive pings do NOT count as meaningful content.)
         if (!meaningfulMessageSeen && (code === 1006 || code === 1011 || code === 1013)
             && attempt < MAX_ATTEMPTS) {
+          // 1011 with a quota/billing reason -> rotate to the next Google key
+          // (same logic as _callGemini's key-error retry loop).
+          const reasonLower = (reason || '').toLowerCase();
+          const isQuotaClose = (code === 1011 || code === 1013) && keys.length > 1 &&
+            (reasonLower.includes('quota') || reasonLower.includes('exceeded') ||
+             reasonLower.includes('billing') || reasonLower.includes('429'));
+          if (isQuotaClose) {
+            keyIdx = (keyIdx + 1) % keys.length;
+            Bridge.setCurrentKeyIndex(keyIdx, 'GOOGLE');
+            apiKey = keys[keyIdx];
+            if (document.getElementById('popup-apikey')?.classList.contains('open') && currentProviderId === 'GOOGLE') renderKeyList();
+          }
           reconnecting = true;
           setTimeout(tryConnect, 1500);
           return;
