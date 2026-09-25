@@ -3932,7 +3932,7 @@ async function _callGeminiLive(payload) {
       let decodeQueue = Promise.resolve();
 
       // Compute WS_URL here so key rotation (on quota errors) is reflected.
-      const WS_URL = ;
+      const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
       try {
         ws = new WebSocket(WS_URL);
       } catch(e) {
