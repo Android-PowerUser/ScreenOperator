@@ -5634,7 +5634,7 @@ function _armTermuxTimeout(command) {
     _termuxTimeoutHandle = null;
     // Only fire if we are still waiting for Termux (bubble still present)
     if (!_termuxPendingBubbleWrap) return;
-    const msg = "Termux didn't respond after 15 seconds. If this is normal for your command, don't write a new Termux or wait() command. The answer will come soon. Otherwise, write a new Termux command.";
+    const msg = "Termux didn't respond after 15 seconds. If this is normal for your command, use the \"timeout(seconds)\" function to decide how long to wait.\nOtherwise, write a new Termux command.";
     // Do NOT call addUserBubble here directly: Bridge.sendMessage triggers Android.sendMessage
     // which causes onUserMessage() to fire, and onUserMessage() already calls addUserBubble.
     // Calling addUserBubble here too would show the bubble twice.
