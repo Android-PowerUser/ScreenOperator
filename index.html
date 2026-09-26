@@ -212,7 +212,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   0%,100%{box-shadow:0 2px 12px rgba(168,85,247,.55),0 0 0 0 rgba(168,85,247,.35)}
   50%{box-shadow:0 4px 22px rgba(236,72,153,.6),0 0 0 6px rgba(236,72,153,.0)}
 }
-#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#trial-expired-subscribe-btn,#human-expert-subscribe-btn,#freedom-upsell-banner{
+#freedom-btn,#freedom-upgrade-btn,#apikey-freedom-btn,#trial-expired-subscribe-btn,#human-expert-subscribe-btn,#freedom-upsell-banner,#tryit-freedom-btn{
   background:linear-gradient(to right,var(--primary),#2563eb,#ec4899) !important;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
   border:none !important;
@@ -234,7 +234,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   0%{left:-42%}
   100%{left:100%}
 }
-#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after{
+#freedom-btn::after,#freedom-upgrade-btn::after,#apikey-freedom-btn::after,#trial-expired-subscribe-btn::after,#human-expert-subscribe-btn::after,#freedom-upsell-banner::after,#tryit-freedom-btn::after{
   content:'';
   position:absolute;
   top:-60%;left:-42%;
@@ -271,7 +271,7 @@ strong{font-weight:bold!important;-webkit-text-stroke:0.4px currentColor}
   62%{opacity:.7;transform:translate(-50%,-50%) scale(.95) rotate(var(--fg-rot,0deg))}
   100%{opacity:0;transform:translate(-50%,-50%) scale(.55) rotate(var(--fg-rot,0deg))}
 }
-#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active{
+#freedom-btn:active,#freedom-upgrade-btn:active,#apikey-freedom-btn:active,#trial-expired-subscribe-btn:active,#human-expert-subscribe-btn:active,#freedom-upsell-banner:active,#tryit-freedom-btn:active{
   opacity:.85;
   animation:freedom-pulse 2.4s ease-in-out infinite !important;
 }
@@ -631,21 +631,19 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* Try-it paywall overlay */
 #tryit-paywall-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:1000;align-items:flex-start;justify-content:center;padding:0}
 #tryit-paywall-overlay.open{display:flex}
-#tryit-paywall-inner{background:var(--bg);width:100%;height:100%;display:flex;flex-direction:column;overflow-y:auto;position:relative}
+#tryit-paywall-inner{background:var(--bg);width:100%;height:100%;display:flex;flex-direction:column;overflow-y:auto;position:relative;align-items:center}
 #tryit-paywall-wait-btn{position:absolute;top:16px;left:16px;background:transparent;border:none;color:var(--text-disabled,#9e9e9e);font-size:22px;line-height:1;padding:8px;cursor:default;opacity:.55;font-weight:400;transition:opacity .3s}
 #tryit-paywall-wait-btn.ready{cursor:pointer;opacity:.85}
 #tryit-paywall-wait-btn.ready:active{opacity:1}
-#tryit-paywall-body{display:flex;flex-direction:column;gap:0;padding:64px 24px 40px;max-width:480px;width:100%;margin:0 auto}
-.tryit-col-btn{width:100%;padding:13px 8px;font-size:16px;font-weight:700;letter-spacing:.04em;border-radius:12px;border:none;cursor:pointer;margin-bottom:14px}
-.tryit-col-btn-pro{background:var(--primary);color:var(--on-primary,#fff)}
-.tryit-col-btn-pro:active{opacity:.85}
-.tryit-col-btn-freedom{background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff}
-.tryit-col-btn-freedom:active{opacity:.85}
-.tryit-feature-list{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+#tryit-paywall-body{display:flex;flex-direction:column;gap:0;padding:72px 24px 40px;max-width:480px;width:100%;align-items:center}
+#tryit-pro-btn{width:80%;padding:13px 8px;font-size:16px;font-weight:700;letter-spacing:.04em;border-radius:12px;border:none;cursor:pointer;margin-bottom:14px;background:var(--primary);color:var(--on-primary,#fff)}
+#tryit-pro-btn:active{opacity:.85}
+#tryit-freedom-btn{width:80%;padding:13px 8px;font-size:16px;font-weight:700;letter-spacing:.04em;border-radius:12px;border:none;cursor:pointer;margin-bottom:14px;color:#fff}
+.tryit-feature-list{display:flex;flex-direction:column;gap:10px;margin-bottom:4px;width:100%}
 .tryit-feature-item{display:flex;align-items:flex-start;gap:8px;font-size:14px;color:var(--text-secondary);line-height:1.45}
 .tryit-feature-icon{flex-shrink:0;font-size:14px}
-.tryit-divider{height:1px;background:var(--outline-variant);margin:20px 0}
-@media(max-width:360px){#tryit-paywall-body{padding:60px 16px 32px}.tryit-feature-item{font-size:13px}}
+.tryit-divider{height:1px;background:var(--outline-variant);margin:20px 0;width:100%}
+@media(max-width:360px){#tryit-paywall-body{padding:64px 16px 32px}.tryit-feature-item{font-size:13px}}
 </style>
 <script>
 /* Dark mode: apply class immediately before first paint to avoid flash */
@@ -992,7 +990,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <button id="tryit-paywall-wait-btn" onclick="closeTryitPaywall()" aria-label="Close">⏳</button>
     <div id="tryit-paywall-body">
       <!-- Pro section -->
-      <button class="tryit-col-btn tryit-col-btn-pro" onclick="initiateDonation()">Pro</button>
+      <button id="tryit-pro-btn" onclick="initiateDonation()">Pro</button>
       <div class="tryit-feature-list">
         <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>No subscribe pop-up for "Try it"</span></div>
         <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
@@ -1003,7 +1001,7 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
       <!-- Divider -->
       <div class="tryit-divider"></div>
       <!-- Freedom section -->
-      <button class="tryit-col-btn tryit-col-btn-freedom" onclick="initiateFreedomPurchase()">✨ Freedom</button>
+      <button id="tryit-freedom-btn" onclick="initiateFreedomPurchase()">✨ Freedom</button>
       <div class="tryit-feature-list">
         <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Get models almost without restriction</span></div>
         <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>API keys are no longer needed</span></div>
@@ -2173,6 +2171,14 @@ function closeTryitPaywall() {
   if (!btn.classList.contains('ready')) return; // still in wait period
   clearTimeout(_tryitPaywallTimer);
   document.getElementById('tryit-paywall-overlay').classList.remove('open');
+  // Proceed to chat after dismissing
+  history.pushState({screen:'chat'}, '');
+  document.getElementById('screen-menu').classList.remove('active');
+  document.getElementById('screen-chat').classList.add('active');
+  const msg = Bridge.getSystemMessage();
+  document.getElementById('sys-msg-textarea').value = msg;
+  scrollToBottom();
+  onTaskInput();
 }
 /* ─────────────────────────────────────────────────────────────── */
 function navigateToChat() {
@@ -8924,7 +8930,7 @@ function initiateDonation() {
 (function(){
   'use strict';
   const BTN_IDS = ['freedom-btn','freedom-upgrade-btn','apikey-freedom-btn',
-                   'trial-expired-subscribe-btn','human-expert-subscribe-btn','freedom-upsell-banner'];
+                   'trial-expired-subscribe-btn','human-expert-subscribe-btn','freedom-upsell-banner','tryit-freedom-btn'];
   const PERIOD_MS = 60000;     // must match the freedom-gloss CSS animation
   const BAND_W    = 0.42;      // must match the ::after width in CSS
   const BAND_L0   = -BAND_W;   // keyframe 0% left
