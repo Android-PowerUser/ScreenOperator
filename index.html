@@ -635,19 +635,17 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 #tryit-paywall-wait-btn{position:absolute;top:16px;left:16px;background:transparent;border:none;color:var(--text-disabled,#9e9e9e);font-size:22px;line-height:1;padding:8px;cursor:default;opacity:.55;font-weight:400;transition:opacity .3s}
 #tryit-paywall-wait-btn.ready{cursor:pointer;opacity:.85}
 #tryit-paywall-wait-btn.ready:active{opacity:1}
-#tryit-paywall-columns{display:flex;flex-direction:row;gap:0;flex:1;min-height:0}
-.tryit-col{flex:1;display:flex;flex-direction:column;align-items:stretch;padding:24px 20px 32px;gap:0}
-.tryit-col-pro{border-right:1px solid var(--outline-variant)}
-.tryit-col-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:16px;color:var(--text-primary)}
-.tryit-col-btn{width:100%;padding:12px 8px;font-size:15px;font-weight:700;letter-spacing:.04em;border-radius:12px;border:none;cursor:pointer;margin-bottom:16px}
+#tryit-paywall-body{display:flex;flex-direction:column;gap:0;padding:64px 24px 40px;max-width:480px;width:100%;margin:0 auto}
+.tryit-col-btn{width:100%;padding:13px 8px;font-size:16px;font-weight:700;letter-spacing:.04em;border-radius:12px;border:none;cursor:pointer;margin-bottom:14px}
 .tryit-col-btn-pro{background:var(--primary);color:var(--on-primary,#fff)}
 .tryit-col-btn-pro:active{opacity:.85}
 .tryit-col-btn-freedom{background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff}
 .tryit-col-btn-freedom:active{opacity:.85}
-.tryit-feature-list{display:flex;flex-direction:column;gap:10px;flex:1}
-.tryit-feature-item{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text-secondary);line-height:1.45}
-.tryit-feature-icon{flex-shrink:0;font-size:14px;margin-top:0}
-@media(max-width:360px){.tryit-col{padding:20px 12px 28px}.tryit-feature-item{font-size:12px}}
+.tryit-feature-list{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+.tryit-feature-item{display:flex;align-items:flex-start;gap:8px;font-size:14px;color:var(--text-secondary);line-height:1.45}
+.tryit-feature-icon{flex-shrink:0;font-size:14px}
+.tryit-divider{height:1px;background:var(--outline-variant);margin:20px 0}
+@media(max-width:360px){#tryit-paywall-body{padding:60px 16px 32px}.tryit-feature-item{font-size:13px}}
 </style>
 <script>
 /* Dark mode: apply class immediately before first paint to avoid flash */
@@ -992,33 +990,29 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
   <div id="tryit-paywall-inner">
     <!-- Close / Wait button: greyed "⏳" for first 4s, then becomes × -->
     <button id="tryit-paywall-wait-btn" onclick="closeTryitPaywall()" aria-label="Close">⏳</button>
-    <div id="tryit-paywall-columns">
-      <!-- Pro column -->
-      <div class="tryit-col tryit-col-pro">
-        <div class="tryit-col-title">Pro</div>
-        <button class="tryit-col-btn tryit-col-btn-pro" onclick="initiateDonation()">Pro</button>
-        <div class="tryit-feature-list">
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>No subscribe pop-up for "Try it"</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Show that the app are important to you</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Priority support on Github</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Faster development</span></div>
-        </div>
+    <div id="tryit-paywall-body">
+      <!-- Pro section -->
+      <button class="tryit-col-btn tryit-col-btn-pro" onclick="initiateDonation()">Pro</button>
+      <div class="tryit-feature-list">
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>No subscribe pop-up for "Try it"</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Show that the app are important to you</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Priority support on Github</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Faster development</span></div>
       </div>
-      <!-- Freedom column -->
-      <div class="tryit-col">
-        <div class="tryit-col-title">✨ Freedom</div>
-        <button class="tryit-col-btn tryit-col-btn-freedom" onclick="initiateFreedomPurchase()">✨ Freedom</button>
-        <div class="tryit-feature-list">
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Get models almost without restriction</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>API keys are no longer needed</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Automate everything</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>No Subscribe Pop-up</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Faster development</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Preferred integration of your ideas (Github)</span></div>
-          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Show off with Screen Operator</span></div>
-        </div>
+      <!-- Divider -->
+      <div class="tryit-divider"></div>
+      <!-- Freedom section -->
+      <button class="tryit-col-btn tryit-col-btn-freedom" onclick="initiateFreedomPurchase()">✨ Freedom</button>
+      <div class="tryit-feature-list">
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Get models almost without restriction</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>API keys are no longer needed</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Automate everything</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>No Subscribe Pop-up</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Faster development</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Preferred integration of your ideas (Github)</span></div>
+        <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Show off with Screen Operator</span></div>
       </div>
     </div>
   </div>
