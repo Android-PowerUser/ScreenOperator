@@ -628,6 +628,26 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
 /* Payment method dialog */
 #payment-method-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:center;justify-content:center;padding:24px}
 #payment-method-overlay.open{display:flex}
+/* Try-it paywall overlay */
+#tryit-paywall-overlay{display:none;position:fixed;inset:0;background:var(--scrim);z-index:1000;align-items:flex-start;justify-content:center;padding:0}
+#tryit-paywall-overlay.open{display:flex}
+#tryit-paywall-inner{background:var(--bg);width:100%;height:100%;display:flex;flex-direction:column;overflow-y:auto;position:relative}
+#tryit-paywall-wait-btn{position:absolute;top:16px;left:16px;background:transparent;border:none;color:var(--text-disabled,#9e9e9e);font-size:22px;line-height:1;padding:8px;cursor:default;opacity:.55;font-weight:400;transition:opacity .3s}
+#tryit-paywall-wait-btn.ready{cursor:pointer;opacity:.85}
+#tryit-paywall-wait-btn.ready:active{opacity:1}
+#tryit-paywall-columns{display:flex;flex-direction:row;gap:0;flex:1;min-height:0}
+.tryit-col{flex:1;display:flex;flex-direction:column;align-items:stretch;padding:24px 20px 32px;gap:0}
+.tryit-col-pro{border-right:1px solid var(--outline-variant)}
+.tryit-col-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:16px;color:var(--text-primary)}
+.tryit-col-btn{width:100%;padding:12px 8px;font-size:15px;font-weight:700;letter-spacing:.04em;border-radius:12px;border:none;cursor:pointer;margin-bottom:16px}
+.tryit-col-btn-pro{background:var(--primary);color:var(--on-primary,#fff)}
+.tryit-col-btn-pro:active{opacity:.85}
+.tryit-col-btn-freedom{background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff}
+.tryit-col-btn-freedom:active{opacity:.85}
+.tryit-feature-list{display:flex;flex-direction:column;gap:10px;flex:1}
+.tryit-feature-item{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text-secondary);line-height:1.45}
+.tryit-feature-icon{flex-shrink:0;font-size:14px;margin-top:0}
+@media(max-width:360px){.tryit-col{padding:20px 12px 28px}.tryit-feature-item{font-size:12px}}
 </style>
 <script>
 /* Dark mode: apply class immediately before first paint to avoid flash */
@@ -964,6 +984,43 @@ select.text-input{height:40px;padding:0 10px;cursor:pointer}
     <div class="trial-dialog-title" id="trial-info-title">Information</div>
     <div class="trial-dialog-body" id="trial-info-body"></div>
     <button class="btn btn-solid" id="trial-info-btn" onclick="closeTrialInfoDialog()">OK</button>
+  </div>
+</div>
+
+<!-- Try-it Paywall Overlay (full-screen, shown when no subscription) -->
+<div id="tryit-paywall-overlay">
+  <div id="tryit-paywall-inner">
+    <!-- Close / Wait button: greyed "⏳" for first 4s, then becomes × -->
+    <button id="tryit-paywall-wait-btn" onclick="closeTryitPaywall()" aria-label="Close">⏳</button>
+    <div id="tryit-paywall-columns">
+      <!-- Pro column -->
+      <div class="tryit-col tryit-col-pro">
+        <div class="tryit-col-title">Pro</div>
+        <button class="tryit-col-btn tryit-col-btn-pro" onclick="initiateDonation()">Pro</button>
+        <div class="tryit-feature-list">
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>No subscribe pop-up for "Try it"</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Show that the app are important to you</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Priority support on Github</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">☑️</span><span>Faster development</span></div>
+        </div>
+      </div>
+      <!-- Freedom column -->
+      <div class="tryit-col">
+        <div class="tryit-col-title">✨ Freedom</div>
+        <button class="tryit-col-btn tryit-col-btn-freedom" onclick="initiateFreedomPurchase()">✨ Freedom</button>
+        <div class="tryit-feature-list">
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Get models almost without restriction</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>API keys are no longer needed</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Use Screen Operator as long as you want (else 1 day trial time)</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Automate everything</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>No Subscribe Pop-up</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Faster development</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Preferred integration of your ideas (Github)</span></div>
+          <div class="tryit-feature-item"><span class="tryit-feature-icon">✅</span><span>Show off with Screen Operator</span></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2103,7 +2160,33 @@ function hasRequiredApiKeyForCurrentModel() {
   const keys = _getKeysWithFallback(_resolvedProvider);
   return !!(keys && keys.length);
 }
+/* ── Try-it paywall ──────────────────────────────────────────── */
+let _tryitPaywallTimer = null;
+function openTryitPaywall() {
+  const overlay = document.getElementById('tryit-paywall-overlay');
+  const btn = document.getElementById('tryit-paywall-wait-btn');
+  if (!overlay) return;
+  btn.textContent = '⏳';
+  btn.classList.remove('ready');
+  overlay.classList.add('open');
+  _tryitPaywallTimer = setTimeout(function() {
+    btn.textContent = '✕';
+    btn.classList.add('ready');
+  }, 4000);
+}
+function closeTryitPaywall() {
+  const btn = document.getElementById('tryit-paywall-wait-btn');
+  if (!btn.classList.contains('ready')) return; // still in wait period
+  clearTimeout(_tryitPaywallTimer);
+  document.getElementById('tryit-paywall-overlay').classList.remove('open');
+}
+/* ─────────────────────────────────────────────────────────────── */
 function navigateToChat() {
+  // Show paywall if no subscription is active
+  if (!Bridge.isPurchased() && !_isFreedomEntitled()) {
+    openTryitPaywall();
+    return;
+  }
   // Block Try it while an offline model is still downloading
   const curM = MODELS.find(x => x.id === currentModelId);
   if (curM && curM.isOffline && getInAndroid()) {
@@ -10881,6 +10964,7 @@ function _collapseOldScreenElementBubbles() {
 </script>
 </body>
 </html>
+
 
 
 
