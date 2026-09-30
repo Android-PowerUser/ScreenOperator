@@ -1,0 +1,54 @@
+name: Android Build APK (app)
+
+# Der Quellcode liegt in einem privaten Repository. Dieser Workflow löst den Build
+# dort aus, wartet auf das Ergebnis und stellt die fertige APK hier als Artefakt bereit.
+# Auslösen über Actions -> "Android Build APK (app)" -> "Run workflow".
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.PRIVATE_REPO_PAT }}
+      PRIV: Android-PowerUser/ScreenOperator-src
+      WF: manual-apk-app.yml
+      ART: app-debug
+    steps:
+      - name: Trigger build
+        id: trigger
+        run: |
+          set -euo pipefail
+          START=$(date -u -d '30 seconds ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run "$WF" -R "$PRIV" --ref main
+          RID=""
+          for i in $(seq 1 36); do
+            RID=$(gh run list -R "$PRIV" --workflow "$WF" --event workflow_dispatch --created ">=$START" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "$RID" ] && break
+            sleep 5
+          done
+          [ -n "$RID" ] || { echo "::error::Build wurde nicht gestartet"; exit 1; }
+          echo "Build gestartet (Run $RID)"
+          echo "rid=$RID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for build
+        run: |
+          set -euo pipefail
+          RES=""
+          for i in $(seq 1 170); do
+            RES=$(gh api "repos/$PRIV/actions/runs/${{ steps.trigger.outputs.rid }}" --jq '.status + " " + (.conclusion // "")')
+            case "$RES" in completed*) break;; esac
+            sleep 30
+          done
+          echo "Ergebnis: $RES"
+          [ "$RES" = "completed success" ] || { echo "::error::Build fehlgeschlagen ($RES)"; exit 1; }
+
+      - name: Fetch APK
+        run: gh run download "${{ steps.trigger.outputs.rid }}" -R "$PRIV" -n "$ART" -D out && ls -l out
+
+      - name: Publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: out/*.apk
