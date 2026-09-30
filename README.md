@@ -1,0 +1,60 @@
+## Screen Operator
+### Operates the screen with AI
+This Android app operates the screen with commands from vision LLMs.
+
+
+### OpenClaw for Android
+It can now execute commands directly in Termux via API. After each update, click "Restore System Message" to access the new tools!
+
+
+<img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20260923-125718_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/ScreenOperator/blob/main/Screenshot_20260923-125947_Screen%20Operator.png" alt="" width="141"/>
+
+
+## Download and install
+
+Due to a GitHub restriction, you must be logged in to view the nightly download links:
+</br>
+
+[nightly builds](https://github.com/Android-PowerUser/ScreenOperator/actions) from Github actions (You probably must reinstall the app because of different signatures) or install the </br>
+[Screen Operator v4.1 (hotfix).apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.09.05/ScreenOperator.v4.1.hotfix.apk) (without log in)
+
+Updates in Github are much faster than on the Play Store.
+</br>
+
+![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/latest/total.svg?label=Screen%20Operator%20latest%20release%20Downloads&v=72) ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/total.svg?label=Screen%20Operator%20Downloads&v=69) from Github (without nightly builds)
+
+
+</br> 
+
+
+## Develop Screen Operator with AI
+
+
+This app can be developed entirely by AI and therefore its development can be continued by anyone:
+
+To vibe coding for free I use [Claude.ai](https://claude.ai). You will have to fork the project first so that you can edit it. It has a free quota that will be every 5 hours refreshed and you can also easy switch the account to refresh the free quota. It's best to use different browsers for this. Use a GitHub access token and Claude can automatically push the changes. Sonnet 5 sometimes refuses to work with the token. In this case, use Sonnet 4.6. Add the token and perhaps the link to the repo/branch (code) to your preferences in Claude. Then you don't have to enter the same information every time.
+You can also use the free [arena.ai](https://arena.ai/agent)'s agent mode with your github token and link to your fork.
+
+You can build the apk with Github actions: Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android Build APK (app) and start your chosen branch. After about 5 minutes your app will be ready!
+
+<br/>
+
+### Share your Skill Set from Screen Operator
+
+[Here](https://github.com/Android-PowerUser/ScreenOperator/discussions/87) you can share your own Skill Set
+
+<br/>
+
+### • The first Android agent app in the world (since June/2025)
+
+#### Video:
+
+[First attempt ever is recorded (YouTube)](https://m.youtube.com/watch?v=o095RSFXJuc)
+
+<br/> 
+
+#### Note
+
+
+
+If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.

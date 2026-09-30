@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Screen Operator</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#ddd;font:15px system-ui,sans-serif}
+  #m{display:flex;height:100%;align-items:center;justify-content:center;text-align:center;padding:24px}
+</style>
+</head>
+<body>
+<div id="m">Loading&hellip;</div>
+<script>
+/* Screen Operator loader.
+ * The app UI is no longer published in this repository. This page is only a
+ * thin loader for the Screen Operator Android app: it fetches the current UI
+ * from the app backend (which only serves the app itself) and swaps it in,
+ * using the same document.write mechanism as the app's live-update poller. */
+(function () {
+  'use strict';
+  var SRC = 'https://screenoperator-ollama-proxy.android-poweruser.deno.net/';
+  var CACHE_KEY = 'so_loader_cache_v1';
+  function msg(t) { var m = document.getElementById('m'); if (m) m.textContent = t; }
+  function cached() { try { return localStorage.getItem(CACHE_KEY); } catch (e) { return null; } }
+  function apply(html) {
+    document.open(); document.write(html); document.close();
+    // Same init flow as the live-update poller (_applyNewHtml).
+    try { document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true, cancelable: true })); } catch (e) {}
+    try { if (typeof window.onAndroidReady === 'function') window.onAndroidReady(); } catch (e) {}
+  }
+  // shown = HTML that is currently displayed from cache (or null). Like the app's
+  // native cache behaviour: show the cached copy immediately, swap in the fresh
+  // one only when it arrives and differs.
+  function load(attempt, shown) {
+    fetch(SRC + '?_ld=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (h) {
+        if (!h || h.length < 1000) throw new Error('invalid response');
+        try { localStorage.setItem(CACHE_KEY, h); } catch (e) {}
+        if (shown === h) return;   // already showing the current version
+        apply(h);
+      })
+      .catch(function () {
+        if (shown !== null) return; // cached copy stays in use
+        msg('Could not load the app. Retrying\u2026');
+        setTimeout(function () { load(attempt + 1, null); }, Math.min(30000, 2000 * (attempt + 1)));
+      });
+  }
+  if (!window.Android) { msg('Please open this page inside the Screen Operator app.'); return; }
+  // Start only after the stub itself has been parsed: document.open() is a no-op
+  // while an inline script runs during parsing, so replacing the page must
+  // happen from a later task. `started` guards against the synthetic
+  // DOMContentLoaded the live-update poller dispatches after writing this page.
+  var started = false;
+  function start() {
+    if (started) return;
+    started = true;
+    setTimeout(function () {
+      var initial = cached();
+      if (initial) apply(initial);
+      load(0, initial);
+    }, 0);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+</body>
+</html>
