@@ -24,19 +24,6 @@ Updates in Github are much faster than on the Play Store.
 ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/latest/total.svg?label=Screen%20Operator%20latest%20release%20Downloads&v=72) ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/total.svg?label=Screen%20Operator%20Downloads&v=69) from Github (without nightly builds)
 
 
-</br> 
-
-
-## Develop Screen Operator with AI
-
-
-This app can be developed entirely by AI and therefore its development can be continued by anyone:
-
-To vibe coding for free I use [Claude.ai](https://claude.ai). You will have to fork the project first so that you can edit it. It has a free quota that will be every 5 hours refreshed and you can also easy switch the account to refresh the free quota. It's best to use different browsers for this. Use a GitHub access token and Claude can automatically push the changes. Sonnet 5 sometimes refuses to work with the token. In this case, use Sonnet 4.6. Add the token and perhaps the link to the repo/branch (code) to your preferences in Claude. Then you don't have to enter the same information every time.
-You can also use the free [arena.ai](https://arena.ai/agent)'s agent mode with your github token and link to your fork.
-
-You can build the apk with Github actions: Stay in your fork, on your user account (you won't be able to start it otherwise), on mobile, click the gear icon and then Actions, and on desktop, click Actions directly. Click Workflows, select Android Build APK (app) and start your chosen branch. After about 5 minutes your app will be ready!
-
 <br/>
 
 ### Share your Skill Set from Screen Operator
