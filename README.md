@@ -44,4 +44,4 @@ Updates in Github are much faster than on the Play Store.
 
 
 
-If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
+If you in your Google account identified as under 18, Google is (unreasonably) denying you the API key. Use Freedom subscription as a workaround.
