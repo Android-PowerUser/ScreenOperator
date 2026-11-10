@@ -1,9 +1,518 @@
 {
-  "formatVersion": 1,
-  "apiVersion": 1,
-  "version": "20261110-091317-810f771",
-  "file": "plugin-3e781a6d5be3.jar",
-  "sha256": "df8063c91b27b5570afc116c11668dd3e15aca00b2952f71241771bd243d7f5e",
-  "size": 3630,
-  "contentId": "3e781a6d5be3d47e1f96145553ed8c71ee82cad24404ddc69b0bf80a2d22c315"
+  "formatVersion": 2,
+  "apiVersion": 3,
+  "version": "20261110-184557-6af97bd",
+  "id": "9a6218481fbfee19f38e41eb929275a76fa47bbfa41cd6d8f2689d5ea8c1cd7c",
+  "fingerprint": "a94f945ad7daee694d1aec68518f1bd87329f62e9c0a7be8d2044c44db2ae883",
+  "codeTime": 1794335909,
+  "extraParentFirst": [],
+  "boot": {
+    "file": "blobs/boot-0b7880908b84.jar",
+    "sha256": "0b7880908b844866479a516361748566d498da746b3b7c3a1552b7ca1fd08250",
+    "size": 9381
+  },
+  "shards": [
+    {
+      "key": "app-feature",
+      "file": "blobs/app-feature-0689e1abf570.jar",
+      "sha256": "0689e1abf570991fefeb88a72a5456381af1870bce8a1c1660cf430612ac240b",
+      "size": 81255
+    },
+    {
+      "key": "app-network",
+      "file": "blobs/app-network-dfb7ded787cf.jar",
+      "sha256": "dfb7ded787cfc7e1b1a91ed7e3c75a862a68b898800a84540d203ae8b3cdca80",
+      "size": 29028
+    },
+    {
+      "key": "app-pluginimpl",
+      "file": "blobs/app-pluginimpl-bd87b9d416ed.jar",
+      "sha256": "bd87b9d416edae59b308c0ebcc64553bb6ed6da3619e0c5ba89ee69c86ed8824",
+      "size": 15575
+    },
+    {
+      "key": "app-root",
+      "file": "blobs/app-root-c30b15336f74.jar",
+      "sha256": "c30b15336f7456aafeffea9560d5e2e795b8717c2e57d815263c24678f46404b",
+      "size": 219013
+    },
+    {
+      "key": "app-service",
+      "file": "blobs/app-service-a60617bf1627.jar",
+      "sha256": "a60617bf1627e36d4c90f390ff7f9cbfa818a0f6290955cc2b14ec75419ecc75",
+      "size": 2830
+    },
+    {
+      "key": "app-slot",
+      "file": "blobs/app-slot-e600b40fec79.jar",
+      "sha256": "e600b40fec79306a0ba225ca031636fa09e819f3807cbee1f9a3705c1431a31d",
+      "size": 1604
+    },
+    {
+      "key": "app-ui",
+      "file": "blobs/app-ui-ff04a9e28686.jar",
+      "sha256": "ff04a9e28686213e49dd3fe98651cfb823abec72aacb79b466ee987aa8bcf015",
+      "size": 3857
+    },
+    {
+      "key": "app-util",
+      "file": "blobs/app-util-2ef42caed80e.jar",
+      "sha256": "2ef42caed80e9271c7efa28d297c3e6af0f89675f2ab05ff5969d14aa32f48b9",
+      "size": 64942
+    },
+    {
+      "key": "app-webrtc",
+      "file": "blobs/app-webrtc-02e7c5e3c0f9.jar",
+      "sha256": "02e7c5e3c0f923cd3b49f543df033cfabff666029565ca6fcdc40ef457957e80",
+      "size": 13080
+    },
+    {
+      "key": "lib-androidx.activity",
+      "file": "blobs/lib-androidx.activity-38dbe2378186.jar",
+      "sha256": "38dbe2378186e238c49a8248059b89bb0b9862c65b7c1df8bd5e1df0ecfecfb9",
+      "size": 70536
+    },
+    {
+      "key": "lib-androidx.annotation",
+      "file": "blobs/lib-androidx.annotation-5c715cf99f0e.jar",
+      "sha256": "5c715cf99f0eecd10ea198b1fd5a974bfe699a3a4c93573591e5ba0d90d47128",
+      "size": 14250
+    },
+    {
+      "key": "lib-androidx.appcompat",
+      "file": "blobs/lib-androidx.appcompat-739afbcc156b.jar",
+      "sha256": "739afbcc156b0a416cae5966b0c693569fba8cb25519024a4dfe19fb01b62da8",
+      "size": 276589
+    },
+    {
+      "key": "lib-androidx.arch.core",
+      "file": "blobs/lib-androidx.arch.core-13f63456f3c1.jar",
+      "sha256": "13f63456f3c157fbe881f033630ce741bf10302ce7823c365227bfc9681e5f61",
+      "size": 6568
+    },
+    {
+      "key": "lib-androidx.autofill",
+      "file": "blobs/lib-androidx.autofill-ac69d809a35e.jar",
+      "sha256": "ac69d809a35e2e8390abbaa607939627685a0a03b40f09a34b4b77b2097cc8e8",
+      "size": 2069
+    },
+    {
+      "key": "lib-androidx.camera",
+      "file": "blobs/lib-androidx.camera-05c0df1852f9.jar",
+      "sha256": "05c0df1852f91b19a4c65311b32c764d04aa8ed0d609e6848480f12d6161ee86",
+      "size": 278992
+    },
+    {
+      "key": "lib-androidx.collection",
+      "file": "blobs/lib-androidx.collection-c2936245b909.jar",
+      "sha256": "c2936245b9095241521f80d531073790464584986001faf841da81c77b65e6ae",
+      "size": 182343
+    },
+    {
+      "key": "lib-androidx.compose.animation",
+      "file": "blobs/lib-androidx.compose.animation-af16f2f149f3.jar",
+      "sha256": "af16f2f149f3e48a461ec4030ebc5d60fb4ff9c77b3e3a2d8dfbfa6e59281184",
+      "size": 180362
+    },
+    {
+      "key": "lib-androidx.compose.foundation",
+      "file": "blobs/lib-androidx.compose.foundation-82e946050013.jar",
+      "sha256": "82e946050013b3716f2eff49e01cbddc28ce934440e8fff0e49b0b135f0bdfa6",
+      "size": 937628
+    },
+    {
+      "key": "lib-androidx.compose.material",
+      "file": "blobs/lib-androidx.compose.material-87c443e1a70a.jar",
+      "sha256": "87c443e1a70a2d752c196bea164005e2f97c7b5c02fec5446775f54dd575fc81",
+      "size": 107006
+    },
+    {
+      "key": "lib-androidx.compose.material3",
+      "file": "blobs/lib-androidx.compose.material3-15a8223d98b5.jar",
+      "sha256": "15a8223d98b529e9946681eb341f4d1b83a51ee279e36c4058c97b81f0787320",
+      "size": 953413
+    },
+    {
+      "key": "lib-androidx.compose.runtime",
+      "file": "blobs/lib-androidx.compose.runtime-212596defb6b.jar",
+      "sha256": "212596defb6bbc5d013554cdbec00b133a7f19767ca6422a1a6368b5f59ef6e6",
+      "size": 402668
+    },
+    {
+      "key": "lib-androidx.compose.ui",
+      "file": "blobs/lib-androidx.compose.ui-70d307edfbaf.jar",
+      "sha256": "70d307edfbafcf6365a0eb5d7dade38f29356c56c2b25bbfa9ae571477330725",
+      "size": 1109607
+    },
+    {
+      "key": "lib-androidx.concurrent",
+      "file": "blobs/lib-androidx.concurrent-e7697a90c2f4.jar",
+      "sha256": "e7697a90c2f42c711658252391d128714130453649a8a8952e4177ad39d0143b",
+      "size": 14397
+    },
+    {
+      "key": "lib-androidx.core",
+      "file": "blobs/lib-androidx.core-3dab1752fa94.jar",
+      "sha256": "3dab1752fa945f17a7c5d51b75e9e51eb9e9896bcc72660b39f48330f1e2cc3a",
+      "size": 440996
+    },
+    {
+      "key": "lib-androidx.cursoradapter",
+      "file": "blobs/lib-androidx.cursoradapter-9a0b39681642.jar",
+      "sha256": "9a0b39681642a2ff8f175f6ab409c06c4ea4c1d89e6a345fb8ff3c90ea53ee7e",
+      "size": 5427
+    },
+    {
+      "key": "lib-androidx.customview",
+      "file": "blobs/lib-androidx.customview-fae84b079848.jar",
+      "sha256": "fae84b07984814e3ebf2646c009abb7b463210bbe679f451963a5ace42dcd2f3",
+      "size": 20522
+    },
+    {
+      "key": "lib-androidx.drawerlayout",
+      "file": "blobs/lib-androidx.drawerlayout-3c2093cc20fa.jar",
+      "sha256": "3c2093cc20fa4c5e92f3963f18ec8c6931902b2979137abfa7f36f41aa99a96e",
+      "size": 16852
+    },
+    {
+      "key": "lib-androidx.emoji2",
+      "file": "blobs/lib-androidx.emoji2-8406838c61ca.jar",
+      "sha256": "8406838c61ca698bc1b99617815b768338facf88d8068e4ff49cd4a3c8b6f8ad",
+      "size": 61998
+    },
+    {
+      "key": "lib-androidx.exifinterface",
+      "file": "blobs/lib-androidx.exifinterface-c48b2e988277.jar",
+      "sha256": "c48b2e98827797fa4ca4860c70a8708047eb46994d7f381fea9af43ef660a14c",
+      "size": 43299
+    },
+    {
+      "key": "lib-androidx.fragment",
+      "file": "blobs/lib-androidx.fragment-9bd03e44ec39.jar",
+      "sha256": "9bd03e44ec396f38408ef4a1eb80388c6f518ee511919f2afcbd0ba74b3db116",
+      "size": 100009
+    },
+    {
+      "key": "lib-androidx.interpolator",
+      "file": "blobs/lib-androidx.interpolator-13f45e2e686b.jar",
+      "sha256": "13f45e2e686b8f7cf70fd73e243fd5e38c7ac0fe97123bd52a708a1c56de7756",
+      "size": 3483
+    },
+    {
+      "key": "lib-androidx.lifecycle",
+      "file": "blobs/lib-androidx.lifecycle-da90ffcf3a97.jar",
+      "sha256": "da90ffcf3a978225b67928722a64f270ff65cfaaeb16ff75232acb9f47a99d70",
+      "size": 74444
+    },
+    {
+      "key": "lib-androidx.loader",
+      "file": "blobs/lib-androidx.loader-763d1605bbc1.jar",
+      "sha256": "763d1605bbc1593e5f4ac75d1a944eaffd5ab9125970b9adaad0b9abf205f15a",
+      "size": 15108
+    },
+    {
+      "key": "lib-androidx.localbroadcastmanager",
+      "file": "blobs/lib-androidx.localbroadcastmanager-f2f803daa8ad.jar",
+      "sha256": "f2f803daa8ad0aaf4505848f2e27db1c18b409106b96233edc287e5c7676bb3d",
+      "size": 4018
+    },
+    {
+      "key": "lib-androidx.navigation",
+      "file": "blobs/lib-androidx.navigation-fd1f59a0e723.jar",
+      "sha256": "fd1f59a0e72389d1948b03c42cfe6fb7590a8cbb2a4f103aa646551051ea01ec",
+      "size": 127192
+    },
+    {
+      "key": "lib-androidx.profileinstaller",
+      "file": "blobs/lib-androidx.profileinstaller-146361b4f126.jar",
+      "sha256": "146361b4f1263dcc3048c78a034eb5af41d2b9a03a3e06ee73656133f97ee05f",
+      "size": 20213
+    },
+    {
+      "key": "lib-androidx.resourceinspection",
+      "file": "blobs/lib-androidx.resourceinspection-f7c44143be3c.jar",
+      "sha256": "f7c44143be3c8c2a1af456d5f57cbdfa38f49e76acd1c62afe790bf1908718ea",
+      "size": 1001
+    },
+    {
+      "key": "lib-androidx.savedstate",
+      "file": "blobs/lib-androidx.savedstate-df8e613f71f1.jar",
+      "sha256": "df8e613f71f18a772f8118ca959009d874f44a0dcb6e60a86267b2c0e6cb496d",
+      "size": 8793
+    },
+    {
+      "key": "lib-androidx.startup",
+      "file": "blobs/lib-androidx.startup-fc97941e8c5f.jar",
+      "sha256": "fc97941e8c5f0a6ed62b8f5d260397f294080230cb4913454be1c4968f1b9296",
+      "size": 3884
+    },
+    {
+      "key": "lib-androidx.tracing",
+      "file": "blobs/lib-androidx.tracing-3f41d2624aaa.jar",
+      "sha256": "3f41d2624aaad1f913d46486ed445406d5db4a7cc1919cccf91d6e2b55f36f0b",
+      "size": 2679
+    },
+    {
+      "key": "lib-androidx.vectordrawable",
+      "file": "blobs/lib-androidx.vectordrawable-34bcaf63a395.jar",
+      "sha256": "34bcaf63a395d0205dc446bc22c23d22b9be330b331ddcaf40b37060fad2b362",
+      "size": 29535
+    },
+    {
+      "key": "lib-androidx.versionedparcelable",
+      "file": "blobs/lib-androidx.versionedparcelable-dbbbed62f71d.jar",
+      "sha256": "dbbbed62f71da259be0d5da6d3c770e9d9e033e8dc6bf1fe9a409ed8e0596581",
+      "size": 15787
+    },
+    {
+      "key": "lib-androidx.viewpager",
+      "file": "blobs/lib-androidx.viewpager-174a91d94878.jar",
+      "sha256": "174a91d94878135361d6bbb327ebc70bd0454b7668a8037245b80fd0f1ccaa7f",
+      "size": 27271
+    },
+    {
+      "key": "lib-androidx.webkit",
+      "file": "blobs/lib-androidx.webkit-13bd1490c74c.jar",
+      "sha256": "13bd1490c74c15711afbf0421ed1dc27c27478fbd5f147f4d1806785a0a99004",
+      "size": 47365
+    },
+    {
+      "key": "lib-com.android.billingclient",
+      "file": "blobs/lib-com.android.billingclient-ea2e0da82c08.jar",
+      "sha256": "ea2e0da82c08367a97de601ba2250368777123b479138fbb1802d2282cef103f",
+      "size": 185429
+    },
+    {
+      "key": "lib-com.google.accompanist",
+      "file": "blobs/lib-com.google.accompanist-cea7b8ac579b.jar",
+      "sha256": "cea7b8ac579b356d46611c602e76ff5281c2f676ccb23d7e726d6878c3116fa8",
+      "size": 6690
+    },
+    {
+      "key": "lib-com.google.ai.client.generativeai",
+      "file": "blobs/lib-com.google.ai.client.generativeai-44be912f031e.jar",
+      "sha256": "44be912f031e7c6d1077fc76a35311cda6cf07bf987c2af99725eae1157d9f9b",
+      "size": 117572
+    },
+    {
+      "key": "lib-com.google.ai.edge.litertlm",
+      "file": "blobs/lib-com.google.ai.edge.litertlm-07177df2db90.jar",
+      "sha256": "07177df2db90051f1185b2a2cf58364dc436cbc816d253d75df4029d663d8a61",
+      "size": 39123
+    },
+    {
+      "key": "lib-com.google.android.datatransport",
+      "file": "blobs/lib-com.google.android.datatransport-b4c062a942ef.jar",
+      "sha256": "b4c062a942ef536a1cac4cd2d65d999b81660869c160306447a469ff1e4b453f",
+      "size": 78344
+    },
+    {
+      "key": "lib-com.google.android.gms",
+      "file": "blobs/lib-com.google.android.gms-0dff61e0a34a.jar",
+      "sha256": "0dff61e0a34ac054adb9e1c42912f95c7d69de676c35577afc414c74d7778698",
+      "size": 285361
+    },
+    {
+      "key": "lib-com.google.auto.value",
+      "file": "blobs/lib-com.google.auto.value-2559599b35c2.jar",
+      "sha256": "2559599b35c27cfc1e9828e75afce3bb2a239647199d06742049ec1159949383",
+      "size": 2781
+    },
+    {
+      "key": "lib-com.google.code.findbugs",
+      "file": "blobs/lib-com.google.code.findbugs-9b08581c72ea.jar",
+      "sha256": "9b08581c72ea914c44c0a380f7dcf42aff866e70d90ec87c7254907f79dacfb4",
+      "size": 5429
+    },
+    {
+      "key": "lib-com.google.code.gson",
+      "file": "blobs/lib-com.google.code.gson-33499c564160.jar",
+      "sha256": "33499c564160407306b921eb30178dd7939dbb46b0232d7ac3937d2ecca85f35",
+      "size": 93602
+    },
+    {
+      "key": "lib-com.google.errorprone",
+      "file": "blobs/lib-com.google.errorprone-48e7d18b091c.jar",
+      "sha256": "48e7d18b091cb2a9f2d5b0866b667574f0dfbb275c8a96a2b514d19ac67fc29c",
+      "size": 5229
+    },
+    {
+      "key": "lib-com.google.firebase",
+      "file": "blobs/lib-com.google.firebase-97fbb0e7dcd2.jar",
+      "sha256": "97fbb0e7dcd200e537635e2f90c7933798588ee7f87b697f081b3fb36f71e637",
+      "size": 251368
+    },
+    {
+      "key": "lib-com.google.guava",
+      "file": "blobs/lib-com.google.guava-b65bfaa7afe6.jar",
+      "sha256": "b65bfaa7afe6eebde97c55c9dfdc020aa84b4e3d54741cacebc3e9004b9608dd",
+      "size": 770839
+    },
+    {
+      "key": "lib-com.google.j2objc",
+      "file": "blobs/lib-com.google.j2objc-6919977e1504.jar",
+      "sha256": "6919977e15044a079d23f94b8c1c9d0fd4130f19d34414759faedd736c918c29",
+      "size": 3559
+    },
+    {
+      "key": "lib-com.google.mediapipe",
+      "file": "blobs/lib-com.google.mediapipe-64d127363bcb.jar",
+      "sha256": "64d127363bcbedc6100babe232369a43bf1666810eeff31633f11b0e96cec8c9",
+      "size": 42016
+    },
+    {
+      "key": "lib-com.google.protobuf",
+      "file": "blobs/lib-com.google.protobuf-8df8bb80e055.jar",
+      "sha256": "8df8bb80e05543904ee0e6cc6931e19251cf20623bcbfc82973e0c264a14cc3c",
+      "size": 279361
+    },
+    {
+      "key": "lib-com.squareup.okhttp3",
+      "file": "blobs/lib-com.squareup.okhttp3-4d6a7b4e0cad.jar",
+      "sha256": "4d6a7b4e0cad4e3c0cc1e5da3fa3ba6d615a0ec3ae17415d3adc08063b6a4083",
+      "size": 294852
+    },
+    {
+      "key": "lib-com.squareup.okio",
+      "file": "blobs/lib-com.squareup.okio-597701d12a96.jar",
+      "sha256": "597701d12a961e15b3920f64899775145f5418045b19a09cf50ce0abe4aacb95",
+      "size": 136515
+    },
+    {
+      "key": "lib-io.coil-kt",
+      "file": "blobs/lib-io.coil-kt-ebe1c7a3f1a5.jar",
+      "sha256": "ebe1c7a3f1a542c9a8d299886c847e31df7b005ed9aed0ee3786031a8a407a9d",
+      "size": 180068
+    },
+    {
+      "key": "lib-io.getstream",
+      "file": "blobs/lib-io.getstream-1f51dd507354.jar",
+      "sha256": "1f51dd507354b93836b806e7246544639765adf68acb389ce63f2d938ba0457f",
+      "size": 185649
+    },
+    {
+      "key": "lib-io.ktor",
+      "file": "blobs/lib-io.ktor-c9b919850ce6.jar",
+      "sha256": "c9b919850ce6138ebbeaea82090b220de05816d79e9d7c3284e908d9c0f2e1a9",
+      "size": 735291
+    },
+    {
+      "key": "lib-javax.inject",
+      "file": "blobs/lib-javax.inject-ac3aa8396131.jar",
+      "sha256": "ac3aa8396131827614d8a9640d1237d7da490e03ddb47f3f5b765df58bc37a58",
+      "size": 1060
+    },
+    {
+      "key": "lib-org.checkerframework",
+      "file": "blobs/lib-org.checkerframework-ec40506142ea.jar",
+      "sha256": "ec40506142ea1c552be5dfaffff52c7085fa53918585054d9266e2a39051f66d",
+      "size": 22390
+    },
+    {
+      "key": "lib-org.jetbrains",
+      "file": "blobs/lib-org.jetbrains-4af1cdad0e3f.jar",
+      "sha256": "4af1cdad0e3f8973d2eafb26e5cfb4c81323d5b239be84c56db7e59332574d29",
+      "size": 4973
+    },
+    {
+      "key": "lib-org.jetbrains.kotlin",
+      "file": "blobs/lib-org.jetbrains.kotlin-a279771cb512.jar",
+      "sha256": "a279771cb512be85583228846551b6eae91b113b6aa2d8e22fa5af0e3a33c0f9",
+      "size": 1483547
+    },
+    {
+      "key": "lib-org.jetbrains.kotlinx",
+      "file": "blobs/lib-org.jetbrains.kotlinx-ac592410eebd.jar",
+      "sha256": "ac592410eebda59dbaf7d102c161af5dcb968dd4819a735067f47fb951ea8d45",
+      "size": 584386
+    },
+    {
+      "key": "lib-org.reactivestreams",
+      "file": "blobs/lib-org.reactivestreams-8a78e9c65e88.jar",
+      "sha256": "8a78e9c65e88eda9b39f848ada406a3469520b2d9f636b0b835cd24eed400634",
+      "size": 3226
+    },
+    {
+      "key": "lib-org.slf4j",
+      "file": "blobs/lib-org.slf4j-5fc997dbc909.jar",
+      "sha256": "5fc997dbc90976a69cfb028fa87143e57fa288f035a457c3c3a2fb77aee1398b",
+      "size": 28577
+    }
+  ],
+  "natives": {
+    "arm64-v8a": [
+      {
+        "name": "libimage_processing_util_jni.so",
+        "file": "blobs/3e0071afcdc7-libimage_processing_util_jni.so",
+        "sha256": "3e0071afcdc7e321f839e196d266014182f18d0988e4455acc9857a085b2184e",
+        "size": 29008,
+        "crc32": 4047106503
+      },
+      {
+        "name": "libjingle_peerconnection_so.so",
+        "file": "blobs/4e9d2df81f7d-libjingle_peerconnection_so.so",
+        "sha256": "4e9d2df81f7db6d184a9d0024e6f9825c6325c3ee54a8d61ef657f02ef8d85e7",
+        "size": 11541096,
+        "crc32": 3639444472
+      },
+      {
+        "name": "liblitertlm_jni.so",
+        "file": "blobs/e31489778b24-liblitertlm_jni.so",
+        "sha256": "e31489778b249ccca66a5af7076aca17f84b6290a7faf8d129d020de3067d8c7",
+        "size": 20627944,
+        "crc32": 2174161117
+      },
+      {
+        "name": "libllm_inference_engine_jni.so",
+        "file": "blobs/5796e8e19342-libllm_inference_engine_jni.so",
+        "sha256": "5796e8e193428969059783e658a073911f7cc067ecc8111fe00b161ace793a4b",
+        "size": 26338344,
+        "crc32": 4232081829
+      },
+      {
+        "name": "libsurface_util_jni.so",
+        "file": "blobs/ee3f0d56f81c-libsurface_util_jni.so",
+        "sha256": "ee3f0d56f81cc0a301db32dc4fd51274c3216733b4c40172768e38bc5049a265",
+        "size": 4832,
+        "crc32": 2453654608
+      }
+    ],
+    "x86_64": [
+      {
+        "name": "libimage_processing_util_jni.so",
+        "file": "blobs/676e3e280c10-libimage_processing_util_jni.so",
+        "sha256": "676e3e280c10dcb9b71ef5bb727552610dc73c7ec85af54c7c898f82785c33d7",
+        "size": 48104,
+        "crc32": 4062894398
+      },
+      {
+        "name": "libjingle_peerconnection_so.so",
+        "file": "blobs/36272820d42b-libjingle_peerconnection_so.so",
+        "sha256": "36272820d42b34f29fed7a11a4eecccedee3bfe86c45f280e0be5c5b246f133d",
+        "size": 12819952,
+        "crc32": 177836050
+      },
+      {
+        "name": "liblitertlm_jni.so",
+        "file": "blobs/400a0edca8c6-liblitertlm_jni.so",
+        "sha256": "400a0edca8c612327a5cc12747d6ab2bda99915db86bbd3406d91501cd4171d3",
+        "size": 24325080,
+        "crc32": 3033171233
+      },
+      {
+        "name": "libllm_inference_engine_jni.so",
+        "file": "blobs/1c2c5140d214-libllm_inference_engine_jni.so",
+        "sha256": "1c2c5140d2143e974e299be3515bc0c6110c31aa6bf4686502ba83064d4606fb",
+        "size": 29748456,
+        "crc32": 1996650963
+      },
+      {
+        "name": "libsurface_util_jni.so",
+        "file": "blobs/cd425e10a365-libsurface_util_jni.so",
+        "sha256": "cd425e10a365fb3695e53f1e46227d44d89f14854da4f1258ef079c80c752339",
+        "size": 4928,
+        "crc32": 2844392482
+      }
+    ]
+  }
 }
