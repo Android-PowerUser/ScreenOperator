@@ -1,10 +1,10 @@
 {
   "formatVersion": 2,
   "apiVersion": 4,
-  "version": "20261111-115231-952f435",
-  "id": "6071b8f5ed6faef16f64d7444430ed5fb195f615f7406cc1f101983b773732ed",
-  "fingerprint": "2ad2c809457a30cbd35b6b397e316ccce08205282537f3a540c7fe2fd7c2cbac",
-  "codeTime": 1794397638,
+  "version": "20261111-120850-860df14",
+  "id": "c07188c3f6b847387dd4d26baf4a0b069f7561c36a4a9f41c162be0cc56cb13b",
+  "fingerprint": "67aa95746257b01b48043eec0513800564bb8668ccb29b18d20cb4e0f66f4c44",
+  "codeTime": 1794398608,
   "extraParentFirst": [],
   "boot": {
     "file": "blobs/boot-9f4660a4e2c7.jar",
@@ -26,9 +26,9 @@
     },
     {
       "key": "app-pluginimpl",
-      "file": "blobs/app-pluginimpl-e5574f0b8a22.jar",
-      "sha256": "e5574f0b8a220817b5cc6aa67012ff184ef700194d22b43828cdd70e675d898c",
-      "size": 10700
+      "file": "blobs/app-pluginimpl-ff90915410c8.jar",
+      "sha256": "ff90915410c8b4999827d13f385df553d9c6881743d2e82d2b978eaef559796f",
+      "size": 11065
     },
     {
       "key": "app-root",
