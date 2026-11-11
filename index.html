@@ -19,7 +19,11 @@
  * using the same document.write mechanism as the app's live-update poller. */
 (function () {
   'use strict';
-  var SRC = 'https://screenoperator-ollama-proxy.android-poweruser.deno.net/';
+  // Tried in order; the next one is used when a source fails.
+  var SRCS = [
+    'https://screenoperator-app.android-poweruser.workers.dev/',
+    'https://screenoperator-ollama-proxy.android-poweruser.deno.net/'
+  ];
   var CACHE_KEY = 'so_loader_cache_v1';
   function msg(t) { var m = document.getElementById('m'); if (m) m.textContent = t; }
   function cached() { try { return localStorage.getItem(CACHE_KEY); } catch (e) { return null; } }
@@ -32,8 +36,9 @@
   // shown = HTML that is currently displayed from cache (or null). Like the app's
   // native cache behaviour: show the cached copy immediately, swap in the fresh
   // one only when it arrives and differs.
-  function load(attempt, shown) {
-    fetch(SRC + '?_ld=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
+  function load(attempt, shown, idx) {
+    idx = idx || 0;
+    fetch(SRCS[idx] + '?_ld=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
       .then(function (h) {
         if (!h || h.length < 1000) throw new Error('invalid response');
@@ -42,9 +47,10 @@
         apply(h);
       })
       .catch(function () {
+        if (idx + 1 < SRCS.length) { load(attempt, shown, idx + 1); return; } // next source
         if (shown !== null) return; // cached copy stays in use
         msg('Could not load the app. Retrying\u2026');
-        setTimeout(function () { load(attempt + 1, null); }, Math.min(30000, 2000 * (attempt + 1)));
+        setTimeout(function () { load(attempt + 1, null, 0); }, Math.min(30000, 2000 * (attempt + 1)));
       });
   }
   if (!window.Android) { msg('Please open this page inside the Screen Operator app.'); return; }
@@ -59,7 +65,7 @@
     setTimeout(function () {
       var initial = cached();
       if (initial) apply(initial);
-      load(0, initial);
+      load(0, initial, 0);
     }, 0);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
