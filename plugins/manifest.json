@@ -1,10 +1,10 @@
 {
   "formatVersion": 2,
   "apiVersion": 4,
-  "version": "20261111-105508-83e4798",
-  "id": "fbc6b002dbe3506db6b9ba8451952cc1c76eeff2c09f71671d06f02228e1ee70",
-  "fingerprint": "4ee78fff8b142437afe93c9531fcef55344e5dd6673f2f5eb3fdc904fb45f7b5",
-  "codeTime": 1794393968,
+  "version": "20261111-110353-64dae9e",
+  "id": "136bf2cf03c81b5f99d3806c4a8a7c16c5410a322b464f596c68464a4ecffb4f",
+  "fingerprint": "f1d9c9748905a3c80ab6bb69a69ae8358c086b41492f7ad5dbc654184901b91c",
+  "codeTime": 1794394449,
   "extraParentFirst": [],
   "boot": {
     "file": "blobs/boot-9f4660a4e2c7.jar",
@@ -32,9 +32,9 @@
     },
     {
       "key": "app-root",
-      "file": "blobs/app-root-3c3fd86f0d59.jar",
-      "sha256": "3c3fd86f0d5933930916094e45a4cc9b5e084f322db9a92cdca3ff7fad35da9a",
-      "size": 218961
+      "file": "blobs/app-root-b9650dd0a327.jar",
+      "sha256": "b9650dd0a327e0f0c518128fa94f39a81d2f576aebfb05592d4f6e8765ea630e",
+      "size": 218955
     },
     {
       "key": "app-service",
