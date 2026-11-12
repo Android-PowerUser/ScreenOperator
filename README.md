@@ -2,7 +2,7 @@
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs.
 
-## ⚠️ There are currently operational disruptions due to broken servers. Apk update coming soon
+### ⚠️ There are currently operational disruptions due to broken servers. </br> Update to Screen Operator version 5.0 on GitHub (Play Store coming soon)
 
 ### OpenClaw for Android
 It can now execute commands directly in Termux via API. After each update, click "Restore System Message" to access the new tools!
@@ -13,12 +13,12 @@ It can now execute commands directly in Termux via API. After each update, click
 
 ## Download and install
 
-[Screen Operator v4.6.3.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.11.01/ScreenOperator.v4.6.3.apk)
+[Screen Operator v5.0.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.11.12/ScreenOperator.v5.0.apk)
 
 Updates in Github are much faster than on the Play Store.
 </br>
 
-![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/latest/total.svg?label=Screen%20Operator%20latest%20release%20Downloads&v=78) ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/total.svg?label=Screen%20Operator%20Downloads&v=69) from Github (without nightly builds)
+![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/latest/total.svg?label=Screen%20Operator%20latest%20release%20Downloads&v=79) ![](https://img.shields.io/github/downloads/Android-PowerUser/ScreenOperator/total.svg?label=Screen%20Operator%20Downloads&v=69) from Github (without nightly builds)
 
 
 <br/>
