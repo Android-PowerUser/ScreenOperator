@@ -2,7 +2,7 @@
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs.
 
-### ⚠️ There are currently operational disruptions due to dead servers. </br> Update to Screen Operator version 5.0 on GitHub
+### ⚠️ There are currently operational disruptions due to dead servers. </br> Update to Screen Operator version 5.0
 
 ### OpenClaw for Android
 It can now execute commands directly in Termux via API. After each update, click "Restore System Message" to access the new tools!
