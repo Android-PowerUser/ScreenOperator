@@ -2,16 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Screen Operator</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#111;color:#ddd;font:15px system-ui,sans-serif}
+  /* Same look as the app's native start screen (Material 3 default scheme). */
+  :root{--bg:#FFFBFE;--fg:#1C1B1F;--primary:#6650A4;--track:#E8DEF8}
+  @media (prefers-color-scheme: dark){:root{--bg:#1C1B1F;--fg:#E6E1E5;--primary:#D0BCFF;--track:#4A4458}}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:Roboto,system-ui,sans-serif}
   #m{position:fixed;top:0;right:0;bottom:0;left:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;text-align:center;
-     padding:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(24px + env(safe-area-inset-left,0px))}
+     font-size:16px;line-height:24px;letter-spacing:.5px;
+     padding:env(safe-area-inset-top,0px) calc(48px + env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) calc(48px + env(safe-area-inset-left,0px))}
+  #c{width:100%;display:flex;flex-direction:column;align-items:center}
+  .bar{position:relative;width:100%;height:4px;margin:12px 0;overflow:hidden;background:var(--track)}
+  .bar.det i{position:absolute;inset:0;background:var(--primary);transform-origin:left center;transition:transform .1s linear}
+  .bar.ind{margin-bottom:4px}
+  .bar.ind i{position:absolute;top:0;bottom:0;width:100%}
+  .bar.ind b{position:absolute;inset:0;background:var(--primary);transform-origin:left center}
+  .bar.ind i.p{left:-145.167%;animation:p-t 2s infinite linear}
+  .bar.ind i.p b{animation:p-s 2s infinite linear}
+  .bar.ind i.s{left:-54.8889%;animation:s-t 2s infinite linear}
+  .bar.ind i.s b{animation:s-s 2s infinite linear}
+  @keyframes p-t{0%{transform:translateX(0)}20%{animation-timing-function:cubic-bezier(.5,0,.701732,.495819);transform:translateX(0)}59.15%{animation-timing-function:cubic-bezier(.302435,.381352,.55,.956352);transform:translateX(83.67%)}100%{transform:translateX(200.61%)}}
+  @keyframes p-s{0%{transform:scaleX(.08)}36.65%{animation-timing-function:cubic-bezier(.334731,.12482,.785844,1);transform:scaleX(.08)}69.15%{animation-timing-function:cubic-bezier(.06,.11,.6,1);transform:scaleX(.661479)}100%{transform:scaleX(.08)}}
+  @keyframes s-t{0%{animation-timing-function:cubic-bezier(.15,0,.515058,.409685);transform:translateX(0)}25%{animation-timing-function:cubic-bezier(.31033,.284058,.8,.733712);transform:translateX(37.651913%)}48.35%{animation-timing-function:cubic-bezier(.4,.627035,.6,.902026);transform:translateX(84.386165%)}100%{transform:translateX(160.277782%)}}
+  @keyframes s-s{0%{animation-timing-function:cubic-bezier(.205028,.057051,.57661,.453971);transform:scaleX(.08)}19.15%{animation-timing-function:cubic-bezier(.152313,.196432,.648374,1.004315);transform:scaleX(.457104)}44.15%{animation-timing-function:cubic-bezier(.257759,-.003163,.211762,1.38179);transform:scaleX(.72796)}100%{transform:scaleX(.08)}}
 </style>
 </head>
 <body>
-<div id="m">Loading&hellip;</div>
+<div id="m"></div>
 <script>
 /* Screen Operator loader.
  * The app UI is no longer published in this repository. This page is only a
@@ -366,6 +385,51 @@
   }
 
   function msg(t) { var m = document.getElementById('m'); if (m) m.textContent = t; }
+
+  /* ── Start screen (mirrors the native "Download" screen) ───────────── */
+  function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function showDownload(pct, kb, totalKb) {
+    var m = document.getElementById('m'); if (!m) return;
+    var c = document.getElementById('c');
+    if (!c) {
+      m.innerHTML = '<div id="c"><div>Download</div><div class="bar" id="bar"></div><div id="pct"></div><div id="kb" style="margin-top:4px"></div></div>';
+    }
+    var bar = document.getElementById('bar'), pe = document.getElementById('pct'), ke = document.getElementById('kb');
+    if (!bar || !pe || !ke) return;
+    var det = pct >= 0 && pct <= 100;
+    if (det) {
+      if (bar.className.indexOf('det') < 0) { bar.className = 'bar det'; bar.innerHTML = '<i></i>'; }
+      bar.firstChild.style.transform = 'scaleX(' + (pct / 100) + ')';
+      pe.textContent = pct + ' %';
+      pe.style.display = '';
+    } else {
+      if (bar.className.indexOf('ind') < 0) { bar.className = 'bar ind'; bar.innerHTML = '<i class="p"><b></b></i><i class="s"><b></b></i>'; }
+      pe.style.display = 'none';
+      // native: no spacer/percent line when the total size is unknown
+    }
+    ke.textContent = totalKb > 0 ? kb + ' / ' + totalKb + ' KB' : kb + ' KB';
+  }
+  function showOffline() { msg('The app requires internet access'); }
+
+  // Streams the response so the progress can be shown (same numbers as native).
+  function readWithProgress(r, onProgress) {
+    var len = parseInt(r.headers.get('content-length'), 10);
+    var total = len > 0 ? len : -1;
+    if (!r.body || !r.body.getReader) return r.text();
+    var reader = r.body.getReader(), dec = new TextDecoder('utf-8'), out = '', done = 0;
+    function pump() {
+      return reader.read().then(function (x) {
+        if (x.done) { out += dec.decode(); return out; }
+        done += x.value.length;
+        out += dec.decode(x.value, { stream: true });
+        var t = (total > 0 && done <= total) ? total : -1; // decoded gzip would exceed it -> unknown
+        var pct = t > 0 ? Math.min(100, Math.max(0, Math.floor(done * 100 / t))) : -1;
+        onProgress(pct, Math.floor(done / 1024), t > 0 ? Math.floor((t + 1023) / 1024) : -1);
+        return pump();
+      });
+    }
+    return pump();
+  }
   function cached() { try { return localStorage.getItem(CACHE_KEY); } catch (e) { return null; } }
   function apply(html) {
     document.open(); document.write(injectHotReload(html)); document.close();
@@ -378,8 +442,12 @@
   // one only when it arrives and differs.
   function load(attempt, shown, idx) {
     idx = idx || 0;
+    if (shown === null) showDownload(0, 0, -1); // first start without cache: show progress like the native app
     fetch(SRCS[idx] + '?_ld=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return readWithProgress(r, function (pct, kb, totalKb) { if (shown === null) showDownload(pct, kb, totalKb); });
+      })
       .then(function (h) {
         if (!h || h.length < 1000) throw new Error('invalid response');
         try { localStorage.setItem(CACHE_KEY, h); } catch (e) {}
@@ -389,7 +457,7 @@
       .catch(function () {
         if (idx + 1 < SRCS.length) { load(attempt, shown, idx + 1); return; } // next source
         if (shown !== null) return; // cached copy stays in use
-        msg('Could not load the app. Retrying\u2026');
+        showOffline();
         setTimeout(function () { load(attempt + 1, null, 0); }, Math.min(30000, 2000 * (attempt + 1)));
       });
   }
