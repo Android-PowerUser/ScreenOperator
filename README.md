@@ -1,4 +1,4 @@
-## Screen Operator
+## Screen Operator - AI Agent
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs.
 
