@@ -39,6 +39,6 @@ Updates in Github are much faster than on the Play Store.
 
 #### Note
 
-
+The Google Play Store does not tolerate some features of the app and the updates are released too slowly. That's why the app is discontinued in the Play Store.
 
 If you in your Google account identified as under 18, Google is (unreasonably) denying you the API key. Use Freedom subscription as a workaround.
