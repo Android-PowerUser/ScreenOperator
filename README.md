@@ -11,6 +11,8 @@ It can now execute commands directly in Termux via API. After each update, click
 
 ## Download and install
 
+The Play Store version is NO longer supported.
+
 [Screen Operator v5.0.apk](https://github.com/Android-PowerUser/ScreenOperator/releases/download/v2026.11.12/ScreenOperator.v5.0.apk)
 
 Updates in Github are much faster than on the Play Store.
