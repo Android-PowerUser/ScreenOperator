@@ -1,6 +1,6 @@
-## Screen Operator - AI Agent
+## Screen Operator
 ### Operates the screen with AI
-This Android app operates the screen with commands from vision LLMs.
+This Android app operates the screen with commands from vision LLMs (AI Agent).
 
 ### OpenClaw for Android
 It can now execute commands directly in Termux via API. After each update, click "Restore System Message" to access the new tools!
